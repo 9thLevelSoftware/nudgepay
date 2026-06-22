@@ -3,18 +3,24 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 export async function acceptInvite(
   service: SupabaseClient,
   token: string,
-  userId: string
+  userId: string,
+  userEmail: string
 ): Promise<string> {
   const { data: inv, error } = await service
-    .from("invites").select("id, org_id, accepted_at").eq("token", token).single();
-  if (error || !inv) throw error ?? new Error("invite not found");
-  if (inv.accepted_at) throw new Error("invite already accepted");
+    .from("invites").select("id, org_id, email, accepted_at").eq("token", token).maybeSingle();
+  if (error) throw error;
+  if (!inv) throw new Error("Invite not found");
+  if (inv.email.toLowerCase() !== userEmail.toLowerCase())
+    throw new Error("This invite was sent to a different email address");
+  if (inv.accepted_at) throw new Error("Invite already accepted");
 
   const { error: memErr } = await service
     .from("memberships").insert({ org_id: inv.org_id, user_id: userId, role: "member" });
-  if (memErr) throw memErr;
+  // 23505 = unique_violation: user already a member (race or repeat) -> treat as success
+  if (memErr && (memErr as any).code !== "23505") throw memErr;
 
-  await service.from("invites").update({ accepted_at: new Date().toISOString() }).eq("id", inv.id);
+  await service.from("invites")
+    .update({ accepted_at: new Date().toISOString() }).eq("id", inv.id).is("accepted_at", null);
   return inv.org_id as string;
 }
 

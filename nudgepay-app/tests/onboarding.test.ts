@@ -23,9 +23,26 @@ test("acceptInvite adds the invited user to the org", async () => {
     .insert({ org_id: orgId, email: "invitee@example.com" }).select("token").single();
 
   const invitee = await makeUserClient("invitee@example.com");
-  await acceptInvite(svc, inv!.token, invitee.userId);
+  await acceptInvite(svc, inv!.token, invitee.userId, "invitee@example.com");
 
   const { data: mem } = await svc.from("memberships")
     .select("role").eq("org_id", orgId).eq("user_id", invitee.userId).single();
   expect(mem?.role).toBe("member");
+});
+
+test("acceptInvite rejects when the user's email differs from the invite", async () => {
+  const svc = serviceClient();
+  const owner = await makeUserClient("owner3@example.com");
+  const orgId = await createOrgForUser(svc, owner.userId, "Mismatch Org");
+  const { data: inv } = await svc.from("invites")
+    .insert({ org_id: orgId, email: "someone@example.com" }).select("token").single();
+
+  const wrongUser = await makeUserClient("different@example.com");
+  await expect(
+    acceptInvite(svc, inv!.token, wrongUser.userId, "different@example.com")
+  ).rejects.toThrow();
+
+  const { data: mem } = await svc.from("memberships")
+    .select("role").eq("org_id", orgId).eq("user_id", wrongUser.userId).maybeSingle();
+  expect(mem).toBeNull();
 });
