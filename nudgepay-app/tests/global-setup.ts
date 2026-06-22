@@ -52,5 +52,6 @@ export async function setup() {
   await svc.from("invoices").delete().neq("id", "00000000-0000-0000-0000-000000000000");
   await svc.from("customers").delete().neq("id", "00000000-0000-0000-0000-000000000000");
   await svc.from("memberships").delete().neq("id", "00000000-0000-0000-0000-000000000000");
+  await svc.from("oauth_states").delete().neq("state", "");
   await svc.from("organizations").delete().neq("id", "00000000-0000-0000-0000-000000000000");
 }
