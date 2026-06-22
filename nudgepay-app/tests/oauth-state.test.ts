@@ -17,6 +17,14 @@ test("create then consume returns the org and is single-use", async () => {
   await expect(consumeOAuthState(svc, state)).rejects.toThrow();
 });
 
+test("consume removes the row (cleanup verified)", async () => {
+  const org = await freshOrg();
+  const state = await createOAuthState(svc, org);
+  await consumeOAuthState(svc, state);
+  const { data } = await svc.from("oauth_states").select("state").eq("state", state).maybeSingle();
+  expect(data).toBeNull();
+});
+
 test("unknown state is rejected", async () => {
   await expect(consumeOAuthState(svc, "does-not-exist")).rejects.toThrow();
 });

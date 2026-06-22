@@ -22,8 +22,10 @@ export async function consumeOAuthState(service: SupabaseClient, state: string):
     .select("org_id, expires_at").eq("state", state).maybeSingle();
   if (error) throw error;
   if (!data) throw new Error("Invalid OAuth state");
-  // single-use: delete regardless of expiry outcome
-  await service.from("oauth_states").delete().eq("state", state);
+  // single-use: delete before returning success; a failed delete must not
+  // yield a "consumed" result while the nonce stays live (replay protection).
+  const { error: delError } = await service.from("oauth_states").delete().eq("state", state);
+  if (delError) throw delError;
   if (new Date(data.expires_at as string).getTime() < Date.now()) {
     throw new Error("Expired OAuth state");
   }
