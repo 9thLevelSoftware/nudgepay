@@ -25,7 +25,15 @@ test("decrypt with the wrong key fails", async () => {
 
 test("tampered ciphertext fails the auth tag", async () => {
   const ct = await encryptSecret("secret", KEY);
-  const parts = ct.split(":");
-  const flipped = parts[2].slice(0, -2) + (parts[2].endsWith("A") ? "B=" : "A=");
-  await expect(decryptSecret(`v1:${parts[1]}:${flipped}`, KEY)).rejects.toThrow();
+  const [v, iv, body] = ct.split(":");
+  const mid = Math.floor(body.length / 2);
+  const ch = body[mid];
+  const swapped = ch === "A" ? "B" : "A"; // guaranteed different base64 char
+  const tampered = `${v}:${iv}:${body.slice(0, mid)}${swapped}${body.slice(mid + 1)}`;
+  await expect(decryptSecret(tampered, KEY)).rejects.toThrow();
+});
+
+test("rejects a key that is not 32 bytes", async () => {
+  const shortKey = btoa("too-short"); // < 32 bytes
+  await expect(encryptSecret("x", shortKey)).rejects.toThrow();
 });

@@ -31,8 +31,9 @@ export async function encryptSecret(plaintext: string, base64Key: string): Promi
 }
 
 export async function decryptSecret(payload: string, base64Key: string): Promise<string> {
-  const [version, ivB64, ctB64] = payload.split(":");
-  if (version !== "v1") throw new Error("Unsupported ciphertext version");
+  const parts = payload.split(":");
+  if (parts.length !== 3 || parts[0] !== "v1") throw new Error("Unsupported or malformed ciphertext");
+  const [, ivB64, ctB64] = parts;
   const key = await importKey(base64Key);
   const pt = await crypto.subtle.decrypt(
     { name: "AES-GCM", iv: b64decode(ivB64) },
