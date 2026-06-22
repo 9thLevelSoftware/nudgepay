@@ -43,8 +43,16 @@ test("exchangeCodeForTokens throws on non-200", async () => {
   await expect(exchangeCodeForTokens(fetchFn as any, cfg, "bad")).rejects.toThrow();
 });
 
-test("revokeToken posts the token and resolves on 200", async () => {
+test("revokeToken posts JSON {token} with application/json and Basic auth", async () => {
   const fetchFn = vi.fn(async () => new Response(null, { status: 200 }));
   await revokeToken(fetchFn as any, cfg, "rt");
-  expect(fetchFn).toHaveBeenCalledOnce();
+  const [, init] = fetchFn.mock.calls[0];
+  expect((init as any).headers["Content-Type"]).toBe("application/json");
+  expect((init as any).headers.Authorization).toMatch(/^Basic /);
+  expect(JSON.parse(String((init as any).body))).toEqual({ token: "rt" });
+});
+
+test("revokeToken throws on non-200", async () => {
+  const fetchFn = vi.fn(async () => new Response(null, { status: 400 }));
+  await expect(revokeToken(fetchFn as any, cfg, "rt")).rejects.toThrow();
 });
