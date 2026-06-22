@@ -148,9 +148,14 @@ If your implementation calls the `/auth/qbo/refresh` route (e.g., when the acces
 
 - [Intuit OAuth 2.0 Documentation](https://developer.intuit.com/app/developer/qbo/docs/develop/authentication-and-authorization/oauth-2.0)
 - [Intuit Sandbox Environment](https://developer.intuit.com/app/developer/qbo/docs/get-started/hello-world)
-- Phase 2A implementation code:
-  - Token storage & encryption: `src/oauth/qbo-tokens.ts`
-  - OAuth state: `src/oauth/oauth-state.ts`
-  - Connect route: `src/routes/auth/qbo/connect.ts`
-  - Callback route: `src/routes/auth/qbo/callback.ts`
-  - Disconnect route: `src/routes/auth/qbo/disconnect.ts`
+- Phase 2A implementation code (all under `nudgepay-app/`):
+  - QBO env vars (`getQboEnv`): `nudgepay-app/app/lib/env.server.ts`
+  - AES-GCM token encryption: `nudgepay-app/app/lib/crypto.server.ts`
+  - Intuit OAuth HTTP calls: `nudgepay-app/app/lib/qbo-client.server.ts`
+  - Store / refresh / disconnect: `nudgepay-app/app/lib/qbo-connection.server.ts`
+  - CSRF state nonce: `nudgepay-app/app/lib/oauth-state.server.ts`
+  - Connect route (start OAuth, owner): `nudgepay-app/app/routes/api.qbo.connect.tsx`
+  - Callback route: `nudgepay-app/app/routes/auth.qbo.callback.tsx`
+  - Disconnect route (owner): `nudgepay-app/app/routes/api.qbo.disconnect.tsx`
+  - Connect/Disconnect UI: `nudgepay-app/app/routes/dashboard.tsx`
+  - Migration (oauth_states + token columns): `nudgepay-app/supabase/migrations/0004_qbo_oauth.sql`
