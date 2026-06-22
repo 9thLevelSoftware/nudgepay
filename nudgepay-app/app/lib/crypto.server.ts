@@ -6,9 +6,9 @@ function b64encode(bytes: Uint8Array): string {
   for (const b of bytes) s += String.fromCharCode(b);
   return btoa(s);
 }
-function b64decode(b64: string): Uint8Array {
+function b64decode(b64: string): Uint8Array<ArrayBuffer> {
   const s = atob(b64);
-  const out = new Uint8Array(s.length);
+  const out = new Uint8Array(new ArrayBuffer(s.length));
   for (let i = 0; i < s.length; i++) out[i] = s.charCodeAt(i);
   return out;
 }

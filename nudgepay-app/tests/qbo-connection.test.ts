@@ -1,4 +1,4 @@
-import { expect, test, vi, beforeEach } from "vitest";
+import { expect, test, vi } from "vitest";
 import { serviceClient } from "./helpers";
 import { decryptSecret } from "../app/lib/crypto.server";
 import {
@@ -50,6 +50,19 @@ test("getValidAccessToken does NOT refresh when token is still valid", async () 
   const fetchFn = vi.fn();
   const { accessToken } = await getValidAccessToken(fetchFn as any, svc, cfg, KEY, org);
   expect(accessToken).toBe("validAT");
+  expect(fetchFn).not.toHaveBeenCalled();
+});
+
+test("getConnectionStatus returns connected status and realmId", async () => {
+  const org = await freshOrg();
+  await storeConnection(svc, KEY, org, "realm-status", { accessToken: "AT", refreshToken: "RT", expiresIn: 3600 });
+  expect(await getConnectionStatus(svc, org)).toEqual({ status: "connected", realmId: "realm-status" });
+});
+
+test("getValidAccessToken throws when the org has no connection", async () => {
+  const org = await freshOrg();
+  const fetchFn = vi.fn();
+  await expect(getValidAccessToken(fetchFn as any, svc, cfg, KEY, org)).rejects.toThrow();
   expect(fetchFn).not.toHaveBeenCalled();
 });
 
