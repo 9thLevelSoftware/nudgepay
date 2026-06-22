@@ -46,3 +46,22 @@ test("acceptInvite rejects when the user's email differs from the invite", async
     .select("role").eq("org_id", orgId).eq("user_id", wrongUser.userId).maybeSingle();
   expect(mem).toBeNull();
 });
+
+test("acceptInvite rejects when either email is empty (no empty-string bypass)", async () => {
+  const svc = serviceClient();
+  const owner = await makeUserClient("owner4@example.com");
+  const orgId = await createOrgForUser(svc, owner.userId, "Empty Email Org");
+  // An invite row with an empty email (NOT NULL still permits "") paired with a
+  // user passing "" would slip past `"" !== ""` (false) without an explicit guard.
+  const { data: inv } = await svc.from("invites")
+    .insert({ org_id: orgId, email: "" }).select("token").single();
+
+  const noEmailUser = await makeUserClient("hasemail@example.com");
+  await expect(
+    acceptInvite(svc, inv!.token, noEmailUser.userId, "")
+  ).rejects.toThrow();
+
+  const { data: mem } = await svc.from("memberships")
+    .select("role").eq("org_id", orgId).eq("user_id", noEmailUser.userId).maybeSingle();
+  expect(mem).toBeNull();
+});

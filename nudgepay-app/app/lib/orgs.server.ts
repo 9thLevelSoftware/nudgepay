@@ -10,6 +10,7 @@ export async function acceptInvite(
     .from("invites").select("id, org_id, email, accepted_at").eq("token", token).maybeSingle();
   if (error) throw error;
   if (!inv) throw new Error("Invite not found");
+  if (!inv.email || !userEmail) throw new Error("Invite email missing");
   if (inv.email.toLowerCase() !== userEmail.toLowerCase())
     throw new Error("This invite was sent to a different email address");
   if (inv.accepted_at) throw new Error("Invite already accepted");
@@ -19,8 +20,9 @@ export async function acceptInvite(
   // 23505 = unique_violation: user already a member (race or repeat) -> treat as success
   if (memErr && (memErr as any).code !== "23505") throw memErr;
 
-  await service.from("invites")
+  const { error: stampErr } = await service.from("invites")
     .update({ accepted_at: new Date().toISOString() }).eq("id", inv.id).is("accepted_at", null);
+  if (stampErr) throw stampErr;
   return inv.org_id as string;
 }
 
