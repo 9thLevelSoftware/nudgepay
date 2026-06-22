@@ -45,18 +45,11 @@ export async function sendInvoiceText(
     to: cust.phone as string, body: args.body, sender, statusCallback: deps.statusCallback ?? null,
   });
 
-  // The nil UUID is not a valid auth.users FK target (Supabase rejects it at
-  // the DB level). Treat it — and any blank value — as "no real user" (e.g.
-  // cron-triggered system sends). Callers that supply a real user UUID are
-  // stored as-is so UI attribution still works.
-  const NIL_UUID = "00000000-0000-0000-0000-000000000000";
-  const sentByUserId = args.userId && args.userId !== NIL_UUID ? args.userId : null;
-
   const { data: row, error: insErr } = await deps.service.from("text_messages").insert({
     org_id: args.orgId,
     invoice_id: args.invoiceId,
     customer_id: cust.id as string,
-    sent_by_user_id: sentByUserId,
+    sent_by_user_id: args.userId,
     direction: "outbound",
     twilio_message_sid: result.sid,
     status: result.status,

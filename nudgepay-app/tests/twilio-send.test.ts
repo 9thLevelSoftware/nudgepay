@@ -1,6 +1,9 @@
-import { expect, test, vi } from "vitest";
-import { serviceClient } from "./helpers";
+import { beforeAll, expect, test, vi } from "vitest";
+import { serviceClient, makeUserClient } from "./helpers";
 import { resolveSender, sendInvoiceText, normalizePhone, type MessagingDeps } from "../app/lib/twilio-messaging.server";
+
+let userId: string;
+beforeAll(async () => { ({ userId } = await makeUserClient("sms-sender@example.com")); });
 
 const svc = serviceClient();
 const twilio = { accountSid: "AC1", authToken: "tok" };
@@ -38,7 +41,7 @@ test("resolveSender prefers messaging_config over the env default", async () => 
 test("sendInvoiceText sends and inserts an outbound row when the customer consented", async () => {
   const { orgId, customerId, invoiceId } = await seed(true, "+12295550101");
   const fetchFn = vi.fn(async () => jsonResponse({ sid: "SM10", status: "queued" }));
-  const res = await sendInvoiceText(deps(fetchFn), { orgId, invoiceId, userId: "00000000-0000-0000-0000-000000000000", body: "Past due" });
+  const res = await sendInvoiceText(deps(fetchFn), { orgId, invoiceId, userId, body: "Past due" });
   expect(res.sid).toBe("SM10");
   expect(fetchFn).toHaveBeenCalledOnce();
   const { data: msg } = await svc.from("text_messages").select("direction, twilio_message_sid, to_number, customer_id, invoice_id, body")
@@ -53,7 +56,7 @@ test("sendInvoiceText sends and inserts an outbound row when the customer consen
 test("sendInvoiceText refuses to send without consent (no Twilio call, no row)", async () => {
   const { orgId, invoiceId } = await seed(false, "+12295550101");
   const fetchFn = vi.fn();
-  await expect(sendInvoiceText(deps(fetchFn), { orgId, invoiceId, userId: "00000000-0000-0000-0000-000000000000", body: "x" }))
+  await expect(sendInvoiceText(deps(fetchFn), { orgId, invoiceId, userId, body: "x" }))
     .rejects.toThrow(/consent/i);
   expect(fetchFn).not.toHaveBeenCalled();
 });
@@ -61,7 +64,7 @@ test("sendInvoiceText refuses to send without consent (no Twilio call, no row)",
 test("sendInvoiceText refuses when the customer has no phone", async () => {
   const { orgId, invoiceId } = await seed(true, null);
   const fetchFn = vi.fn();
-  await expect(sendInvoiceText(deps(fetchFn), { orgId, invoiceId, userId: "00000000-0000-0000-0000-000000000000", body: "x" }))
+  await expect(sendInvoiceText(deps(fetchFn), { orgId, invoiceId, userId, body: "x" }))
     .rejects.toThrow(/phone/i);
   expect(fetchFn).not.toHaveBeenCalled();
 });
