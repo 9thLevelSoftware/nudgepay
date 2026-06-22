@@ -202,3 +202,6 @@ worker-configuration.d.ts
 ### React Router ###
 .react-router/
 /build/
+
+### Supabase ###
+supabase/.temp/
