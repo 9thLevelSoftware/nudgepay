@@ -33,10 +33,14 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
       .select("last_sync_at").eq("org_id", org.org_id).maybeSingle();
     lastSyncAt = (connMeta?.last_sync_at as string) ?? null;
     // RLS-scoped read via the USER client (membership-gated).
+    // Filter to true past-due worklist: balance > 0 and due_date < today.
+    const today = new Date().toISOString().slice(0, 10);
     const { data: inv } = await supabase
       .from("invoices")
       .select("id, qbo_doc_number, balance, due_date, status, customers(name)")
       .eq("org_id", org.org_id)
+      .gt("balance", 0)
+      .lt("due_date", today)
       .order("due_date", { ascending: true });
     invoices = (inv as unknown as InvoiceRow[]) ?? [];
   }

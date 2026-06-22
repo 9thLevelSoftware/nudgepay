@@ -37,7 +37,8 @@ export async function action({ request, context }: ActionFunctionArgs) {
       else if (ev.entityName === "Customer") await applyCustomerWebhook(deps, orgId, ev.id);
       // other entity types are ignored in this phase
     }
-  } catch {
+  } catch (err) {
+    console.error("QBO webhook processing failed", err);
     // Idempotent upserts make Intuit's retry safe.
     return new Response("processing error", { status: 500 });
   }
