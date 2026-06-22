@@ -83,9 +83,11 @@ export async function recordInboundMessage(
   const keyword = args.body.trim().toUpperCase();
   const optOut = STOP_KEYWORDS.includes(keyword);
   if (optOut) {
-    await service.from("customers").update({ sms_consent: false }).eq("id", match.id as string);
+    const { error } = await service.from("customers").update({ sms_consent: false }).eq("id", match.id as string);
+    if (error) throw error;
   } else if (START_KEYWORDS.includes(keyword)) {
-    await service.from("customers").update({ sms_consent: true }).eq("id", match.id as string);
+    const { error } = await service.from("customers").update({ sms_consent: true }).eq("id", match.id as string);
+    if (error) throw error;
   }
 
   // Thread to the customer's most recent outbound invoice, if any.

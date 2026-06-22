@@ -59,7 +59,8 @@ export async function action({ request, context, params }: ActionFunctionArgs) {
   const { data: inv } = await supabase
     .from("invoices").select("customer_id").eq("org_id", org.org_id).eq("id", invoiceId).maybeSingle();
   if (inv?.customer_id) {
-    await supabase.from("customers").update({ sms_consent: consent }).eq("id", inv.customer_id as string);
+    const { error } = await supabase.from("customers").update({ sms_consent: consent }).eq("id", inv.customer_id as string);
+    if (error) return redirect(`/invoices/${invoiceId}?sms=error`, { headers });
   }
   return redirect(`/invoices/${invoiceId}`, { headers });
 }
