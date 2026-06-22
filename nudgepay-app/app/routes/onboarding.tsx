@@ -16,7 +16,8 @@ export async function action({ request, context }: ActionFunctionArgs) {
   const env = getEnv(context as any);
   const { headers, user } = await requireUser(request, env);
   const form = await request.formData();
-  const name = String(form.get("orgName")).trim();
+  const raw = form.get("orgName");
+  const name = typeof raw === "string" ? raw.trim() : "";
   if (!name) return { error: "Organization name is required" };
   const service = createSupabaseServiceClient(env);
   await createOrgForUser(service, user.id, name);
