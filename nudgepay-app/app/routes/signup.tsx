@@ -5,8 +5,10 @@ import { createSupabaseUserClient } from "../lib/supabase.server";
 export async function action({ request, context }: ActionFunctionArgs) {
   const env = getEnv(context as any);
   const form = await request.formData();
-  const email = String(form.get("email"));
-  const password = String(form.get("password"));
+  const rawEmail = form.get("email");
+  const email = typeof rawEmail === "string" ? rawEmail.trim() : "";
+  const rawPassword = form.get("password");
+  const password = typeof rawPassword === "string" ? rawPassword : "";
   const { supabase, headers } = createSupabaseUserClient(request, env);
   const { error } = await supabase.auth.signUp({ email, password });
   if (error) return { error: error.message };

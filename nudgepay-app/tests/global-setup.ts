@@ -43,20 +43,14 @@ export async function setup() {
     }
   }
 
-  // Truncate all public tables in dependency order (cascade handles FKs)
-  const { error } = await svc.rpc("truncate_test_tables" as never);
-  if (error) {
-    // RPC may not exist — fall back to individual truncates via raw SQL via postgrest
-    // Use the postgres URL directly if available, otherwise truncate table-by-table.
-    // Table-by-table truncate: delete everything via service role (bypasses RLS).
-    await svc.from("invites").delete().neq("id", "00000000-0000-0000-0000-000000000000");
-    await svc.from("contact_logs").delete().neq("id", "00000000-0000-0000-0000-000000000000");
-    await svc.from("text_messages").delete().neq("id", "00000000-0000-0000-0000-000000000000");
-    await svc.from("qbo_connections").delete().neq("id", "00000000-0000-0000-0000-000000000000");
-    await svc.from("messaging_config").delete().neq("id", "00000000-0000-0000-0000-000000000000");
-    await svc.from("invoices").delete().neq("id", "00000000-0000-0000-0000-000000000000");
-    await svc.from("customers").delete().neq("id", "00000000-0000-0000-0000-000000000000");
-    await svc.from("memberships").delete().neq("id", "00000000-0000-0000-0000-000000000000");
-    await svc.from("organizations").delete().neq("id", "00000000-0000-0000-0000-000000000000");
-  }
+  // Table-by-table delete in dependency order; service role bypasses RLS.
+  await svc.from("invites").delete().neq("id", "00000000-0000-0000-0000-000000000000");
+  await svc.from("contact_logs").delete().neq("id", "00000000-0000-0000-0000-000000000000");
+  await svc.from("text_messages").delete().neq("id", "00000000-0000-0000-0000-000000000000");
+  await svc.from("qbo_connections").delete().neq("id", "00000000-0000-0000-0000-000000000000");
+  await svc.from("messaging_config").delete().neq("id", "00000000-0000-0000-0000-000000000000");
+  await svc.from("invoices").delete().neq("id", "00000000-0000-0000-0000-000000000000");
+  await svc.from("customers").delete().neq("id", "00000000-0000-0000-0000-000000000000");
+  await svc.from("memberships").delete().neq("id", "00000000-0000-0000-0000-000000000000");
+  await svc.from("organizations").delete().neq("id", "00000000-0000-0000-0000-000000000000");
 }
