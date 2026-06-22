@@ -6,3 +6,6 @@ main = "./workers/app.ts"
 [vars]
 # Non-secret defaults only. Secrets set via `wrangler secret put`.
 SUPABASE_URL = "http://127.0.0.1:54321"
+QBO_SANDBOX = "true"
+# Secrets (wrangler secret put): SUPABASE_ANON_KEY, SUPABASE_SERVICE_KEY,
+# QBO_CLIENT_ID, QBO_CLIENT_SECRET, QBO_REDIRECT_URI, QBO_ENCRYPTION_KEY
