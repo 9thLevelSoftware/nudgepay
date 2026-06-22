@@ -19,4 +19,5 @@ export default [
   route("api/text/send", "routes/api.text.send.tsx"),
   route("webhooks/twilio/inbound", "routes/webhooks.twilio.inbound.tsx"),
   route("webhooks/twilio/status", "routes/webhooks.twilio.status.tsx"),
+  route("invoices/:id", "routes/invoices.$id.tsx"),
 ] satisfies RouteConfig;

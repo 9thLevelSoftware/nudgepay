@@ -122,7 +122,7 @@ export default function Dashboard() {
               <tbody>
                 {invoices.map((inv) => (
                   <tr key={inv.id}>
-                    <td>{inv.qbo_doc_number ?? "—"}</td>
+                    <td><a href={`/invoices/${inv.id}`}>{inv.qbo_doc_number ?? inv.id}</a></td>
                     <td>{inv.customers?.name ?? "—"}</td>
                     <td style={{ textAlign: "right" }}>
                       {inv.balance != null ? `$${Number(inv.balance).toFixed(2)}` : "—"}
