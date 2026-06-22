@@ -5,5 +5,6 @@ export default [
   route("signup", "routes/signup.tsx"),
   route("login", "routes/login.tsx"),
   route("logout", "routes/logout.tsx"),
-  // Tasks 8-10 will add: onboarding, invite, accept/:token, dashboard, privacy, eula
+  route("onboarding", "routes/onboarding.tsx"),
+  // Tasks 9-10 will add: invite, accept/:token, dashboard, privacy, eula
 ] satisfies RouteConfig;
