@@ -11,4 +11,5 @@ export default [
   route("dashboard", "routes/dashboard.tsx"),
   route("privacy", "routes/privacy.tsx"),
   route("eula", "routes/eula.tsx"),
+  route("api/qbo/connect", "routes/api.qbo.connect.tsx"),
 ] satisfies RouteConfig;
