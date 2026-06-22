@@ -14,4 +14,5 @@ export default [
   route("api/qbo/connect", "routes/api.qbo.connect.tsx"),
   route("api/qbo/disconnect", "routes/api.qbo.disconnect.tsx"),
   route("auth/qbo/callback", "routes/auth.qbo.callback.tsx"),
+  route("webhooks/qbo", "routes/webhooks.qbo.tsx"),
 ] satisfies RouteConfig;

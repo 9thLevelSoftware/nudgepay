@@ -8,6 +8,8 @@ const env = Object.fromEntries(
     })
 ) as Record<string, string>;
 
+export const TEST_ENV = env;
+
 export const SUPABASE_URL = env.SUPABASE_URL;
 
 export function serviceClient(): SupabaseClient {
