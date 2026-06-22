@@ -10,3 +10,7 @@ QBO_SANDBOX = "true"
 # Secrets (wrangler secret put): SUPABASE_ANON_KEY, SUPABASE_SERVICE_KEY,
 # QBO_CLIENT_ID, QBO_CLIENT_SECRET, QBO_REDIRECT_URI, QBO_ENCRYPTION_KEY,
 # QBO_WEBHOOK_VERIFIER_TOKEN
+
+[triggers]
+# CDC catch-up every 30 min (design §6: 15-30 min; within CDC's 30-day lookback).
+crons = ["*/30 * * * *"]
