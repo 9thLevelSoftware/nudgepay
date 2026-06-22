@@ -1,0 +1,13 @@
+.codex/mcp/quickbooks/.env
+.codex/mcp/quickbooks/quickbooks-online-mcp-server/
+
+
+/nudgepay-backend/package-lock.json
+/nudgepay-backend/node_modules/
+/nudgepay-frontend/node_modules/
+/nudgepay-frontend/package-lock.json
+/.codex/
+/.agents/
+/AGENTS.md
+/NudgePay_Developer_Handoff_Brief.docx
+/NudgePay_Product_Overview.docx
