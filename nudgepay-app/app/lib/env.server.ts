@@ -44,3 +44,30 @@ export function getQboEnv(context: { cloudflare: { env: Record<string, string> }
     QBO_SANDBOX: e.QBO_SANDBOX !== "false", // default true
   };
 }
+
+export type TwilioEnv = {
+  TWILIO_ACCOUNT_SID: string;
+  TWILIO_AUTH_TOKEN: string;
+  TWILIO_MESSAGING_SERVICE_SID: string | null; // production-preferred sender
+  TWILIO_FROM_NUMBER: string | null;            // trial/fallback sender (E.164)
+  TWILIO_PUBLIC_BASE_URL: string | null;        // public origin for webhook signature + StatusCallback
+};
+
+export function getTwilioEnv(context: { cloudflare: { env: Record<string, string> } }): TwilioEnv {
+  const e = context.cloudflare.env;
+  for (const k of ["TWILIO_ACCOUNT_SID", "TWILIO_AUTH_TOKEN"]) {
+    if (!e[k]) throw new Error(`Missing required env var: ${k}`);
+  }
+  const messagingServiceSid = e.TWILIO_MESSAGING_SERVICE_SID || null;
+  const fromNumber = e.TWILIO_FROM_NUMBER || null;
+  if (!messagingServiceSid && !fromNumber) {
+    throw new Error("Set TWILIO_MESSAGING_SERVICE_SID or TWILIO_FROM_NUMBER");
+  }
+  return {
+    TWILIO_ACCOUNT_SID: e.TWILIO_ACCOUNT_SID,
+    TWILIO_AUTH_TOKEN: e.TWILIO_AUTH_TOKEN,
+    TWILIO_MESSAGING_SERVICE_SID: messagingServiceSid,
+    TWILIO_FROM_NUMBER: fromNumber,
+    TWILIO_PUBLIC_BASE_URL: e.TWILIO_PUBLIC_BASE_URL || null,
+  };
+}
