@@ -16,4 +16,5 @@ export default [
   route("api/qbo/refresh", "routes/api.qbo.refresh.tsx"),
   route("auth/qbo/callback", "routes/auth.qbo.callback.tsx"),
   route("webhooks/qbo", "routes/webhooks.qbo.tsx"),
+  route("api/text/send", "routes/api.text.send.tsx"),
 ] satisfies RouteConfig;
