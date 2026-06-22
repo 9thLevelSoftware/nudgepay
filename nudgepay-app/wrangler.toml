@@ -1,0 +1,8 @@
+name = "nudgepay-app"
+compatibility_date = "2025-06-01"
+compatibility_flags = ["nodejs_compat"]
+main = "./workers/app.ts"
+
+[vars]
+# Non-secret defaults only. Secrets set via `wrangler secret put`.
+SUPABASE_URL = "http://127.0.0.1:54321"
