@@ -1,17 +1,14 @@
-import type { Route } from "./+types/home";
-import { Welcome } from "../welcome/welcome";
+import { Link } from "react-router";
 
-export function meta({}: Route.MetaArgs) {
-	return [
-		{ title: "New React Router App" },
-		{ name: "description", content: "Welcome to React Router!" },
-	];
-}
-
-export function loader({ context }: Route.LoaderArgs) {
-	return { message: context.cloudflare.env.SUPABASE_URL };
-}
-
-export default function Home({ loaderData }: Route.ComponentProps) {
-	return <Welcome message={loaderData.message} />;
+export default function Home() {
+  return (
+    <main style={{ maxWidth: 640, margin: "64px auto", fontFamily: "sans-serif" }}>
+      <h1>NudgePay</h1>
+      <p>AR collections for QuickBooks users.</p>
+      <p><Link to="/signup">Sign up</Link> · <Link to="/login">Log in</Link></p>
+      <p style={{ marginTop: 40, fontSize: 12 }}>
+        <Link to="/privacy">Privacy Policy</Link> · <Link to="/eula">EULA</Link>
+      </p>
+    </main>
+  );
 }
