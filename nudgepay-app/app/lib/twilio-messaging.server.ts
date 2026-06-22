@@ -61,3 +61,59 @@ export async function sendInvoiceText(
 
   return { id: row!.id as string, sid: result.sid, status: result.status };
 }
+
+const STOP_KEYWORDS = ["STOP", "STOPALL", "UNSUBSCRIBE", "CANCEL", "END", "QUIT"];
+const START_KEYWORDS = ["START", "YES", "UNSTOP"];
+
+export async function recordInboundMessage(
+  service: SupabaseClient,
+  args: { from: string; to: string; body: string; messageSid: string },
+): Promise<{ matched: boolean; optOut: boolean }> {
+  const fromNorm = normalizePhone(args.from);
+  if (fromNorm.length < 10) return { matched: false, optOut: false };
+
+  // Match the sender to a customer by normalized phone. At Chancey scale this
+  // in-memory match is fine; a normalized column would scale it later.
+  const { data: candidates, error: candErr } = await service.from("customers")
+    .select("id, org_id, phone").not("phone", "is", null);
+  if (candErr) throw candErr;
+  const match = (candidates ?? []).find((c) => normalizePhone(c.phone as string) === fromNorm);
+  if (!match) return { matched: false, optOut: false };
+
+  const keyword = args.body.trim().toUpperCase();
+  const optOut = STOP_KEYWORDS.includes(keyword);
+  if (optOut) {
+    await service.from("customers").update({ sms_consent: false }).eq("id", match.id as string);
+  } else if (START_KEYWORDS.includes(keyword)) {
+    await service.from("customers").update({ sms_consent: true }).eq("id", match.id as string);
+  }
+
+  // Thread to the customer's most recent outbound invoice, if any.
+  const { data: lastOut } = await service.from("text_messages")
+    .select("invoice_id").eq("customer_id", match.id as string).eq("direction", "outbound")
+    .not("invoice_id", "is", null).order("created_at", { ascending: false }).limit(1).maybeSingle();
+
+  const { error: insErr } = await service.from("text_messages").insert({
+    org_id: match.org_id as string,
+    customer_id: match.id as string,
+    invoice_id: (lastOut?.invoice_id as string) ?? null,
+    direction: "inbound",
+    twilio_message_sid: args.messageSid,
+    from_number: args.from,
+    to_number: args.to,
+    body: args.body,
+  });
+  if (insErr) throw insErr;
+
+  return { matched: true, optOut };
+}
+
+export async function updateMessageStatus(
+  service: SupabaseClient,
+  args: { messageSid: string; status: string; errorCode: string | null },
+): Promise<void> {
+  const { error } = await service.from("text_messages")
+    .update({ status: args.status, error_code: args.errorCode })
+    .eq("twilio_message_sid", args.messageSid);
+  if (error) throw error;
+}
