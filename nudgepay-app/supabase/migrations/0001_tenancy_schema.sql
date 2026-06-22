@@ -1,3 +1,7 @@
+-- Future tables in public auto-grant DML to app roles (RLS still restricts rows).
+alter default privileges in schema public
+  grant select, insert, update, delete on tables to authenticated, service_role;
+
 -- Tenancy root
 create table organizations (
   id uuid primary key default gen_random_uuid(),
