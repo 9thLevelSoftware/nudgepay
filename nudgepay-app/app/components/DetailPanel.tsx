@@ -1,7 +1,9 @@
+import { useState } from "react";
 import { Link } from "react-router";
 import { type WorkItem } from "~/lib/worklist";
 import { Icon } from "~/components/Icons";
-import type { ActivityEntry } from "~/routes/dashboard";
+import { SMS_TEMPLATES, applyTemplate, type TemplateVars } from "~/lib/sms-templates";
+import type { ActivityEntry, MessageEntry } from "~/routes/dashboard";
 
 // Static tone-to-text-color map — priority.tone and nextAction.tone → Tailwind class.
 // Must be literal strings so Tailwind can tree-shake them; no dynamic construction.
@@ -53,6 +55,151 @@ function todayISO(): string {
   return new Date().toISOString().slice(0, 10);
 }
 
+// Static direction → bubble alignment/color. Literal strings for Tailwind.
+const BUBBLE: Record<string, { wrap: string; bubble: string }> = {
+  outbound: { wrap: "items-end", bubble: "bg-copper/10 text-text border border-copper/30" },
+  inbound: { wrap: "items-start", bubble: "bg-panel text-text border border-border" },
+};
+const SMS_BANNER: Record<string, { text: string; tone: string }> = {
+  sent: { text: "Text sent.", tone: "text-cool" },
+  noconsent: { text: "Not sent — customer has not consented to SMS.", tone: "text-hot" },
+  error: { text: "Could not send the text.", tone: "text-hot" },
+};
+
+function MessagesTab({
+  selected, messages, consent, phone, sms, view, sort, q,
+}: {
+  selected: WorkItem;
+  messages: MessageEntry[];
+  consent: boolean;
+  phone: string | null;
+  sms: string | null;
+  view: string;
+  sort: string;
+  q: string;
+}) {
+  const returnTo = `/dashboard?${new URLSearchParams({
+    invoice: selected.invoiceId, tab: "messages", view, sort, ...(q ? { q } : {}),
+  }).toString()}`;
+
+  const vars: TemplateVars = {
+    customer: selected.customerName,
+    invoice: selected.docNumber ?? selected.invoiceId,
+    balance: formatUSD(selected.balance),
+    dueDate: formatDueDate(selected.dueDate),
+  };
+
+  const [body, setBody] = useState("");
+  const banner = sms ? SMS_BANNER[sms] : null;
+
+  return (
+    <section
+      id="messages-panel"
+      role="tabpanel"
+      aria-labelledby="messages-tab"
+      className="flex flex-1 flex-col min-h-0"
+    >
+      {/* Consent row */}
+      <div className="flex items-center justify-between gap-2 px-5 py-3 border-b border-border">
+        <span className="text-xs font-sans text-muted">
+          SMS consent:{" "}
+          <span className={consent ? "font-semibold text-cool" : "font-semibold text-hot"}>
+            {consent ? "yes" : "no"}
+          </span>
+          {phone ? <span className="text-muted"> · {phone}</span> : null}
+        </span>
+        <form method="post" action="/api/sms-consent">
+          <input type="hidden" name="invoiceId" value={selected.invoiceId} />
+          <input type="hidden" name="returnTo" value={returnTo} />
+          <input type="hidden" name="consent" value={consent ? "false" : "true"} />
+          <button
+            type="submit"
+            className="text-xs font-sans font-medium text-copper hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-copper rounded"
+          >
+            {consent ? "Revoke consent" : "Mark consented"}
+          </button>
+        </form>
+      </div>
+
+      {/* Banner */}
+      {banner ? (
+        <p className={`px-5 py-2 text-xs font-sans font-medium ${banner.tone}`}>{banner.text}</p>
+      ) : null}
+
+      {/* Thread */}
+      <div className="flex-1 min-h-0 overflow-y-auto px-5 py-4">
+        {messages.length === 0 ? (
+          <div className="flex flex-col items-center justify-center gap-2 py-10 text-center">
+            <Icon name="message" size={24} className="text-border" aria-hidden />
+            <p className="text-sm font-sans font-semibold text-text">No messages yet.</p>
+            <p className="text-xs text-muted max-w-xs">Pick a template or write a message below.</p>
+          </div>
+        ) : (
+          <ol className="flex flex-col gap-3">
+            {messages.map((m) => {
+              const side = BUBBLE[m.direction] ?? BUBBLE.inbound;
+              return (
+                <li key={m.id} className={`flex flex-col gap-0.5 ${side.wrap}`}>
+                  <span className={`inline-block max-w-[85%] rounded-lg px-3 py-2 text-sm font-sans whitespace-pre-wrap ${side.bubble}`}>
+                    {m.body}
+                  </span>
+                  <span className="font-mono text-[11px] text-muted">
+                    {m.direction}
+                    {m.status ? ` · ${m.status}` : ""}
+                    {m.errorCode ? ` · ${m.errorCode}` : ""}
+                  </span>
+                </li>
+              );
+            })}
+          </ol>
+        )}
+      </div>
+
+      {/* Templates + composer */}
+      <div className="border-t border-border px-5 py-3 shrink-0">
+        <div className="flex flex-wrap gap-1.5 mb-2" role="group" aria-label="Message templates">
+          {SMS_TEMPLATES.map((t) => (
+            <button
+              key={t.id}
+              type="button"
+              onClick={() => setBody(applyTemplate(t.body, vars))}
+              className="text-xs font-sans text-muted border border-border rounded-md px-2 py-1 hover:text-copper hover:border-copper focus:outline-none focus-visible:ring-2 focus-visible:ring-copper transition-colors"
+            >
+              {t.label}
+            </button>
+          ))}
+        </div>
+        <form method="post" action="/api/text/send" className="flex flex-col gap-2">
+          <input type="hidden" name="invoiceId" value={selected.invoiceId} />
+          <input type="hidden" name="returnTo" value={returnTo} />
+          <textarea
+            name="body"
+            rows={3}
+            value={body}
+            onChange={(e) => setBody(e.target.value)}
+            placeholder="Type a message…"
+            required
+            className="w-full resize-none rounded-md border border-border bg-panel px-3 py-2 text-sm font-sans text-text placeholder:text-muted focus:outline-none focus-visible:ring-2 focus-visible:ring-copper"
+          />
+          <div className="flex items-center justify-between gap-2">
+            {!consent ? (
+              <span className="text-xs text-muted">Mark consent to enable sending.</span>
+            ) : <span />}
+            <button
+              type="submit"
+              disabled={!consent}
+              className="inline-flex items-center gap-1.5 rounded-md bg-copper px-3 py-1.5 text-xs font-sans font-semibold text-surface hover:bg-copper/90 focus:outline-none focus-visible:ring-2 focus-visible:ring-copper disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+            >
+              <Icon name="message" size={14} aria-hidden />
+              Send text
+            </button>
+          </div>
+        </form>
+      </div>
+    </section>
+  );
+}
+
 // ─── Sub-components ────────────────────────────────────────────────────────────
 
 function InfoRow({ label, value, tone }: { label: string; value: string; tone?: string }) {
@@ -64,31 +211,6 @@ function InfoRow({ label, value, tone }: { label: string; value: string; tone?: 
       </span>
       <span className={`text-sm font-sans font-semibold ${toneClass}`}>{value}</span>
     </div>
-  );
-}
-
-function PlaceholderTab({
-  heading,
-  description,
-  panelId,
-  tabId,
-}: {
-  heading: string;
-  description: string;
-  panelId: string;
-  tabId: string;
-}) {
-  return (
-    <section
-      id={panelId}
-      role="tabpanel"
-      aria-labelledby={tabId}
-      className="flex flex-1 flex-col items-center justify-center gap-3 px-6 py-12 text-center"
-    >
-      <p className="text-sm font-sans font-semibold text-text">{heading}</p>
-      <p className="text-xs text-muted max-w-xs">Coming in the next update.</p>
-      <p className="text-xs text-muted max-w-xs">{description}</p>
-    </section>
   );
 }
 
@@ -106,6 +228,10 @@ export function DetailPanel({
   selected,
   activeTab,
   activity,
+  messages,
+  consent,
+  phone,
+  sms,
   view,
   sort,
   q,
@@ -113,6 +239,10 @@ export function DetailPanel({
   selected: WorkItem | null;
   activeTab: "overview" | "activity" | "messages";
   activity: ActivityEntry[];
+  messages: MessageEntry[];
+  consent: boolean;
+  phone: string | null;
+  sms: string | null;
   view: string;
   sort: string;
   q: string;
@@ -216,9 +346,9 @@ export function DetailPanel({
             </a>
           ) : null}
 
-          {/* Text → /invoices/:invoiceId */}
+          {/* Text → Messages tab */}
           <Link
-            to={`/invoices/${selected.invoiceId}`}
+            to={`?${new URLSearchParams({ invoice: selected.invoiceId, tab: "messages", view, sort, ...(q ? { q } : {}) }).toString()}`}
             className="inline-flex items-center gap-1.5 text-xs font-sans font-medium text-copper border border-copper/40 rounded-md px-3 py-1.5 hover:bg-copper/5 focus:outline-none focus-visible:ring-2 focus-visible:ring-copper transition-colors"
           >
             <Icon name="message" size={14} aria-hidden />
@@ -349,11 +479,15 @@ export function DetailPanel({
       ) : null}
 
       {activeTab === "messages" ? (
-        <PlaceholderTab
-          panelId="messages-panel"
-          tabId="messages-tab"
-          heading="Message thread"
-          description="The full SMS conversation with this customer, plus message templates, will appear here once the Messages feature ships."
+        <MessagesTab
+          selected={selected}
+          messages={messages}
+          consent={consent}
+          phone={phone}
+          sms={sms}
+          view={view}
+          sort={sort}
+          q={q}
         />
       ) : null}
     </aside>
