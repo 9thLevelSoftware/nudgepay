@@ -2,6 +2,7 @@ import { expect, test, beforeAll } from "vitest";
 import { serviceClient, makeUserClient } from "./helpers";
 import { buildCaseData } from "../app/routes/dashboard";
 import type { CaseRow } from "../app/lib/cases";
+import type { CasePromiseInput, CaseLastContactInput } from "../app/lib/cases";
 
 const TODAY = "2026-06-22";
 
@@ -14,7 +15,7 @@ test("buildCaseData composes case items, metrics, viewCounts, and selection", ()
     { id: "i2", qbo_doc_number: "1002", customer_id: "c1", balance: 300, due_date: "2026-06-18" },
   ];
   const customers = [{ id: "c1", name: "Acme", phone: null, email: null, owner: "u1" }];
-  const data = buildCaseData(cases, invoices, customers, [],
+  const data = buildCaseData(cases, invoices, customers, [], [],
     { view: "all-open", sort: "recommended", q: "", caseId: "case-1" }, "2026-06-22",
     new Map([["u1", "diskin"]]), "u1");
 
@@ -38,12 +39,26 @@ test("buildCaseData search filter returns only matching cases", () => {
     { id: "c1", name: "Acme Corp", phone: null, email: null, owner: null },
     { id: "c2", name: "Globex Inc", phone: null, email: null, owner: null },
   ];
-  const result = buildCaseData(cases, invoices, customers, [],
+  const result = buildCaseData(cases, invoices, customers, [], [],
     { view: "all-open", sort: "recommended", q: "globex", caseId: null }, TODAY,
     new Map(), null);
 
   expect(result.items.map((i) => i.caseId)).toEqual(["case-globex"]);
   expect(result.metrics.allOpen.count).toBe(1);
+});
+
+test("buildCaseData threads promises into items and metrics", () => {
+  const cases = [{ id: "case-1", customerId: "c1", status: "promised" as const, nextActionType: "promise" as const, nextActionAt: "2026-07-03" }];
+  const invoices = [{ id: "i1", qbo_doc_number: "1001", customer_id: "c1", balance: 1200, due_date: "2026-03-01" }];
+  const customers = [{ id: "c1", name: "Acme", phone: null, email: null, owner: "u1" }];
+  const lastContacts: CaseLastContactInput[] = [];
+  const promises: CasePromiseInput[] = [{ caseId: "case-1", status: "broken", promisedAmount: 500, promisedDate: "2026-07-01", amountReceived: 0 }];
+  const data = buildCaseData(cases, invoices, customers, lastContacts, promises,
+    { view: "broken-promises", sort: "recommended", q: "", caseId: "case-1" }, "2026-07-10",
+    new Map([["u1", "diskin"]]), "u1");
+  expect(data.items.map((i) => i.caseId)).toEqual(["case-1"]);
+  expect(data.metrics.brokenPromises.count).toBe(1);
+  expect(data.selected?.promiseStatus).toBe("broken");
 });
 
 // DB-backed: proves the RLS-scoped read shape the loader relies on.
