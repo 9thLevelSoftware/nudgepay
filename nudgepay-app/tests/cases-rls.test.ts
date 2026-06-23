@@ -1,5 +1,6 @@
 import { expect, test, beforeAll } from "vitest";
 import { serviceClient, makeUserClient } from "./helpers";
+import { applyCaseReconciliation } from "../app/lib/case-lifecycle.server";
 
 test("collection_cases enforces one open case per customer", async () => {
   const svc = serviceClient();
@@ -45,4 +46,36 @@ test("RLS: a member reads only their own org's cases", async () => {
   expect(error).toBeNull();
   expect(visible!.every((r) => r.org_id === orgA!.id)).toBe(true);
   expect(visible!.length).toBe(1);
+});
+
+test("applyCaseReconciliation opens, then resolves, a case as balances change", async () => {
+  const svc = serviceClient();
+  const today = "2026-06-22";
+  const { data: org } = await svc.from("organizations").insert({ name: "Lifecycle Org" }).select("id").single();
+  const orgId = org!.id;
+  const { data: cust } = await svc.from("customers")
+    .insert({ org_id: orgId, qbo_id: "lc-c1", name: "Lifecycle Co" }).select("id").single();
+  const { data: inv } = await svc.from("invoices").insert({
+    org_id: orgId, qbo_id: "lc-i1", qbo_doc_number: "7001", customer_id: cust!.id,
+    amount: 900, balance: 900, due_date: "2026-03-01", status: "overdue",
+  }).select("id").single();
+
+  const opened = await applyCaseReconciliation(svc, orgId, today);
+  expect(opened.opened).toBe(1);
+  const { data: openCases } = await svc.from("collection_cases")
+    .select("id, status").eq("org_id", orgId).is("closed_at", null);
+  expect(openCases!.length).toBe(1);
+  expect(openCases![0].status).toBe("new");
+
+  // Re-run with no change → idempotent (no duplicate open case).
+  const noop = await applyCaseReconciliation(svc, orgId, today);
+  expect(noop.opened).toBe(0);
+
+  // Pay the invoice → case resolves.
+  await svc.from("invoices").update({ balance: 0, status: "paid" }).eq("id", inv!.id);
+  const resolved = await applyCaseReconciliation(svc, orgId, today);
+  expect(resolved.resolved).toBe(1);
+  const { data: stillOpen } = await svc.from("collection_cases")
+    .select("id").eq("org_id", orgId).is("closed_at", null);
+  expect(stillOpen!.length).toBe(0);
 });
