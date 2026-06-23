@@ -3,11 +3,9 @@ import { getEnv } from "../lib/env.server";
 import { requireUser, resolveOrg } from "../lib/session.server";
 import { getConnectionStatus } from "../lib/qbo-connection.server";
 import { createSupabaseServiceClient } from "../lib/supabase.server";
-// worklist-pure.ts has no .server. suffix → safe for both client bundle and server.
-// worklist.server.ts is the authoritative module but is server-only by naming convention;
-// all value references inside the loader (which RR strips from the client bundle) use it.
-// buildDashboardData is exported from this route (for tests) so it must only depend on
-// the client-safe worklist-pure module.
+// worklist.ts is pure (no I/O, no node:*, no secrets) so it is safe in both the
+// client bundle and the server — buildDashboardData is exported from this route
+// (for tests) and the UI components import its types directly.
 import {
   buildWorkItems,
   applyView,
@@ -20,7 +18,7 @@ import {
   type Metrics,
   type ViewId,
   type SortId,
-} from "../lib/worklist-pure";
+} from "../lib/worklist";
 import { AppShell } from "../components/AppShell";
 import { MetricsStrip } from "../components/MetricsStrip";
 import { WorkQueue } from "../components/WorkQueue";

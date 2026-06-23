@@ -2,7 +2,7 @@ import { expect, test } from "vitest";
 import {
   ageInDays, heatOf, priorityOf, nextActionOf, buildWorkItems,
   applyView, sortItems, computeMetrics,
-} from "../app/lib/worklist.server";
+} from "../app/lib/worklist";
 
 const TODAY = "2026-06-22";
 
