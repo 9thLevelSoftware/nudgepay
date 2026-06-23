@@ -73,3 +73,35 @@ test("parse: rejects malformed follow-up date", () => {
   expect(parseContactLogForm(fd({ invoiceId: "i1", method: "note", outcome: "other", followUpAt: "2026-13-99" })))
     .toEqual({ ok: false, error: "bad-date" });
 });
+
+// ── Task 4: RLS user client inserts a contact log ────────────────────────────
+import { action as contactLogAction } from "../app/routes/api.contact-logs";
+
+// Build a minimal env/context the action expects (getEnv reads from context).
+// The action uses requireUser (cookie-based). For a direct-call test we instead
+// assert the RLS insert path via a user client, mirroring the action's writes.
+test("RLS user client inserts a contact log readable back within the org", async () => {
+  const svc = serviceClient();
+  const { data: org } = await svc.from("organizations").insert({ name: "Log Insert Org" }).select("id").single();
+  const orgId = org!.id;
+  const { data: cust } = await svc.from("customers")
+    .insert({ org_id: orgId, qbo_id: "li-c1", name: "Logged Co" }).select("id").single();
+  const { data: inv } = await svc.from("invoices")
+    .insert({ org_id: orgId, qbo_id: "li-i1", customer_id: cust!.id, amount: 900, balance: 900, due_date: "2026-02-01", status: "overdue" })
+    .select("id").single();
+  const user = await makeUserClient("log-insert@example.com");
+  await svc.from("memberships").insert({ org_id: orgId, user_id: user.userId, role: "member" });
+
+  const { error: insErr } = await user.client.from("contact_logs").insert({
+    org_id: orgId, invoice_id: inv!.id, customer_id: cust!.id, user_id: user.userId,
+    method: "call", outcome: "promise-to-pay", notes: "will pay",
+    promised_amount: 300, promised_date: "2026-07-15", follow_up_at: null,
+  });
+  expect(insErr).toBeNull();
+
+  const { data: rows } = await user.client.from("contact_logs")
+    .select("user_id, method, promised_amount, promised_date").eq("invoice_id", inv!.id);
+  expect(rows!.length).toBe(1);
+  expect(rows![0].user_id).toBe(user.userId);
+  expect(Number(rows![0].promised_amount)).toBe(300);
+});
