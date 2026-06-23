@@ -69,6 +69,11 @@ const SMS_BANNER: Record<string, { text: string; tone: string }> = {
   error: { text: "Could not send the text.", tone: "text-hot" },
 };
 
+// Static exception reason → label. Literal strings for Tailwind v4.
+const EXCEPTION_REASON_LABEL: Record<string, string> = {
+  disputed: "Disputed", payment_plan: "Payment plan", do_not_contact: "Do not contact", other: "Other",
+};
+
 // Static promise-error code → copy. Literal strings for Tailwind v4.
 const PROMISE_ERROR_TEXT: Record<string, string> = {
   "missing-promise": "Could not find that promise.",
@@ -493,6 +498,18 @@ export function DetailPanel({
               ))}
             </ul>
           </div>
+
+          {/* Exception panel */}
+          {selected.status === "on_hold" && selected.exceptionReason ? (
+            <div className="mt-4 rounded-lg border border-border bg-panel px-4 py-3">
+              <span className="text-sm font-sans font-semibold text-warm">
+                Exception · {EXCEPTION_REASON_LABEL[selected.exceptionReason] ?? selected.exceptionReason}
+              </span>
+              {selected.exceptionNote ? (
+                <p className="mt-1 text-xs text-muted">{selected.exceptionNote}</p>
+              ) : null}
+            </div>
+          ) : null}
 
           {/* Promise card */}
           {selected.promiseStatus ? (
