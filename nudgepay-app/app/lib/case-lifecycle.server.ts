@@ -1,4 +1,4 @@
-import type { SupabaseClient } from "@supabase/supabase-js";
+import type { SupabaseClient, PostgrestError } from "@supabase/supabase-js";
 import { reconcileCases } from "./cases";
 
 // Reconcile collection_cases for one org against the current overdue set.
@@ -38,14 +38,15 @@ export async function applyCaseReconciliation(
         status: "new", next_action_type: "contact", next_action_at: today,
       });
       // 23505 = unique_violation (a concurrent reconcile already opened it): no-op.
-      if (error && (error as any).code !== "23505") throw error;
+      if (error && (error as PostgrestError).code !== "23505") throw error;
       if (!error) opened += 1;
     } else {
-      const { error } = await client.from("collection_cases")
+      const { data: updated, error } = await client.from("collection_cases")
         .update({ status: "resolved", closed_at: new Date().toISOString(), next_action_at: null })
-        .eq("id", op.caseId);
+        .eq("id", op.caseId)
+        .select("id");
       if (error) throw error;
-      resolved += 1;
+      if (updated && updated.length > 0) resolved += 1;
     }
   }
   return { opened, resolved };

@@ -78,4 +78,11 @@ test("applyCaseReconciliation opens, then resolves, a case as balances change", 
   const { data: stillOpen } = await svc.from("collection_cases")
     .select("id").eq("org_id", orgId).is("closed_at", null);
   expect(stillOpen!.length).toBe(0);
+
+  // Re-run after resolution → idempotent (nothing left to resolve).
+  const resolveNoop = await applyCaseReconciliation(svc, orgId, today);
+  expect(resolveNoop.resolved).toBe(0);
+  const { data: stillOpenAfter } = await svc.from("collection_cases")
+    .select("id").eq("org_id", orgId).is("closed_at", null);
+  expect(stillOpenAfter!.length).toBe(0);
 });
