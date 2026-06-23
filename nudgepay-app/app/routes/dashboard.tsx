@@ -468,6 +468,7 @@ export default function Dashboard() {
     selectedConsent,
     selectedPhone,
     sms,
+    roster,
     items,
     metrics,
     viewCounts,
@@ -541,6 +542,7 @@ export default function Dashboard() {
                 messages={selectedMessages}
                 consent={selectedConsent}
                 phone={selectedPhone}
+                roster={roster}
                 sms={sms}
                 view={view}
                 sort={sort}
