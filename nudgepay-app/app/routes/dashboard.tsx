@@ -5,22 +5,16 @@ import { getConnectionStatus } from "../lib/qbo-connection.server";
 import { createSupabaseServiceClient } from "../lib/supabase.server";
 import { listOrgMembers, type OrgMember } from "../lib/orgs.server";
 // worklist.ts is pure (no I/O, no node:*, no secrets) so it is safe in both the
-// client bundle and the server — buildDashboardData is exported from this route
+// client bundle and the server — buildCaseData is exported from this route
 // (for tests) and the UI components import its types directly.
 import {
-  buildWorkItems,
-  applyView,
-  sortItems,
-  computeMetrics,
-  type InvoiceInput,
-  type CustomerInput,
-  type LastContactInput,
-  type PromiseSignalInput,
-  type WorkItem,
-  type Metrics,
-  type ViewId,
-  type SortId,
+  type InvoiceInput, type CustomerInput, type LastContactInput,
+  type Metrics, type ViewId, type SortId,
 } from "../lib/worklist";
+import {
+  buildCaseItems, applyCaseView, sortCaseItems, computeCaseMetrics,
+  type CaseItem, type CaseRow, type CaseStatus, type NextActionType,
+} from "../lib/cases";
 import { AppShell } from "../components/AppShell";
 import { MetricsStrip } from "../components/MetricsStrip";
 import { WorkQueue } from "../components/WorkQueue";
@@ -35,55 +29,43 @@ type DashboardParams = {
   view: ViewId;
   sort: SortId;
   q: string;
-  invoice: string | null;
+  caseId: string | null;
+  invoice?: string | null;
   tab?: "overview" | "activity" | "messages";
 };
 
 type DashboardData = {
-  items: WorkItem[];
+  items: CaseItem[];
   metrics: Metrics;
   viewCounts: Record<ViewId, number>;
-  selected: WorkItem | null;
+  selected: CaseItem | null;
 };
+
+const ALL_VIEWS: ViewId[] = ["all-open", "30-plus", "high-value", "never-contacted", "follow-ups-due", "broken-promises", "my-work"];
 
 // ---------------------------------------------------------------------------
 // Pure helper — exported so tests can call it without I/O
 // ---------------------------------------------------------------------------
 
-export function buildDashboardData(
+export function buildCaseData(
+  cases: CaseRow[],
   invoices: InvoiceInput[],
   customers: CustomerInput[],
   lastContacts: LastContactInput[],
-  promiseSignals: PromiseSignalInput[],
   params: DashboardParams,
   today: string,
   ownerLabels: Map<string, string>,
   currentUserId: string | null,
 ): DashboardData {
-  const { view, sort, q, invoice } = params;
-
-  const allItems = buildWorkItems(invoices, customers, lastContacts, promiseSignals, today, ownerLabels);
-
-  const searchedItems =
-    q.trim() === ""
-      ? allItems
-      : allItems.filter((i) => i.searchText.includes(q.toLowerCase()));
-
-  const metrics = computeMetrics(searchedItems, today);
-
-  const ALL_VIEWS: ViewId[] = ["all-open", "30-plus", "high-value", "never-contacted", "follow-ups-due", "broken-promises", "my-work"];
+  const { view, sort, q, caseId } = params;
+  const allItems = buildCaseItems(cases, invoices, customers, lastContacts, today, ownerLabels);
+  const searched = q.trim() === "" ? allItems : allItems.filter((i) => i.searchText.includes(q.toLowerCase()));
+  const metrics = computeCaseMetrics(searched, today);
   const viewCounts = Object.fromEntries(
-    ALL_VIEWS.map((v) => [v, applyView(searchedItems, v, today, currentUserId).length]),
+    ALL_VIEWS.map((v) => [v, applyCaseView(searched, v, today, currentUserId).length]),
   ) as Record<ViewId, number>;
-
-  const viewFiltered = applyView(searchedItems, view, today, currentUserId);
-  const items = sortItems(viewFiltered, sort);
-
-  const selected =
-    invoice != null
-      ? (searchedItems.find((i) => i.invoiceId === invoice) ?? null)
-      : null;
-
+  const items = sortCaseItems(applyCaseView(searched, view, today, currentUserId), sort);
+  const selected = caseId != null ? (searched.find((i) => i.caseId === caseId) ?? null) : null;
   return { items, metrics, viewCounts, selected };
 }
 
@@ -128,6 +110,14 @@ export type ActivityEntry = {
   followUpAt: string | null;
   promisedAmount: number | null;
   promisedDate: string | null;
+};
+
+type CaseRowRaw = {
+  id: string;
+  customer_id: string;
+  status: string;
+  next_action_type: string | null;
+  next_action_at: string | null;
 };
 
 type SelectedMessageRow = {
@@ -213,7 +203,8 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
   const view: ViewId = VALID_VIEWS.includes(rawView as ViewId) ? (rawView as ViewId) : "all-open";
   const sort: SortId = VALID_SORTS.includes(rawSort as SortId) ? (rawSort as SortId) : "recommended";
   const q = sp.get("q") ?? "";
-  const invoice = sp.get("invoice") ?? null;
+  const caseId = sp.get("case") ?? null;
+  const invoice = sp.get("invoice") ?? null; // optional sub-selection for invoice-specific actions
   const tab: "overview" | "activity" | "messages" = VALID_TABS.includes(
     rawTab as "overview" | "activity" | "messages",
   )
@@ -230,6 +221,7 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
   let selectedMessages: MessageEntry[] = [];
   let selectedConsent = false;
   let selectedPhone: string | null = null;
+  let selectedRepInvoiceId: string | null = null;
   let roster: OrgMember[] = [];
   let dashboardData: DashboardData = {
     items: [],
@@ -308,9 +300,7 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
       }
     }
 
-    // Per-invoice contact logs (USER client / RLS). Folds into last-contact and
-    // supplies promise + follow-up signals.
-    const promiseSignals: PromiseSignalInput[] = [];
+    // Per-invoice contact logs (USER client / RLS). Folds into last-contact.
     if (rawInvoices.length > 0) {
       const invoiceIds = rawInvoices.map((r) => r.id);
       const { data: logRows } = await supabase
@@ -334,88 +324,67 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
           channel: methodLabel[row.method] ?? "Logged",
         });
       }
-
-      // Derive one signal per invoice: latest promise (first row with both promise
-      // fields, since ordered desc) and latest pending follow-up (first non-null).
-      const promiseByInvoice = new Map<string, { amount: number; date: string }>();
-      const followUpByInvoice = new Map<string, string>();
-      for (const row of logs) {
-        if (!row.invoice_id) continue;
-        if (!promiseByInvoice.has(row.invoice_id) && row.promised_amount != null && row.promised_date != null) {
-          promiseByInvoice.set(row.invoice_id, { amount: Number(row.promised_amount), date: row.promised_date });
-        }
-        if (!followUpByInvoice.has(row.invoice_id) && row.follow_up_at != null) {
-          followUpByInvoice.set(row.invoice_id, row.follow_up_at);
-        }
-      }
-      const signalInvoiceIds = new Set([...promiseByInvoice.keys(), ...followUpByInvoice.keys()]);
-      for (const id of signalInvoiceIds) {
-        const p = promiseByInvoice.get(id) ?? null;
-        promiseSignals.push({
-          invoiceId: id,
-          promisedAmount: p?.amount ?? null,
-          promisedDate: p?.date ?? null,
-          followUpAt: followUpByInvoice.get(id) ?? null,
-        });
-      }
     }
+
+    // Load open cases (USER client)
+    const { data: caseRows } = await supabase
+      .from("collection_cases")
+      .select("id, customer_id, status, next_action_type, next_action_at")
+      .eq("org_id", org.org_id)
+      .is("closed_at", null);
+    const cases: CaseRow[] = ((caseRows as CaseRowRaw[]) ?? []).map((r) => ({
+      id: r.id, customerId: r.customer_id, status: r.status as CaseStatus,
+      nextActionType: r.next_action_type as NextActionType | null, nextActionAt: r.next_action_at,
+    }));
 
     roster = await listOrgMembers(service, org.org_id);
     const ownerLabels = new Map(roster.map((m) => [m.userId, m.label]));
 
-    dashboardData = buildDashboardData(
-      invoicesInput,
-      customersInput,
-      lastContactsInput,
-      promiseSignals,
-      { view, sort, q, invoice, tab },
-      today,
-      ownerLabels,
-      user.id,
+    dashboardData = buildCaseData(
+      cases, invoicesInput, customersInput, lastContactsInput,
+      { view, sort, q, caseId, invoice, tab }, today, ownerLabels, user.id,
     );
 
-    if (invoice) {
+    const sel = dashboardData.selected;
+    if (sel) {
+      const customerId = sel.customerId;
+      const repInvoiceId =
+        (invoice && sel.invoices.some((iv) => iv.invoiceId === invoice))
+          ? invoice
+          : (sel.invoices[0]?.invoiceId ?? null);
+
+      // Activity: contact logs for the case.
       const { data: actRows } = await supabase
         .from("contact_logs")
-        .select("id, invoice_id, customer_id, method, outcome, notes, created_at, follow_up_at, promised_amount, promised_date")
+        .select("id, method, outcome, notes, created_at, follow_up_at, promised_amount, promised_date")
         .eq("org_id", org.org_id)
-        .eq("invoice_id", invoice)
+        .eq("case_id", sel.caseId)
         .order("created_at", { ascending: false });
       selectedActivity = ((actRows as unknown as ContactLogRow[]) ?? []).map((r) => ({
-        id: r.id,
-        method: r.method,
-        outcome: r.outcome,
-        notes: r.notes,
-        createdAt: r.created_at,
-        followUpAt: r.follow_up_at,
+        id: r.id, method: r.method, outcome: r.outcome, notes: r.notes,
+        createdAt: r.created_at, followUpAt: r.follow_up_at,
         promisedAmount: r.promised_amount == null ? null : Number(r.promised_amount),
         promisedDate: r.promised_date,
       }));
 
+      // Messages: thread by CUSTOMER (one conversation per customer).
       const { data: msgRows } = await supabase
         .from("text_messages")
         .select("id, direction, body, status, error_code, created_at")
         .eq("org_id", org.org_id)
-        .eq("invoice_id", invoice)
+        .eq("customer_id", customerId)
         .order("created_at", { ascending: true });
       selectedMessages = ((msgRows as unknown as SelectedMessageRow[]) ?? []).map((r) => ({
-        id: r.id,
-        direction: r.direction,
-        body: r.body,
-        status: r.status,
-        errorCode: r.error_code,
-        createdAt: r.created_at,
+        id: r.id, direction: r.direction, body: r.body, status: r.status,
+        errorCode: r.error_code, createdAt: r.created_at,
       }));
 
-      const { data: invConsent } = await supabase
-        .from("invoices")
-        .select("customers(phone, sms_consent)")
-        .eq("org_id", org.org_id)
-        .eq("id", invoice)
-        .maybeSingle();
-      const c = (invConsent as any)?.customers as { phone: string | null; sms_consent: boolean } | null;
-      selectedConsent = c?.sms_consent ?? false;
-      selectedPhone = c?.phone ?? null;
+      // Consent + phone from the customer.
+      const { data: custRow } = await supabase
+        .from("customers").select("phone, sms_consent").eq("id", customerId).maybeSingle();
+      selectedConsent = (custRow as any)?.sms_consent ?? false;
+      selectedPhone = (custRow as any)?.phone ?? null;
+      selectedRepInvoiceId = repInvoiceId;
     }
   }
 
@@ -429,7 +398,9 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
       view,
       sort,
       q,
+      case: caseId,
       invoice,
+      repInvoiceId: selectedRepInvoiceId,
       tab,
       log,
       logError,
@@ -473,6 +444,7 @@ export default function Dashboard() {
     metrics,
     viewCounts,
     selected,
+    repInvoiceId,
   } = useLoaderData<typeof loader>();
 
   return (
@@ -521,7 +493,7 @@ export default function Dashboard() {
                 view={view}
                 sort={sort}
                 search={q}
-                selectedInvoiceId={selected?.invoiceId ?? null}
+                selectedCaseId={selected?.caseId ?? null}
                 totalCount={viewCounts["all-open"]}
                 viewCounts={viewCounts}
               />
@@ -531,12 +503,13 @@ export default function Dashboard() {
             <div
               className={[
                 "w-80 xl:w-96 shrink-0 overflow-hidden",
-                // On mobile: only show if an invoice is selected
+                // On mobile: only show if a case is selected
                 selected ? "block" : "hidden md:block",
               ].join(" ")}
             >
               <DetailPanel
                 selected={selected ?? null}
+                repInvoiceId={repInvoiceId ?? null}
                 activeTab={tab}
                 activity={selectedActivity}
                 messages={selectedMessages}
@@ -554,7 +527,8 @@ export default function Dashboard() {
           {log && selected ? (
             <LogContactDrawer
               selected={selected}
-              returnTo={`/dashboard?${new URLSearchParams({ invoice: selected.invoiceId, tab, view, sort, ...(q ? { q } : {}) }).toString()}`}
+              repInvoiceId={repInvoiceId ?? null}
+              returnTo={`/dashboard?${new URLSearchParams({ case: selected.caseId, tab, view, sort, ...(q ? { q } : {}) }).toString()}`}
               logError={logError}
             />
           ) : null}
@@ -567,7 +541,7 @@ export default function Dashboard() {
               Connect QuickBooks
             </h2>
             <p className="font-sans text-sm text-muted mb-6">
-              Sync your past-due invoices to start working your collections queue.
+              Sync your past-due invoices to start collecting on overdue accounts.
             </p>
             {isOwner ? (
               <Form method="post" action="/api/qbo/connect">

@@ -1,60 +1,49 @@
 import { expect, test, beforeAll } from "vitest";
 import { serviceClient, makeUserClient } from "./helpers";
-import { buildDashboardData } from "../app/routes/dashboard";
+import { buildCaseData } from "../app/routes/dashboard";
+import type { CaseRow } from "../app/lib/cases";
 
 const TODAY = "2026-06-22";
 
-test("buildDashboardData composes items, metrics, viewCounts, and selection", () => {
+test("buildCaseData composes case items, metrics, viewCounts, and selection", () => {
+  const cases: CaseRow[] = [
+    { id: "case-1", customerId: "c1", status: "working", nextActionType: "follow_up", nextActionAt: "2026-06-20" },
+  ];
   const invoices = [
     { id: "i1", qbo_doc_number: "1001", customer_id: "c1", balance: 6000, due_date: "2026-03-01" },
     { id: "i2", qbo_doc_number: "1002", customer_id: "c1", balance: 300, due_date: "2026-06-18" },
   ];
-  const customers = [{ id: "c1", name: "Acme", phone: "+13105550101", email: "ap@acme.test" }];
-  const lastContacts = [{ invoiceId: "i2", date: "2026-06-19T00:00:00Z", channel: "Text" }];
-  const data = buildDashboardData(invoices, customers, lastContacts, [],
-    { view: "30-plus", sort: "recommended", q: "", invoice: "i1" }, TODAY, new Map(), null);
+  const customers = [{ id: "c1", name: "Acme", phone: null, email: null, owner: "u1" }];
+  const data = buildCaseData(cases, invoices, customers, [],
+    { view: "all-open", sort: "recommended", q: "", caseId: "case-1" }, "2026-06-22",
+    new Map([["u1", "diskin"]]), "u1");
 
-  expect(data.metrics.allOpen.count).toBe(2);
-  expect(data.viewCounts["30-plus"]).toBe(1);
-  expect(data.items.map((i) => i.invoiceId)).toEqual(["i1"]); // 30-plus view
-  expect(data.selected?.invoiceId).toBe("i1");
-  expect(data.selected?.heat.band).toBe("hot");
+  expect(data.metrics.allOpen.count).toBe(1);
+  expect(data.viewCounts["my-work"]).toBe(1);
+  expect(data.items.map((i) => i.caseId)).toEqual(["case-1"]);
+  expect(data.selected?.caseId).toBe("case-1");
+  expect(data.selected?.totalOverdue).toBe(6300);
 });
 
-test("buildDashboardData search filters across customer/invoice/contact text", () => {
+test("buildCaseData search filter returns only matching cases", () => {
+  const cases: CaseRow[] = [
+    { id: "case-acme", customerId: "c1", status: "working", nextActionType: null, nextActionAt: null },
+    { id: "case-globex", customerId: "c2", status: "new", nextActionType: null, nextActionAt: null },
+  ];
   const invoices = [
-    { id: "i1", qbo_doc_number: "1001", customer_id: "c1", balance: 6000, due_date: "2026-03-01" },
-    { id: "i2", qbo_doc_number: "2002", customer_id: "c2", balance: 800, due_date: "2026-04-01" },
+    { id: "i1", qbo_doc_number: "2001", customer_id: "c1", balance: 1000, due_date: "2026-03-01" },
+    { id: "i2", qbo_doc_number: "2002", customer_id: "c2", balance: 2000, due_date: "2026-03-01" },
   ];
   const customers = [
-    { id: "c1", name: "Acme", phone: null, email: null },
-    { id: "c2", name: "Globex", phone: null, email: null },
+    { id: "c1", name: "Acme Corp", phone: null, email: null, owner: null },
+    { id: "c2", name: "Globex Inc", phone: null, email: null, owner: null },
   ];
-  const data = buildDashboardData(invoices, customers, [], [],
-    { view: "all-open", sort: "recommended", q: "globex", invoice: null }, TODAY, new Map(), null);
-  expect(data.items.map((i) => i.invoiceId)).toEqual(["i2"]);
-  expect(data.metrics.allOpen.count).toBe(1); // metrics reflect the search set
-});
+  const result = buildCaseData(cases, invoices, customers, [],
+    { view: "all-open", sort: "recommended", q: "globex", caseId: null }, TODAY,
+    new Map(), null);
 
-test("buildDashboardData threads promise + follow-up signals into items and metrics", () => {
-  const invoices = [{ id: "i1", qbo_doc_number: "1001", customer_id: "c1", balance: 700, due_date: "2026-03-01" }];
-  const customers = [{ id: "c1", name: "Acme", phone: null, email: null }];
-  const signals = [{ invoiceId: "i1", promisedAmount: 200, promisedDate: "2026-06-01", followUpAt: "2026-06-20" }];
-  const data = buildDashboardData(invoices, customers, [], signals,
-    { view: "broken-promises", sort: "recommended", q: "", invoice: "i1" }, TODAY, new Map(), null);
-  expect(data.items.map((i) => i.invoiceId)).toEqual(["i1"]);
-  expect(data.metrics.brokenPromises.count).toBe(1);
-  expect(data.metrics.followUpsDue.count).toBe(1);
-  expect(data.selected?.promise).toEqual({ amount: 200, date: "2026-06-01" });
-});
-
-test("a logged contact clears never-contacted in the metrics", () => {
-  const invoices = [{ id: "i1", qbo_doc_number: "1001", customer_id: "c1", balance: 700, due_date: "2026-03-01" }];
-  const customers = [{ id: "c1", name: "Acme", phone: null, email: null }];
-  const withContact = buildDashboardData(invoices, customers,
-    [{ invoiceId: "i1", date: "2026-06-19T00:00:00Z", channel: "Call" }], [],
-    { view: "all-open", sort: "recommended", q: "", invoice: null }, TODAY, new Map(), null);
-  expect(withContact.metrics.neverContacted.count).toBe(0);
+  expect(result.items.map((i) => i.caseId)).toEqual(["case-globex"]);
+  expect(result.metrics.allOpen.count).toBe(1);
 });
 
 // DB-backed: proves the RLS-scoped read shape the loader relies on.
@@ -112,21 +101,4 @@ test("RLS user client reads an invoice thread ascending with consent embed", asy
     .from("invoices").select("customers(phone, sms_consent)").eq("id", inv!.id).maybeSingle();
   expect((invRow as any).customers.sms_consent).toBe(true);
   expect((invRow as any).customers.phone).toBe("+13105559100");
-});
-
-test("buildDashboardData composes my-work items and count for the current user", () => {
-  const invoices = [
-    { id: "i1", qbo_doc_number: "1001", customer_id: "c1", balance: 100, due_date: "2026-03-01" },
-    { id: "i2", qbo_doc_number: "1002", customer_id: "c2", balance: 200, due_date: "2026-03-01" },
-  ];
-  const customers = [
-    { id: "c1", name: "Acme", phone: null, email: null, owner: "me" },
-    { id: "c2", name: "Globex", phone: null, email: null, owner: "other" },
-  ];
-  const labels = new Map([["me", "diskin"], ["other", "morgan"]]);
-  const data = buildDashboardData(invoices, customers, [], [],
-    { view: "my-work", sort: "recommended", q: "", invoice: "i1" }, "2026-06-22", labels, "me");
-  expect(data.items.map((i) => i.invoiceId)).toEqual(["i1"]);
-  expect(data.viewCounts["my-work"]).toBe(1);
-  expect(data.selected?.owner).toBe("diskin");
 });

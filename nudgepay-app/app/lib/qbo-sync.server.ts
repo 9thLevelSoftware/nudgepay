@@ -6,6 +6,7 @@ import {
   type CustomerUpsert, type InvoiceUpsert,
 } from "./qbo-mappers.server";
 import type { QboHttpConfig } from "./qbo-client.server";
+import { applyCaseReconciliation } from "./case-lifecycle.server";
 
 export type SyncDeps = {
   fetchFn: typeof fetch;
@@ -80,6 +81,13 @@ export async function syncOverdueInvoices(
   );
   await upsertInvoices(deps.service, invoiceRows);
 
+  const reconcileToday = new Date().toISOString().slice(0, 10);
+  try {
+    await applyCaseReconciliation(deps.service, orgId, reconcileToday);
+  } catch (e) {
+    console.error("[6a] case reconciliation failed (sync); cron will re-converge", e);
+  }
+
   const { error } = await deps.service.from("qbo_connections")
     .update({ last_sync_at: now.toISOString() }).eq("org_id", orgId);
   if (error) throw error;
@@ -123,6 +131,13 @@ export async function applyInvoiceWebhook(
     customerId = idMap.get(qboCustomerId) ?? null;
   }
   await upsertInvoices(deps.service, [mapQboInvoice(inv, orgId, customerId, new Date())]);
+
+  const reconcileToday = new Date().toISOString().slice(0, 10);
+  try {
+    await applyCaseReconciliation(deps.service, orgId, reconcileToday);
+  } catch (e) {
+    console.error("[6a] case reconciliation failed (sync); cron will re-converge", e);
+  }
 }
 
 // --- CDC catch-up -----------------------------------------------------------
@@ -158,6 +173,13 @@ export async function runCdcCatchup(
     mapQboInvoice(inv, orgId, idMap.get(String(inv?.CustomerRef?.value)) ?? null, now),
   );
   await upsertInvoices(deps.service, invoiceRows);
+
+  const reconcileToday = new Date().toISOString().slice(0, 10);
+  try {
+    await applyCaseReconciliation(deps.service, orgId, reconcileToday);
+  } catch (e) {
+    console.error("[6a] case reconciliation failed (sync); cron will re-converge", e);
+  }
 
   const { error } = await deps.service.from("qbo_connections")
     .update({ last_cdc_time: now.toISOString(), last_sync_at: now.toISOString() })

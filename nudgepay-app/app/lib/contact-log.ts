@@ -11,7 +11,8 @@ export type ContactMethod = (typeof CONTACT_METHODS)[number];
 export type ContactOutcome = (typeof CONTACT_OUTCOMES)[number];
 
 export type ContactLogFields = {
-  invoiceId: string;
+  caseId: string;
+  invoiceId: string | null;
   customerId: string | null;
   method: ContactMethod;
   outcome: ContactOutcome;
@@ -42,9 +43,10 @@ function str(form: FormData, key: string): string | null {
 }
 
 export function parseContactLogForm(form: FormData): ParseResult {
-  const invoiceId = str(form, "invoiceId");
-  if (!invoiceId) return { ok: false, error: "missing-invoice" };
+  const caseId = str(form, "caseId");
+  if (!caseId) return { ok: false, error: "missing-case" };
 
+  const invoiceId = str(form, "invoiceId"); // optional now
   const customerId = str(form, "customerId");
 
   const method = str(form, "method");
@@ -77,7 +79,7 @@ export function parseContactLogForm(form: FormData): ParseResult {
   return {
     ok: true,
     fields: {
-      invoiceId, customerId,
+      caseId, invoiceId, customerId,
       method: method as ContactMethod,
       outcome: outcome as ContactOutcome,
       notes, followUpAt, promisedAmount, promisedDate,

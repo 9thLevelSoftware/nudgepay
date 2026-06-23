@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { Form, Link, useNavigate } from "react-router";
-import type { WorkItem } from "../lib/worklist";
+import type { CaseItem } from "../lib/cases";
 import { CONTACT_METHODS, CONTACT_OUTCOMES } from "../lib/contact-log";
 
 const METHOD_LABEL: Record<string, string> = {
@@ -18,14 +18,16 @@ const ERROR_MESSAGE: Record<string, string> = {
   "promise-required": "Add a promised amount and date, or change the outcome.",
   "bad-amount": "Enter a valid promised amount greater than zero.",
   "bad-date": "Enter a valid date.",
+  "missing-case": "That account could not be found.",
   "missing-invoice": "That invoice could not be found.",
   "save-failed": "Could not save the contact. Try again.",
 };
 
 export function LogContactDrawer({
-  selected, returnTo, logError,
+  selected, repInvoiceId, returnTo, logError,
 }: {
-  selected: WorkItem;
+  selected: CaseItem;
+  repInvoiceId: string | null;
   returnTo: string;
   logError: string | null;
 }) {
@@ -86,7 +88,7 @@ export function LogContactDrawer({
         <p className="px-5 pt-3 text-sm text-muted font-sans">
           {selected.customerName}
           <span className="mx-1.5 text-border">·</span>
-          {selected.docNumber ?? selected.invoiceId}
+          {selected.invoiceCount} open invoice(s)
         </p>
 
         {logError && ERROR_MESSAGE[logError] && (
@@ -96,7 +98,8 @@ export function LogContactDrawer({
         )}
 
         <Form method="post" action="/api/contact-logs" className="flex flex-col gap-4 px-5 py-4">
-          <input type="hidden" name="invoiceId" value={selected.invoiceId} />
+          <input type="hidden" name="caseId" value={selected.caseId} />
+          <input type="hidden" name="invoiceId" value={repInvoiceId ?? ""} />
           <input type="hidden" name="customerId" value={selected.customerId ?? ""} />
           <input type="hidden" name="returnTo" value={returnTo} />
 
