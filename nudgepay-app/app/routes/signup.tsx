@@ -1,6 +1,7 @@
 import { Form, redirect, useActionData, type ActionFunctionArgs } from "react-router";
 import { getEnv } from "../lib/env.server";
 import { createSupabaseUserClient } from "../lib/supabase.server";
+import { signupOutcome } from "../lib/auth-flow.server";
 
 export async function action({ request, context }: ActionFunctionArgs) {
   const env = getEnv(context as any);
@@ -10,17 +11,31 @@ export async function action({ request, context }: ActionFunctionArgs) {
   const rawPassword = form.get("password");
   const password = typeof rawPassword === "string" ? rawPassword : "";
   const { supabase, headers } = createSupabaseUserClient(request, env);
-  const { error } = await supabase.auth.signUp({ email, password });
+  const { data, error } = await supabase.auth.signUp({ email, password });
   if (error) return { error: error.message };
-  return redirect("/onboarding", { headers });
+
+  const outcome = signupOutcome(Boolean(data.session));
+  if ("redirectTo" in outcome) return redirect(outcome.redirectTo, { headers });
+  return { confirmEmail: true as const };
 }
 
 export default function Signup() {
   const actionData = useActionData<typeof action>();
+  if (actionData && "confirmEmail" in actionData && actionData.confirmEmail) {
+    return (
+      <main style={{ maxWidth: 360, margin: "64px auto" }}>
+        <h1>Check your email</h1>
+        <p>We sent a confirmation link to your inbox. Click it to finish creating
+          your NudgePay account, then sign in.</p>
+      </main>
+    );
+  }
   return (
     <Form method="post" style={{ maxWidth: 360, margin: "64px auto", display: "grid", gap: 12 }}>
       <h1>Create your NudgePay account</h1>
-      {actionData?.error && <p style={{ color: "#C0202A" }}>{actionData.error}</p>}
+      {actionData && "error" in actionData && actionData.error && (
+        <p style={{ color: "#C0202A" }}>{actionData.error}</p>
+      )}
       <input name="email" type="email" placeholder="Email" required />
       <input name="password" type="password" placeholder="Password" required minLength={8} />
       <button type="submit">Sign up</button>
