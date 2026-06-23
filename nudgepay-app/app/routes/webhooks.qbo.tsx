@@ -4,7 +4,7 @@ import { createSupabaseServiceClient } from "../lib/supabase.server";
 import { verifyQboSignature, parseQboWebhook } from "../lib/qbo-webhook.server";
 import { qboApiBaseUrl } from "../lib/qbo-api.server";
 import {
-  applyInvoiceWebhook, applyCustomerWebhook, type SyncDeps,
+  applyInvoiceWebhook, applyCustomerWebhook, applyPaymentWebhook, type SyncDeps,
 } from "../lib/qbo-sync.server";
 
 export async function action({ request, context }: ActionFunctionArgs) {
@@ -35,7 +35,9 @@ export async function action({ request, context }: ActionFunctionArgs) {
       const orgId = conn.org_id as string;
       if (ev.entityName === "Invoice") await applyInvoiceWebhook(deps, orgId, ev.id);
       else if (ev.entityName === "Customer") await applyCustomerWebhook(deps, orgId, ev.id);
-      // other entity types are ignored in this phase
+      else if (ev.entityName === "Payment") await applyPaymentWebhook(deps, orgId, ev.id, "payment");
+      else if (ev.entityName === "CreditMemo") await applyPaymentWebhook(deps, orgId, ev.id, "credit_memo");
+      // other entity types are ignored
     }
   } catch (err) {
     console.error("QBO webhook processing failed", err);

@@ -2,11 +2,12 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { getValidAccessToken } from "./qbo-connection.server";
 import { qboQuery, qboReadEntity, qboCdc, type QboApiConfig } from "./qbo-api.server";
 import {
-  mapQboCustomer, mapQboInvoice,
-  type CustomerUpsert, type InvoiceUpsert,
+  mapQboCustomer, mapQboInvoice, mapQboPayment,
+  type CustomerUpsert, type InvoiceUpsert, type PaymentUpsert,
 } from "./qbo-mappers.server";
 import type { QboHttpConfig } from "./qbo-client.server";
 import { applyCaseReconciliation } from "./case-lifecycle.server";
+import { applyPromiseEvaluation } from "./promise-evaluation.server";
 
 export type SyncDeps = {
   fetchFn: typeof fetch;
@@ -32,6 +33,12 @@ export async function upsertInvoices(service: SupabaseClient, rows: InvoiceUpser
   if (error) throw error;
 }
 
+export async function upsertPayments(service: SupabaseClient, rows: PaymentUpsert[]): Promise<void> {
+  if (rows.length === 0) return;
+  const { error } = await service.from("payments").upsert(rows, { onConflict: "org_id,qbo_id,type" });
+  if (error && (error as any).code !== "23505") throw error;
+}
+
 // Resolve QBO customer ids -> our customer UUIDs for an org (covers both
 // just-upserted and pre-existing customers).
 export async function customerIdMap(
@@ -45,6 +52,58 @@ export async function customerIdMap(
   if (error) throw error;
   for (const row of data ?? []) map.set(row.qbo_id as string, row.id as string);
   return map;
+}
+
+// B3-bug fix: re-pull ALL invoices for the given QBO customers (no Balance>0
+// filter) so an invoice paid outside the periodic-overdue window updates to its
+// real balance and its case can auto-resolve.
+export async function repullCustomerInvoices(
+  deps: SyncDeps, orgId: string, accessToken: string, realmId: string, qboCustomerIds: string[],
+): Promise<void> {
+  const ids = [...new Set(qboCustomerIds.filter(Boolean))];
+  if (ids.length === 0) return;
+  const idList = ids.map((id) => `'${id}'`).join(",");
+  const invoices = await qboQuery(
+    deps.fetchFn, deps.api, accessToken, realmId,
+    `select * from Invoice where CustomerRef in (${idList}) startposition 1 maxresults ${QUERY_LIMIT}`,
+    "Invoice",
+  );
+  if (invoices.length === 0) return;
+  const idMap = await customerIdMap(deps.service, orgId, ids);
+  const now = new Date();
+  const rows = invoices.map((inv) =>
+    mapQboInvoice(inv, orgId, idMap.get(String(inv?.CustomerRef?.value)) ?? null, now));
+  await upsertInvoices(deps.service, rows);
+}
+
+export async function applyPaymentWebhook(
+  deps: SyncDeps, orgId: string, qboId: string, type: "payment" | "credit_memo",
+): Promise<void> {
+  const { accessToken, realmId } = await getValidAccessToken(
+    deps.fetchFn, deps.service, deps.cfg, deps.key, orgId,
+  );
+  const entity = type === "payment" ? "Payment" : "CreditMemo";
+  const raw = await qboReadEntity(deps.fetchFn, deps.api, accessToken, realmId, entity, qboId);
+  if (!raw) return;
+
+  const qboCustomerId = raw?.CustomerRef?.value ? String(raw.CustomerRef.value) : null;
+  let customerId: string | null = null;
+  if (qboCustomerId) {
+    const idMap = await customerIdMap(deps.service, orgId, [qboCustomerId]);
+    customerId = idMap.get(qboCustomerId) ?? null;
+  }
+  await upsertPayments(deps.service, [mapQboPayment(raw, type, orgId, customerId, new Date())]);
+
+  // B3 re-pull + reconcile + evaluate so a payment resolves cases/promises promptly.
+  const today = new Date().toISOString().slice(0, 10);
+  if (qboCustomerId) {
+    try { await repullCustomerInvoices(deps, orgId, accessToken, realmId, [qboCustomerId]); }
+    catch (e) { console.error("[6b] payment re-pull failed", e); }
+  }
+  try { await applyCaseReconciliation(deps.service, orgId, today); }
+  catch (e) { console.error("[6b] reconciliation failed (payment webhook)", e); }
+  try { await applyPromiseEvaluation(deps.service, orgId, today); }
+  catch (e) { console.error("[6b] promise evaluation failed (payment webhook)", e); }
 }
 
 export async function syncOverdueInvoices(
