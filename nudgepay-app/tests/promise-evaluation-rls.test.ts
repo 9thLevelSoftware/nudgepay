@@ -76,7 +76,8 @@ test("applyPromiseEvaluation: kept on payment, broken at deadline, case reflecti
   expect(keptRow!.status).toBe("kept");
   expect(Number(keptRow!.amount_received)).toBe(500);
 
-  const { data: brokenCase } = await svc.from("collection_cases").select("status, next_action_type").eq("id", broken.caseId).single();
+  const { data: brokenCase } = await svc.from("collection_cases").select("status, next_action_type, next_action_at").eq("id", broken.caseId).single();
   expect(brokenCase!.status).toBe("working");
   expect(brokenCase!.next_action_type).toBe("follow_up");
+  expect(brokenCase!.next_action_at).toBe("2026-07-06");
 });

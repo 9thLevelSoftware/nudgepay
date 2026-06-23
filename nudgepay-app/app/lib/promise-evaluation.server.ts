@@ -9,12 +9,15 @@ export async function applyPromiseEvaluation(
 ): Promise<{ kept: number; partiallyKept: number; broken: number }> {
   const { data: pend, error: pErr } = await client
     .from("promises")
-    .select("id, status, promised_amount, baseline_balance, grace_until")
+    .select("id, status, promised_amount, baseline_balance, grace_until, case_id")
     .eq("org_id", orgId)
     .eq("status", "pending");
   if (pErr) throw pErr;
   const promises = pend ?? [];
   if (promises.length === 0) return { kept: 0, partiallyKept: 0, broken: 0 };
+
+  // Map case_id for case-state reflection on broken promises.
+  const caseByPromise = new Map(promises.map((p) => [p.id as string, p.case_id as string]));
 
   const ids = promises.map((p) => p.id as string);
   const { data: links, error: lErr } = await client
@@ -38,11 +41,6 @@ export async function applyPromiseEvaluation(
     const prev = balanceByPromiseId.get(l.promise_id as string) ?? 0;
     balanceByPromiseId.set(l.promise_id as string, prev + (balanceByInvoice.get(l.invoice_id as string) ?? 0));
   }
-
-  // Also map case_id for case-state reflection on broken promises.
-  const { data: caseRows } = await client
-    .from("promises").select("id, case_id").eq("org_id", orgId).in("id", ids);
-  const caseByPromise = new Map((caseRows ?? []).map((r) => [r.id as string, r.case_id as string]));
 
   const rows: PromiseEvalRow[] = promises.map((p) => ({
     id: p.id as string,
