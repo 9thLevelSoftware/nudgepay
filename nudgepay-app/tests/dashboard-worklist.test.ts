@@ -85,3 +85,31 @@ test("RLS user client reads only the member's past-due invoices with customer em
   expect(rows!.length).toBe(1);
   expect((rows![0] as any).customers.name).toBe("Riverside");
 });
+
+test("RLS user client reads an invoice thread ascending with consent embed", async () => {
+  const svc = serviceClient();
+  // Add a customer + invoice + two outbound/one inbound message in the existing org.
+  const { data: cust } = await svc.from("customers")
+    .insert({ org_id: orgId, qbo_id: "thread-c1", name: "Thread Co", phone: "+13105559100", sms_consent: true })
+    .select("id").single();
+  const { data: inv } = await svc.from("invoices")
+    .insert({ org_id: orgId, qbo_id: "thread-i1", qbo_doc_number: "9100", customer_id: cust!.id, amount: 1200, balance: 1200, due_date: "2026-02-01", status: "overdue" })
+    .select("id").single();
+  await svc.from("text_messages").insert([
+    { org_id: orgId, invoice_id: inv!.id, customer_id: cust!.id, direction: "outbound", body: "first", status: "sent", created_at: "2026-06-20T10:00:00Z" },
+    { org_id: orgId, invoice_id: inv!.id, customer_id: cust!.id, direction: "inbound", body: "reply", created_at: "2026-06-20T11:00:00Z" },
+  ]);
+
+  const { data: msgs, error } = await user.client
+    .from("text_messages")
+    .select("id, direction, body, status, error_code, created_at")
+    .eq("org_id", orgId).eq("invoice_id", inv!.id)
+    .order("created_at", { ascending: true });
+  expect(error).toBeNull();
+  expect(msgs!.map((m) => m.body)).toEqual(["first", "reply"]);
+
+  const { data: invRow } = await user.client
+    .from("invoices").select("customers(phone, sms_consent)").eq("id", inv!.id).maybeSingle();
+  expect((invRow as any).customers.sms_consent).toBe(true);
+  expect((invRow as any).customers.phone).toBe("+13105559100");
+});

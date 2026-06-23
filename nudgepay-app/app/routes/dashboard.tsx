@@ -127,6 +127,24 @@ export type ActivityEntry = {
   promisedDate: string | null;
 };
 
+type SelectedMessageRow = {
+  id: string;
+  direction: string;
+  body: string | null;
+  status: string | null;
+  error_code: string | null;
+  created_at: string;
+};
+
+export type MessageEntry = {
+  id: string;
+  direction: string;
+  body: string | null;
+  status: string | null;
+  errorCode: string | null;
+  createdAt: string;
+};
+
 export async function loader({ request, context }: LoaderFunctionArgs) {
   const env = getEnv(context as any);
   const { supabase, headers, user } = await requireUser(request, env);
@@ -197,12 +215,16 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
     ? (rawTab as "overview" | "activity" | "messages")
     : "overview";
 
+  const sms = sp.get("sms");
   const log = sp.get("log") === "1";
   const logError = sp.get("logError");
 
   const today = new Date().toISOString().slice(0, 10);
 
   let selectedActivity: ActivityEntry[] = [];
+  let selectedMessages: MessageEntry[] = [];
+  let selectedConsent = false;
+  let selectedPhone: string | null = null;
   let dashboardData: DashboardData = {
     items: [],
     metrics: {
@@ -357,6 +379,31 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
         promisedAmount: r.promised_amount == null ? null : Number(r.promised_amount),
         promisedDate: r.promised_date,
       }));
+
+      const { data: msgRows } = await supabase
+        .from("text_messages")
+        .select("id, direction, body, status, error_code, created_at")
+        .eq("org_id", org.org_id)
+        .eq("invoice_id", invoice)
+        .order("created_at", { ascending: true });
+      selectedMessages = ((msgRows as unknown as SelectedMessageRow[]) ?? []).map((r) => ({
+        id: r.id,
+        direction: r.direction,
+        body: r.body,
+        status: r.status,
+        errorCode: r.error_code,
+        createdAt: r.created_at,
+      }));
+
+      const { data: invConsent } = await supabase
+        .from("invoices")
+        .select("customers(phone, sms_consent)")
+        .eq("org_id", org.org_id)
+        .eq("id", invoice)
+        .maybeSingle();
+      const c = (invConsent as any)?.customers as { phone: string | null; sms_consent: boolean } | null;
+      selectedConsent = c?.sms_consent ?? false;
+      selectedPhone = c?.phone ?? null;
     }
   }
 
@@ -375,6 +422,10 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
       log,
       logError,
       selectedActivity,
+      selectedMessages,
+      selectedConsent,
+      selectedPhone,
+      sms,
       ...dashboardData,
     },
     { headers },
