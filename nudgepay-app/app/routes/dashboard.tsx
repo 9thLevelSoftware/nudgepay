@@ -102,6 +102,30 @@ type TextMessageRow = {
   created_at: string;
 };
 
+type ContactLogRow = {
+  id: string;
+  invoice_id: string | null;
+  customer_id: string | null;
+  method: string;
+  outcome: string | null;
+  notes: string | null;
+  created_at: string;
+  follow_up_at: string | null;
+  promised_amount: number | string | null;
+  promised_date: string | null;
+};
+
+export type ActivityEntry = {
+  id: string;
+  method: string;
+  outcome: string | null;
+  notes: string | null;
+  createdAt: string;
+  followUpAt: string | null;
+  promisedAmount: number | null;
+  promisedDate: string | null;
+};
+
 export async function loader({ request, context }: LoaderFunctionArgs) {
   const env = getEnv(context as any);
   const { supabase, headers, user } = await requireUser(request, env);
@@ -172,8 +196,12 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
     ? (rawTab as "overview" | "activity" | "messages")
     : "overview";
 
+  const log = sp.get("log") === "1";
+  const logError = sp.get("logError");
+
   const today = new Date().toISOString().slice(0, 10);
 
+  let selectedActivity: ActivityEntry[] = [];
   let dashboardData: DashboardData = {
     items: [],
     metrics: {
@@ -250,14 +278,85 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
       }
     }
 
+    // Per-invoice contact logs (USER client / RLS). Folds into last-contact and
+    // supplies promise + follow-up signals.
+    const promiseSignals: PromiseSignalInput[] = [];
+    if (rawInvoices.length > 0) {
+      const invoiceIds = rawInvoices.map((r) => r.id);
+      const { data: logRows } = await supabase
+        .from("contact_logs")
+        .select("id, invoice_id, customer_id, method, outcome, notes, created_at, follow_up_at, promised_amount, promised_date")
+        .eq("org_id", org.org_id)
+        .in("invoice_id", invoiceIds)
+        .order("created_at", { ascending: false });
+
+      const logs = (logRows as unknown as ContactLogRow[]) ?? [];
+
+      // Channel label for the merged last-contact (logs are most-recent-first).
+      const methodLabel: Record<string, string> = {
+        call: "Call", email: "Email", text: "Text", note: "Note",
+      };
+      for (const row of logs) {
+        if (!row.invoice_id) continue;
+        lastContactsInput.push({
+          invoiceId: row.invoice_id,
+          date: row.created_at,
+          channel: methodLabel[row.method] ?? "Logged",
+        });
+      }
+
+      // Derive one signal per invoice: latest promise (first row with both promise
+      // fields, since ordered desc) and latest pending follow-up (first non-null).
+      const promiseByInvoice = new Map<string, { amount: number; date: string }>();
+      const followUpByInvoice = new Map<string, string>();
+      for (const row of logs) {
+        if (!row.invoice_id) continue;
+        if (!promiseByInvoice.has(row.invoice_id) && row.promised_amount != null && row.promised_date != null) {
+          promiseByInvoice.set(row.invoice_id, { amount: Number(row.promised_amount), date: row.promised_date });
+        }
+        if (!followUpByInvoice.has(row.invoice_id) && row.follow_up_at != null) {
+          followUpByInvoice.set(row.invoice_id, row.follow_up_at);
+        }
+      }
+      const signalInvoiceIds = new Set([...promiseByInvoice.keys(), ...followUpByInvoice.keys()]);
+      for (const id of signalInvoiceIds) {
+        const p = promiseByInvoice.get(id) ?? null;
+        promiseSignals.push({
+          invoiceId: id,
+          promisedAmount: p?.amount ?? null,
+          promisedDate: p?.date ?? null,
+          followUpAt: followUpByInvoice.get(id) ?? null,
+        });
+      }
+    }
+
     dashboardData = buildDashboardData(
       invoicesInput,
       customersInput,
       lastContactsInput,
-      [], // promiseSignals — wired in Task 5
+      promiseSignals,
       { view, sort, q, invoice, tab },
       today,
     );
+
+    if (invoice) {
+      const { data: actRows } = await supabase
+        .from("contact_logs")
+        .select("id, invoice_id, customer_id, method, outcome, notes, created_at, follow_up_at, promised_amount, promised_date")
+        .eq("org_id", org.org_id)
+        .eq("invoice_id", invoice)
+        .order("created_at", { ascending: false });
+      selectedActivity = ((actRows as unknown as ContactLogRow[]) ?? []).map((r) => ({
+        id: r.id,
+        method: r.method,
+        outcome: r.outcome,
+        notes: r.notes,
+        createdAt: r.created_at,
+        followUpAt: r.follow_up_at,
+        promisedAmount: r.promised_amount == null ? null : Number(r.promised_amount),
+        promisedDate: r.promised_date,
+      }));
+    }
   }
 
   return data(
@@ -272,6 +371,9 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
       q,
       invoice,
       tab,
+      log,
+      logError,
+      selectedActivity,
       ...dashboardData,
     },
     { headers },
