@@ -16,3 +16,30 @@ QBO_SANDBOX = "true"
 [triggers]
 # CDC catch-up every 30 min (design §6: 15-30 min; within CDC's 30-day lookback).
 crons = ["*/30 * * * *"]
+
+# --- Production environment ---------------------------------------------------
+# Deploy with: npx wrangler deploy --env production
+# Non-secret production vars (secrets are set separately via `wrangler secret put`).
+[env.production.vars]
+SUPABASE_URL = "https://<your-prod-project-ref>.supabase.co"
+QBO_SANDBOX = "false"   # production QBO: gates ONLY the Data API base URL
+
+# [env.production.triggers] mirrors the top-level CDC cron.
+[env.production.triggers]
+crons = ["*/30 * * * *"]
+
+# Secrets required in production (set each: `npx wrangler secret put <NAME> --env production`):
+#   SUPABASE_ANON_KEY            Supabase anon/publishable key
+#   SUPABASE_SERVICE_KEY         Supabase service-role key (server-only)
+#   QBO_CLIENT_ID                Intuit PRODUCTION app client id
+#   QBO_CLIENT_SECRET            Intuit PRODUCTION app client secret
+#   QBO_REDIRECT_URI             ${APP_BASE_URL}/auth/qbo/callback  (must match Intuit app Redirect URI exactly)
+#   QBO_ENCRYPTION_KEY           base64 of 32 random bytes (AES-256) — same key family as other envs; never rotate without re-encrypting
+#   QBO_WEBHOOK_VERIFIER_TOKEN   Intuit webhook verifier token (from the production app's Webhooks page)
+#   TWILIO_ACCOUNT_SID           Twilio account SID
+#   TWILIO_AUTH_TOKEN            Twilio auth token
+#   TWILIO_MESSAGING_SERVICE_SID Production Messaging Service SID (preferred sender)  -- or --
+#   TWILIO_FROM_NUMBER           E.164 sender number (fallback if no Messaging Service)
+#   TWILIO_PUBLIC_BASE_URL       ${APP_BASE_URL}  (origin Twilio uses for signature validation + StatusCallback)
+# DEPLOY GATE: getQboEnv requires QBO_WEBHOOK_VERIFIER_TOKEN and getTwilioEnv requires the Twilio
+# secrets — QBO/Twilio routes throw 500 at runtime until every secret above is set.
