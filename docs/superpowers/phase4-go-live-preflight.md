@@ -10,7 +10,7 @@ This checklist gates the real-Chancey cutover. Complete each item in order; **do
 
 **Verification:**
 - [ ] `QBO_CLIENT_ID`, `QBO_CLIENT_SECRET`, `QBO_REDIRECT_URI`, `QBO_ENCRYPTION_KEY` set in Cloudflare production environment.
-- [ ] `SUPABASE_URL`, `SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY` set.
+- [ ] `SUPABASE_URL`, `SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_KEY` set.
 - [ ] `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, `TWILIO_PHONE_NUMBER`, `TWILIO_PUBLIC_BASE_URL` set.
 - [ ] `APP_BASE_URL` set to production domain.
 - [ ] `QBO_WEBHOOK_VERIFIER_TOKEN` set (Intuit-provided).
@@ -97,9 +97,9 @@ This checklist gates the real-Chancey cutover. Complete each item in order; **do
 - [ ] `[Contact Email]` replaced with support/legal email (e.g., "legal@nudgepay.example.com").
 - [ ] `[Governing-Law State]` replaced with state of incorporation (e.g., "Delaware").
 - [ ] `[Effective Date]` replaced with policy effective date (e.g., "2025-06-22").
-- [ ] No square-bracket tokens remain in the legal page HTML.
+- [ ] No square-bracket tokens remain in either legal page.
 
-**Reference:** Legal page file: `nudgepay-app/app/routes/legal.tsx` (or similar).
+**Reference:** Legal page files (from Task 4): `nudgepay-app/app/routes/privacy.tsx` and `nudgepay-app/app/routes/eula.tsx`.
 
 **Failure mode:** Users see template placeholders; lack of credibility; potential legal/compliance issues.
 

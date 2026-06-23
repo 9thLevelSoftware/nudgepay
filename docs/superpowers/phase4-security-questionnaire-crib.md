@@ -27,7 +27,7 @@ This document maps each key Intuit security requirement to its implementation in
 **Implementation:**
 - **Service-role client server-only:** `nudgepay-app/app/lib/supabase.server.ts`
   - `createSupabaseUserClient()`: Creates user-level client from ANON key for client routes; used only for RLS-gated public tables.
-  - `createSupabaseServiceClient()` (not shown but referenced): Uses `SUPABASE_SERVICE_ROLE_KEY` (server-only env var), never exported to browser.
+  - `createSupabaseServiceClient(env)` (exported, lines 33–37): Uses `env.SUPABASE_SERVICE_KEY` (server-only env var, line 34), never exported to browser. This file has the `.server.ts` suffix, so the bundler excludes it from client bundles.
 
 - **OAuth callback route server-only:** `nudgepay-app/app/routes/auth.qbo.callback.tsx` (lines 8–32)
   - Loader function (server-side only): receives authorization code and state from Intuit redirect, exchanges for tokens server-side, stores encrypted.
@@ -150,14 +150,14 @@ This document maps each key Intuit security requirement to its implementation in
 **Requirement:** Logs do not contain sensitive customer data (names, SSNs, invoice amounts, account numbers).
 
 **Implementation:**
-- **Webhook handlers log error context only:**
-  - QBO webhook handler: logs realmId and error message on signature failure; does not log payload.
-  - Twilio webhook handler: logs error context (delivery status enum, phone) on signature failure; does not log SMS content.
-  - Payment/invoice handlers: on database error, log error message; do not log QBO response body or customer PII.
+- **Webhook route handlers log error context for observability and do not log QBO/customer message payloads.** Each handler's only log statement is a `console.error` in its `catch` block that emits a static descriptive string plus the caught error object — no request body, no parsed payload fields, no realmId, no SMS content:
+  - QBO webhook: `nudgepay-app/app/routes/webhooks.qbo.tsx` line 41 — `console.error("QBO webhook processing failed", err)`. The raw body and parsed events are not logged.
+  - Twilio inbound webhook: `nudgepay-app/app/routes/webhooks.twilio.inbound.tsx` line 31 — `console.error("Twilio inbound processing failed", err)`. The inbound message body (`params.Body`) is not logged.
+  - Twilio status webhook: `nudgepay-app/app/routes/webhooks.twilio.status.tsx` line 29 — `console.error("Twilio status processing failed", err)`. Delivery status/error code are persisted to the DB, not logged.
 
-- **Auth routes:** log redirect status, not tokens or codes.
+- **Invalid-signature path:** all three handlers return an error response (401/403) before the `try` block and emit no log at all on signature failure (webhooks.qbo.tsx line 18; webhooks.twilio.inbound.tsx line 22; webhooks.twilio.status.tsx line 20).
 
-- **Audit trail:** org_id, user_id, and high-level action (e.g., "QBO connected", "invoice created") may be logged; customer names and financial amounts are never logged.
+- **Caveat:** the caught `err` is logged verbatim. The error message is whatever the runtime/DB layer produced; handlers do not interpolate customer PII or financial amounts into it.
 
 ---
 
