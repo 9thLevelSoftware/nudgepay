@@ -2,6 +2,7 @@ import { expect, test } from "vitest";
 import { serviceClient, makeUserClient } from "./helpers";
 import { parseContactLogForm } from "../app/lib/contact-log";
 import { action as _contactLogAction } from "../app/routes/api.contact-logs";
+import { createPromiseForLog } from "../app/lib/promise-create.server";
 
 // ── Task 1: migration columns exist and accept promise data ──────────────────
 test("contact_logs accepts promised_amount and promised_date", async () => {
@@ -158,4 +159,45 @@ test("RLS user client inserts a contact log readable back within the org", async
   expect(rows![0].user_id).toBe(user.userId);
   expect(Number(rows![0].promised_amount)).toBe(300);
   expect(rows![0].promised_date).toBe("2026-07-15");
+});
+
+// ── Task 10: createPromiseForLog supersedes prior pending promise ─────────────
+
+test("createPromiseForLog supersedes a prior pending promise and links case invoices", async () => {
+  const svc = serviceClient();
+  const user = await makeUserClient("promise-create@example.com");
+  const { data: org } = await svc.from("organizations").insert({ name: `PCreate ${user.userId}` }).select("id").single();
+  const orgId = org!.id;
+  await svc.from("memberships").insert({ org_id: orgId, user_id: user.userId, role: "owner" });
+  const { data: cust } = await svc.from("customers").insert({ org_id: orgId, qbo_id: `pc-${user.userId}`, name: "Acme" }).select("id").single();
+  const { data: inv } = await svc.from("invoices").insert({
+    org_id: orgId, qbo_id: `pci-${user.userId}`, qbo_doc_number: "1", customer_id: cust!.id,
+    amount: 1200, balance: 1200, due_date: "2026-03-01", status: "overdue",
+  }).select("id").single();
+  const { data: cse } = await svc.from("collection_cases").insert({ org_id: orgId, customer_id: cust!.id, status: "working" }).select("id").single();
+
+  const first = await createPromiseForLog(user.client, {
+    orgId, caseId: cse!.id, customerId: cust!.id, userId: user.userId,
+    contactLogId: null, promisedAmount: 500, promisedDate: "2026-07-01",
+  });
+  expect(first.ok).toBe(true);
+
+  const second = await createPromiseForLog(user.client, {
+    orgId, caseId: cse!.id, customerId: cust!.id, userId: user.userId,
+    contactLogId: null, promisedAmount: 800, promisedDate: "2026-07-10",
+  });
+  expect(second.ok).toBe(true);
+
+  const { data: rows } = await svc.from("promises").select("id, status, replacement_promise_id, grace_until, baseline_balance").eq("org_id", orgId).order("created_at");
+  expect(rows!.length).toBe(2);
+  expect(rows![0].status).toBe("renegotiated");
+  expect(rows![0].replacement_promise_id).toBe(rows![1].id);
+  expect(rows![1].status).toBe("pending");
+  expect(Number(rows![1].baseline_balance)).toBe(1200);
+  expect(rows![1].grace_until).toBe("2026-07-14"); // 2026-07-10 is Fri -> +2 business days = Tue 14th
+
+  const { data: caseRow } = await svc.from("collection_cases").select("status, next_action_type, next_action_at").eq("id", cse!.id).single();
+  expect(caseRow!.status).toBe("promised");
+  expect(caseRow!.next_action_type).toBe("promise");
+  expect(caseRow!.next_action_at).toBe("2026-07-14");
 });

@@ -144,6 +144,11 @@ function QueueRow({
       <span data-label="Next action" className="hidden lg:block text-xs font-sans font-medium whitespace-nowrap text-text">
         {STATUS_LABEL[item.status] ?? item.status}
         {item.nextActionAt ? <span className="text-muted"> · {formatDate(item.nextActionAt)}</span> : null}
+        {item.promiseStatus === "broken" ? (
+          <span className="text-hot"> · Promise broken</span>
+        ) : item.promiseStatus === "pending" ? (
+          <span className="text-cool"> · Promised</span>
+        ) : null}
       </span>
 
       {/* Owner chip */}
@@ -216,6 +221,11 @@ function MobileCard({
         <span className="font-sans font-medium text-text">
           {STATUS_LABEL[item.status] ?? item.status}
           {item.nextActionAt ? <span className="text-muted"> · {formatDate(item.nextActionAt)}</span> : null}
+          {item.promiseStatus === "broken" ? (
+            <span className="text-hot"> · Promise broken</span>
+          ) : item.promiseStatus === "pending" ? (
+            <span className="text-cool"> · Promised</span>
+          ) : null}
         </span>
       </div>
 

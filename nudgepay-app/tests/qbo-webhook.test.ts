@@ -52,3 +52,14 @@ test("parseQboWebhook flattens entities across event notifications", () => {
 test("parseQboWebhook returns [] for malformed JSON", () => {
   expect(parseQboWebhook("{not json")).toEqual([]);
 });
+
+test("parses CloudEvents payload (array of qbo.<entity>.<event>.v1)", () => {
+  const body = JSON.stringify([
+    { type: "qbo.creditmemo.create.v1", intuitentityid: "777", intuitaccountid: "RID2" },
+    { type: "qbo.invoice.update.v1", intuitentityid: "42", intuitaccountid: "RID2" },
+  ]);
+  expect(parseQboWebhook(body)).toEqual([
+    { realmId: "RID2", entityName: "CreditMemo", id: "777", operation: "create" },
+    { realmId: "RID2", entityName: "Invoice", id: "42", operation: "update" },
+  ]);
+});

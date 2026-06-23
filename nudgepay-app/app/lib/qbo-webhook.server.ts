@@ -43,6 +43,49 @@ export type QboWebhookEntity = {
   operation: string;
 };
 
+// Canonical entity casing keyed by the lowercase token Intuit uses in CloudEvents
+// `type` strings (qbo.<entity>.<event>.v1).
+const ENTITY_CASING: Record<string, string> = {
+  invoice: "Invoice",
+  customer: "Customer",
+  payment: "Payment",
+  creditmemo: "CreditMemo",
+};
+
+function parseLegacy(payload: any): QboWebhookEntity[] {
+  const out: QboWebhookEntity[] = [];
+  for (const n of payload?.eventNotifications ?? []) {
+    const realmId = String(n.realmId);
+    for (const e of n?.dataChangeEvent?.entities ?? []) {
+      out.push({ realmId, entityName: String(e.name), id: String(e.id), operation: String(e.operation) });
+    }
+  }
+  return out;
+}
+
+function parseCloudEvents(payload: any): QboWebhookEntity[] {
+  const events = Array.isArray(payload) ? payload : [payload];
+  const out: QboWebhookEntity[] = [];
+  for (const ev of events) {
+    const type = typeof ev?.type === "string" ? ev.type : "";
+    const m = /^qbo\.([a-z]+)\.([a-z]+)\.v\d+$/.exec(type);
+    if (!m) continue;
+    const entityName = ENTITY_CASING[m[1]] ?? "";
+    if (!entityName) continue;
+    out.push({
+      realmId: String(ev.intuitaccountid ?? ""),
+      entityName,
+      id: String(ev.intuitentityid ?? ""),
+      operation: m[2],
+    });
+  }
+  return out;
+}
+
+// Supports both the legacy eventNotifications shape and the newer CloudEvents
+// shape during Intuit's transition. Detection: presence of `eventNotifications`.
+// NOTE: confirm exact CloudEvents field casing/nesting against a real Intuit
+// payload before production cutover; both parsers are kept regardless.
 export function parseQboWebhook(rawBody: string): QboWebhookEntity[] {
   let payload: any;
   try {
@@ -50,17 +93,8 @@ export function parseQboWebhook(rawBody: string): QboWebhookEntity[] {
   } catch {
     return [];
   }
-  const out: QboWebhookEntity[] = [];
-  for (const n of payload?.eventNotifications ?? []) {
-    const realmId = String(n.realmId);
-    for (const e of n?.dataChangeEvent?.entities ?? []) {
-      out.push({
-        realmId,
-        entityName: String(e.name),
-        id: String(e.id),
-        operation: String(e.operation),
-      });
-    }
+  if (payload && typeof payload === "object" && !Array.isArray(payload) && payload.eventNotifications) {
+    return parseLegacy(payload);
   }
-  return out;
+  return parseCloudEvents(payload);
 }

@@ -62,3 +62,28 @@ export function mapQboInvoice(
     qbo_sync_at: now.toISOString(),
   };
 }
+
+export type PaymentUpsert = {
+  org_id: string;
+  qbo_id: string;
+  type: "payment" | "credit_memo";
+  customer_id: string | null;
+  amount: number;
+  txn_date: string | null;
+  qbo_sync_at: string;
+};
+
+export function mapQboPayment(
+  raw: any, type: "payment" | "credit_memo", orgId: string,
+  customerId: string | null, now: Date = new Date(),
+): PaymentUpsert {
+  return {
+    org_id: orgId,
+    qbo_id: String(raw.Id),
+    type,
+    customer_id: customerId,
+    amount: money(raw.TotalAmt),
+    txn_date: raw.TxnDate ?? null,
+    qbo_sync_at: now.toISOString(),
+  };
+}

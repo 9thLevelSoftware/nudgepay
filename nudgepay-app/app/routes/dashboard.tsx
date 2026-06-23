@@ -8,12 +8,13 @@ import { listOrgMembers, type OrgMember } from "../lib/orgs.server";
 // client bundle and the server — buildCaseData is exported from this route
 // (for tests) and the UI components import its types directly.
 import {
-  type InvoiceInput, type CustomerInput, type LastContactInput,
+  type InvoiceInput, type CustomerInput,
   type Metrics, type ViewId, type SortId,
 } from "../lib/worklist";
 import {
   buildCaseItems, applyCaseView, sortCaseItems, computeCaseMetrics,
   type CaseItem, type CaseRow, type CaseStatus, type NextActionType,
+  type CasePromiseInput, type CaseLastContactInput,
 } from "../lib/cases";
 import { AppShell } from "../components/AppShell";
 import { MetricsStrip } from "../components/MetricsStrip";
@@ -51,14 +52,15 @@ export function buildCaseData(
   cases: CaseRow[],
   invoices: InvoiceInput[],
   customers: CustomerInput[],
-  lastContacts: LastContactInput[],
+  lastContacts: CaseLastContactInput[],
+  promises: CasePromiseInput[],
   params: DashboardParams,
   today: string,
   ownerLabels: Map<string, string>,
   currentUserId: string | null,
 ): DashboardData {
   const { view, sort, q, caseId } = params;
-  const allItems = buildCaseItems(cases, invoices, customers, lastContacts, today, ownerLabels);
+  const allItems = buildCaseItems(cases, invoices, customers, lastContacts, promises, today, ownerLabels);
   const searched = q.trim() === "" ? allItems : allItems.filter((i) => i.searchText.includes(q.toLowerCase()));
   const metrics = computeCaseMetrics(searched, today);
   const viewCounts = Object.fromEntries(
@@ -214,6 +216,7 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
   const sms = sp.get("sms");
   const log = sp.get("log") === "1";
   const logError = sp.get("logError");
+  const promiseError = sp.get("promiseError");
 
   const today = new Date().toISOString().slice(0, 10);
 
@@ -222,6 +225,7 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
   let selectedConsent = false;
   let selectedPhone: string | null = null;
   let selectedRepInvoiceId: string | null = null;
+  let selectedPromiseId: string | null = null;
   let roster: OrgMember[] = [];
   let dashboardData: DashboardData = {
     items: [],
@@ -275,57 +279,6 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
     }
     const customersInput: CustomerInput[] = [...customerMap.values()];
 
-    // Per-invoice latest outbound text_messages (USER client / RLS)
-    const lastContactsInput: LastContactInput[] = [];
-    if (rawInvoices.length > 0) {
-      const invoiceIds = rawInvoices.map((r) => r.id);
-      // Fetch all outbound messages ordered by created_at desc; keep first per invoice
-      const { data: msgRows } = await supabase
-        .from("text_messages")
-        .select("invoice_id, created_at")
-        .in("invoice_id", invoiceIds)
-        .eq("direction", "outbound")
-        .order("created_at", { ascending: false });
-
-      const seenInvoices = new Set<string>();
-      for (const row of (msgRows as unknown as TextMessageRow[]) ?? []) {
-        if (!seenInvoices.has(row.invoice_id)) {
-          seenInvoices.add(row.invoice_id);
-          lastContactsInput.push({
-            invoiceId: row.invoice_id,
-            date: row.created_at,
-            channel: "Text",
-          });
-        }
-      }
-    }
-
-    // Per-invoice contact logs (USER client / RLS). Folds into last-contact.
-    if (rawInvoices.length > 0) {
-      const invoiceIds = rawInvoices.map((r) => r.id);
-      const { data: logRows } = await supabase
-        .from("contact_logs")
-        .select("id, invoice_id, customer_id, method, outcome, notes, created_at, follow_up_at, promised_amount, promised_date")
-        .eq("org_id", org.org_id)
-        .in("invoice_id", invoiceIds)
-        .order("created_at", { ascending: false });
-
-      const logs = (logRows as unknown as ContactLogRow[]) ?? [];
-
-      // Channel label for the merged last-contact (logs are most-recent-first).
-      const methodLabel: Record<string, string> = {
-        call: "Call", email: "Email", text: "Text", note: "Note",
-      };
-      for (const row of logs) {
-        if (!row.invoice_id) continue;
-        lastContactsInput.push({
-          invoiceId: row.invoice_id,
-          date: row.created_at,
-          channel: methodLabel[row.method] ?? "Logged",
-        });
-      }
-    }
-
     // Load open cases (USER client)
     const { data: caseRows } = await supabase
       .from("collection_cases")
@@ -337,11 +290,56 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
       nextActionType: r.next_action_type as NextActionType | null, nextActionAt: r.next_action_at,
     }));
 
+    // Per-case last contact, merged from contact_logs + text_messages (both carry case_id since 0009).
+    const caseIds = cases.map((c) => c.id);
+    const lastContactsInput: CaseLastContactInput[] = [];
+    if (caseIds.length > 0) {
+      const { data: logRows } = await supabase
+        .from("contact_logs")
+        .select("case_id, method, created_at")
+        .eq("org_id", org.org_id).in("case_id", caseIds)
+        .order("created_at", { ascending: false });
+      const methodLabel: Record<string, string> = { call: "Call", email: "Email", text: "Text", note: "Note" };
+      for (const r of (logRows as any[]) ?? []) {
+        if (r.case_id) lastContactsInput.push({ caseId: r.case_id, date: r.created_at, channel: methodLabel[r.method] ?? "Note" });
+      }
+      const { data: msgRows } = await supabase
+        .from("text_messages")
+        .select("case_id, created_at")
+        .eq("org_id", org.org_id).in("case_id", caseIds).eq("direction", "outbound")
+        .order("created_at", { ascending: false });
+      for (const r of (msgRows as any[]) ?? []) {
+        if (r.case_id) lastContactsInput.push({ caseId: r.case_id, date: r.created_at, channel: "Text" });
+      }
+    }
+
+    // Active promise per open case (pending preferred, else most-recent non-cancelled).
+    const promisesInput: CasePromiseInput[] = [];
+    if (caseIds.length > 0) {
+      const { data: promRows } = await supabase
+        .from("promises")
+        .select("case_id, status, promised_amount, promised_date, amount_received, created_at")
+        .eq("org_id", org.org_id).in("case_id", caseIds)
+        .neq("status", "cancelled")
+        .order("created_at", { ascending: false });
+      const seen = new Set<string>();
+      const pendingFirst = [...((promRows as any[]) ?? [])].sort((a, b) =>
+        (a.status === "pending" ? 0 : 1) - (b.status === "pending" ? 0 : 1));
+      for (const r of pendingFirst) {
+        if (seen.has(r.case_id)) continue;
+        seen.add(r.case_id);
+        promisesInput.push({
+          caseId: r.case_id, status: r.status, promisedAmount: Number(r.promised_amount) || 0,
+          promisedDate: r.promised_date, amountReceived: Number(r.amount_received) || 0,
+        });
+      }
+    }
+
     roster = await listOrgMembers(service, org.org_id);
     const ownerLabels = new Map(roster.map((m) => [m.userId, m.label]));
 
     dashboardData = buildCaseData(
-      cases, invoicesInput, customersInput, lastContactsInput,
+      cases, invoicesInput, customersInput, lastContactsInput, promisesInput,
       { view, sort, q, caseId, invoice, tab }, today, ownerLabels, user.id,
     );
 
@@ -385,6 +383,11 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
       selectedConsent = (custRow as any)?.sms_consent ?? false;
       selectedPhone = (custRow as any)?.phone ?? null;
       selectedRepInvoiceId = repInvoiceId;
+
+      // Active pending promise id for the cancel form
+      const { data: ap } = await supabase
+        .from("promises").select("id").eq("org_id", org.org_id).eq("case_id", sel.caseId).eq("status", "pending").maybeSingle();
+      selectedPromiseId = ap?.id ?? null;
     }
   }
 
@@ -408,7 +411,9 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
       selectedMessages,
       selectedConsent,
       selectedPhone,
+      selectedPromiseId,
       sms,
+      promiseError,
       roster,
       currentUserId: user.id,
       ...dashboardData,
@@ -434,10 +439,12 @@ export default function Dashboard() {
     tab,
     log,
     logError,
+    promiseError,
     selectedActivity,
     selectedMessages,
     selectedConsent,
     selectedPhone,
+    selectedPromiseId,
     sms,
     roster,
     items,
@@ -515,8 +522,10 @@ export default function Dashboard() {
                 messages={selectedMessages}
                 consent={selectedConsent}
                 phone={selectedPhone}
+                selectedPromiseId={selectedPromiseId}
                 roster={roster}
                 sms={sms}
+                promiseError={promiseError}
                 view={view}
                 sort={sort}
                 q={q}

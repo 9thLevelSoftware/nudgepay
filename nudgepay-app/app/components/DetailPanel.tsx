@@ -25,6 +25,16 @@ const STATUS_LABEL: Record<string, string> = {
   resolved: "Resolved",
 };
 
+// Static promise status → label + tone. Literal class strings for Tailwind v4.
+const PROMISE_STATUS: Record<string, { label: string; tone: string }> = {
+  pending:        { label: "Promise pending",  tone: "text-cool" },
+  kept:           { label: "Promise kept",     tone: "text-cool" },
+  partially_kept: { label: "Partially kept",   tone: "text-warm" },
+  broken:         { label: "Promise broken",   tone: "text-hot" },
+  renegotiated:   { label: "Renegotiated",     tone: "text-muted" },
+  cancelled:      { label: "Cancelled",        tone: "text-muted" },
+};
+
 function formatUSD(amount: number): string {
   return new Intl.NumberFormat("en-US", {
     style: "currency",
@@ -57,6 +67,12 @@ const SMS_BANNER: Record<string, { text: string; tone: string }> = {
   sent: { text: "Text sent.", tone: "text-cool" },
   noconsent: { text: "Not sent — customer has not consented to SMS.", tone: "text-hot" },
   error: { text: "Could not send the text.", tone: "text-hot" },
+};
+
+// Static promise-error code → copy. Literal strings for Tailwind v4.
+const PROMISE_ERROR_TEXT: Record<string, string> = {
+  "missing-promise": "Could not find that promise.",
+  "cancel-failed": "Could not cancel the promise.",
 };
 
 function MessagesTab({
@@ -234,10 +250,12 @@ export function DetailPanel({
   consent,
   phone,
   sms,
+  promiseError,
   roster,
   view,
   sort,
   q,
+  selectedPromiseId,
 }: {
   selected: CaseItem | null;
   repInvoiceId: string | null;
@@ -247,10 +265,12 @@ export function DetailPanel({
   consent: boolean;
   phone: string | null;
   sms: string | null;
+  promiseError?: string | null;
   roster: RosterMember[];
   view: string;
   sort: string;
   q: string;
+  selectedPromiseId: string | null;
 }) {
   // ── Empty state ────────────────────────────────────────────────────────────
   if (selected === null) {
@@ -273,6 +293,7 @@ export function DetailPanel({
 
   // ── Derived values ─────────────────────────────────────────────────────────
   const logHref = `?${new URLSearchParams({ case: selected.caseId, tab: "activity", view, sort, ...(q ? { q } : {}), log: "1" }).toString()}`;
+  const overviewReturnTo = `/dashboard?${new URLSearchParams({ case: selected.caseId, tab: "overview", view, sort, ...(q ? { q } : {}) }).toString()}`;
 
   return (
     <aside
@@ -472,6 +493,40 @@ export function DetailPanel({
               ))}
             </ul>
           </div>
+
+          {/* Promise card */}
+          {selected.promiseStatus ? (
+            <div className="mt-4 rounded-lg border border-border bg-panel px-4 py-3">
+              <div className="flex items-center justify-between">
+                <span className={`text-sm font-sans font-semibold ${PROMISE_STATUS[selected.promiseStatus]?.tone ?? "text-text"}`}>
+                  {PROMISE_STATUS[selected.promiseStatus]?.label ?? selected.promiseStatus}
+                </span>
+                {selected.promise ? (
+                  <span className="font-mono text-sm text-text">{formatUSD(selected.promise.amount)}</span>
+                ) : null}
+              </div>
+              {selected.promise ? (
+                <p className="mt-1 text-xs text-muted">
+                  Promised by {formatDate(selected.promise.date)}
+                  {selected.amountReceived != null ? ` · received ${formatUSD(selected.amountReceived)}` : ""}
+                </p>
+              ) : null}
+              {promiseError ? (
+                <p className="mt-1 text-xs font-sans font-medium text-hot">
+                  {PROMISE_ERROR_TEXT[promiseError] ?? "Could not cancel the promise."}
+                </p>
+              ) : null}
+              {selected.promiseStatus === "pending" && selectedPromiseId ? (
+                <form method="post" action="/api/promises/cancel" className="mt-2">
+                  <input type="hidden" name="promiseId" value={selectedPromiseId} />
+                  <input type="hidden" name="returnTo" value={overviewReturnTo} />
+                  <button type="submit" className="text-xs font-sans font-medium text-copper hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-copper rounded">
+                    Cancel promise
+                  </button>
+                </form>
+              ) : null}
+            </div>
+          ) : null}
         </section>
       ) : null}
 
