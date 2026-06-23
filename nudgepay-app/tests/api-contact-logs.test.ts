@@ -1,6 +1,7 @@
 import { expect, test } from "vitest";
 import { serviceClient, makeUserClient } from "./helpers";
 import { parseContactLogForm } from "../app/lib/contact-log";
+import { action as _contactLogAction } from "../app/routes/api.contact-logs";
 
 // ── Task 1: migration columns exist and accept promise data ──────────────────
 test("contact_logs accepts promised_amount and promised_date", async () => {
@@ -75,7 +76,6 @@ test("parse: rejects malformed follow-up date", () => {
 });
 
 // ── Task 4: RLS user client inserts a contact log ────────────────────────────
-import { action as contactLogAction } from "../app/routes/api.contact-logs";
 
 // Build a minimal env/context the action expects (getEnv reads from context).
 // The action uses requireUser (cookie-based). For a direct-call test we instead
@@ -104,4 +104,5 @@ test("RLS user client inserts a contact log readable back within the org", async
   expect(rows!.length).toBe(1);
   expect(rows![0].user_id).toBe(user.userId);
   expect(Number(rows![0].promised_amount)).toBe(300);
+  expect(rows![0].promised_date).toBe("2026-07-15");
 });

@@ -5,7 +5,7 @@ import { parseContactLogForm } from "../lib/contact-log";
 
 // Resolve a safe same-origin redirect target. We only accept an app-relative
 // path (must start with a single "/", not "//") to avoid open-redirects.
-function safeReturnTo(raw: FormData, _requestUrl: string): string {
+function safeReturnTo(raw: FormData): string {
   const v = raw.get("returnTo");
   if (typeof v === "string" && v.startsWith("/") && !v.startsWith("//")) return v;
   return "/dashboard";
@@ -23,7 +23,7 @@ export async function action({ request, context }: ActionFunctionArgs) {
   if (!org) throw redirect("/onboarding", { headers });
 
   const form = await request.formData();
-  const returnTo = safeReturnTo(form, request.url);
+  const returnTo = safeReturnTo(form);
 
   const parsed = parseContactLogForm(form);
   if (!parsed.ok) return redirect(withError(returnTo, parsed.error), { headers });
