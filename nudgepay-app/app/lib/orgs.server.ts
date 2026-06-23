@@ -43,3 +43,31 @@ export async function createOrgForUser(
   }
   return org.id as string;
 }
+
+export type OrgMember = { userId: string; email: string; label: string };
+
+// Roster of the org's members with display labels. Uses the SERVICE client
+// because member emails live in auth.users, which the RLS user client cannot
+// read (same own-org exception as connection status). label = email local-part.
+export async function listOrgMembers(
+  service: SupabaseClient,
+  orgId: string,
+): Promise<OrgMember[]> {
+  const { data: rows, error } = await service
+    .from("memberships").select("user_id").eq("org_id", orgId);
+  if (error) throw error;
+  const memberIds = new Set((rows ?? []).map((r) => r.user_id as string));
+  if (memberIds.size === 0) return [];
+
+  const { data: list, error: listErr } = await service.auth.admin.listUsers({ perPage: 1000 });
+  if (listErr) throw listErr;
+  const emailById = new Map(list.users.map((u) => [u.id, u.email ?? ""]));
+
+  const members: OrgMember[] = [...memberIds].map((userId) => {
+    const email = emailById.get(userId) ?? "";
+    const label = email ? email.split("@")[0] : userId.slice(0, 8);
+    return { userId, email, label };
+  });
+  members.sort((a, b) => a.label.localeCompare(b.label));
+  return members;
+}

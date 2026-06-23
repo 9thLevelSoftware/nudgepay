@@ -3,7 +3,7 @@ import { Link } from "react-router";
 import { type WorkItem } from "~/lib/worklist";
 import { Icon } from "~/components/Icons";
 import { SMS_TEMPLATES, applyTemplate, type TemplateVars } from "~/lib/sms-templates";
-import type { ActivityEntry, MessageEntry } from "~/routes/dashboard";
+import type { ActivityEntry, MessageEntry, RosterMember } from "~/routes/dashboard";
 
 // Static tone-to-text-color map — priority.tone and nextAction.tone → Tailwind class.
 // Must be literal strings so Tailwind can tree-shake them; no dynamic construction.
@@ -232,6 +232,7 @@ export function DetailPanel({
   consent,
   phone,
   sms,
+  roster,
   view,
   sort,
   q,
@@ -243,6 +244,7 @@ export function DetailPanel({
   consent: boolean;
   phone: string | null;
   sms: string | null;
+  roster: RosterMember[];
   view: string;
   sort: string;
   q: string;
@@ -426,7 +428,31 @@ export function DetailPanel({
               value={selected.nextAction.label}
               tone={selected.nextAction.tone}
             />
-            <InfoRow label="Owner" value={selected.owner || "Unassigned"} />
+            <div className="flex flex-col gap-0.5">
+              <span className="text-xs font-sans font-medium uppercase tracking-wider text-muted">
+                Owner
+              </span>
+              <form method="post" action="/api/assign">
+                <input type="hidden" name="customerId" value={selected.customerId ?? ""} />
+                <input
+                  type="hidden"
+                  name="returnTo"
+                  value={`/dashboard?${new URLSearchParams({ invoice: selected.invoiceId, tab: "overview", view, sort, ...(q ? { q } : {}) }).toString()}`}
+                />
+                <select
+                  name="ownerId"
+                  defaultValue={selected.ownerId ?? ""}
+                  onChange={(e) => e.currentTarget.form?.requestSubmit()}
+                  aria-label="Assign owner"
+                  className="w-full rounded-md border border-border bg-panel px-2 py-1 text-sm font-sans text-text focus:outline-none focus-visible:ring-2 focus-visible:ring-copper"
+                >
+                  <option value="">Unassigned</option>
+                  {roster.map((m) => (
+                    <option key={m.userId} value={m.userId}>{m.label}</option>
+                  ))}
+                </select>
+              </form>
+            </div>
             <InfoRow label="Phone" value={selected.phone ?? "—"} />
             <InfoRow label="Email" value={selected.email ?? "—"} />
             <InfoRow label="Open invoices" value={String(selected.invoiceCount)} />
