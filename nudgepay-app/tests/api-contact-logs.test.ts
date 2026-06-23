@@ -1,5 +1,6 @@
-import { expect, test, beforeAll } from "vitest";
+import { expect, test } from "vitest";
 import { serviceClient, makeUserClient } from "./helpers";
+import { parseContactLogForm } from "../app/lib/contact-log";
 
 // ── Task 1: migration columns exist and accept promise data ──────────────────
 test("contact_logs accepts promised_amount and promised_date", async () => {
@@ -23,4 +24,52 @@ test("contact_logs accepts promised_amount and promised_date", async () => {
   expect(error).toBeNull();
   expect(Number(row!.promised_amount)).toBe(500.5);
   expect(row!.promised_date).toBe("2026-07-01");
+});
+
+// ── Task 3: parseContactLogForm pure validator ───────────────────────────────
+
+function fd(entries: Record<string, string>): FormData {
+  const f = new FormData();
+  for (const [k, v] of Object.entries(entries)) f.set(k, v);
+  return f;
+}
+
+test("parse: valid call with no promise", () => {
+  const r = parseContactLogForm(fd({ invoiceId: "i1", method: "call", outcome: "no-answer" }));
+  expect(r).toEqual({ ok: true, fields: {
+    invoiceId: "i1", customerId: null, method: "call", outcome: "no-answer",
+    notes: null, followUpAt: null, promisedAmount: null, promisedDate: null,
+  }});
+});
+
+test("parse: promise-to-pay requires amount and date", () => {
+  expect(parseContactLogForm(fd({ invoiceId: "i1", method: "call", outcome: "promise-to-pay" })))
+    .toEqual({ ok: false, error: "promise-required" });
+  expect(parseContactLogForm(fd({ invoiceId: "i1", method: "call", outcome: "promise-to-pay", promisedAmount: "500" })))
+    .toEqual({ ok: false, error: "promise-required" });
+});
+
+test("parse: promise-to-pay valid", () => {
+  const r = parseContactLogForm(fd({
+    invoiceId: "i1", customerId: "c1", method: "call", outcome: "promise-to-pay",
+    promisedAmount: "500.50", promisedDate: "2026-07-01", notes: "  AP will pay  ", followUpAt: "2026-07-02",
+  }));
+  expect(r).toEqual({ ok: true, fields: {
+    invoiceId: "i1", customerId: "c1", method: "call", outcome: "promise-to-pay",
+    notes: "AP will pay", followUpAt: "2026-07-02", promisedAmount: 500.5, promisedDate: "2026-07-01",
+  }});
+});
+
+test("parse: rejects bad amount, bad date, bad method, bad outcome, missing invoice", () => {
+  expect(parseContactLogForm(fd({ invoiceId: "i1", method: "call", outcome: "promise-to-pay", promisedAmount: "-5", promisedDate: "2026-07-01" })).ok).toBe(false);
+  expect(parseContactLogForm(fd({ invoiceId: "i1", method: "call", outcome: "promise-to-pay", promisedAmount: "abc", promisedDate: "2026-07-01" }))).toEqual({ ok: false, error: "bad-amount" });
+  expect(parseContactLogForm(fd({ invoiceId: "i1", method: "call", outcome: "promise-to-pay", promisedAmount: "500", promisedDate: "nope" }))).toEqual({ ok: false, error: "bad-date" });
+  expect(parseContactLogForm(fd({ invoiceId: "i1", method: "smoke", outcome: "no-answer" }))).toEqual({ ok: false, error: "bad-method" });
+  expect(parseContactLogForm(fd({ invoiceId: "i1", method: "call", outcome: "vibes" }))).toEqual({ ok: false, error: "bad-outcome" });
+  expect(parseContactLogForm(fd({ method: "call", outcome: "no-answer" }))).toEqual({ ok: false, error: "missing-invoice" });
+});
+
+test("parse: rejects malformed follow-up date", () => {
+  expect(parseContactLogForm(fd({ invoiceId: "i1", method: "note", outcome: "other", followUpAt: "2026-13-99" })))
+    .toEqual({ ok: false, error: "bad-date" });
 });
