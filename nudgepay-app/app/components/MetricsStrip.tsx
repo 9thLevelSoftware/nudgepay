@@ -1,4 +1,4 @@
-import type { Metrics } from "../lib/worklist.server";
+import type { Metrics } from "../lib/worklist-pure";
 
 const usd = new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" });
 

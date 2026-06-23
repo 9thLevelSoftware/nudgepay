@@ -1,5 +1,5 @@
 import { Form, Link } from "react-router";
-import type { WorkItem, ViewId, SortId, NextAction } from "../lib/worklist.server";
+import type { WorkItem, ViewId, SortId, NextAction } from "../lib/worklist-pure";
 import { ThermalBand } from "./ThermalBand";
 import { Icon } from "./Icons";
 

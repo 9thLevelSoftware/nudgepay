@@ -1,4 +1,4 @@
-import type { Heat } from "../lib/worklist.server";
+import type { Heat } from "../lib/worklist-pure";
 
 // Map the heat band to the Tailwind token classes for text, background tint, and bar fill.
 // Tailwind v4 with @theme: bg-cool/10, bg-warm/10, bg-hot/10 are the tint tokens.

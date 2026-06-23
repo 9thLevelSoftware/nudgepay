@@ -1,5 +1,5 @@
 import { Link } from "react-router";
-import { type WorkItem } from "~/lib/worklist.server";
+import { type WorkItem } from "~/lib/worklist-pure";
 import { Icon } from "~/components/Icons";
 
 // Static tone-to-text-color map — priority.tone and nextAction.tone → Tailwind class.
