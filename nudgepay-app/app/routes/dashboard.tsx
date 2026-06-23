@@ -322,7 +322,7 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
         .order("created_at", { ascending: false });
       const seen = new Set<string>();
       const pendingFirst = [...((promRows as any[]) ?? [])].sort((a, b) =>
-        (a.status === "pending" ? -1 : 0) - (b.status === "pending" ? -1 : 0));
+        (a.status === "pending" ? 0 : 1) - (b.status === "pending" ? 0 : 1));
       for (const r of pendingFirst) {
         if (seen.has(r.case_id)) continue;
         seen.add(r.case_id);
