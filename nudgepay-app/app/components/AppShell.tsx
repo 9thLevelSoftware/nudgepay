@@ -1,0 +1,210 @@
+import { useState } from "react";
+import { Icon } from "./Icons";
+
+interface AppShellProps {
+  orgName: string;
+  userInitials: string;
+  syncLabel: string;
+  connected: boolean;
+  /** Reserved for future owner-gated header actions (Task 6+). */
+  isOwner: boolean;
+  children: React.ReactNode;
+}
+
+interface NavItem {
+  name: string;
+  icon: "bookmark" | "user" | "check" | "message" | "note" | "settings";
+  label: string;
+  active?: boolean;
+}
+
+const NAV_ITEMS: NavItem[] = [
+  { name: "collections", icon: "bookmark", label: "Collections", active: true },
+  { name: "accounts", icon: "user", label: "Accounts" },
+  { name: "promises", icon: "check", label: "Promises" },
+  { name: "messages", icon: "message", label: "Messages" },
+  { name: "reports", icon: "note", label: "Reports" },
+  { name: "settings", icon: "settings", label: "Settings" },
+];
+
+/**
+ * AppShell — the application frame for the NudgePay collections workspace.
+ *
+ * Layout:
+ *   - `ink` top bar: brand mark, workspace title "Collections", sync chip,
+ *     settings icon, user avatar with initials.
+ *   - `ink` left icon side-nav: Collections (active, copper left-edge
+ *     indicator); Accounts/Promises/Messages/Reports/Settings (inert,
+ *     aria-disabled, muted).
+ *   - Main area: `bg-panel`, renders `children`.
+ *
+ * Responsive: side-nav hidden below `md`, toggled via the menu button in the
+ * top bar. A backdrop overlay closes the drawer on mobile.
+ *
+ * Accessibility: copper focus rings on all interactive elements,
+ * aria-disabled on future-nav links, aria-label on icon-only controls,
+ * aria-expanded on the menu toggle.
+ */
+export function AppShell({
+  orgName,
+  userInitials,
+  syncLabel,
+  connected,
+  isOwner: _isOwner,
+  children,
+}: AppShellProps) {
+  const [navOpen, setNavOpen] = useState(false);
+
+  return (
+    <div className="flex flex-col h-screen overflow-hidden font-sans">
+      {/* ── Top bar ─────────────────────────────────────────────────────── */}
+      <header className="flex items-center gap-3 px-4 h-12 shrink-0 bg-ink text-surface">
+        {/* Mobile menu toggle */}
+        <button
+          type="button"
+          className="md:hidden flex items-center justify-center w-8 h-8 rounded text-surface/70 hover:text-surface focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-copper"
+          aria-label="Toggle navigation"
+          aria-expanded={navOpen}
+          onClick={() => setNavOpen((v) => !v)}
+        >
+          <Icon name="menu" size={18} />
+        </button>
+
+        {/* Brand mark */}
+        <a
+          href="/dashboard"
+          className="flex items-center gap-0 font-display text-[17px] font-semibold leading-none tracking-tight focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-copper rounded"
+        >
+          <span className="text-copper">Nudge</span>
+          <span className="text-surface/90">Pay</span>
+        </a>
+
+        {/* Workspace title */}
+        <span
+          className="hidden sm:flex items-center gap-1.5 text-surface/40 text-[13px] font-sans"
+          aria-hidden="true"
+        >
+          <span>/</span>
+          <span className="text-surface/70 font-medium">{orgName}</span>
+          <span>/</span>
+          <span className="text-surface/90 font-medium">Collections</span>
+        </span>
+
+        {/* Right-side controls */}
+        <div className="ml-auto flex items-center gap-2">
+          {/* Sync chip */}
+          <div
+            className="hidden sm:flex items-center gap-1.5 px-2 py-1 rounded bg-surface/5 border border-surface/10"
+            aria-label={connected ? `Connected — ${syncLabel}` : `Disconnected — ${syncLabel}`}
+          >
+            <span
+              className={`w-1.5 h-1.5 rounded-full shrink-0 ${connected ? "bg-copper" : "bg-muted"}`}
+              aria-hidden="true"
+            />
+            <span className="text-[11px] font-sans text-surface/60 leading-none">
+              {syncLabel}
+            </span>
+          </div>
+
+          {/* Settings */}
+          <button
+            type="button"
+            className="flex items-center justify-center w-8 h-8 rounded text-surface/60 hover:text-surface focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-copper"
+            aria-label="Settings"
+          >
+            <Icon name="settings" size={16} />
+          </button>
+
+          {/* User avatar */}
+          <div
+            className="flex items-center justify-center w-7 h-7 rounded-full bg-copper/20 border border-copper/40 text-copper font-sans text-[11px] font-semibold uppercase leading-none select-none"
+            aria-label={`Signed in — ${userInitials}`}
+            role="img"
+          >
+            {userInitials}
+          </div>
+        </div>
+      </header>
+
+      {/* ── Body (side-nav + main) ───────────────────────────────────────── */}
+      <div className="flex flex-1 overflow-hidden relative">
+        {/* Mobile backdrop */}
+        {navOpen && (
+          <div
+            className="fixed inset-0 z-20 bg-ink/60 md:hidden"
+            aria-hidden="true"
+            onClick={() => setNavOpen(false)}
+          />
+        )}
+
+        {/* ── Side nav ──────────────────────────────────────────────────── */}
+        <nav
+          className={[
+            // Base: fixed on mobile (slide in/out), static on md+
+            "fixed md:static inset-y-0 left-0 z-30 flex flex-col",
+            "w-14 bg-ink text-surface/60",
+            "transition-transform duration-200 ease-in-out",
+            // On mobile: shift nav below the 48px top bar
+            "top-12 md:top-0",
+            // Mobile: translate off-screen when closed
+            navOpen ? "translate-x-0" : "-translate-x-full md:translate-x-0",
+          ].join(" ")}
+          aria-label="Main navigation"
+        >
+          <ul className="flex flex-col items-center gap-1 pt-3" role="list">
+            {NAV_ITEMS.map((item) =>
+              item.active ? (
+                /* Active: Collections — copper left-edge indicator */
+                <li key={item.name} className="relative w-full">
+                  <a
+                    href="/dashboard"
+                    className="relative flex flex-col items-center justify-center w-full py-3 gap-1 text-surface focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-copper focus-visible:ring-inset"
+                    aria-current="page"
+                    aria-label={item.label}
+                    onClick={() => setNavOpen(false)}
+                  >
+                    {/* Copper active indicator */}
+                    <span
+                      className="absolute left-0 inset-y-0 w-0.5 bg-copper rounded-r"
+                      aria-hidden="true"
+                    />
+                    <Icon name={item.icon} size={18} className="text-copper" />
+                    <span className="text-[9px] font-sans font-medium uppercase tracking-wide text-copper leading-none">
+                      {item.label}
+                    </span>
+                  </a>
+                </li>
+              ) : (
+                /* Inert future nav items */
+                <li key={item.name} className="relative w-full">
+                  {/* eslint-disable-next-line jsx-a11y/anchor-is-valid */}
+                  <a
+                    href="#"
+                    className="flex flex-col items-center justify-center w-full py-3 gap-1 text-surface/40 cursor-default focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-copper focus-visible:ring-inset"
+                    aria-disabled="true"
+                    aria-label={`${item.label} (coming soon)`}
+                    tabIndex={0}
+                    onClick={(e) => e.preventDefault()}
+                  >
+                    <Icon name={item.icon} size={18} />
+                    <span className="text-[9px] font-sans font-medium uppercase tracking-wide leading-none">
+                      {item.label}
+                    </span>
+                  </a>
+                </li>
+              ),
+            )}
+          </ul>
+        </nav>
+
+        {/* ── Main content ──────────────────────────────────────────────── */}
+        <main
+          className="flex-1 overflow-auto bg-panel"
+          id="main-content"
+        >
+          {children}
+        </main>
+      </div>
+    </div>
+  );
+}
