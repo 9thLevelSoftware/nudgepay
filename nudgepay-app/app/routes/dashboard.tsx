@@ -216,6 +216,7 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
   const sms = sp.get("sms");
   const log = sp.get("log") === "1";
   const logError = sp.get("logError");
+  const promiseError = sp.get("promiseError");
 
   const today = new Date().toISOString().slice(0, 10);
 
@@ -412,6 +413,7 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
       selectedPhone,
       selectedPromiseId,
       sms,
+      promiseError,
       roster,
       currentUserId: user.id,
       ...dashboardData,
@@ -437,6 +439,7 @@ export default function Dashboard() {
     tab,
     log,
     logError,
+    promiseError,
     selectedActivity,
     selectedMessages,
     selectedConsent,
@@ -522,6 +525,7 @@ export default function Dashboard() {
                 selectedPromiseId={selectedPromiseId}
                 roster={roster}
                 sms={sms}
+                promiseError={promiseError}
                 view={view}
                 sort={sort}
                 q={q}

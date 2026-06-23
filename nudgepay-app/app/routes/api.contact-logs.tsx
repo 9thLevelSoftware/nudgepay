@@ -36,7 +36,7 @@ export async function action({ request, context }: ActionFunctionArgs) {
     if (!inv) return redirect(withError(returnTo, "missing-invoice"), { headers });
   }
 
-  const { error } = await supabase.from("contact_logs").insert({
+  const { data: logRow, error } = await supabase.from("contact_logs").insert({
     org_id: org.org_id,
     case_id: f.caseId,
     invoice_id: f.invoiceId,
@@ -48,8 +48,9 @@ export async function action({ request, context }: ActionFunctionArgs) {
     follow_up_at: f.followUpAt,
     promised_amount: f.promisedAmount,
     promised_date: f.promisedDate,
-  });
-  if (error) return redirect(withError(returnTo, "save-failed"), { headers });
+  }).select("id").single();
+  if (error || !logRow) return redirect(withError(returnTo, "save-failed"), { headers });
+  const contactLogId: string = logRow.id;
 
   // Keep next-action durable: a logged contact moves the case to "working" and,
   // when a follow-up date was given, sets it as the next action. This case update
@@ -67,7 +68,7 @@ export async function action({ request, context }: ActionFunctionArgs) {
   if (f.outcome === "promise-to-pay" && f.promisedAmount != null && f.promisedDate != null) {
     const res = await createPromiseForLog(supabase, {
       orgId: org.org_id, caseId: f.caseId, customerId: f.customerId, userId: user.id,
-      contactLogId: null, promisedAmount: f.promisedAmount, promisedDate: f.promisedDate,
+      contactLogId, promisedAmount: f.promisedAmount, promisedDate: f.promisedDate,
     });
     if (!res.ok) return redirect(withError(returnTo, "save-failed"), { headers });
   }

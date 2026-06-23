@@ -69,6 +69,12 @@ const SMS_BANNER: Record<string, { text: string; tone: string }> = {
   error: { text: "Could not send the text.", tone: "text-hot" },
 };
 
+// Static promise-error code → copy. Literal strings for Tailwind v4.
+const PROMISE_ERROR_TEXT: Record<string, string> = {
+  "missing-promise": "Could not find that promise.",
+  "cancel-failed": "Could not cancel the promise.",
+};
+
 function MessagesTab({
   selected, repInvoiceId, messages, consent, phone, sms, view, sort, q,
 }: {
@@ -244,6 +250,7 @@ export function DetailPanel({
   consent,
   phone,
   sms,
+  promiseError,
   roster,
   view,
   sort,
@@ -258,6 +265,7 @@ export function DetailPanel({
   consent: boolean;
   phone: string | null;
   sms: string | null;
+  promiseError?: string | null;
   roster: RosterMember[];
   view: string;
   sort: string;
@@ -501,6 +509,11 @@ export function DetailPanel({
                 <p className="mt-1 text-xs text-muted">
                   Promised by {formatDate(selected.promise.date)}
                   {selected.amountReceived != null ? ` · received ${formatUSD(selected.amountReceived)}` : ""}
+                </p>
+              ) : null}
+              {promiseError ? (
+                <p className="mt-1 text-xs font-sans font-medium text-hot">
+                  {PROMISE_ERROR_TEXT[promiseError] ?? "Could not cancel the promise."}
                 </p>
               ) : null}
               {selected.promiseStatus === "pending" && selectedPromiseId ? (

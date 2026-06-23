@@ -81,7 +81,14 @@ export async function applyPaymentsAndEvaluate(
   paymentRaws: { raw: any; type: "payment" | "credit_memo" }[],
   today: string, now: Date,
 ): Promise<void> {
-  const payCustQboIds = paymentRaws.map((e) => e?.raw?.CustomerRef?.value).filter(Boolean).map(String);
+  const allPayCustQboIds = paymentRaws.map((e) => e?.raw?.CustomerRef?.value);
+  const droppedIds = paymentRaws
+    .filter((e) => !e?.raw?.CustomerRef?.value)
+    .map((e) => e?.raw?.Id ?? "(unknown)");
+  if (droppedIds.length > 0) {
+    console.warn("[6b] payment with no CustomerRef; skipping re-pull", droppedIds);
+  }
+  const payCustQboIds = allPayCustQboIds.filter(Boolean).map(String);
   const payIdMap = await customerIdMap(deps.service, orgId, payCustQboIds);
   const paymentRows = paymentRaws.map((e) =>
     mapQboPayment(e.raw, e.type, orgId, payIdMap.get(String(e?.raw?.CustomerRef?.value)) ?? null, now));

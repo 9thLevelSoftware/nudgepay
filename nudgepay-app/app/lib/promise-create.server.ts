@@ -18,7 +18,8 @@ export type CreatePromiseInput = {
 export async function createPromiseForLog(
   client: SupabaseClient, input: CreatePromiseInput,
 ): Promise<{ ok: true; promiseId: string } | { ok: false }> {
-  // Currently-overdue invoices for this customer (case-scoped via customer).
+  // Links all open-balance invoices (not just the overdue subset) because balance-delta
+  // counts any payment against the customer's balance, and baseline+eval use the identical stored set.
   const { data: invs, error: iErr } = await client
     .from("invoices")
     .select("id, balance")
