@@ -8,9 +8,11 @@
 
 ---
 
-## Setup: Deploy with Sandbox Configuration
+## Step 1: Deploy with Sandbox Configuration
 
-Before proceeding with the demonstration steps, deploy the NudgePay application with Intuit sandbox credentials.
+**Observable Result:** Worker is deployed with Intuit sandbox credentials; `${APP_BASE_URL}` is reachable over HTTPS (HTTP 200).
+
+Deploy the NudgePay application with Intuit sandbox credentials before proceeding with the demonstration steps. Reference the Phase 4 Production Deploy Runbook (`docs/superpowers/phase4-deploy-runbook.md`), **sandbox variant** (use the sandbox app keys and `QBO_SANDBOX=true` rather than production values).
 
 ### Configuration
 
@@ -42,9 +44,11 @@ Before proceeding with the demonstration steps, deploy the NudgePay application 
 
 ---
 
-## Step 1: User Sign-Up and Authentication
+## Step 2: Connect to QuickBooks Online (Sandbox Company)
 
-**Observable Result:** User is signed up and authenticated; dashboard is accessible.
+**Observable Result:** User signs in, reaches the dashboard, completes the OAuth redirect, and the dashboard displays "Connected" status for QuickBooks.
+
+### 2.1 Sign In and Reach the Dashboard
 
 1. Navigate to `${APP_BASE_URL}` in a web browser.
 2. Click **Sign Up** (or **Register**).
@@ -54,20 +58,14 @@ Before proceeding with the demonstration steps, deploy the NudgePay application 
 6. Log in with the confirmed email and password.
 7. **Verify:** You are logged in and see the dashboard or tenant workspace selector.
 
----
-
-## Step 2: Connect to QuickBooks Online (Sandbox Company)
-
-**Observable Result:** OAuth redirect completed; dashboard displays "Connected" status for QuickBooks.
-
-### 2.1 Initiate OAuth
+### 2.2 Initiate OAuth
 
 1. On the dashboard, locate the **Connect QuickBooks** button or link (or **Manage QuickBooks Integration** if already partially configured).
 2. Click **Connect QuickBooks**.
    - **Route triggered:** `POST /api/qbo/connect` (nudgepay-app/app/routes/api.qbo.connect.tsx)
    - You are redirected to Intuit's OAuth login screen (`https://appcenter.intuit.com/connect/oauth2` for sandbox).
 
-### 2.2 Authorize the Sandbox Company
+### 2.3 Authorize the Sandbox Company
 
 1. On the Intuit login page, sign in with your Intuit sandbox account credentials.
 2. On the authorization consent screen, select a sandbox company (e.g., "Sample Sandbox Company" or a test company you created).
@@ -76,7 +74,7 @@ Before proceeding with the demonstration steps, deploy the NudgePay application 
    - **Route triggered:** `GET /auth/qbo/callback` (nudgepay-app/app/routes/auth.qbo.callback.tsx)
    - The callback validates the state token, exchanges the authorization code for an access token, and stores encrypted tokens in the database.
 
-### 2.3 Verify Connected Status
+### 2.4 Verify Connected Status
 
 1. You are redirected back to the dashboard.
 2. **Verify on the dashboard:** A "Connected to QuickBooks" or similar status message is displayed (e.g., green checkmark, "Connected" label).
@@ -91,7 +89,7 @@ Before proceeding with the demonstration steps, deploy the NudgePay application 
    - `status` = `'connected'`
    - `access_token_enc` is a non-null base64-encoded ciphertext (not plaintext)
    - `refresh_token_enc` is a non-null base64-encoded ciphertext (not plaintext)
-   - `realm_id` matches the sandbox company realm ID from Step 2.2
+   - `realm_id` matches the sandbox company realm ID from Step 2.3
 
 ---
 
@@ -100,7 +98,7 @@ Before proceeding with the demonstration steps, deploy the NudgePay application 
 **Observable Result:** Tokens are encrypted at rest; no plaintext credentials are stored in the database.
 
 1. In your Supabase project dashboard, open the **SQL Editor**.
-2. Run the query from Step 2.3 and inspect the token columns:
+2. Run the query from Step 2.4 and inspect the token columns:
    ```sql
    SELECT access_token_enc, refresh_token_enc FROM qbo_connections
    WHERE organization_id = '<your-org-id>'
@@ -256,11 +254,12 @@ The application also runs a scheduled Change Data Capture (CDC) cron job every 3
 
 ### 6.3 Verify Intuit Disconnect URL (Optional)
 
-Intuit may initiate a disconnect from their side (e.g., if the user disconnects the app from their Intuit account). The app provides a landing URL for this:
+Intuit may initiate a disconnect from their side (e.g., if the user disconnects the app from their Intuit account). The app provides a GET landing URL for this:
 
-- **Disconnect URL:** `${APP_BASE_URL}/auth/qbo/disconnect` (configured in the Intuit app's **Keys & Credentials** section, **Disconnect URL** field)
-- **Behavior:** If Intuit POSTs to this URL, it clears the local `qbo_connections` record.
-- **Verification:** This path is not tested in this demonstration but is available if Intuit requires it.
+- **Disconnect URL:** `${APP_BASE_URL}/api/qbo/disconnect` (configured in the Intuit app's **Keys & Credentials** section, **Disconnect URL** field — the same value recorded in `docs/superpowers/phase4-intuit-app-details.md`).
+- **Behavior:** When Intuit redirects the user's browser to this GET URL, the route's `loader` clears the org's stored `qbo_connections` tokens (revokes with Intuit and sets `status = disconnected` with the token columns null) and renders a confirmation page.
+- **Route:** `GET /api/qbo/disconnect` (nudgepay-app/app/routes/api.qbo.disconnect.tsx). This is the same route file as the in-app disconnect: the in-app **Disconnect QuickBooks** button (Step 6.1) hits the POST `action`, while the Intuit Disconnect URL landing (this Step 6.3) hits the GET `loader` — two methods, one route file (implemented in Task 2).
+- **Verification:** This path is not exercised in this demonstration but is available if Intuit requires it.
 
 ### 6.4 Verify Sync Is Blocked After Disconnect
 
