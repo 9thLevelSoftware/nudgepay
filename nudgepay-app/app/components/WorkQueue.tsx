@@ -1,6 +1,7 @@
 import { Form, Link } from "react-router";
 import type { ViewId, SortId } from "../lib/worklist";
 import type { CaseItem } from "../lib/cases";
+import { formatDate } from "../lib/dates";
 import { ThermalBand } from "./ThermalBand";
 import { Icon } from "./Icons";
 
@@ -19,14 +20,6 @@ const STATUS_LABEL: Record<string, string> = {
 };
 
 const usd = new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" });
-
-function fmtDate(dateStr: string): string {
-  return new Date(dateStr).toLocaleDateString("en-US", {
-    month: "short",
-    day: "numeric",
-    year: "numeric",
-  });
-}
 
 // ---------------------------------------------------------------------------
 // Saved-view tab definitions
@@ -139,7 +132,7 @@ function QueueRow({
       <span data-label="Last contact" className="hidden lg:block min-w-0">
         {item.lastContact ? (
           <>
-            <span className="block text-text text-xs">{fmtDate(item.lastContact.date)}</span>
+            <span className="block text-text text-xs">{formatDate(item.lastContact.date)}</span>
             <span className="block text-muted text-xs capitalize">{item.lastContact.channel}</span>
           </>
         ) : (
@@ -150,7 +143,7 @@ function QueueRow({
       {/* Status + next action date */}
       <span data-label="Next action" className="hidden lg:block text-xs font-sans font-medium whitespace-nowrap text-text">
         {STATUS_LABEL[item.status] ?? item.status}
-        {item.nextActionAt ? <span className="text-muted"> · {fmtDate(item.nextActionAt)}</span> : null}
+        {item.nextActionAt ? <span className="text-muted"> · {formatDate(item.nextActionAt)}</span> : null}
       </span>
 
       {/* Owner chip */}
@@ -222,7 +215,7 @@ function MobileCard({
         </span>
         <span className="font-sans font-medium text-text">
           {STATUS_LABEL[item.status] ?? item.status}
-          {item.nextActionAt ? <span className="text-muted"> · {fmtDate(item.nextActionAt)}</span> : null}
+          {item.nextActionAt ? <span className="text-muted"> · {formatDate(item.nextActionAt)}</span> : null}
         </span>
       </div>
 
@@ -230,7 +223,7 @@ function MobileCard({
       <div className="mt-1 text-xs">
         {item.lastContact ? (
           <span className="text-muted">
-            {fmtDate(item.lastContact.date)} · {item.lastContact.channel}
+            {formatDate(item.lastContact.date)} · {item.lastContact.channel}
           </span>
         ) : (
           <span className="text-muted">Never contacted</span>

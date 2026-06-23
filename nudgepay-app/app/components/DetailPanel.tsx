@@ -3,6 +3,7 @@ import { Link } from "react-router";
 import { type CaseItem } from "~/lib/cases";
 import { Icon } from "~/components/Icons";
 import { SMS_TEMPLATES, applyTemplate, type TemplateVars } from "~/lib/sms-templates";
+import { formatDate } from "~/lib/dates";
 import type { ActivityEntry, MessageEntry, RosterMember } from "~/routes/dashboard";
 
 // Static tone-to-text-color map — heat.band → Tailwind class.
@@ -24,19 +25,6 @@ const STATUS_LABEL: Record<string, string> = {
   resolved: "Resolved",
 };
 
-function formatDueDate(dueDate: string | null): string {
-  if (!dueDate) return "—";
-  try {
-    return new Date(dueDate).toLocaleDateString("en-US", {
-      month: "short",
-      day: "numeric",
-      year: "numeric",
-    });
-  } catch {
-    return "—";
-  }
-}
-
 function formatUSD(amount: number): string {
   return new Intl.NumberFormat("en-US", {
     style: "currency",
@@ -56,11 +44,6 @@ const OUTCOME_TEXT: Record<string, string> = {
   "no-answer": "No answer",
   other: "Logged",
 };
-function formatDateTime(iso: string): string {
-  try {
-    return new Date(iso).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
-  } catch { return "—"; }
-}
 function todayISO(): string {
   return new Date().toISOString().slice(0, 10);
 }
@@ -101,7 +84,7 @@ function MessagesTab({
     customer: selected.customerName,
     invoice: repInvoice?.docNumber ?? selected.customerName,
     balance: formatUSD(selected.totalOverdue),
-    dueDate: formatDueDate(repInvoice?.dueDate ?? null),
+    dueDate: formatDate(repInvoice?.dueDate ?? null),
   };
 
   const [body, setBody] = useState("");
@@ -442,7 +425,7 @@ export function DetailPanel({
               label="Next action"
               value={
                 selected.nextActionType
-                  ? `${selected.nextActionType}${selected.nextActionAt ? ` · ${formatDueDate(selected.nextActionAt)}` : ""}`
+                  ? `${selected.nextActionType}${selected.nextActionAt ? ` · ${formatDate(selected.nextActionAt)}` : ""}`
                   : "—"
               }
             />
@@ -515,15 +498,15 @@ export function DetailPanel({
                       <span className="text-sm font-sans font-semibold text-text">
                         {OUTCOME_TEXT[a.outcome ?? "other"] ?? "Logged"}
                       </span>
-                      <span className="font-mono text-xs text-muted">{formatDateTime(a.createdAt)}</span>
+                      <span className="font-mono text-xs text-muted">{formatDate(a.createdAt)}</span>
                       {a.promisedAmount != null && a.promisedDate != null && (
                         <span className={`text-xs font-sans font-medium ${broken ? "text-hot" : "text-text"}`}>
-                          Promised {formatUSD(a.promisedAmount)} by {formatDateTime(a.promisedDate)}
+                          Promised {formatUSD(a.promisedAmount)} by {formatDate(a.promisedDate)}
                           {broken ? " · broken" : ""}
                         </span>
                       )}
                       {a.followUpAt && (
-                        <span className="text-xs font-sans text-muted">Follow up {formatDateTime(a.followUpAt)}</span>
+                        <span className="text-xs font-sans text-muted">Follow up {formatDate(a.followUpAt)}</span>
                       )}
                       {a.notes && <span className="text-xs text-muted whitespace-pre-wrap">{a.notes}</span>}
                     </div>
