@@ -13,7 +13,7 @@ import {
 } from "../lib/worklist";
 import {
   buildCaseItems, applyCaseView, sortCaseItems, computeCaseMetrics,
-  type CaseItem, type CaseRow,
+  type CaseItem, type CaseRow, type CaseStatus, type NextActionType,
 } from "../lib/cases";
 import { AppShell } from "../components/AppShell";
 import { MetricsStrip } from "../components/MetricsStrip";
@@ -110,6 +110,14 @@ export type ActivityEntry = {
   followUpAt: string | null;
   promisedAmount: number | null;
   promisedDate: string | null;
+};
+
+type CaseRowRaw = {
+  id: string;
+  customer_id: string;
+  status: string;
+  next_action_type: string | null;
+  next_action_at: string | null;
 };
 
 type SelectedMessageRow = {
@@ -324,9 +332,9 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
       .select("id, customer_id, status, next_action_type, next_action_at")
       .eq("org_id", org.org_id)
       .is("closed_at", null);
-    const cases: CaseRow[] = ((caseRows as any[]) ?? []).map((r) => ({
-      id: r.id, customerId: r.customer_id, status: r.status,
-      nextActionType: r.next_action_type, nextActionAt: r.next_action_at,
+    const cases: CaseRow[] = ((caseRows as CaseRowRaw[]) ?? []).map((r) => ({
+      id: r.id, customerId: r.customer_id, status: r.status as CaseStatus,
+      nextActionType: r.next_action_type as NextActionType | null, nextActionAt: r.next_action_at,
     }));
 
     roster = await listOrgMembers(service, org.org_id);
@@ -340,7 +348,10 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
     const sel = dashboardData.selected;
     if (sel) {
       const customerId = sel.customerId;
-      const repInvoiceId = invoice ?? (sel.invoices[0]?.invoiceId ?? null);
+      const repInvoiceId =
+        (invoice && sel.invoices.some((iv) => iv.invoiceId === invoice))
+          ? invoice
+          : (sel.invoices[0]?.invoiceId ?? null);
 
       // Activity: contact logs for the case.
       const { data: actRows } = await supabase
