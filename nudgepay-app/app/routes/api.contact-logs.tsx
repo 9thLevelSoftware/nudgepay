@@ -13,7 +13,7 @@ function safeReturnTo(raw: FormData): string {
 
 function withError(returnTo: string, code: string): string {
   const sep = returnTo.includes("?") ? "&" : "?";
-  return `${returnTo}${sep}logError=${encodeURIComponent(code)}`;
+  return `${returnTo}${sep}log=1&logError=${encodeURIComponent(code)}`;
 }
 
 export async function action({ request, context }: ActionFunctionArgs) {

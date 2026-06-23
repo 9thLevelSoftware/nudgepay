@@ -27,7 +27,7 @@ function fmtDate(dateStr: string): string {
 }
 
 // ---------------------------------------------------------------------------
-// Saved-view tab definitions (5a set)
+// Saved-view tab definitions
 // ---------------------------------------------------------------------------
 
 const SAVED_VIEWS: { id: ViewId; label: string }[] = [
