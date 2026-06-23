@@ -74,3 +74,118 @@ export function reconcileCases(
   }
   return ops;
 }
+
+export function buildCaseItems(
+  cases: CaseRow[],
+  invoices: InvoiceInput[],
+  customers: CustomerInput[],
+  lastContacts: LastContactInput[],
+  today: string,
+  ownerLabels: Map<string, string>,
+): CaseItem[] {
+  const customerById = new Map(customers.map((c) => [c.id, c]));
+
+  // Group overdue invoices by customer (skip orphans with null customer_id).
+  const invoicesByCustomer = new Map<string, CaseInvoice[]>();
+  for (const inv of invoices) {
+    if (!inv.customer_id) continue;
+    const ageDays = inv.due_date ? ageInDays(inv.due_date, today) : 0;
+    const ci: CaseInvoice = {
+      invoiceId: inv.id,
+      docNumber: inv.qbo_doc_number,
+      balance: Number(inv.balance || 0),
+      dueDate: inv.due_date,
+      ageDays,
+      heat: heatOf(ageDays),
+    };
+    const list = invoicesByCustomer.get(inv.customer_id) ?? [];
+    list.push(ci);
+    invoicesByCustomer.set(inv.customer_id, list);
+  }
+
+  // Most-recent contact per customer (max-by-date; do not rely on order).
+  const lastByCustomer = new Map<string, LastContactInput & { customerId: string }>();
+  const invoiceToCustomer = new Map<string, string>();
+  for (const [cid, list] of invoicesByCustomer) for (const ci of list) invoiceToCustomer.set(ci.invoiceId, cid);
+  for (const lc of lastContacts) {
+    const cid = invoiceToCustomer.get(lc.invoiceId);
+    if (!cid) continue;
+    const prev = lastByCustomer.get(cid);
+    if (!prev || lc.date > prev.date) lastByCustomer.set(cid, { ...lc, customerId: cid });
+  }
+
+  return cases.map((cse) => {
+    const cust = customerById.get(cse.customerId) ?? null;
+    const invList = (invoicesByCustomer.get(cse.customerId) ?? [])
+      .slice()
+      .sort((a, b) => b.ageDays - a.ageDays); // oldest first
+    const totalOverdue = invList.reduce((s, i) => s + i.balance, 0);
+    const oldestAgeDays = invList.length ? invList[0].ageDays : 0;
+    const lc = lastByCustomer.get(cse.customerId) ?? null;
+    const neverContacted = !lc;
+    const ownerId = cust?.owner ?? null;
+    const owner = ownerId ? (ownerLabels.get(ownerId) ?? "Unknown") : "Unassigned";
+    const name = cust?.name ?? "(unknown customer)";
+    const followUpDue = cse.nextActionAt != null && cse.nextActionAt <= today;
+
+    return {
+      caseId: cse.id,
+      customerId: cse.customerId,
+      customerName: name,
+      owner,
+      ownerId,
+      status: cse.status,
+      nextActionType: cse.nextActionType,
+      nextActionAt: cse.nextActionAt,
+      totalOverdue,
+      invoiceCount: invList.length,
+      oldestAgeDays,
+      heat: heatOf(oldestAgeDays),
+      priority: priorityOf(oldestAgeDays, neverContacted),
+      lastContact: lc ? { date: lc.date, channel: lc.channel } : null,
+      phone: cust?.phone ?? null,
+      email: cust?.email ?? null,
+      promise: null,        // populated in 6b
+      brokenPromise: false, // populated in 6b
+      followUpDue,
+      searchText: [name, ...invList.map((i) => i.docNumber ?? ""), cust?.phone ?? "", cust?.email ?? "", owner]
+        .join(" ").toLowerCase(),
+      invoices: invList,
+    };
+  });
+}
+
+export function applyCaseView(
+  items: CaseItem[], view: ViewId, today: string, currentUserId: string | null,
+): CaseItem[] {
+  if (view === "30-plus") return items.filter((i) => i.oldestAgeDays >= 30);
+  if (view === "high-value") return items.filter((i) => i.totalOverdue >= HIGH_VALUE_THRESHOLD);
+  if (view === "never-contacted") return items.filter((i) => i.lastContact === null);
+  if (view === "follow-ups-due") return items.filter((i) => i.nextActionAt != null && i.nextActionAt <= today);
+  if (view === "broken-promises") return items.filter((i) => i.brokenPromise);
+  if (view === "my-work") return items.filter((i) => i.ownerId != null && i.ownerId === currentUserId);
+  return items;
+}
+
+export function sortCaseItems(items: CaseItem[], sort: SortId): CaseItem[] {
+  const copy = [...items];
+  if (sort === "most-overdue") return copy.sort((a, b) => b.oldestAgeDays - a.oldestAgeDays);
+  if (sort === "highest-balance") return copy.sort((a, b) => b.totalOverdue - a.totalOverdue);
+  if (sort === "customer") return copy.sort((a, b) => a.customerName.localeCompare(b.customerName));
+  return copy.sort((a, b) => a.priority.rank - b.priority.rank || b.oldestAgeDays - a.oldestAgeDays || b.totalOverdue - a.totalOverdue);
+}
+
+export function computeCaseMetrics(items: CaseItem[], today: string): Metrics {
+  const bucket = (pred: (i: CaseItem) => boolean): Metric => {
+    const matched = items.filter(pred);
+    return { count: matched.length, amount: matched.reduce((s, i) => s + i.totalOverdue, 0) };
+  };
+  return {
+    thirtyPlus: bucket((i) => i.oldestAgeDays >= 30),
+    highValue: bucket((i) => i.totalOverdue >= HIGH_VALUE_THRESHOLD),
+    neverContacted: bucket((i) => i.lastContact === null),
+    allOpen: bucket(() => true),
+    followUpsDue: bucket((i) => i.nextActionAt != null && i.nextActionAt <= today),
+    brokenPromises: bucket((i) => i.brokenPromise),
+  };
+}
