@@ -3,6 +3,7 @@ import { getEnv } from "../lib/env.server";
 import { requireUser, resolveOrg } from "../lib/session.server";
 import { getConnectionStatus } from "../lib/qbo-connection.server";
 import { createSupabaseServiceClient } from "../lib/supabase.server";
+import { listOrgMembers, type OrgMember } from "../lib/orgs.server";
 // worklist.ts is pure (no I/O, no node:*, no secrets) so it is safe in both the
 // client bundle and the server — buildDashboardData is exported from this route
 // (for tests) and the UI components import its types directly.
@@ -56,10 +57,12 @@ export function buildDashboardData(
   promiseSignals: PromiseSignalInput[],
   params: DashboardParams,
   today: string,
+  ownerLabels: Map<string, string>,
+  currentUserId: string | null,
 ): DashboardData {
   const { view, sort, q, invoice } = params;
 
-  const allItems = buildWorkItems(invoices, customers, lastContacts, promiseSignals, today);
+  const allItems = buildWorkItems(invoices, customers, lastContacts, promiseSignals, today, ownerLabels);
 
   const searchedItems =
     q.trim() === ""
@@ -68,12 +71,12 @@ export function buildDashboardData(
 
   const metrics = computeMetrics(searchedItems, today);
 
-  const ALL_VIEWS: ViewId[] = ["all-open", "30-plus", "high-value", "never-contacted", "follow-ups-due", "broken-promises"];
+  const ALL_VIEWS: ViewId[] = ["all-open", "30-plus", "high-value", "never-contacted", "follow-ups-due", "broken-promises", "my-work"];
   const viewCounts = Object.fromEntries(
-    ALL_VIEWS.map((v) => [v, applyView(searchedItems, v, today).length]),
+    ALL_VIEWS.map((v) => [v, applyView(searchedItems, v, today, currentUserId).length]),
   ) as Record<ViewId, number>;
 
-  const viewFiltered = applyView(searchedItems, view, today);
+  const viewFiltered = applyView(searchedItems, view, today, currentUserId);
   const items = sortItems(viewFiltered, sort);
 
   const selected =
@@ -95,7 +98,7 @@ type InvoiceRow = {
   balance: number | string | null;
   due_date: string | null;
   customer_id: string | null;
-  customers: { name: string | null; phone: string | null; email: string | null } | null;
+  customers: { name: string | null; phone: string | null; email: string | null; owner: string | null } | null;
 };
 
 type TextMessageRow = {
@@ -144,6 +147,8 @@ export type MessageEntry = {
   errorCode: string | null;
   createdAt: string;
 };
+
+export type RosterMember = { userId: string; email: string; label: string };
 
 export async function loader({ request, context }: LoaderFunctionArgs) {
   const env = getEnv(context as any);
@@ -197,7 +202,7 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
   const url = new URL(request.url);
   const sp = url.searchParams;
 
-  const VALID_VIEWS: ViewId[] = ["all-open", "30-plus", "high-value", "never-contacted", "follow-ups-due", "broken-promises"];
+  const VALID_VIEWS: ViewId[] = ["all-open", "30-plus", "high-value", "never-contacted", "follow-ups-due", "broken-promises", "my-work"];
   const VALID_SORTS: SortId[] = ["recommended", "most-overdue", "highest-balance", "customer"];
   const VALID_TABS = ["overview", "activity", "messages"] as const;
 
@@ -225,6 +230,7 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
   let selectedMessages: MessageEntry[] = [];
   let selectedConsent = false;
   let selectedPhone: string | null = null;
+  let roster: OrgMember[] = [];
   let dashboardData: DashboardData = {
     items: [],
     metrics: {
@@ -246,7 +252,7 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
     // RLS-scoped invoice read (USER client)
     const { data: invRows } = await supabase
       .from("invoices")
-      .select("id, qbo_doc_number, balance, due_date, customer_id, customers(name, phone, email)")
+      .select("id, qbo_doc_number, balance, due_date, customer_id, customers(name, phone, email, owner)")
       .eq("org_id", org.org_id)
       .gt("balance", 0)
       .lt("due_date", today);
@@ -271,6 +277,7 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
           name: r.customers.name ?? "(unknown customer)",
           phone: r.customers.phone ?? null,
           email: r.customers.email ?? null,
+          owner: r.customers.owner ?? null,
         });
       }
     }
@@ -353,6 +360,9 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
       }
     }
 
+    roster = await listOrgMembers(service, org.org_id);
+    const ownerLabels = new Map(roster.map((m) => [m.userId, m.label]));
+
     dashboardData = buildDashboardData(
       invoicesInput,
       customersInput,
@@ -360,6 +370,8 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
       promiseSignals,
       { view, sort, q, invoice, tab },
       today,
+      ownerLabels,
+      user.id,
     );
 
     if (invoice) {
@@ -426,6 +438,8 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
       selectedConsent,
       selectedPhone,
       sms,
+      roster,
+      currentUserId: user.id,
       ...dashboardData,
     },
     { headers },
