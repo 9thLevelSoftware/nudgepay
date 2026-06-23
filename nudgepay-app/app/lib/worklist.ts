@@ -16,6 +16,7 @@ export type WorkItem = {
   phone: string | null;
   email: string | null;
   owner: string;
+  ownerId: string | null;
   balance: number;
   customerBalance: number;
   dueDate: string | null;
@@ -32,11 +33,11 @@ export type WorkItem = {
 
 export type Metric = { count: number; amount: number };
 export type Metrics = { thirtyPlus: Metric; highValue: Metric; neverContacted: Metric; allOpen: Metric; followUpsDue: Metric; brokenPromises: Metric };
-export type ViewId = "all-open" | "30-plus" | "high-value" | "never-contacted" | "follow-ups-due" | "broken-promises";
+export type ViewId = "all-open" | "30-plus" | "high-value" | "never-contacted" | "follow-ups-due" | "broken-promises" | "my-work";
 export type SortId = "recommended" | "most-overdue" | "highest-balance" | "customer";
 
 export type InvoiceInput = { id: string; qbo_doc_number: string | null; customer_id: string | null; balance: number; due_date: string | null };
-export type CustomerInput = { id: string; name: string; phone: string | null; email: string | null };
+export type CustomerInput = { id: string; name: string; phone: string | null; email: string | null; owner?: string | null };
 export type LastContactInput = { invoiceId: string; date: string; channel: string };
 export type PromiseSignalInput = {
   invoiceId: string;
@@ -82,6 +83,7 @@ export function nextActionOf(ageDays: number, neverContacted: boolean): NextActi
 export function buildWorkItems(
   invoices: InvoiceInput[], customers: CustomerInput[],
   lastContacts: LastContactInput[], promiseSignals: PromiseSignalInput[], today: string,
+  ownerLabels: Map<string, string> = new Map(),
 ): WorkItem[] {
   const customerById = new Map(customers.map((c) => [c.id, c]));
 
@@ -114,6 +116,8 @@ export function buildWorkItems(
       sig && sig.promisedAmount != null && sig.promisedDate != null
         ? { amount: sig.promisedAmount, date: sig.promisedDate }
         : null;
+    const ownerId = cust?.owner ?? null;
+    const ownerLabel = ownerId ? (ownerLabels.get(ownerId) ?? "Unknown") : "Unassigned";
     return {
       invoiceId: inv.id,
       docNumber: inv.qbo_doc_number,
@@ -121,7 +125,8 @@ export function buildWorkItems(
       customerName: name,
       phone: cust?.phone ?? null,
       email: cust?.email ?? null,
-      owner: "Unassigned",
+      owner: ownerLabel,
+      ownerId,
       balance,
       customerBalance: inv.customer_id ? customerBalance.get(inv.customer_id) ?? balance : balance,
       dueDate: inv.due_date,
@@ -133,7 +138,7 @@ export function buildWorkItems(
       promise,
       followUpAt: sig?.followUpAt ?? null,
       invoiceCount: inv.customer_id ? customerInvoiceCount.get(inv.customer_id) ?? 1 : 1,
-      searchText: [name, inv.qbo_doc_number ?? "", cust?.phone ?? "", cust?.email ?? ""].join(" ").toLowerCase(),
+      searchText: [name, inv.qbo_doc_number ?? "", cust?.phone ?? "", cust?.email ?? "", ownerLabel].join(" ").toLowerCase(),
     };
   });
 }
@@ -146,12 +151,13 @@ export function isFollowUpDue(item: WorkItem, today: string): boolean {
   return item.followUpAt != null && item.followUpAt <= today;
 }
 
-export function applyView(items: WorkItem[], view: ViewId, today: string): WorkItem[] {
+export function applyView(items: WorkItem[], view: ViewId, today: string, currentUserId: string | null = null): WorkItem[] {
   if (view === "30-plus") return items.filter((i) => i.ageDays >= 30);
   if (view === "high-value") return items.filter((i) => i.balance >= HIGH_VALUE_THRESHOLD);
   if (view === "never-contacted") return items.filter((i) => i.lastContact === null);
   if (view === "follow-ups-due") return items.filter((i) => isFollowUpDue(i, today));
   if (view === "broken-promises") return items.filter((i) => isBrokenPromise(i, today));
+  if (view === "my-work") return items.filter((i) => i.ownerId != null && i.ownerId === currentUserId);
   return items;
 }
 

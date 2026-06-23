@@ -237,7 +237,7 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
     },
     viewCounts: {
       "all-open": 0, "30-plus": 0, "high-value": 0,
-      "never-contacted": 0, "follow-ups-due": 0, "broken-promises": 0,
+      "never-contacted": 0, "follow-ups-due": 0, "broken-promises": 0, "my-work": 0,
     },
     selected: null,
   };

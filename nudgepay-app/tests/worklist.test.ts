@@ -229,3 +229,40 @@ test("computeMetrics totals follow-ups-due and broken-promises", () => {
   expect(m.brokenPromises).toEqual({ count: 1, amount: 400 });
   expect(m.followUpsDue).toEqual({ count: 1, amount: 400 });
 });
+
+test("buildWorkItems resolves owner label from the map and threads ownerId", () => {
+  const invoices = [
+    { id: "i1", qbo_doc_number: "1001", customer_id: "c1", balance: 100, due_date: "2026-03-01" },
+    { id: "i2", qbo_doc_number: "1002", customer_id: "c2", balance: 200, due_date: "2026-03-01" },
+    { id: "i3", qbo_doc_number: "1003", customer_id: "c3", balance: 300, due_date: "2026-03-01" },
+  ];
+  const customers = [
+    { id: "c1", name: "Acme", phone: null, email: null, owner: "u1" },
+    { id: "c2", name: "Globex", phone: null, email: null, owner: null },
+    { id: "c3", name: "Initech", phone: null, email: null, owner: "u-stale" },
+  ];
+  const labels = new Map([["u1", "diskin"]]);
+  const items = buildWorkItems(invoices, customers, [], [], "2026-06-22", labels);
+  const byId = new Map(items.map((i) => [i.invoiceId, i]));
+  expect(byId.get("i1")!.ownerId).toBe("u1");
+  expect(byId.get("i1")!.owner).toBe("diskin");
+  expect(byId.get("i2")!.ownerId).toBe(null);
+  expect(byId.get("i2")!.owner).toBe("Unassigned");
+  expect(byId.get("i3")!.owner).toBe("Unknown"); // owner id not in the label map
+  expect(byId.get("i1")!.searchText).toContain("diskin"); // owner is searchable
+});
+
+test("applyView my-work filters to the current user's accounts", () => {
+  const invoices = [
+    { id: "i1", qbo_doc_number: "1001", customer_id: "c1", balance: 100, due_date: "2026-03-01" },
+    { id: "i2", qbo_doc_number: "1002", customer_id: "c2", balance: 200, due_date: "2026-03-01" },
+  ];
+  const customers = [
+    { id: "c1", name: "Acme", phone: null, email: null, owner: "me" },
+    { id: "c2", name: "Globex", phone: null, email: null, owner: "someone-else" },
+  ];
+  const items = buildWorkItems(invoices, customers, [], [], "2026-06-22", new Map());
+  expect(applyView(items, "my-work", "2026-06-22", "me").map((i) => i.invoiceId)).toEqual(["i1"]);
+  expect(applyView(items, "my-work", "2026-06-22", "nobody")).toEqual([]);
+  expect(applyView(items, "my-work", "2026-06-22", null)).toEqual([]); // no current user → none
+});
