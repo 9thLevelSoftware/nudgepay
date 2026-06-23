@@ -1,5 +1,6 @@
 import { Form, Link } from "react-router";
-import type { WorkItem, ViewId, SortId, NextAction } from "../lib/worklist";
+import type { ViewId, SortId } from "../lib/worklist";
+import type { CaseItem } from "../lib/cases";
 import { ThermalBand } from "./ThermalBand";
 import { Icon } from "./Icons";
 
@@ -8,12 +9,13 @@ import { Icon } from "./Icons";
 // interpolation like `text-${tone}` is allowed.
 // ---------------------------------------------------------------------------
 
-/** NextAction.tone → text-color class */
-const nextActionToneClass: Record<NextAction["tone"], string> = {
-  hot:     "text-hot",
-  warm:    "text-warm",
-  cool:    "text-cool",
-  neutral: "text-muted",
+const STATUS_LABEL: Record<string, string> = {
+  new: "New",
+  working: "Working",
+  promised: "Promised",
+  waiting: "Waiting",
+  on_hold: "On hold",
+  resolved: "Resolved",
 };
 
 const usd = new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" });
@@ -52,11 +54,11 @@ const SORT_OPTIONS: { id: SortId; label: string }[] = [
 // ---------------------------------------------------------------------------
 
 interface WorkQueueProps {
-  items: WorkItem[];
+  items: CaseItem[];
   view: ViewId;
   sort: SortId;
   search: string;
-  selectedInvoiceId: string | null;
+  selectedCaseId: string | null;
   totalCount: number;
   viewCounts: Record<ViewId, number>;
 }
@@ -72,26 +74,24 @@ function QueueRow({
   sort,
   search,
 }: {
-  item: WorkItem;
+  item: CaseItem;
   selected: boolean;
   view: ViewId;
   sort: SortId;
   search: string;
 }) {
   const params = new URLSearchParams({
-    invoice: item.invoiceId,
+    case: item.caseId,
     view,
     sort,
     ...(search ? { q: search } : {}),
   });
   const href = `?${params.toString()}`;
 
-  const toneClass = nextActionToneClass[item.nextAction.tone];
-
   return (
     <Link
       to={href}
-      aria-label={`Open ${item.customerName} invoice ${item.docNumber ?? item.invoiceId}`}
+      aria-label={`Open ${item.customerName}`}
       aria-current={selected ? "true" : undefined}
       className={[
         // Base row layout
@@ -113,28 +113,26 @@ function QueueRow({
         <ThermalBand heat={item.heat} />
       </span>
 
-      {/* Customer / invoice */}
-      <span data-label="Customer / invoice" className="min-w-0">
+      {/* Customer */}
+      <span data-label="Customer" className="min-w-0">
         <span className="block font-sans text-text truncate">{item.customerName}</span>
-        {item.docNumber && (
-          <span className="block font-mono text-xs text-muted">{item.docNumber}</span>
-        )}
+        <span className="block font-mono text-xs text-muted">{item.invoiceCount} invoice(s)</span>
       </span>
 
-      {/* Balance */}
+      {/* Total overdue */}
       <span
-        data-label="Balance"
+        data-label="Total overdue"
         className="font-mono text-text tabular-nums text-right hidden md:block"
       >
-        {usd.format(item.balance)}
+        {usd.format(item.totalOverdue)}
       </span>
 
-      {/* Age */}
+      {/* Oldest age */}
       <span
-        data-label="Age"
+        data-label="Oldest age"
         className="font-mono text-sm text-muted tabular-nums hidden md:block whitespace-nowrap"
       >
-        {item.ageDays > 0 ? `${item.ageDays}d` : "Due"}
+        {item.oldestAgeDays > 0 ? `${item.oldestAgeDays}d` : "Due"}
       </span>
 
       {/* Last contact */}
@@ -149,12 +147,10 @@ function QueueRow({
         )}
       </span>
 
-      {/* Next action */}
-      <span
-        data-label="Next action"
-        className={`hidden lg:block text-xs font-sans font-medium whitespace-nowrap ${toneClass}`}
-      >
-        {item.nextAction.label}
+      {/* Status + next action date */}
+      <span data-label="Next action" className="hidden lg:block text-xs font-sans font-medium whitespace-nowrap text-text">
+        {STATUS_LABEL[item.status] ?? item.status}
+        {item.nextActionAt ? <span className="text-muted"> · {fmtDate(item.nextActionAt)}</span> : null}
       </span>
 
       {/* Owner chip */}
@@ -180,25 +176,24 @@ function MobileCard({
   sort,
   search,
 }: {
-  item: WorkItem;
+  item: CaseItem;
   selected: boolean;
   view: ViewId;
   sort: SortId;
   search: string;
 }) {
   const params = new URLSearchParams({
-    invoice: item.invoiceId,
+    case: item.caseId,
     view,
     sort,
     ...(search ? { q: search } : {}),
   });
   const href = `?${params.toString()}`;
-  const toneClass = nextActionToneClass[item.nextAction.tone];
 
   return (
     <Link
       to={href}
-      aria-label={`Open ${item.customerName} invoice ${item.docNumber ?? item.invoiceId}`}
+      aria-label={`Open ${item.customerName}`}
       aria-current={selected ? "true" : undefined}
       className={[
         "block bg-surface border border-border rounded-lg p-4 mb-2",
@@ -206,28 +201,29 @@ function MobileCard({
         selected ? "border-copper ring-1 ring-copper bg-copper/5" : "",
       ].join(" ")}
     >
-      {/* Row 1: ThermalBand + customer name + balance */}
+      {/* Row 1: ThermalBand + customer name + total overdue */}
       <div className="flex items-start justify-between gap-3 mb-2">
         <div className="flex items-center gap-2 min-w-0">
           <ThermalBand heat={item.heat} />
           <div className="min-w-0">
             <p className="font-sans text-text font-medium truncate">{item.customerName}</p>
-            {item.docNumber && (
-              <p className="font-mono text-xs text-muted">{item.docNumber}</p>
-            )}
+            <p className="font-mono text-xs text-muted">{item.invoiceCount} invoice(s)</p>
           </div>
         </div>
         <span className="font-mono text-text tabular-nums text-right shrink-0 text-sm">
-          {usd.format(item.balance)}
+          {usd.format(item.totalOverdue)}
         </span>
       </div>
 
-      {/* Row 2: Age + next action */}
+      {/* Row 2: Oldest age + status */}
       <div className="flex items-center gap-3 text-xs">
         <span className="font-mono text-muted tabular-nums">
-          {item.ageDays > 0 ? `${item.ageDays}d` : "Due"}
+          {item.oldestAgeDays > 0 ? `${item.oldestAgeDays}d` : "Due"}
         </span>
-        <span className={`font-sans font-medium ${toneClass}`}>{item.nextAction.label}</span>
+        <span className="font-sans font-medium text-text">
+          {STATUS_LABEL[item.status] ?? item.status}
+          {item.nextActionAt ? <span className="text-muted"> · {fmtDate(item.nextActionAt)}</span> : null}
+        </span>
       </div>
 
       {/* Row 3: Last contact */}
@@ -253,14 +249,14 @@ function MobileCard({
  *
  * Navigation is entirely GET-form + Link based (no client state for data).
  * Under md breakpoint: stacked cards with all fields visible.
- * At md+: a dense table with Heat | Customer/Invoice | Balance | Age | Last contact | Next action | Owner.
+ * At md+: a dense table with Heat | Customer | Total overdue | Oldest age | Last contact | Status | Owner.
  */
 export function WorkQueue({
   items,
   view,
   sort,
   search,
-  selectedInvoiceId,
+  selectedCaseId,
   totalCount,
   viewCounts,
 }: WorkQueueProps) {
@@ -389,21 +385,21 @@ export function WorkQueue({
                 aria-hidden="true"
               >
                 <span className="font-sans text-xs text-muted uppercase tracking-wide">Heat</span>
-                <span className="font-sans text-xs text-muted uppercase tracking-wide">Customer / invoice</span>
-                <span className="font-sans text-xs text-muted uppercase tracking-wide text-right">Balance</span>
-                <span className="font-sans text-xs text-muted uppercase tracking-wide">Age</span>
+                <span className="font-sans text-xs text-muted uppercase tracking-wide">Customer</span>
+                <span className="font-sans text-xs text-muted uppercase tracking-wide text-right">Total overdue</span>
+                <span className="font-sans text-xs text-muted uppercase tracking-wide">Oldest age</span>
                 <span className="font-sans text-xs text-muted uppercase tracking-wide hidden lg:block">Last contact</span>
-                <span className="font-sans text-xs text-muted uppercase tracking-wide hidden lg:block">Next action</span>
+                <span className="font-sans text-xs text-muted uppercase tracking-wide hidden lg:block">Status</span>
                 <span className="font-sans text-xs text-muted uppercase tracking-wide hidden xl:block">Owner</span>
               </div>
 
               {/* Rows */}
               <div role="list" aria-label="Work queue items">
                 {items.map((item) => (
-                  <div key={item.invoiceId} role="listitem">
+                  <div key={item.caseId} role="listitem">
                     <QueueRow
                       item={item}
-                      selected={selectedInvoiceId === item.invoiceId}
+                      selected={selectedCaseId === item.caseId}
                       view={view}
                       sort={sort}
                       search={search}
@@ -417,9 +413,9 @@ export function WorkQueue({
             <div className="md:hidden p-3" aria-label="Work queue items">
               {items.map((item) => (
                 <MobileCard
-                  key={item.invoiceId}
+                  key={item.caseId}
                   item={item}
-                  selected={selectedInvoiceId === item.invoiceId}
+                  selected={selectedCaseId === item.caseId}
                   view={view}
                   sort={sort}
                   search={search}
