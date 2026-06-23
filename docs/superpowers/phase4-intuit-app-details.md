@@ -64,7 +64,7 @@ The Intuit webhook verifier token displayed in the same "App Details" page (unde
 
 ## Route Verification Summary
 
-All 8 routes listed in the table above have been verified to exist in `nudgepay-app/app/routes/`:
+All 7 route-backed entries in the table above have been verified to exist in `nudgepay-app/app/routes/` (the Host Domain row maps to no route file):
 
 - ✅ `dashboard.tsx`
 - ✅ `api.qbo.connect.tsx`
