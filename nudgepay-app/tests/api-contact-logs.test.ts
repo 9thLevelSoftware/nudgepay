@@ -106,6 +106,28 @@ test("a case-anchored contact log updates the case to working with the follow-up
   expect(row!.next_action_at).toBe("2026-07-01");
 });
 
+test("the cross-org case guard: a user cannot read a foreign org's case by id", async () => {
+  const svc = serviceClient();
+  // Org A: the caller, with a member user client.
+  const userA = await makeUserClient("contact-case-xorg-a@example.com");
+  const { data: orgA } = await svc.from("organizations").insert({ name: "XOrg Case A" }).select("id").single();
+  await svc.from("memberships").insert({ org_id: orgA!.id, user_id: userA.userId, role: "owner" });
+
+  // Org B: a separate org with its own case the caller has no membership in.
+  const { data: orgB } = await svc.from("organizations").insert({ name: "XOrg Case B" }).select("id").single();
+  const { data: custB } = await svc.from("customers")
+    .insert({ org_id: orgB!.id, qbo_id: "xorg-b-c1", name: "Foreign Co" }).select("id").single();
+  const { data: caseB } = await svc.from("collection_cases")
+    .insert({ org_id: orgB!.id, customer_id: custB!.id, status: "new", next_action_type: "contact" })
+    .select("id").single();
+
+  // The route's guard: read collection_cases by caseId via the USER client.
+  // RLS must block org A's user from seeing org B's case → null (→ "missing-case").
+  const { data: foreign } = await userA.client
+    .from("collection_cases").select("id").eq("id", caseB!.id).maybeSingle();
+  expect(foreign).toBeNull();
+});
+
 // ── Task 4: RLS user client inserts a contact log ────────────────────────────
 
 // Build a minimal env/context the action expects (getEnv reads from context).

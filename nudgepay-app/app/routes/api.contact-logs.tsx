@@ -51,16 +51,17 @@ export async function action({ request, context }: ActionFunctionArgs) {
   if (error) return redirect(withError(returnTo, "save-failed"), { headers });
 
   // Keep next-action durable: a logged contact moves the case to "working" and,
-  // when a follow-up date was given, sets it as the next action.
+  // when a follow-up date was given, sets it as the next action. This case update
+  // IS the durable next-action write, so a failed update must surface rather than
+  // redirecting success and silently leaving the case in "new".
+  const caseUpdate: Record<string, unknown> = { status: "working" };
   if (f.followUpAt) {
-    await supabase.from("collection_cases")
-      .update({ status: "working", next_action_type: "follow_up", next_action_at: f.followUpAt })
-      .eq("id", f.caseId);
-  } else {
-    await supabase.from("collection_cases")
-      .update({ status: "working" })
-      .eq("id", f.caseId);
+    caseUpdate.next_action_type = "follow_up";
+    caseUpdate.next_action_at = f.followUpAt;
   }
+  const { error: caseErr } = await supabase
+    .from("collection_cases").update(caseUpdate).eq("id", f.caseId);
+  if (caseErr) return redirect(withError(returnTo, "save-failed"), { headers });
 
   return redirect(returnTo, { headers });
 }
