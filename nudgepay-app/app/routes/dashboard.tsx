@@ -450,6 +450,10 @@ export default function Dashboard() {
     log,
     logError,
     selectedActivity,
+    selectedMessages,
+    selectedConsent,
+    selectedPhone,
+    sms,
     items,
     metrics,
     viewCounts,
@@ -520,6 +524,10 @@ export default function Dashboard() {
                 selected={selected ?? null}
                 activeTab={tab}
                 activity={selectedActivity}
+                messages={selectedMessages}
+                consent={selectedConsent}
+                phone={selectedPhone}
+                sms={sms}
                 view={view}
                 sort={sort}
                 q={q}
@@ -530,7 +538,7 @@ export default function Dashboard() {
           {log && selected ? (
             <LogContactDrawer
               selected={selected}
-              returnTo={`?${new URLSearchParams({ invoice: selected.invoiceId, tab, view, sort, ...(q ? { q } : {}) }).toString()}`}
+              returnTo={`/dashboard?${new URLSearchParams({ invoice: selected.invoiceId, tab, view, sort, ...(q ? { q } : {}) }).toString()}`}
               logError={logError}
             />
           ) : null}
