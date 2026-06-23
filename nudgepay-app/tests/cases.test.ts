@@ -87,6 +87,17 @@ test("computeCaseMetrics counts cases and sums overdue", () => {
   expect(m.allOpen.amount).toBe(7100);
   expect(m.highValue.count).toBe(1);
   expect(m.followUpsDue.count).toBe(1);
+  expect(m.followUpsDue.amount).toBe(6300);
+});
+
+test("buildCaseItems sets lastContact from the most-recent contact and excludes it from never-contacted", () => {
+  const items = buildCaseItems(
+    CASES, INVOICES, CUSTOMERS,
+    [{ invoiceId: "i1", date: "2026-06-19T00:00:00Z", channel: "Text" }],
+    TODAY, LABELS,
+  );
+  expect(items.find((c) => c.customerId === "c1")!.lastContact).toEqual({ date: "2026-06-19T00:00:00Z", channel: "Text" });
+  expect(applyCaseView(items, "never-contacted", TODAY, null).map((c) => c.customerId)).toEqual(["c2"]);
 });
 
 test("sortCaseItems recommended orders by priority rank then oldest age", () => {

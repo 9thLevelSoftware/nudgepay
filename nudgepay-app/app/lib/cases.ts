@@ -149,7 +149,7 @@ export function buildCaseItems(
       brokenPromise: false, // populated in 6b
       followUpDue,
       searchText: [name, ...invList.map((i) => i.docNumber ?? ""), cust?.phone ?? "", cust?.email ?? "", owner]
-        .join(" ").toLowerCase(),
+        .filter(Boolean).join(" ").toLowerCase(),
       invoices: invList,
     };
   });
