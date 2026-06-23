@@ -1,12 +1,7 @@
 import { redirect, type ActionFunctionArgs } from "react-router";
 import { getEnv } from "../lib/env.server";
 import { requireUser, resolveOrg } from "../lib/session.server";
-import { safeReturnTo } from "../lib/return-to";
-
-function withSms(returnTo: string, code: string): string {
-  const sep = returnTo.includes("?") ? "&" : "?";
-  return `${returnTo}${sep}sms=${code}`;
-}
+import { safeReturnTo, withSms } from "../lib/return-to";
 
 export async function action({ request, context }: ActionFunctionArgs) {
   const env = getEnv(context as any);

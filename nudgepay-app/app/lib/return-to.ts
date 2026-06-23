@@ -11,3 +11,9 @@ export function safeReturnTo(
   }
   return fallback;
 }
+
+// Append an sms-result code onto an already-validated return path.
+export function withSms(returnTo: string, code: string): string {
+  const sep = returnTo.includes("?") ? "&" : "?";
+  return `${returnTo}${sep}sms=${code}`;
+}

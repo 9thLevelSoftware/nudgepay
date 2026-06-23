@@ -4,17 +4,11 @@ import { createSupabaseServiceClient } from "../lib/supabase.server";
 import { requireUser, resolveOrg } from "../lib/session.server";
 import { sendInvoiceText, type MessagingDeps } from "../lib/twilio-messaging.server";
 import type { TwilioSender } from "../lib/twilio-client.server";
-import { safeReturnTo } from "../lib/return-to";
+import { safeReturnTo, withSms } from "../lib/return-to";
 
 function envSender(t: { TWILIO_MESSAGING_SERVICE_SID: string | null; TWILIO_FROM_NUMBER: string | null }): TwilioSender {
   if (t.TWILIO_MESSAGING_SERVICE_SID) return { messagingServiceSid: t.TWILIO_MESSAGING_SERVICE_SID };
   return { from: t.TWILIO_FROM_NUMBER as string }; // getTwilioEnv guarantees one of the two
-}
-
-// Append the send-result code onto the (already-validated) return path.
-export function withSms(returnTo: string, code: string): string {
-  const sep = returnTo.includes("?") ? "&" : "?";
-  return `${returnTo}${sep}sms=${code}`;
 }
 
 export async function action({ request, context }: ActionFunctionArgs) {

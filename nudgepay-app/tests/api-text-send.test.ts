@@ -1,5 +1,5 @@
 import { expect, test } from "vitest";
-import { withSms } from "../app/routes/api.text.send";
+import { withSms } from "../app/lib/return-to";
 
 test("withSms appends sms code onto a path that already has a query", () => {
   expect(withSms("/dashboard?invoice=i1&tab=messages", "sent"))
