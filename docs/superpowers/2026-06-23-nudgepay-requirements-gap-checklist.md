@@ -84,9 +84,32 @@
 
 ---
 
+## G. Connections & Settings — in-UI onboarding (post-loop phase)
+
+**Credential architecture (decided 2026-06-23):** two distinct credential tiers.
+- **Platform/app identity** (`QBO_CLIENT_ID`/`QBO_CLIENT_SECRET`/`QBO_REDIRECT_URI`/webhook verifier; `TWILIO_ACCOUNT_SID`/`TWILIO_AUTH_TOKEN`) — ONE set for all of NudgePay; stays a **deploy-time secret**. Never exposed in any tenant UI (exposing the app's client secret/auth token would let a tenant impersonate NudgePay platform-wide). Operator sets these once per deployment.
+- **Tenant connection** — fully in-UI, credential-free for stakeholders.
+
+- [ ] **G1 — In-UI "Connect QuickBooks" CTA + connection management.** OAuth handshake routes exist (`api.qbo.connect`, `auth.qbo.callback`) but the in-UI entry point is thin/absent (only a status dot, `AppShell.tsx:99`). Add a real Connect / disconnect / reconnect surface. *Stakeholder types nothing — OAuth only.*
+- [ ] **G2 — SMS sender / A2P status surface.** `messaging_config` (per-org `messaging_service_sid`/`sender`) is read (`twilio-messaging.server.ts:21`) but **never written** by app code — set manually today. **Twilio model = platform-owned + provisioned (decided):** NudgePay owns the Twilio account; each tenant gets a provisioned number; UI shows sender + A2P + consent status read-only. No tenant credential entry.
+- [ ] **G3 — Sync status & error visibility in Settings.** Surface last-sync, sync errors (see B6), and connection health. (Overlaps B6.)
+- Maps to the document's onboarding requirement: "connect QuickBooks and reach a populated work queue without building workflows."
+
+---
+
 ## Proposed phase grouping (for planning)
-1. **Brainstorm A2** (A1 accepted) — then scope Phase 6.
-2. **Phase 6 — operational loop (P0 core):** A1-impl → A2-impl → B1 → B3 → B2. One tightly-coupled arc.
-3. **Phase 7 — fidelity (P0 finish):** B4/B7, B5, B6.
-4. **Phase 8 — throughput (P1):** C1, C2, C5, C4, C7, C8, C6, C3.
-5. **Pull forward anytime:** B3-bug (live data-integrity issue).
+1. **Phase 6 — operational loop (P0 core)** — decomposed into three sub-phases, built in order (decided 2026-06-23):
+   - **6a — Case foundation:** `collection_cases` table + RLS, auto open/close lifecycle, worklist refactor to case-centric queue, `case_id` on contact_logs/text_messages, SMS re-keyed to customer/case (A1-impl).
+   - **6b — Promise + payment loop:** `promises`(+`promise_invoices`), `payments` table, Payment/CreditMemo sync (CDC+webhook), **webhook CloudEvents format fix + reconciliation sweep** (also closes B3-bug), balance-delta evaluation (B1, B3, B2).
+   - **6c — Hard invariant + minimal exceptions:** forced next-step UX, `waiting`/`on_hold` states + review dates, minimal exception placeholder (A2-impl).
+   - *Locked cross-cutting decisions:* hard next-action invariant; auto open/close; minimal exception placeholder; promise matching = invoice balance-delta.
+2. **Phase 7 — fidelity (P0 finish):** B4/B7, B5, B6.
+3. **Phase 8 — throughput (P1):** C1, C2, C5, C4, C7, C8, C6, C3.
+4. **Phase 9 — Connections & Settings (in-UI onboarding):** G1, G2, G3. *Sequenced after the loop (decided 2026-06-23).*
+5. **Pull forward anytime:** B3-bug (live data-integrity issue) — folded into 6b.
+
+### Intuit/QBO API facts verified against developer.intuit.com (2026-06-23)
+- **CDC** supports all entities except JournalCode/TaxAgency/TimeActivity/TaxCode/TaxRate → Invoice, Payment, CreditMemo, Customer all covered. 30-day lookback; **max 1,000 objects per response, shared across the requested entity list**.
+- **Webhook signature** = HMAC-SHA256 with the app verifier token, `intuit-signature` header — matches our `qbo-webhook.server.ts` impl.
+- **⚠️ Webhook payload format** now documented as **CloudEvents** (`type: "qbo.<entity>.<event>.v1"`, `intuitentityid`, `intuitaccountid`); our `parseQboWebhook` reads the **legacy** `eventNotifications[].dataChangeEvent.entities[]` shape. Verify which format our production endpoint receives + whether there's a cutover date; support both during transition. **Gates timely payment resolution — addressed in 6b.**
+- **Balance-delta validated:** both cash Payments and CreditMemos reduce Invoice `Balance` (already synced), so kept/broken evaluation needs only invoice balances + payment date — no payment→invoice line attribution required.
