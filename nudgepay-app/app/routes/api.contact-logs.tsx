@@ -4,6 +4,7 @@ import { requireUser, resolveOrg } from "../lib/session.server";
 import { parseContactLogForm } from "../lib/contact-log";
 import { safeReturnTo } from "../lib/return-to";
 import { createPromiseForLog } from "../lib/promise-create.server";
+import { applyNextStep } from "../lib/next-step.server";
 
 function withError(returnTo: string, code: string): string {
   const sep = returnTo.includes("?") ? "&" : "?";
@@ -45,31 +46,21 @@ export async function action({ request, context }: ActionFunctionArgs) {
     method: f.method,
     outcome: f.outcome,
     notes: f.notes,
-    follow_up_at: f.followUpAt,
-    promised_amount: f.promisedAmount,
-    promised_date: f.promisedDate,
+    follow_up_at: f.nextStep === "follow_up" ? f.followUpAt : null,
+    promised_amount: f.nextStep === "promise" ? f.promisedAmount : null,
+    promised_date: f.nextStep === "promise" ? f.promisedDate : null,
   }).select("id").single();
   if (error || !logRow) return redirect(withError(returnTo, "save-failed"), { headers });
   const contactLogId: string = logRow.id;
 
-  // Keep next-action durable: a logged contact moves the case to "working" and,
-  // when a follow-up date was given, sets it as the next action. This case update
-  // IS the durable next-action write, so a failed update must surface rather than
-  // redirecting success and silently leaving the case in "new".
-  const caseUpdate: Record<string, unknown> = { status: "working" };
-  if (f.followUpAt) {
-    caseUpdate.next_action_type = "follow_up";
-    caseUpdate.next_action_at = f.followUpAt;
-  }
-  const { error: caseErr } = await supabase
-    .from("collection_cases").update(caseUpdate).eq("id", f.caseId);
-  if (caseErr) return redirect(withError(returnTo, "save-failed"), { headers });
-
-  if (f.outcome === "promise-to-pay" && f.promisedAmount != null && f.promisedDate != null) {
+  if (f.nextStep === "promise" && f.promisedAmount != null && f.promisedDate != null) {
     const res = await createPromiseForLog(supabase, {
       orgId: org.org_id, caseId: f.caseId, customerId: f.customerId, userId: user.id,
       contactLogId, promisedAmount: f.promisedAmount, promisedDate: f.promisedDate,
     });
+    if (!res.ok) return redirect(withError(returnTo, "save-failed"), { headers });
+  } else {
+    const res = await applyNextStep(supabase, f.caseId, f);
     if (!res.ok) return redirect(withError(returnTo, "save-failed"), { headers });
   }
 
