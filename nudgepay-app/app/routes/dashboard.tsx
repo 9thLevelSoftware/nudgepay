@@ -224,6 +224,7 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
   let selectedConsent = false;
   let selectedPhone: string | null = null;
   let selectedRepInvoiceId: string | null = null;
+  let selectedPromiseId: string | null = null;
   let roster: OrgMember[] = [];
   let dashboardData: DashboardData = {
     items: [],
@@ -381,6 +382,11 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
       selectedConsent = (custRow as any)?.sms_consent ?? false;
       selectedPhone = (custRow as any)?.phone ?? null;
       selectedRepInvoiceId = repInvoiceId;
+
+      // Active pending promise id for the cancel form
+      const { data: ap } = await supabase
+        .from("promises").select("id").eq("org_id", org.org_id).eq("case_id", sel.caseId).eq("status", "pending").maybeSingle();
+      selectedPromiseId = ap?.id ?? null;
     }
   }
 
@@ -404,6 +410,7 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
       selectedMessages,
       selectedConsent,
       selectedPhone,
+      selectedPromiseId,
       sms,
       roster,
       currentUserId: user.id,
@@ -434,6 +441,7 @@ export default function Dashboard() {
     selectedMessages,
     selectedConsent,
     selectedPhone,
+    selectedPromiseId,
     sms,
     roster,
     items,
@@ -511,6 +519,7 @@ export default function Dashboard() {
                 messages={selectedMessages}
                 consent={selectedConsent}
                 phone={selectedPhone}
+                selectedPromiseId={selectedPromiseId}
                 roster={roster}
                 sms={sms}
                 view={view}
