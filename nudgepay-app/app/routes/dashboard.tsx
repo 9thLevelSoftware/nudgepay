@@ -24,6 +24,7 @@ import { AppShell } from "../components/AppShell";
 import { MetricsStrip } from "../components/MetricsStrip";
 import { WorkQueue } from "../components/WorkQueue";
 import { DetailPanel } from "../components/DetailPanel";
+import { LogContactDrawer } from "../components/LogContactDrawer";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -395,6 +396,9 @@ export default function Dashboard() {
     sort,
     q,
     tab,
+    log,
+    logError,
+    selectedActivity,
     items,
     metrics,
     viewCounts,
@@ -461,9 +465,24 @@ export default function Dashboard() {
                 selected ? "block" : "hidden md:block",
               ].join(" ")}
             >
-              <DetailPanel selected={selected ?? null} activeTab={tab} />
+              <DetailPanel
+                selected={selected ?? null}
+                activeTab={tab}
+                activity={selectedActivity}
+                view={view}
+                sort={sort}
+                q={q}
+              />
             </div>
           </div>
+
+          {log && selected ? (
+            <LogContactDrawer
+              selected={selected}
+              returnTo={`?${new URLSearchParams({ invoice: selected.invoiceId, tab, view, sort, ...(q ? { q } : {}) }).toString()}`}
+              logError={logError}
+            />
+          ) : null}
         </div>
       ) : (
         /* Not connected */
