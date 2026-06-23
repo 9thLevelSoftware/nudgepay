@@ -42,7 +42,7 @@ export function ThermalBand({ heat }: ThermalBandProps) {
   return (
     <span
       className={`inline-flex items-center gap-1.5 rounded ${tokens.tint} pr-2 overflow-hidden`}
-      aria-label={`${heat.label}, ${heat.days} days overdue`}
+      aria-label={`${heat.label.toLowerCase()}, ${heat.days} days overdue`}
     >
       {/* Saturated left-edge bar */}
       <span className={`self-stretch w-1 shrink-0 ${tokens.bar}`} aria-hidden="true" />

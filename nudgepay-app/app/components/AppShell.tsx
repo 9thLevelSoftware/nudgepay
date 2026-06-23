@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { Link } from "react-router";
 import { Icon } from "./Icons";
 
 interface AppShellProps {
@@ -71,13 +72,13 @@ export function AppShell({
         </button>
 
         {/* Brand mark */}
-        <a
-          href="/dashboard"
+        <Link
+          to="/dashboard"
           className="flex items-center gap-0 font-display text-[17px] font-semibold leading-none tracking-tight focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-copper rounded"
         >
           <span className="text-copper">Nudge</span>
           <span className="text-surface/90">Pay</span>
-        </a>
+        </Link>
 
         {/* Workspace title */}
         <span
@@ -156,8 +157,8 @@ export function AppShell({
               item.active ? (
                 /* Active: Collections — copper left-edge indicator */
                 <li key={item.name} className="relative w-full">
-                  <a
-                    href="/dashboard"
+                  <Link
+                    to="/dashboard"
                     className="relative flex flex-col items-center justify-center w-full py-3 gap-1 text-surface focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-copper focus-visible:ring-inset"
                     aria-current="page"
                     aria-label={item.label}
@@ -172,7 +173,7 @@ export function AppShell({
                     <span className="text-[9px] font-sans font-medium uppercase tracking-wide text-copper leading-none">
                       {item.label}
                     </span>
-                  </a>
+                  </Link>
                 </li>
               ) : (
                 /* Inert future nav items */
