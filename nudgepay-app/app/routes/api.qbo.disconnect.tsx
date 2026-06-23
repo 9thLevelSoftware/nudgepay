@@ -1,7 +1,7 @@
 import { redirect, type ActionFunctionArgs, type LoaderFunctionArgs } from "react-router";
 import { getEnv, getQboEnv } from "../lib/env.server";
 import { createSupabaseServiceClient } from "../lib/supabase.server";
-import { requireUser, resolveOrg } from "../lib/session.server";
+import { getOptionalUser, requireUser, resolveOrg } from "../lib/session.server";
 import { disconnectConnection } from "../lib/qbo-connection.server";
 import { intuitDisconnectPlan } from "../lib/auth-flow.server";
 
@@ -28,19 +28,23 @@ export async function action({ request, context }: ActionFunctionArgs) {
 export async function loader({ request, context }: LoaderFunctionArgs) {
   const env = getEnv(context as any);
   const qbo = getQboEnv(context as any);
-  const { supabase, headers, user } = await requireUser(request, env);
-  const org = await resolveOrg(supabase, user.id);
+  // Intuit's browser likely lacks our session cookie, so we must NOT throw a
+  // redirect to /login here (that would defeat the endpoint). Use the optional
+  // primitive: clear tokens only when we can resolve a session to an org,
+  // otherwise just render the confirmation.
+  const { supabase, headers, user } = await getOptionalUser(request, env);
+  const org = user ? await resolveOrg(supabase, user.id) : null;
   const plan = intuitDisconnectPlan(org);
   if (plan.clear && plan.orgId) {
     const service = createSupabaseServiceClient(env);
     await disconnectConnection(fetch, service, qboCfg(qbo), qbo.QBO_ENCRYPTION_KEY, plan.orgId);
   }
-  return new Response(
+  const html =
     "<!doctype html><meta charset=utf-8><title>Disconnected</title>" +
-      "<main style=\"max-width:480px;margin:64px auto;font-family:sans-serif\">" +
-      "<h1>QuickBooks disconnected</h1><p>Your QuickBooks Online connection has been " +
-      "removed and stored tokens were cleared. You can reconnect any time from your " +
-      "NudgePay dashboard.</p></main>",
-    { status: 200, headers: (() => { headers.set("Content-Type", "text/html; charset=utf-8"); return headers; })() },
-  );
+    "<main style=\"max-width:480px;margin:64px auto;font-family:sans-serif\">" +
+    "<h1>QuickBooks disconnected</h1><p>Your QuickBooks Online connection has been " +
+    "removed and stored tokens were cleared. You can reconnect any time from your " +
+    "NudgePay dashboard.</p></main>";
+  headers.set("Content-Type", "text/html; charset=utf-8");
+  return new Response(html, { status: 200, headers });
 }
