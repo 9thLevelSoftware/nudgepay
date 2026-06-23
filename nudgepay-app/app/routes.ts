@@ -12,6 +12,7 @@ export default [
   route("privacy", "routes/privacy.tsx"),
   route("eula", "routes/eula.tsx"),
   route("api/contact-logs", "routes/api.contact-logs.tsx"),
+  route("api/sms-consent", "routes/api.sms-consent.tsx"),
   route("api/qbo/connect", "routes/api.qbo.connect.tsx"),
   route("api/qbo/disconnect", "routes/api.qbo.disconnect.tsx"),
   route("api/qbo/refresh", "routes/api.qbo.refresh.tsx"),

@@ -4,10 +4,17 @@ import { createSupabaseServiceClient } from "../lib/supabase.server";
 import { requireUser, resolveOrg } from "../lib/session.server";
 import { sendInvoiceText, type MessagingDeps } from "../lib/twilio-messaging.server";
 import type { TwilioSender } from "../lib/twilio-client.server";
+import { safeReturnTo } from "../lib/return-to";
 
 function envSender(t: { TWILIO_MESSAGING_SERVICE_SID: string | null; TWILIO_FROM_NUMBER: string | null }): TwilioSender {
   if (t.TWILIO_MESSAGING_SERVICE_SID) return { messagingServiceSid: t.TWILIO_MESSAGING_SERVICE_SID };
   return { from: t.TWILIO_FROM_NUMBER as string }; // getTwilioEnv guarantees one of the two
+}
+
+// Append the send-result code onto the (already-validated) return path.
+export function withSms(returnTo: string, code: string): string {
+  const sep = returnTo.includes("?") ? "&" : "?";
+  return `${returnTo}${sep}sms=${code}`;
 }
 
 export async function action({ request, context }: ActionFunctionArgs) {
@@ -18,11 +25,12 @@ export async function action({ request, context }: ActionFunctionArgs) {
   if (!org) return redirect("/onboarding", { headers });
 
   const form = await request.formData();
+  const returnTo = safeReturnTo(form.get("returnTo"));
   const raw = form.get("invoiceId");
   const invoiceId = typeof raw === "string" ? raw : "";
   const bodyRaw = form.get("body");
   const body = typeof bodyRaw === "string" ? bodyRaw.trim() : "";
-  if (!invoiceId || !body) return redirect("/dashboard?sms=error", { headers });
+  if (!invoiceId || !body) return redirect(withSms(returnTo, "error"), { headers });
 
   const service = createSupabaseServiceClient(env);
   const statusCallback = twilio.TWILIO_PUBLIC_BASE_URL
@@ -36,10 +44,10 @@ export async function action({ request, context }: ActionFunctionArgs) {
   };
   try {
     await sendInvoiceText(deps, { orgId: org.org_id, invoiceId, userId: user.id, body });
-    return redirect(`/invoices/${invoiceId}?sms=sent`, { headers });
+    return redirect(withSms(returnTo, "sent"), { headers });
   } catch (err) {
     const reason = err instanceof Error && /consent/i.test(err.message) ? "noconsent" : "error";
-    return redirect(`/invoices/${invoiceId}?sms=${reason}`, { headers });
+    return redirect(withSms(returnTo, reason), { headers });
   }
 }
 
