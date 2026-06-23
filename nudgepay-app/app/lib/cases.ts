@@ -5,8 +5,18 @@
 import {
   heatOf, priorityOf, ageInDays, HIGH_VALUE_THRESHOLD,
   type Heat, type Priority, type LastContact, type Metric, type Metrics,
-  type ViewId, type SortId, type InvoiceInput, type CustomerInput, type LastContactInput,
+  type ViewId, type SortId, type InvoiceInput, type CustomerInput,
 } from "./worklist";
+import type { PromiseStatus } from "./promises";
+
+export type CasePromiseInput = {
+  caseId: string;
+  status: PromiseStatus;
+  promisedAmount: number;
+  promisedDate: string;
+  amountReceived: number;
+};
+export type CaseLastContactInput = { caseId: string; date: string; channel: string };
 
 export type CaseStatus = "new" | "working" | "promised" | "waiting" | "on_hold" | "resolved";
 export type NextActionType = "contact" | "follow_up" | "promise" | "waiting" | "exception";
@@ -47,6 +57,8 @@ export type CaseItem = {
   email: string | null;
   promise: { amount: number; date: string } | null;
   brokenPromise: boolean;
+  promiseStatus: PromiseStatus | null;
+  amountReceived: number | null;
   followUpDue: boolean;
   searchText: string;
   invoices: CaseInvoice[];
@@ -79,7 +91,8 @@ export function buildCaseItems(
   cases: CaseRow[],
   invoices: InvoiceInput[],
   customers: CustomerInput[],
-  lastContacts: LastContactInput[],
+  lastContacts: CaseLastContactInput[],
+  promises: CasePromiseInput[],
   today: string,
   ownerLabels: Map<string, string>,
 ): CaseItem[] {
@@ -103,16 +116,16 @@ export function buildCaseItems(
     invoicesByCustomer.set(inv.customer_id, list);
   }
 
-  // Most-recent contact per customer (max-by-date; do not rely on order).
-  const lastByCustomer = new Map<string, LastContactInput & { customerId: string }>();
-  const invoiceToCustomer = new Map<string, string>();
-  for (const [cid, list] of invoicesByCustomer) for (const ci of list) invoiceToCustomer.set(ci.invoiceId, cid);
+  // Most-recent contact per CASE (max-by-date; do not rely on order).
+  const lastByCase = new Map<string, CaseLastContactInput>();
   for (const lc of lastContacts) {
-    const cid = invoiceToCustomer.get(lc.invoiceId);
-    if (!cid) continue;
-    const prev = lastByCustomer.get(cid);
-    if (!prev || lc.date > prev.date) lastByCustomer.set(cid, { ...lc, customerId: cid });
+    const prev = lastByCase.get(lc.caseId);
+    if (!prev || lc.date > prev.date) lastByCase.set(lc.caseId, lc);
   }
+
+  // Active promise per case (the input carries at most one relevant promise per case).
+  const promiseByCase = new Map<string, CasePromiseInput>();
+  for (const p of promises) promiseByCase.set(p.caseId, p);
 
   return cases.map((cse) => {
     const cust = customerById.get(cse.customerId) ?? null;
@@ -121,12 +134,13 @@ export function buildCaseItems(
       .sort((a, b) => b.ageDays - a.ageDays); // oldest first
     const totalOverdue = invList.reduce((s, i) => s + i.balance, 0);
     const oldestAgeDays = invList.length ? invList[0].ageDays : 0;
-    const lc = lastByCustomer.get(cse.customerId) ?? null;
+    const lc = lastByCase.get(cse.id) ?? null;
     const neverContacted = !lc;
     const ownerId = cust?.owner ?? null;
     const owner = ownerId ? (ownerLabels.get(ownerId) ?? "Unknown") : "Unassigned";
     const name = cust?.name ?? "(unknown customer)";
     const followUpDue = cse.nextActionAt != null && cse.nextActionAt <= today;
+    const prom = promiseByCase.get(cse.id) ?? null;
 
     return {
       caseId: cse.id,
@@ -145,8 +159,10 @@ export function buildCaseItems(
       lastContact: lc ? { date: lc.date, channel: lc.channel } : null,
       phone: cust?.phone ?? null,
       email: cust?.email ?? null,
-      promise: null,        // populated in 6b
-      brokenPromise: false, // populated in 6b
+      promise: prom ? { amount: prom.promisedAmount, date: prom.promisedDate } : null,
+      brokenPromise: prom?.status === "broken",
+      promiseStatus: prom ? prom.status : null,
+      amountReceived: prom ? prom.amountReceived : null,
       followUpDue,
       searchText: [name, ...invList.map((i) => i.docNumber ?? ""), cust?.phone ?? "", cust?.email ?? "", owner]
         .filter(Boolean).join(" ").toLowerCase(),

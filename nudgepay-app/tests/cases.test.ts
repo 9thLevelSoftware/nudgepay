@@ -3,6 +3,7 @@ import {
   reconcileCases,
   buildCaseItems, applyCaseView, sortCaseItems, computeCaseMetrics,
   type CaseRow,
+  type CasePromiseInput, type CaseLastContactInput,
 } from "../app/lib/cases";
 
 const TODAY = "2026-06-22";
@@ -48,7 +49,7 @@ const INVOICES = [
 const LABELS = new Map([["u1", "diskin"]]);
 
 test("buildCaseItems aggregates totalOverdue, invoiceCount, oldest age, and heat from the oldest", () => {
-  const items = buildCaseItems(CASES, INVOICES, CUSTOMERS, [], TODAY, LABELS);
+  const items = buildCaseItems(CASES, INVOICES, CUSTOMERS, [], [], TODAY, LABELS);
   const acme = items.find((c) => c.customerId === "c1")!;
   expect(acme.totalOverdue).toBe(6300);
   expect(acme.invoiceCount).toBe(2);
@@ -61,18 +62,18 @@ test("buildCaseItems aggregates totalOverdue, invoiceCount, oldest age, and heat
 });
 
 test("buildCaseItems resolves owner Unassigned when null", () => {
-  const items = buildCaseItems(CASES, INVOICES, CUSTOMERS, [], TODAY, LABELS);
+  const items = buildCaseItems(CASES, INVOICES, CUSTOMERS, [], [], TODAY, LABELS);
   expect(items.find((c) => c.customerId === "c2")!.owner).toBe("Unassigned");
 });
 
 test("buildCaseItems excludes invoices with a null customer_id", () => {
   const orphanInvoices = [...INVOICES, { id: "i9", qbo_doc_number: "9999", customer_id: null, balance: 100, due_date: "2026-01-01" }];
-  const items = buildCaseItems(CASES, orphanInvoices, CUSTOMERS, [], TODAY, LABELS);
+  const items = buildCaseItems(CASES, orphanInvoices, CUSTOMERS, [], [], TODAY, LABELS);
   expect(items.flatMap((c) => c.invoices).some((i) => i.invoiceId === "i9")).toBe(false);
 });
 
 test("applyCaseView filters by case-level predicates", () => {
-  const items = buildCaseItems(CASES, INVOICES, CUSTOMERS, [], TODAY, LABELS);
+  const items = buildCaseItems(CASES, INVOICES, CUSTOMERS, [], [], TODAY, LABELS);
   expect(applyCaseView(items, "30-plus", TODAY, null).map((c) => c.customerId)).toEqual(["c1", "c2"]);
   expect(applyCaseView(items, "high-value", TODAY, null).map((c) => c.customerId)).toEqual(["c1"]);
   expect(applyCaseView(items, "follow-ups-due", TODAY, null).map((c) => c.customerId)).toEqual(["c1"]); // nextActionAt 06-20 <= today
@@ -81,7 +82,7 @@ test("applyCaseView filters by case-level predicates", () => {
 });
 
 test("computeCaseMetrics counts cases and sums overdue", () => {
-  const items = buildCaseItems(CASES, INVOICES, CUSTOMERS, [], TODAY, LABELS);
+  const items = buildCaseItems(CASES, INVOICES, CUSTOMERS, [], [], TODAY, LABELS);
   const m = computeCaseMetrics(items, TODAY);
   expect(m.allOpen.count).toBe(2);
   expect(m.allOpen.amount).toBe(7100);
@@ -90,17 +91,37 @@ test("computeCaseMetrics counts cases and sums overdue", () => {
   expect(m.followUpsDue.amount).toBe(6300);
 });
 
-test("buildCaseItems sets lastContact from the most-recent contact and excludes it from never-contacted", () => {
+test("buildCaseItems sets lastContact from the most-recent contact per case and excludes it from never-contacted", () => {
+  const lastContacts: CaseLastContactInput[] = [
+    { caseId: "case-1", date: "2026-06-17T00:00:00Z", channel: "Email" },
+    { caseId: "case-1", date: "2026-06-19T00:00:00Z", channel: "Text" },
+  ];
   const items = buildCaseItems(
     CASES, INVOICES, CUSTOMERS,
-    [{ invoiceId: "i1", date: "2026-06-19T00:00:00Z", channel: "Text" }],
+    lastContacts, [],
     TODAY, LABELS,
   );
-  expect(items.find((c) => c.customerId === "c1")!.lastContact).toEqual({ date: "2026-06-19T00:00:00Z", channel: "Text" });
+  // Most-recent for case-1 is June 19 (Text), not June 17 (Email).
+  expect(items.find((c) => c.caseId === "case-1")!.lastContact).toEqual({ date: "2026-06-19T00:00:00Z", channel: "Text" });
   expect(applyCaseView(items, "never-contacted", TODAY, null).map((c) => c.customerId)).toEqual(["c2"]);
 });
 
 test("sortCaseItems recommended orders by priority rank then oldest age", () => {
-  const items = buildCaseItems(CASES, INVOICES, CUSTOMERS, [], TODAY, LABELS);
+  const items = buildCaseItems(CASES, INVOICES, CUSTOMERS, [], [], TODAY, LABELS);
   expect(sortCaseItems(items, "recommended").map((c) => c.customerId)).toEqual(["c1", "c2"]);
+});
+
+test("buildCaseItems populates promise, brokenPromise, promiseStatus and case-keyed last contact", () => {
+  const cases = [{ id: "case-1", customerId: "c1", status: "promised" as const, nextActionType: "promise" as const, nextActionAt: "2026-07-03" }];
+  const invoices = [{ id: "i1", qbo_doc_number: "1001", customer_id: "c1", balance: 1200, due_date: "2026-03-01" }];
+  const customers = [{ id: "c1", name: "Acme", phone: null, email: null, owner: null }];
+  const lastContacts: CaseLastContactInput[] = [{ caseId: "case-1", date: "2026-06-20T10:00:00Z", channel: "Text" }];
+  const promises: CasePromiseInput[] = [
+    { caseId: "case-1", status: "broken", promisedAmount: 500, promisedDate: "2026-07-01", amountReceived: 0 },
+  ];
+  const items = buildCaseItems(cases, invoices, customers, lastContacts, promises, "2026-07-10", new Map());
+  expect(items[0].promise).toEqual({ amount: 500, date: "2026-07-01" });
+  expect(items[0].brokenPromise).toBe(true);
+  expect(items[0].promiseStatus).toBe("broken");
+  expect(items[0].lastContact).toEqual({ date: "2026-06-20T10:00:00Z", channel: "Text" });
 });
