@@ -24,18 +24,26 @@ export type WorkItem = {
   priority: Priority;
   nextAction: NextAction;
   lastContact: LastContact;
+  promise: { amount: number; date: string } | null;
+  followUpAt: string | null;
   invoiceCount: number;
   searchText: string;
 };
 
 export type Metric = { count: number; amount: number };
-export type Metrics = { thirtyPlus: Metric; highValue: Metric; neverContacted: Metric; allOpen: Metric };
-export type ViewId = "all-open" | "30-plus" | "high-value" | "never-contacted";
+export type Metrics = { thirtyPlus: Metric; highValue: Metric; neverContacted: Metric; allOpen: Metric; followUpsDue: Metric; brokenPromises: Metric };
+export type ViewId = "all-open" | "30-plus" | "high-value" | "never-contacted" | "follow-ups-due" | "broken-promises";
 export type SortId = "recommended" | "most-overdue" | "highest-balance" | "customer";
 
 export type InvoiceInput = { id: string; qbo_doc_number: string | null; customer_id: string | null; balance: number; due_date: string | null };
 export type CustomerInput = { id: string; name: string; phone: string | null; email: string | null };
 export type LastContactInput = { invoiceId: string; date: string; channel: string };
+export type PromiseSignalInput = {
+  invoiceId: string;
+  promisedAmount: number | null;
+  promisedDate: string | null;
+  followUpAt: string | null;
+};
 
 export const HIGH_VALUE_THRESHOLD = 5000;
 
@@ -72,10 +80,20 @@ export function nextActionOf(ageDays: number, neverContacted: boolean): NextActi
 }
 
 export function buildWorkItems(
-  invoices: InvoiceInput[], customers: CustomerInput[], lastContacts: LastContactInput[], today: string,
+  invoices: InvoiceInput[], customers: CustomerInput[],
+  lastContacts: LastContactInput[], promiseSignals: PromiseSignalInput[], today: string,
 ): WorkItem[] {
   const customerById = new Map(customers.map((c) => [c.id, c]));
-  const lastByInvoice = new Map(lastContacts.map((l) => [l.invoiceId, l]));
+
+  // Most-recent contact per invoice (explicit max-by-date; do not rely on order).
+  const lastByInvoice = new Map<string, LastContactInput>();
+  for (const lc of lastContacts) {
+    const prev = lastByInvoice.get(lc.invoiceId);
+    if (!prev || lc.date > prev.date) lastByInvoice.set(lc.invoiceId, lc);
+  }
+
+  const signalByInvoice = new Map(promiseSignals.map((s) => [s.invoiceId, s]));
+
   const customerBalance = new Map<string, number>();
   const customerInvoiceCount = new Map<string, number>();
   for (const inv of invoices) {
@@ -91,6 +109,11 @@ export function buildWorkItems(
     const neverContacted = !lc;
     const balance = Number(inv.balance || 0);
     const name = cust?.name ?? "(unknown customer)";
+    const sig = signalByInvoice.get(inv.id) ?? null;
+    const promise =
+      sig && sig.promisedAmount != null && sig.promisedDate != null
+        ? { amount: sig.promisedAmount, date: sig.promisedDate }
+        : null;
     return {
       invoiceId: inv.id,
       docNumber: inv.qbo_doc_number,
@@ -107,16 +130,28 @@ export function buildWorkItems(
       priority: priorityOf(ageDays, neverContacted),
       nextAction: nextActionOf(ageDays, neverContacted),
       lastContact: lc ? { date: lc.date, channel: lc.channel } : null,
+      promise,
+      followUpAt: sig?.followUpAt ?? null,
       invoiceCount: inv.customer_id ? customerInvoiceCount.get(inv.customer_id) ?? 1 : 1,
       searchText: [name, inv.qbo_doc_number ?? "", cust?.phone ?? "", cust?.email ?? ""].join(" ").toLowerCase(),
     };
   });
 }
 
-export function applyView(items: WorkItem[], view: ViewId): WorkItem[] {
+export function isBrokenPromise(item: WorkItem, today: string): boolean {
+  return item.promise != null && item.promise.date < today;
+}
+
+export function isFollowUpDue(item: WorkItem, today: string): boolean {
+  return item.followUpAt != null && item.followUpAt <= today;
+}
+
+export function applyView(items: WorkItem[], view: ViewId, today: string): WorkItem[] {
   if (view === "30-plus") return items.filter((i) => i.ageDays >= 30);
   if (view === "high-value") return items.filter((i) => i.balance >= HIGH_VALUE_THRESHOLD);
   if (view === "never-contacted") return items.filter((i) => i.lastContact === null);
+  if (view === "follow-ups-due") return items.filter((i) => isFollowUpDue(i, today));
+  if (view === "broken-promises") return items.filter((i) => isBrokenPromise(i, today));
   return items;
 }
 
@@ -128,7 +163,7 @@ export function sortItems(items: WorkItem[], sort: SortId): WorkItem[] {
   return copy.sort((a, b) => a.priority.rank - b.priority.rank || b.ageDays - a.ageDays || b.balance - a.balance);
 }
 
-export function computeMetrics(items: WorkItem[]): Metrics {
+export function computeMetrics(items: WorkItem[], today: string): Metrics {
   const bucket = (pred: (i: WorkItem) => boolean): Metric => {
     const matched = items.filter(pred);
     return { count: matched.length, amount: matched.reduce((s, i) => s + i.balance, 0) };
@@ -138,5 +173,7 @@ export function computeMetrics(items: WorkItem[]): Metrics {
     highValue: bucket((i) => i.balance >= HIGH_VALUE_THRESHOLD),
     neverContacted: bucket((i) => i.lastContact === null),
     allOpen: bucket(() => true),
+    followUpsDue: bucket((i) => isFollowUpDue(i, today)),
+    brokenPromises: bucket((i) => isBrokenPromise(i, today)),
   };
 }

@@ -1,7 +1,8 @@
 import { expect, test } from "vitest";
 import {
   ageInDays, heatOf, priorityOf, nextActionOf, buildWorkItems,
-  applyView, sortItems, computeMetrics,
+  applyView, sortItems, computeMetrics, isBrokenPromise, isFollowUpDue,
+  type PromiseSignalInput,
 } from "../app/lib/worklist";
 
 const TODAY = "2026-06-22";
@@ -54,7 +55,7 @@ test("buildWorkItems joins invoice+customer, derives fields, owner=Unassigned", 
     ],
     [{ id: "c1", name: "Acme", phone: "+13105550101", email: "ap@acme.test" }],
     [{ invoiceId: "i2", date: "2026-06-15T10:00:00Z", channel: "Text" }],
-    TODAY,
+    [], TODAY,
   );
   const i1 = items.find((x) => x.invoiceId === "i1")!;
   expect(i1.customerName).toBe("Acme");
@@ -76,12 +77,12 @@ test("applyView filters by each view id", () => {
     ],
     [{ id: "c", name: "C", phone: null, email: null }],
     [{ invoiceId: "b", date: "2026-06-19T00:00:00Z", channel: "Text" }],
-    TODAY,
+    [], TODAY,
   );
-  expect(applyView(items, "all-open").length).toBe(2);
-  expect(applyView(items, "30-plus").map((x) => x.invoiceId)).toEqual(["a"]);
-  expect(applyView(items, "high-value").map((x) => x.invoiceId)).toEqual(["a"]);
-  expect(applyView(items, "never-contacted").map((x) => x.invoiceId)).toEqual(["a"]);
+  expect(applyView(items, "all-open", TODAY).length).toBe(2);
+  expect(applyView(items, "30-plus", TODAY).map((x) => x.invoiceId)).toEqual(["a"]);
+  expect(applyView(items, "high-value", TODAY).map((x) => x.invoiceId)).toEqual(["a"]);
+  expect(applyView(items, "never-contacted", TODAY).map((x) => x.invoiceId)).toEqual(["a"]);
 });
 
 test("applyView high-value is inclusive at exactly the threshold (5000)", () => {
@@ -91,10 +92,10 @@ test("applyView high-value is inclusive at exactly the threshold (5000)", () => 
       { id: "below", qbo_doc_number: "2", customer_id: "c", balance: 4999, due_date: "2026-03-01" },
     ],
     [{ id: "c", name: "C", phone: null, email: null }],
-    [],
+    [], [],
     TODAY,
   );
-  const ids = applyView(items, "high-value").map((x) => x.invoiceId);
+  const ids = applyView(items, "high-value", TODAY).map((x) => x.invoiceId);
   expect(ids).toContain("at");
   expect(ids).not.toContain("below");
 });
@@ -106,7 +107,7 @@ test("sortItems orders by the chosen key", () => {
       { id: "big", qbo_doc_number: "2", customer_id: "c", balance: 9000, due_date: "2026-06-10" },
     ],
     [{ id: "c", name: "C", phone: null, email: null }],
-    [],
+    [], [],
     TODAY,
   );
   expect(sortItems(items, "most-overdue")[0].invoiceId).toBe("old");
@@ -123,7 +124,7 @@ test("sortItems orders by customer name and recommended priority", () => {
       { id: "cz", name: "Zeta", phone: null, email: null },
       { id: "ca", name: "Acme", phone: null, email: null },
     ],
-    [],
+    [], [],
     TODAY,
   );
   // customer: ascending by customerName -> Acme before Zeta
@@ -140,11 +141,91 @@ test("computeMetrics totals count and amount per bucket", () => {
     ],
     [{ id: "c", name: "C", phone: null, email: null }],
     [{ invoiceId: "b", date: "2026-06-20T00:00:00Z", channel: "Text" }],
-    TODAY,
+    [], TODAY,
   );
-  const m = computeMetrics(items);
+  const m = computeMetrics(items, TODAY);
   expect(m.allOpen).toEqual({ count: 2, amount: 6400 });
   expect(m.thirtyPlus).toEqual({ count: 1, amount: 6000 });
   expect(m.highValue).toEqual({ count: 1, amount: 6000 });
   expect(m.neverContacted).toEqual({ count: 1, amount: 6000 });
+});
+
+const T = "2026-06-22";
+const inv = (id: string, due: string, bal = 1000) =>
+  ({ id, qbo_doc_number: id, customer_id: "c1", balance: bal, due_date: due });
+const cust = [{ id: "c1", name: "Acme", phone: null, email: null }];
+
+test("buildWorkItems picks the most-recent contact regardless of input order", () => {
+  const items = buildWorkItems(
+    [inv("i1", "2026-03-01")], cust,
+    [
+      { invoiceId: "i1", date: "2026-06-10T00:00:00Z", channel: "Text" },
+      { invoiceId: "i1", date: "2026-06-20T00:00:00Z", channel: "Call" },
+    ],
+    [], T,
+  );
+  expect(items[0].lastContact).toEqual({ date: "2026-06-20T00:00:00Z", channel: "Call" });
+});
+
+test("buildWorkItems maps promise + followUpAt from signals", () => {
+  const signals: PromiseSignalInput[] = [
+    { invoiceId: "i1", promisedAmount: 250, promisedDate: "2026-06-30", followUpAt: "2026-06-25" },
+  ];
+  const items = buildWorkItems([inv("i1", "2026-03-01")], cust, [], signals, T);
+  expect(items[0].promise).toEqual({ amount: 250, date: "2026-06-30" });
+  expect(items[0].followUpAt).toBe("2026-06-25");
+});
+
+test("buildWorkItems leaves promise null when amount or date missing", () => {
+  const signals: PromiseSignalInput[] = [
+    { invoiceId: "i1", promisedAmount: 250, promisedDate: null, followUpAt: null },
+  ];
+  const items = buildWorkItems([inv("i1", "2026-03-01")], cust, [], signals, T);
+  expect(items[0].promise).toBeNull();
+});
+
+test("isBrokenPromise: past promise broken, today/future not", () => {
+  const mk = (date: string | null) =>
+    buildWorkItems([inv("i1", "2026-03-01")], cust, [],
+      date ? [{ invoiceId: "i1", promisedAmount: 100, promisedDate: date, followUpAt: null }] : [], T)[0];
+  expect(isBrokenPromise(mk("2026-06-21"), T)).toBe(true);  // < today
+  expect(isBrokenPromise(mk("2026-06-22"), T)).toBe(false); // == today
+  expect(isBrokenPromise(mk("2026-06-23"), T)).toBe(false); // > today
+  expect(isBrokenPromise(mk(null), T)).toBe(false);         // no promise
+});
+
+test("isFollowUpDue: on/before today due, after not", () => {
+  const mk = (fu: string | null) =>
+    buildWorkItems([inv("i1", "2026-03-01")], cust, [],
+      [{ invoiceId: "i1", promisedAmount: null, promisedDate: null, followUpAt: fu }], T)[0];
+  expect(isFollowUpDue(mk("2026-06-21"), T)).toBe(true);  // < today
+  expect(isFollowUpDue(mk("2026-06-22"), T)).toBe(true);  // == today
+  expect(isFollowUpDue(mk("2026-06-23"), T)).toBe(false); // > today
+  expect(isFollowUpDue(mk(null), T)).toBe(false);         // none
+});
+
+test("applyView filters follow-ups-due and broken-promises", () => {
+  const items = buildWorkItems(
+    [inv("i1", "2026-03-01"), inv("i2", "2026-03-01"), inv("i3", "2026-03-01")], cust, [],
+    [
+      { invoiceId: "i1", promisedAmount: 100, promisedDate: "2026-06-01", followUpAt: null }, // broken
+      { invoiceId: "i2", promisedAmount: null, promisedDate: null, followUpAt: "2026-06-20" }, // follow-up due
+      { invoiceId: "i3", promisedAmount: 100, promisedDate: "2026-12-01", followUpAt: "2026-12-01" }, // neither
+    ], T,
+  );
+  expect(applyView(items, "broken-promises", T).map((i) => i.invoiceId)).toEqual(["i1"]);
+  expect(applyView(items, "follow-ups-due", T).map((i) => i.invoiceId)).toEqual(["i2"]);
+});
+
+test("computeMetrics totals follow-ups-due and broken-promises", () => {
+  const items = buildWorkItems(
+    [inv("i1", "2026-03-01", 400), inv("i2", "2026-03-01", 600)], cust, [],
+    [
+      { invoiceId: "i1", promisedAmount: 100, promisedDate: "2026-06-01", followUpAt: "2026-06-20" }, // broken + due
+      { invoiceId: "i2", promisedAmount: null, promisedDate: null, followUpAt: null },
+    ], T,
+  );
+  const m = computeMetrics(items, T);
+  expect(m.brokenPromises).toEqual({ count: 1, amount: 400 });
+  expect(m.followUpsDue).toEqual({ count: 1, amount: 400 });
 });

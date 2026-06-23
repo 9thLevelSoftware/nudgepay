@@ -14,6 +14,7 @@ import {
   type InvoiceInput,
   type CustomerInput,
   type LastContactInput,
+  type PromiseSignalInput,
   type WorkItem,
   type Metrics,
   type ViewId,
@@ -51,33 +52,29 @@ export function buildDashboardData(
   invoices: InvoiceInput[],
   customers: CustomerInput[],
   lastContacts: LastContactInput[],
+  promiseSignals: PromiseSignalInput[],
   params: DashboardParams,
   today: string,
 ): DashboardData {
   const { view, sort, q, invoice } = params;
 
-  // 1. Build all work items
-  const allItems = buildWorkItems(invoices, customers, lastContacts, today);
+  const allItems = buildWorkItems(invoices, customers, lastContacts, promiseSignals, today);
 
-  // 2. Apply search filter (case-insensitive substring)
   const searchedItems =
     q.trim() === ""
       ? allItems
       : allItems.filter((i) => i.searchText.includes(q.toLowerCase()));
 
-  // 3. Compute metrics + viewCounts over the search-filtered (not view-filtered) set
-  const metrics = computeMetrics(searchedItems);
+  const metrics = computeMetrics(searchedItems, today);
 
-  const ALL_VIEWS: ViewId[] = ["all-open", "30-plus", "high-value", "never-contacted"];
+  const ALL_VIEWS: ViewId[] = ["all-open", "30-plus", "high-value", "never-contacted", "follow-ups-due", "broken-promises"];
   const viewCounts = Object.fromEntries(
-    ALL_VIEWS.map((v) => [v, applyView(searchedItems, v).length]),
+    ALL_VIEWS.map((v) => [v, applyView(searchedItems, v, today).length]),
   ) as Record<ViewId, number>;
 
-  // 4. Apply view filter + sort for the displayed items list
-  const viewFiltered = applyView(searchedItems, view);
+  const viewFiltered = applyView(searchedItems, view, today);
   const items = sortItems(viewFiltered, sort);
 
-  // 5. Selected item — look it up from the full searched set (not view-filtered)
   const selected =
     invoice != null
       ? (searchedItems.find((i) => i.invoiceId === invoice) ?? null)
@@ -157,7 +154,7 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
   const url = new URL(request.url);
   const sp = url.searchParams;
 
-  const VALID_VIEWS: ViewId[] = ["all-open", "30-plus", "high-value", "never-contacted"];
+  const VALID_VIEWS: ViewId[] = ["all-open", "30-plus", "high-value", "never-contacted", "follow-ups-due", "broken-promises"];
   const VALID_SORTS: SortId[] = ["recommended", "most-overdue", "highest-balance", "customer"];
   const VALID_TABS = ["overview", "activity", "messages"] as const;
 
@@ -184,12 +181,12 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
       highValue: { count: 0, amount: 0 },
       neverContacted: { count: 0, amount: 0 },
       allOpen: { count: 0, amount: 0 },
+      followUpsDue: { count: 0, amount: 0 },
+      brokenPromises: { count: 0, amount: 0 },
     },
     viewCounts: {
-      "all-open": 0,
-      "30-plus": 0,
-      "high-value": 0,
-      "never-contacted": 0,
+      "all-open": 0, "30-plus": 0, "high-value": 0,
+      "never-contacted": 0, "follow-ups-due": 0, "broken-promises": 0,
     },
     selected: null,
   };
@@ -257,6 +254,7 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
       invoicesInput,
       customersInput,
       lastContactsInput,
+      [], // promiseSignals — wired in Task 5
       { view, sort, q, invoice, tab },
       today,
     );
