@@ -16,6 +16,7 @@ import {
   type CaseItem, type CaseRow, type CaseStatus, type NextActionType,
   type CasePromiseInput, type CaseLastContactInput,
 } from "../lib/cases";
+import type { ExceptionReason } from "../lib/contact-log";
 import { AppShell } from "../components/AppShell";
 import { MetricsStrip } from "../components/MetricsStrip";
 import { WorkQueue } from "../components/WorkQueue";
@@ -42,7 +43,7 @@ type DashboardData = {
   selected: CaseItem | null;
 };
 
-const ALL_VIEWS: ViewId[] = ["all-open", "30-plus", "high-value", "never-contacted", "follow-ups-due", "broken-promises", "my-work"];
+const ALL_VIEWS: ViewId[] = ["all-open", "30-plus", "high-value", "never-contacted", "follow-ups-due", "broken-promises", "waiting", "my-work"];
 
 // ---------------------------------------------------------------------------
 // Pure helper — exported so tests can call it without I/O
@@ -119,6 +120,8 @@ type CaseRowRaw = {
   status: string;
   next_action_type: string | null;
   next_action_at: string | null;
+  exception_reason: string | null;
+  exception_note: string | null;
 };
 
 type SelectedMessageRow = {
@@ -193,7 +196,7 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
   const url = new URL(request.url);
   const sp = url.searchParams;
 
-  const VALID_VIEWS: ViewId[] = ["all-open", "30-plus", "high-value", "never-contacted", "follow-ups-due", "broken-promises", "my-work"];
+  const VALID_VIEWS: ViewId[] = ["all-open", "30-plus", "high-value", "never-contacted", "follow-ups-due", "broken-promises", "waiting", "my-work"];
   const VALID_SORTS: SortId[] = ["recommended", "most-overdue", "highest-balance", "customer"];
   const VALID_TABS = ["overview", "activity", "messages"] as const;
 
@@ -238,7 +241,7 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
     },
     viewCounts: {
       "all-open": 0, "30-plus": 0, "high-value": 0,
-      "never-contacted": 0, "follow-ups-due": 0, "broken-promises": 0, "my-work": 0,
+      "never-contacted": 0, "follow-ups-due": 0, "broken-promises": 0, "waiting": 0, "my-work": 0,
     },
     selected: null,
   };
@@ -281,12 +284,13 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
     // Load open cases (USER client)
     const { data: caseRows } = await supabase
       .from("collection_cases")
-      .select("id, customer_id, status, next_action_type, next_action_at")
+      .select("id, customer_id, status, next_action_type, next_action_at, exception_reason, exception_note")
       .eq("org_id", org.org_id)
       .is("closed_at", null);
     const cases: CaseRow[] = ((caseRows as CaseRowRaw[]) ?? []).map((r) => ({
       id: r.id, customerId: r.customer_id, status: r.status as CaseStatus,
       nextActionType: r.next_action_type as NextActionType | null, nextActionAt: r.next_action_at,
+      exceptionReason: r.exception_reason as ExceptionReason | null, exceptionNote: r.exception_note,
     }));
 
     // Per-case last contact, merged from contact_logs + text_messages (both carry case_id since 0009).
