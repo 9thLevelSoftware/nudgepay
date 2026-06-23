@@ -17,6 +17,13 @@
 	--color-border: #d7dee8;
 }
 
+@utility scrollbar-none {
+	scrollbar-width: none;
+	&::-webkit-scrollbar {
+		display: none;
+	}
+}
+
 html,
 body {
 	@apply bg-panel text-text;

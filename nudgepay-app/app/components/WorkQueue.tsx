@@ -341,7 +341,7 @@ export function WorkQueue({
               key={sv.id}
               to={`?${params.toString()}`}
               role="tab"
-              aria-selected={isActive}
+              aria-selected={isActive ? "true" : "false"}
               className={[
                 "flex items-center gap-1.5 px-3 py-2.5 text-sm font-sans whitespace-nowrap border-b-2 -mb-px transition-colors",
                 "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-copper focus-visible:ring-inset",
