@@ -90,10 +90,9 @@ type TextMessageRow = {
   created_at: string;
 };
 
+// Columns selected for the case activity timeline (keep in sync with the SELECT below).
 type ContactLogRow = {
   id: string;
-  invoice_id: string | null;
-  customer_id: string | null;
   method: string;
   outcome: string | null;
   notes: string | null;

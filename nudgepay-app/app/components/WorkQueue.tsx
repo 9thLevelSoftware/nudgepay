@@ -141,7 +141,7 @@ function QueueRow({
       </span>
 
       {/* Status + next action date */}
-      <span data-label="Next action" className="hidden lg:block text-xs font-sans font-medium whitespace-nowrap text-text">
+      <span data-label="Status" className="hidden lg:block text-xs font-sans font-medium whitespace-nowrap text-text">
         {STATUS_LABEL[item.status] ?? item.status}
         {item.nextActionAt ? <span className="text-muted"> · {formatDate(item.nextActionAt)}</span> : null}
         {item.promiseStatus === "broken" ? (

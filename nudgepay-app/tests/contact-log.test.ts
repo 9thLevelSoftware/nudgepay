@@ -1,11 +1,6 @@
 import { expect, test } from "vitest";
 import { parseContactLogForm } from "../app/lib/contact-log";
-
-function fd(entries: Record<string, string>): FormData {
-  const f = new FormData();
-  for (const [k, v] of Object.entries(entries)) f.set(k, v);
-  return f;
-}
+import { fd } from "./fd";
 
 test("parseContactLogForm requires caseId", () => {
   const r = parseContactLogForm(fd({ method: "call", outcome: "no-answer" }));

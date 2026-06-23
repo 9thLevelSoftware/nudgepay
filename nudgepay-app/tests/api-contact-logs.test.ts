@@ -3,6 +3,7 @@ import { serviceClient, makeUserClient } from "./helpers";
 import { parseContactLogForm } from "../app/lib/contact-log";
 import { action as _contactLogAction } from "../app/routes/api.contact-logs";
 import { createPromiseForLog } from "../app/lib/promise-create.server";
+import { fd } from "./fd";
 
 // ── Task 1: migration columns exist and accept promise data ──────────────────
 test("contact_logs accepts promised_amount and promised_date", async () => {
@@ -29,12 +30,6 @@ test("contact_logs accepts promised_amount and promised_date", async () => {
 });
 
 // ── Task 3: parseContactLogForm pure validator ───────────────────────────────
-
-function fd(entries: Record<string, string>): FormData {
-  const f = new FormData();
-  for (const [k, v] of Object.entries(entries)) f.set(k, v);
-  return f;
-}
 
 test("parse: valid call with no promise", () => {
   const r = parseContactLogForm(fd({ caseId: "case-1", invoiceId: "i1", method: "call", outcome: "no-answer" }));
