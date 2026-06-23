@@ -217,7 +217,7 @@ Configure your **production** Intuit app on [developer.intuit.com](https://devel
 ### 7.1 Set OAuth Redirect & Disconnect URLs
 
 - **Redirect URI**: `${APP_BASE_URL}/auth/qbo/callback` (e.g., `https://nudgepay.example.com/auth/qbo/callback`)
-- **Disconnect URL** (if offered): `${APP_BASE_URL}/auth/qbo/disconnect`
+- **Disconnect URL**: `${APP_BASE_URL}/api/qbo/disconnect` (GET landing — clears stored tokens on Intuit-initiated disconnect)
 
 ### 7.2 Configure App Launch & Domain URLs
 

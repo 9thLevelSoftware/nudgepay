@@ -104,7 +104,7 @@ Wrangler will load `.dev.vars` and make these available to your worker code.
 ## Step 5: Verify Disconnect / Revocation
 
 1. **On the Dashboard**, locate the QBO connection status and click **Disconnect** (or equivalent button).
-2. **Revocation Request:** Your `/auth/qbo/disconnect` route:
+2. **Revocation Request:** Your `/api/qbo/disconnect` route:
    - Calls Intuit's revocation endpoint with the access token (best-effort; Intuit may return 200 OK or silently succeed).
    - Deletes or clears the `qbo_connections` row for your organization.
 3. **Verification:**
