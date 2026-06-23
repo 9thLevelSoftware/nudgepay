@@ -78,7 +78,7 @@ select org_id, case_id, customer_id,
 from (
   select cl.org_id, cl.case_id, cl.customer_id, cl.promised_amount, cl.promised_date,
          coalesce(i.balance, 0) as baseline_balance, cl.id as log_id, cl.user_id, cl.created_at,
-         row_number() over (partition by cl.case_id order by cl.created_at desc) as rn
+         row_number() over (partition by cl.case_id order by cl.created_at desc, cl.id desc) as rn
   from contact_logs cl
   left join invoices i on i.id = cl.invoice_id
   where cl.promised_amount is not null and cl.case_id is not null and cl.customer_id is not null
