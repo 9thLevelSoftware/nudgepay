@@ -11,7 +11,7 @@ test("buildDashboardData composes items, metrics, viewCounts, and selection", ()
   ];
   const customers = [{ id: "c1", name: "Acme", phone: "+13105550101", email: "ap@acme.test" }];
   const lastContacts = [{ invoiceId: "i2", date: "2026-06-19T00:00:00Z", channel: "Text" }];
-  const data = buildDashboardData(invoices, customers, lastContacts,
+  const data = buildDashboardData(invoices, customers, lastContacts, [],
     { view: "30-plus", sort: "recommended", q: "", invoice: "i1" }, TODAY);
 
   expect(data.metrics.allOpen.count).toBe(2);
@@ -30,10 +30,31 @@ test("buildDashboardData search filters across customer/invoice/contact text", (
     { id: "c1", name: "Acme", phone: null, email: null },
     { id: "c2", name: "Globex", phone: null, email: null },
   ];
-  const data = buildDashboardData(invoices, customers, [],
+  const data = buildDashboardData(invoices, customers, [], [],
     { view: "all-open", sort: "recommended", q: "globex", invoice: null }, TODAY);
   expect(data.items.map((i) => i.invoiceId)).toEqual(["i2"]);
   expect(data.metrics.allOpen.count).toBe(1); // metrics reflect the search set
+});
+
+test("buildDashboardData threads promise + follow-up signals into items and metrics", () => {
+  const invoices = [{ id: "i1", qbo_doc_number: "1001", customer_id: "c1", balance: 700, due_date: "2026-03-01" }];
+  const customers = [{ id: "c1", name: "Acme", phone: null, email: null }];
+  const signals = [{ invoiceId: "i1", promisedAmount: 200, promisedDate: "2026-06-01", followUpAt: "2026-06-20" }];
+  const data = buildDashboardData(invoices, customers, [], signals,
+    { view: "broken-promises", sort: "recommended", q: "", invoice: "i1" }, TODAY);
+  expect(data.items.map((i) => i.invoiceId)).toEqual(["i1"]);
+  expect(data.metrics.brokenPromises.count).toBe(1);
+  expect(data.metrics.followUpsDue.count).toBe(1);
+  expect(data.selected?.promise).toEqual({ amount: 200, date: "2026-06-01" });
+});
+
+test("a logged contact clears never-contacted in the metrics", () => {
+  const invoices = [{ id: "i1", qbo_doc_number: "1001", customer_id: "c1", balance: 700, due_date: "2026-03-01" }];
+  const customers = [{ id: "c1", name: "Acme", phone: null, email: null }];
+  const withContact = buildDashboardData(invoices, customers,
+    [{ invoiceId: "i1", date: "2026-06-19T00:00:00Z", channel: "Call" }], [],
+    { view: "all-open", sort: "recommended", q: "", invoice: null }, TODAY);
+  expect(withContact.metrics.neverContacted.count).toBe(0);
 });
 
 // DB-backed: proves the RLS-scoped read shape the loader relies on.

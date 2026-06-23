@@ -48,16 +48,17 @@ interface MetricsStripProps {
 }
 
 /**
- * MetricsStrip — four summary tiles across the top of the collections workspace.
+ * MetricsStrip — six summary tiles across the top of the collections workspace.
  *
- * Tile order (per spec): 30+ days past due · High value · Never contacted · All open.
+ * Tile order (per spec): 30+ days past due · High value · Never contacted · All open · Follow-ups due · Broken promises.
  * Hot accent on 30+ (urgency signal), warm on Never contacted (attention signal),
- * copper on High value (brand/value signal), ink-neutral on All open.
+ * copper on High value (brand/value signal), ink-neutral on All open,
+ * warm on Follow-ups due, hot on Broken promises.
  */
 export function MetricsStrip({ metrics }: MetricsStripProps) {
   return (
     <div
-      className="grid grid-cols-2 gap-3 sm:grid-cols-4"
+      className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-6"
       aria-label="Collections summary metrics"
     >
       <MetricTile
@@ -83,6 +84,18 @@ export function MetricsStrip({ metrics }: MetricsStripProps) {
         count={metrics.allOpen.count}
         amount={metrics.allOpen.amount}
         accent="ink"
+      />
+      <MetricTile
+        label="Follow-ups due"
+        count={metrics.followUpsDue.count}
+        amount={metrics.followUpsDue.amount}
+        accent="warm"
+      />
+      <MetricTile
+        label="Broken promises"
+        count={metrics.brokenPromises.count}
+        amount={metrics.brokenPromises.amount}
+        accent="hot"
       />
     </div>
   );

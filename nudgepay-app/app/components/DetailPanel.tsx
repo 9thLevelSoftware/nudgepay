@@ -1,6 +1,7 @@
 import { Link } from "react-router";
 import { type WorkItem } from "~/lib/worklist";
 import { Icon } from "~/components/Icons";
+import type { ActivityEntry } from "~/routes/dashboard";
 
 // Static tone-to-text-color map — priority.tone and nextAction.tone → Tailwind class.
 // Must be literal strings so Tailwind can tree-shake them; no dynamic construction.
@@ -30,6 +31,26 @@ function formatUSD(amount: number): string {
     currency: "USD",
     minimumFractionDigits: 2,
   }).format(amount);
+}
+
+const METHOD_ICON: Record<string, "phone" | "mail" | "message" | "note"> = {
+  call: "phone", email: "mail", text: "message", note: "note",
+};
+const OUTCOME_TEXT: Record<string, string> = {
+  "promise-to-pay": "Promise to pay",
+  dispute: "Dispute",
+  "no-commitment": "No commitment",
+  "left-voicemail": "Left voicemail",
+  "no-answer": "No answer",
+  other: "Logged",
+};
+function formatDateTime(iso: string): string {
+  try {
+    return new Date(iso).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+  } catch { return "—"; }
+}
+function todayISO(): string {
+  return new Date().toISOString().slice(0, 10);
 }
 
 // ─── Sub-components ────────────────────────────────────────────────────────────
@@ -84,9 +105,17 @@ const TABS = [
 export function DetailPanel({
   selected,
   activeTab,
+  activity,
+  view,
+  sort,
+  q,
 }: {
   selected: WorkItem | null;
   activeTab: "overview" | "activity" | "messages";
+  activity: ActivityEntry[];
+  view: string;
+  sort: string;
+  q: string;
 }) {
   // ── Empty state ────────────────────────────────────────────────────────────
   if (selected === null) {
@@ -110,6 +139,7 @@ export function DetailPanel({
   // ── Derived values ─────────────────────────────────────────────────────────
   const dueDateFormatted = formatDueDate(selected.dueDate);
   const docLabel = selected.docNumber ?? selected.invoiceId;
+  const logHref = `?${new URLSearchParams({ invoice: selected.invoiceId, tab: "activity", view, sort, ...(q ? { q } : {}), log: "1" }).toString()}`;
 
   return (
     <aside
@@ -206,16 +236,14 @@ export function DetailPanel({
             </a>
           ) : null}
 
-          {/* Log — inert until 5b */}
-          <button
-            type="button"
-            disabled
-            title="Coming with contact logging"
-            className="inline-flex items-center gap-1.5 text-xs font-sans font-medium text-muted border border-border rounded-md px-3 py-1.5 cursor-not-allowed opacity-50"
+          {/* Log — opens the log-contact drawer */}
+          <Link
+            to={logHref}
+            className="inline-flex items-center gap-1.5 text-xs font-sans font-medium text-copper border border-copper/40 rounded-md px-3 py-1.5 hover:bg-copper/5 focus:outline-none focus-visible:ring-2 focus-visible:ring-copper transition-colors"
           >
             <Icon name="note" size={14} aria-hidden />
             Log
-          </button>
+          </Link>
         </div>
       </div>
 
@@ -230,7 +258,7 @@ export function DetailPanel({
           return (
             <Link
               key={tab.id}
-              to={`?invoice=${selected.invoiceId}&tab=${tab.id}`}
+              to={`?${new URLSearchParams({ invoice: selected.invoiceId, tab: tab.id, view, sort, ...(q ? { q } : {}) }).toString()}`}
               id={`${tab.id}-tab`}
               role="tab"
               aria-selected={isActive ? "true" : "false"}
@@ -277,12 +305,47 @@ export function DetailPanel({
       ) : null}
 
       {activeTab === "activity" ? (
-        <PlaceholderTab
-          panelId="activity-panel"
-          tabId="activity-tab"
-          heading="Activity timeline"
-          description="Contact history, call notes, promises, and follow-up reminders will appear here once contact logging ships."
-        />
+        <section id="activity-panel" role="tabpanel" aria-labelledby="activity-tab" className="flex-1 px-5 py-4">
+          {activity.length === 0 ? (
+            <div className="flex flex-col items-center justify-center gap-2 py-10 text-center">
+              <Icon name="note" size={24} className="text-border" aria-hidden />
+              <p className="text-sm font-sans font-semibold text-text">No contact logged yet.</p>
+              <p className="text-xs text-muted max-w-xs">Use Log to record a call or note.</p>
+            </div>
+          ) : (
+            <ol className="flex flex-col gap-3">
+              {(() => {
+                const today = todayISO();
+                return activity.map((a) => {
+                const broken = a.promisedDate != null && a.promisedDate < today;
+                return (
+                  <li key={a.id} className="flex gap-3 border-b border-border pb-3 last:border-0">
+                    <span className="mt-0.5 text-muted shrink-0">
+                      <Icon name={METHOD_ICON[a.method] ?? "note"} size={15} aria-hidden />
+                    </span>
+                    <div className="min-w-0 flex flex-col gap-0.5">
+                      <span className="text-sm font-sans font-semibold text-text">
+                        {OUTCOME_TEXT[a.outcome ?? "other"] ?? "Logged"}
+                      </span>
+                      <span className="font-mono text-xs text-muted">{formatDateTime(a.createdAt)}</span>
+                      {a.promisedAmount != null && a.promisedDate != null && (
+                        <span className={`text-xs font-sans font-medium ${broken ? "text-hot" : "text-text"}`}>
+                          Promised {formatUSD(a.promisedAmount)} by {formatDateTime(a.promisedDate)}
+                          {broken ? " · broken" : ""}
+                        </span>
+                      )}
+                      {a.followUpAt && (
+                        <span className="text-xs font-sans text-muted">Follow up {formatDateTime(a.followUpAt)}</span>
+                      )}
+                      {a.notes && <span className="text-xs text-muted whitespace-pre-wrap">{a.notes}</span>}
+                    </div>
+                  </li>
+                );
+              });
+              })()}
+            </ol>
+          )}
+        </section>
       ) : null}
 
       {activeTab === "messages" ? (

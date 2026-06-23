@@ -27,7 +27,7 @@ function fmtDate(dateStr: string): string {
 }
 
 // ---------------------------------------------------------------------------
-// Saved-view tab definitions (5a set)
+// Saved-view tab definitions
 // ---------------------------------------------------------------------------
 
 const SAVED_VIEWS: { id: ViewId; label: string }[] = [
@@ -35,6 +35,8 @@ const SAVED_VIEWS: { id: ViewId; label: string }[] = [
   { id: "30-plus",          label: "30+ days" },
   { id: "high-value",       label: "High value" },
   { id: "never-contacted",  label: "Never contacted" },
+  { id: "follow-ups-due",   label: "Follow-ups due" },
+  { id: "broken-promises",  label: "Broken promises" },
 ];
 
 const SORT_OPTIONS: { id: SortId; label: string }[] = [
