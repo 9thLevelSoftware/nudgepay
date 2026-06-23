@@ -22,15 +22,22 @@ export async function action({ request, context }: ActionFunctionArgs) {
   if (!parsed.ok) return redirect(withError(returnTo, parsed.error), { headers });
   const f = parsed.fields;
 
-  // Cross-org guard: the RLS user client can only read invoices in the caller's
-  // org, so a foreign invoice_id returns no row even though contact_logs RLS
-  // would otherwise accept the insert (it only checks org_id).
-  const { data: inv } = await supabase
-    .from("invoices").select("id").eq("id", f.invoiceId).maybeSingle();
-  if (!inv) return redirect(withError(returnTo, "missing-invoice"), { headers });
+  // Cross-org guard: the case must belong to the caller's org. RLS lets the user
+  // client read only own-org cases, so a foreign caseId returns no row.
+  const { data: cse } = await supabase
+    .from("collection_cases").select("id").eq("id", f.caseId).maybeSingle();
+  if (!cse) return redirect(withError(returnTo, "missing-case"), { headers });
+
+  // If an invoice was sub-selected, validate it too (own-org only).
+  if (f.invoiceId) {
+    const { data: inv } = await supabase
+      .from("invoices").select("id").eq("id", f.invoiceId).maybeSingle();
+    if (!inv) return redirect(withError(returnTo, "missing-invoice"), { headers });
+  }
 
   const { error } = await supabase.from("contact_logs").insert({
     org_id: org.org_id,
+    case_id: f.caseId,
     invoice_id: f.invoiceId,
     customer_id: f.customerId,
     user_id: user.id,
@@ -42,6 +49,18 @@ export async function action({ request, context }: ActionFunctionArgs) {
     promised_date: f.promisedDate,
   });
   if (error) return redirect(withError(returnTo, "save-failed"), { headers });
+
+  // Keep next-action durable: a logged contact moves the case to "working" and,
+  // when a follow-up date was given, sets it as the next action.
+  if (f.followUpAt) {
+    await supabase.from("collection_cases")
+      .update({ status: "working", next_action_type: "follow_up", next_action_at: f.followUpAt })
+      .eq("id", f.caseId);
+  } else {
+    await supabase.from("collection_cases")
+      .update({ status: "working" })
+      .eq("id", f.caseId);
+  }
 
   return redirect(returnTo, { headers });
 }

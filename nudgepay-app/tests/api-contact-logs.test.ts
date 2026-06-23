@@ -36,43 +36,74 @@ function fd(entries: Record<string, string>): FormData {
 }
 
 test("parse: valid call with no promise", () => {
-  const r = parseContactLogForm(fd({ invoiceId: "i1", method: "call", outcome: "no-answer" }));
+  const r = parseContactLogForm(fd({ caseId: "case-1", invoiceId: "i1", method: "call", outcome: "no-answer" }));
   expect(r).toEqual({ ok: true, fields: {
-    invoiceId: "i1", customerId: null, method: "call", outcome: "no-answer",
+    caseId: "case-1", invoiceId: "i1", customerId: null, method: "call", outcome: "no-answer",
     notes: null, followUpAt: null, promisedAmount: null, promisedDate: null,
   }});
 });
 
 test("parse: promise-to-pay requires amount and date", () => {
-  expect(parseContactLogForm(fd({ invoiceId: "i1", method: "call", outcome: "promise-to-pay" })))
+  expect(parseContactLogForm(fd({ caseId: "case-1", invoiceId: "i1", method: "call", outcome: "promise-to-pay" })))
     .toEqual({ ok: false, error: "promise-required" });
-  expect(parseContactLogForm(fd({ invoiceId: "i1", method: "call", outcome: "promise-to-pay", promisedAmount: "500" })))
+  expect(parseContactLogForm(fd({ caseId: "case-1", invoiceId: "i1", method: "call", outcome: "promise-to-pay", promisedAmount: "500" })))
     .toEqual({ ok: false, error: "promise-required" });
 });
 
 test("parse: promise-to-pay valid", () => {
   const r = parseContactLogForm(fd({
-    invoiceId: "i1", customerId: "c1", method: "call", outcome: "promise-to-pay",
+    caseId: "case-1", invoiceId: "i1", customerId: "c1", method: "call", outcome: "promise-to-pay",
     promisedAmount: "500.50", promisedDate: "2026-07-01", notes: "  AP will pay  ", followUpAt: "2026-07-02",
   }));
   expect(r).toEqual({ ok: true, fields: {
-    invoiceId: "i1", customerId: "c1", method: "call", outcome: "promise-to-pay",
+    caseId: "case-1", invoiceId: "i1", customerId: "c1", method: "call", outcome: "promise-to-pay",
     notes: "AP will pay", followUpAt: "2026-07-02", promisedAmount: 500.5, promisedDate: "2026-07-01",
   }});
 });
 
-test("parse: rejects bad amount, bad date, bad method, bad outcome, missing invoice", () => {
-  expect(parseContactLogForm(fd({ invoiceId: "i1", method: "call", outcome: "promise-to-pay", promisedAmount: "-5", promisedDate: "2026-07-01" })).ok).toBe(false);
-  expect(parseContactLogForm(fd({ invoiceId: "i1", method: "call", outcome: "promise-to-pay", promisedAmount: "abc", promisedDate: "2026-07-01" }))).toEqual({ ok: false, error: "bad-amount" });
-  expect(parseContactLogForm(fd({ invoiceId: "i1", method: "call", outcome: "promise-to-pay", promisedAmount: "500", promisedDate: "nope" }))).toEqual({ ok: false, error: "bad-date" });
-  expect(parseContactLogForm(fd({ invoiceId: "i1", method: "smoke", outcome: "no-answer" }))).toEqual({ ok: false, error: "bad-method" });
-  expect(parseContactLogForm(fd({ invoiceId: "i1", method: "call", outcome: "vibes" }))).toEqual({ ok: false, error: "bad-outcome" });
-  expect(parseContactLogForm(fd({ method: "call", outcome: "no-answer" }))).toEqual({ ok: false, error: "missing-invoice" });
+test("parse: rejects bad amount, bad date, bad method, bad outcome, missing case", () => {
+  expect(parseContactLogForm(fd({ caseId: "case-1", invoiceId: "i1", method: "call", outcome: "promise-to-pay", promisedAmount: "-5", promisedDate: "2026-07-01" })).ok).toBe(false);
+  expect(parseContactLogForm(fd({ caseId: "case-1", invoiceId: "i1", method: "call", outcome: "promise-to-pay", promisedAmount: "abc", promisedDate: "2026-07-01" }))).toEqual({ ok: false, error: "bad-amount" });
+  expect(parseContactLogForm(fd({ caseId: "case-1", invoiceId: "i1", method: "call", outcome: "promise-to-pay", promisedAmount: "500", promisedDate: "nope" }))).toEqual({ ok: false, error: "bad-date" });
+  expect(parseContactLogForm(fd({ caseId: "case-1", invoiceId: "i1", method: "smoke", outcome: "no-answer" }))).toEqual({ ok: false, error: "bad-method" });
+  expect(parseContactLogForm(fd({ caseId: "case-1", invoiceId: "i1", method: "call", outcome: "vibes" }))).toEqual({ ok: false, error: "bad-outcome" });
+  expect(parseContactLogForm(fd({ method: "call", outcome: "no-answer" }))).toEqual({ ok: false, error: "missing-case" });
 });
 
 test("parse: rejects malformed follow-up date", () => {
-  expect(parseContactLogForm(fd({ invoiceId: "i1", method: "note", outcome: "other", followUpAt: "2026-13-99" })))
+  expect(parseContactLogForm(fd({ caseId: "case-1", invoiceId: "i1", method: "note", outcome: "other", followUpAt: "2026-13-99" })))
     .toEqual({ ok: false, error: "bad-date" });
+});
+
+// ── Task 5: case-anchored contact log + case status update ───────────────────
+
+test("a case-anchored contact log updates the case to working with the follow-up date", async () => {
+  const svc = serviceClient();
+  const user = await makeUserClient("contact-case@example.com");
+  const { data: org } = await svc.from("organizations").insert({ name: "Contact Case Org" }).select("id").single();
+  const orgId = org!.id;
+  await svc.from("memberships").insert({ org_id: orgId, user_id: user.userId, role: "owner" });
+  const { data: cust } = await svc.from("customers")
+    .insert({ org_id: orgId, qbo_id: "cc-c1", name: "Case Co" }).select("id").single();
+  const { data: cse } = await svc.from("collection_cases")
+    .insert({ org_id: orgId, customer_id: cust!.id, status: "new", next_action_type: "contact" })
+    .select("id").single();
+
+  // Insert via the USER client (RLS path the route uses) + update the case.
+  const { error: insErr } = await user.client.from("contact_logs").insert({
+    org_id: orgId, case_id: cse!.id, customer_id: cust!.id, user_id: user.userId,
+    method: "call", outcome: "no-answer", follow_up_at: "2026-07-01",
+  });
+  expect(insErr).toBeNull();
+
+  const { error: updErr } = await user.client.from("collection_cases")
+    .update({ status: "working", next_action_type: "follow_up", next_action_at: "2026-07-01" })
+    .eq("id", cse!.id);
+  expect(updErr).toBeNull();
+
+  const { data: row } = await user.client.from("collection_cases").select("status, next_action_at").eq("id", cse!.id).single();
+  expect(row!.status).toBe("working");
+  expect(row!.next_action_at).toBe("2026-07-01");
 });
 
 // ── Task 4: RLS user client inserts a contact log ────────────────────────────
