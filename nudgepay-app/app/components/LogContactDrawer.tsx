@@ -14,6 +14,12 @@ const OUTCOME_LABEL: Record<string, string> = {
   "no-answer": "No answer",
   other: "Other",
 };
+const NEXT_STEP_LABEL: Record<string, string> = {
+  follow_up: "Follow up", promise: "Promise to pay", waiting: "Waiting on customer", exception: "Exception (hold)",
+};
+const EXCEPTION_REASON_LABEL: Record<string, string> = {
+  disputed: "Disputed", payment_plan: "Payment plan", do_not_contact: "Do not contact", other: "Other",
+};
 const ERROR_MESSAGE: Record<string, string> = {
   "promise-required": "Add a promised amount and date, or change the outcome.",
   "bad-amount": "Enter a valid promised amount greater than zero.",
@@ -21,6 +27,9 @@ const ERROR_MESSAGE: Record<string, string> = {
   "missing-case": "That account could not be found.",
   "missing-invoice": "That invoice could not be found.",
   "save-failed": "Could not save the contact. Try again.",
+  "bad-next-step": "Choose a next step.",
+  "next-step-date": "Enter a valid date for the next step.",
+  "bad-exception": "Choose an exception reason.",
 };
 
 export function LogContactDrawer({
@@ -32,6 +41,7 @@ export function LogContactDrawer({
   logError: string | null;
 }) {
   const [outcome, setOutcome] = useState<string>("no-answer");
+  const [nextStep, setNextStep] = useState<string>("follow_up");
   const firstFieldRef = useRef<HTMLSelectElement>(null);
   const panelRef = useRef<HTMLDivElement>(null);
   const navigate = useNavigate();
@@ -65,7 +75,7 @@ export function LogContactDrawer({
     return () => panel?.removeEventListener("keydown", onKey);
   }, []);
 
-  const showPromise = outcome === "promise-to-pay";
+  const showPromise = nextStep === "promise";
 
   return (
     <div className="fixed inset-0 z-40 flex justify-end" role="dialog" aria-modal="true" aria-label="Log a contact">
@@ -167,13 +177,58 @@ export function LogContactDrawer({
           </label>
 
           <label className="flex flex-col gap-1">
-            <span className="text-xs font-sans font-medium uppercase tracking-wider text-muted">Follow up (optional)</span>
-            <input
-              name="followUpAt"
-              type="date"
+            <span className="text-xs font-sans font-medium uppercase tracking-wider text-muted">Next step</span>
+            <select
+              name="nextStep"
+              value={nextStep}
+              onChange={(e) => setNextStep(e.target.value)}
               className="rounded-md border border-border bg-panel px-3 py-2 text-sm font-sans text-text focus:outline-none focus-visible:ring-2 focus-visible:ring-copper"
-            />
+            >
+              {["follow_up", "promise", "waiting", "exception"].map((s) => (
+                <option key={s} value={s}>{NEXT_STEP_LABEL[s]}</option>
+              ))}
+            </select>
           </label>
+
+          {nextStep === "follow_up" && (
+            <label className="flex flex-col gap-1">
+              <span className="text-xs font-sans font-medium uppercase tracking-wider text-muted">Follow up on</span>
+              <input name="followUpAt" type="date" required
+                className="rounded-md border border-border bg-panel px-3 py-2 text-sm font-sans text-text focus:outline-none focus-visible:ring-2 focus-visible:ring-copper" />
+            </label>
+          )}
+
+          {nextStep === "waiting" && (
+            <label className="flex flex-col gap-1">
+              <span className="text-xs font-sans font-medium uppercase tracking-wider text-muted">Revisit on</span>
+              <input name="reviewAt" type="date" required
+                className="rounded-md border border-border bg-panel px-3 py-2 text-sm font-sans text-text focus:outline-none focus-visible:ring-2 focus-visible:ring-copper" />
+            </label>
+          )}
+
+          {nextStep === "exception" && (
+            <div className="grid gap-3 rounded-md bg-panel/60 border border-border p-3">
+              <label className="flex flex-col gap-1">
+                <span className="text-xs font-sans font-medium uppercase tracking-wider text-muted">Reason</span>
+                <select name="exceptionReason" defaultValue="disputed"
+                  className="rounded-md border border-border bg-surface px-3 py-2 text-sm font-sans text-text focus:outline-none focus-visible:ring-2 focus-visible:ring-copper">
+                  {["disputed", "payment_plan", "do_not_contact", "other"].map((r) => (
+                    <option key={r} value={r}>{EXCEPTION_REASON_LABEL[r]}</option>
+                  ))}
+                </select>
+              </label>
+              <label className="flex flex-col gap-1">
+                <span className="text-xs font-sans font-medium uppercase tracking-wider text-muted">Note (optional)</span>
+                <input name="exceptionNote" type="text"
+                  className="rounded-md border border-border bg-surface px-3 py-2 text-sm font-sans text-text focus:outline-none focus-visible:ring-2 focus-visible:ring-copper" />
+              </label>
+              <label className="flex flex-col gap-1">
+                <span className="text-xs font-sans font-medium uppercase tracking-wider text-muted">Revisit on</span>
+                <input name="reviewAt" type="date" required
+                  className="rounded-md border border-border bg-surface px-3 py-2 text-sm font-sans text-text focus:outline-none focus-visible:ring-2 focus-visible:ring-copper" />
+              </label>
+            </div>
+          )}
 
           <div className="flex items-center justify-end gap-2 pt-2">
             <Link

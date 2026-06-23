@@ -34,8 +34,8 @@ test("reconcileCases both opens and resolves in one pass", () => {
 });
 
 const CASES: CaseRow[] = [
-  { id: "case-1", customerId: "c1", status: "working", nextActionType: "follow_up", nextActionAt: "2026-06-20" },
-  { id: "case-2", customerId: "c2", status: "new", nextActionType: "contact", nextActionAt: "2026-06-25" },
+  { id: "case-1", customerId: "c1", status: "working", nextActionType: "follow_up", nextActionAt: "2026-06-20", exceptionReason: null, exceptionNote: null },
+  { id: "case-2", customerId: "c2", status: "new", nextActionType: "contact", nextActionAt: "2026-06-25", exceptionReason: null, exceptionNote: null },
 ];
 const CUSTOMERS = [
   { id: "c1", name: "Acme", phone: "+13105550101", email: "ap@acme.test", owner: "u1" },
@@ -112,7 +112,7 @@ test("sortCaseItems recommended orders by priority rank then oldest age", () => 
 });
 
 test("buildCaseItems populates promise, brokenPromise, promiseStatus and case-keyed last contact", () => {
-  const cases = [{ id: "case-1", customerId: "c1", status: "promised" as const, nextActionType: "promise" as const, nextActionAt: "2026-07-03" }];
+  const cases = [{ id: "case-1", customerId: "c1", status: "promised" as const, nextActionType: "promise" as const, nextActionAt: "2026-07-03", exceptionReason: null, exceptionNote: null }];
   const invoices = [{ id: "i1", qbo_doc_number: "1001", customer_id: "c1", balance: 1200, due_date: "2026-03-01" }];
   const customers = [{ id: "c1", name: "Acme", phone: null, email: null, owner: null }];
   const lastContacts: CaseLastContactInput[] = [{ caseId: "case-1", date: "2026-06-20T10:00:00Z", channel: "Text" }];
@@ -124,4 +124,33 @@ test("buildCaseItems populates promise, brokenPromise, promiseStatus and case-ke
   expect(items[0].brokenPromise).toBe(true);
   expect(items[0].promiseStatus).toBe("broken");
   expect(items[0].lastContact).toEqual({ date: "2026-06-20T10:00:00Z", channel: "Text" });
+});
+
+test("waiting view selects waiting + on_hold cases; exception fields flow through", () => {
+  const cases: CaseRow[] = [
+    { id: "c-w", customerId: "x1", status: "waiting", nextActionType: "waiting", nextActionAt: "2026-07-20", exceptionReason: null, exceptionNote: null },
+    { id: "c-h", customerId: "x2", status: "on_hold", nextActionType: "exception", nextActionAt: "2026-07-20", exceptionReason: "disputed", exceptionNote: "line 3" },
+    { id: "c-o", customerId: "x3", status: "working", nextActionType: "follow_up", nextActionAt: "2026-07-01", exceptionReason: null, exceptionNote: null },
+  ];
+  const invoices = [
+    { id: "i1", qbo_doc_number: "1", customer_id: "x1", balance: 100, due_date: "2026-03-01" },
+    { id: "i2", qbo_doc_number: "2", customer_id: "x2", balance: 100, due_date: "2026-03-01" },
+    { id: "i3", qbo_doc_number: "3", customer_id: "x3", balance: 100, due_date: "2026-03-01" },
+  ];
+  const customers = [
+    { id: "x1", name: "W", phone: null, email: null, owner: null },
+    { id: "x2", name: "H", phone: null, email: null, owner: null },
+    { id: "x3", name: "O", phone: null, email: null, owner: null },
+  ];
+  const items = buildCaseItems(cases, invoices, customers, [], [], "2026-07-10", new Map());
+  const hold = items.find((i) => i.caseId === "c-h")!;
+  expect(hold.exceptionReason).toBe("disputed");
+  expect(hold.exceptionNote).toBe("line 3");
+
+  const waiting = applyCaseView(items, "waiting", "2026-07-10", null).map((i) => i.caseId).sort();
+  expect(waiting).toEqual(["c-h", "c-w"]);
+
+  // The two deferred cases have a future review date -> excluded from follow-ups-due.
+  const due = applyCaseView(items, "follow-ups-due", "2026-07-10", null).map((i) => i.caseId);
+  expect(due).toEqual(["c-o"]);
 });

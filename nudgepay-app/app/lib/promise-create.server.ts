@@ -64,7 +64,7 @@ export async function createPromiseForLog(
 
   // Reflect into the case state machine.
   const { error: caseErr } = await client.from("collection_cases")
-    .update({ status: "promised", next_action_type: "promise", next_action_at: graceUntil })
+    .update({ status: "promised", next_action_type: "promise", next_action_at: graceUntil, exception_reason: null, exception_note: null })
     .eq("id", input.caseId);
   if (caseErr) return { ok: false };
 

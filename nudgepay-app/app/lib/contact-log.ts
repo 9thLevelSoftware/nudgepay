@@ -10,6 +10,11 @@ export const CONTACT_OUTCOMES = [
 export type ContactMethod = (typeof CONTACT_METHODS)[number];
 export type ContactOutcome = (typeof CONTACT_OUTCOMES)[number];
 
+export const NEXT_STEPS = ["follow_up", "promise", "waiting", "exception"] as const;
+export type NextStep = (typeof NEXT_STEPS)[number];
+export const EXCEPTION_REASONS = ["disputed", "payment_plan", "do_not_contact", "other"] as const;
+export type ExceptionReason = (typeof EXCEPTION_REASONS)[number];
+
 export type ContactLogFields = {
   caseId: string;
   invoiceId: string | null;
@@ -17,9 +22,13 @@ export type ContactLogFields = {
   method: ContactMethod;
   outcome: ContactOutcome;
   notes: string | null;
+  nextStep: NextStep;
   followUpAt: string | null;
   promisedAmount: number | null;
   promisedDate: string | null;
+  reviewAt: string | null;
+  exceptionReason: ExceptionReason | null;
+  exceptionNote: string | null;
 };
 
 export type ParseResult =
@@ -46,7 +55,7 @@ export function parseContactLogForm(form: FormData): ParseResult {
   const caseId = str(form, "caseId");
   if (!caseId) return { ok: false, error: "missing-case" };
 
-  const invoiceId = str(form, "invoiceId"); // optional now
+  const invoiceId = str(form, "invoiceId"); // optional
   const customerId = str(form, "customerId");
 
   const method = str(form, "method");
@@ -57,23 +66,41 @@ export function parseContactLogForm(form: FormData): ParseResult {
 
   const notes = str(form, "notes");
 
-  const followUpRaw = str(form, "followUpAt");
-  if (followUpRaw && !validDate(followUpRaw)) return { ok: false, error: "bad-date" };
-  const followUpAt = followUpRaw;
+  const nextStep = str(form, "nextStep");
+  if (!nextStep || !NEXT_STEPS.includes(nextStep as NextStep)) return { ok: false, error: "bad-next-step" };
 
+  let followUpAt: string | null = null;
   let promisedAmount: number | null = null;
   let promisedDate: string | null = null;
+  let reviewAt: string | null = null;
+  let exceptionReason: ExceptionReason | null = null;
+  let exceptionNote: string | null = null;
 
-  if (outcome === "promise-to-pay") {
+  if (nextStep === "follow_up") {
+    const d = str(form, "followUpAt");
+    if (!d || !validDate(d)) return { ok: false, error: "next-step-date" };
+    followUpAt = d;
+  } else if (nextStep === "promise") {
     const amountRaw = str(form, "promisedAmount");
     const dateRaw = str(form, "promisedDate");
     if (!amountRaw || !dateRaw) return { ok: false, error: "promise-required" };
     const n = Number(amountRaw);
-    if (!Number.isFinite(n)) return { ok: false, error: "bad-amount" };
-    if (n <= 0) return { ok: false, error: "bad-amount" };
+    if (!Number.isFinite(n) || n <= 0) return { ok: false, error: "bad-amount" };
     if (!validDate(dateRaw)) return { ok: false, error: "bad-date" };
     promisedAmount = n;
     promisedDate = dateRaw;
+  } else if (nextStep === "waiting") {
+    const d = str(form, "reviewAt");
+    if (!d || !validDate(d)) return { ok: false, error: "next-step-date" };
+    reviewAt = d;
+  } else if (nextStep === "exception") {
+    const r = str(form, "exceptionReason");
+    if (!r || !EXCEPTION_REASONS.includes(r as ExceptionReason)) return { ok: false, error: "bad-exception" };
+    const d = str(form, "reviewAt");
+    if (!d || !validDate(d)) return { ok: false, error: "next-step-date" };
+    exceptionReason = r as ExceptionReason;
+    reviewAt = d;
+    exceptionNote = str(form, "exceptionNote");
   }
 
   return {
@@ -82,7 +109,10 @@ export function parseContactLogForm(form: FormData): ParseResult {
       caseId, invoiceId, customerId,
       method: method as ContactMethod,
       outcome: outcome as ContactOutcome,
-      notes, followUpAt, promisedAmount, promisedDate,
+      notes,
+      nextStep: nextStep as NextStep,
+      followUpAt, promisedAmount, promisedDate,
+      reviewAt, exceptionReason, exceptionNote,
     },
   };
 }

@@ -8,6 +8,7 @@ import {
   type ViewId, type SortId, type InvoiceInput, type CustomerInput,
 } from "./worklist";
 import type { PromiseStatus } from "./promises";
+import type { ExceptionReason } from "./contact-log";
 
 export type CasePromiseInput = {
   caseId: string;
@@ -27,6 +28,8 @@ export type CaseRow = {
   status: CaseStatus;
   nextActionType: NextActionType | null;
   nextActionAt: string | null;
+  exceptionReason: ExceptionReason | null;
+  exceptionNote: string | null;
 };
 
 export type CaseInvoice = {
@@ -59,6 +62,8 @@ export type CaseItem = {
   brokenPromise: boolean;
   promiseStatus: PromiseStatus | null;
   amountReceived: number | null;
+  exceptionReason: ExceptionReason | null;
+  exceptionNote: string | null;
   followUpDue: boolean;
   searchText: string;
   invoices: CaseInvoice[];
@@ -163,6 +168,8 @@ export function buildCaseItems(
       brokenPromise: prom?.status === "broken",
       promiseStatus: prom ? prom.status : null,
       amountReceived: prom ? prom.amountReceived : null,
+      exceptionReason: cse.exceptionReason,
+      exceptionNote: cse.exceptionNote,
       followUpDue,
       searchText: [name, ...invList.map((i) => i.docNumber ?? ""), cust?.phone ?? "", cust?.email ?? "", owner]
         .filter(Boolean).join(" ").toLowerCase(),
@@ -179,6 +186,7 @@ export function applyCaseView(
   if (view === "never-contacted") return items.filter((i) => i.lastContact === null);
   if (view === "follow-ups-due") return items.filter((i) => i.nextActionAt != null && i.nextActionAt <= today);
   if (view === "broken-promises") return items.filter((i) => i.brokenPromise);
+  if (view === "waiting") return items.filter((i) => i.status === "waiting" || i.status === "on_hold");
   if (view === "my-work") return items.filter((i) => i.ownerId != null && i.ownerId === currentUserId);
   return items;
 }

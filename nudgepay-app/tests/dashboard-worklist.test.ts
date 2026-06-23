@@ -8,7 +8,7 @@ const TODAY = "2026-06-22";
 
 test("buildCaseData composes case items, metrics, viewCounts, and selection", () => {
   const cases: CaseRow[] = [
-    { id: "case-1", customerId: "c1", status: "working", nextActionType: "follow_up", nextActionAt: "2026-06-20" },
+    { id: "case-1", customerId: "c1", status: "working", nextActionType: "follow_up", nextActionAt: "2026-06-20", exceptionReason: null, exceptionNote: null },
   ];
   const invoices = [
     { id: "i1", qbo_doc_number: "1001", customer_id: "c1", balance: 6000, due_date: "2026-03-01" },
@@ -28,8 +28,8 @@ test("buildCaseData composes case items, metrics, viewCounts, and selection", ()
 
 test("buildCaseData search filter returns only matching cases", () => {
   const cases: CaseRow[] = [
-    { id: "case-acme", customerId: "c1", status: "working", nextActionType: null, nextActionAt: null },
-    { id: "case-globex", customerId: "c2", status: "new", nextActionType: null, nextActionAt: null },
+    { id: "case-acme", customerId: "c1", status: "working", nextActionType: null, nextActionAt: null, exceptionReason: null, exceptionNote: null },
+    { id: "case-globex", customerId: "c2", status: "new", nextActionType: null, nextActionAt: null, exceptionReason: null, exceptionNote: null },
   ];
   const invoices = [
     { id: "i1", qbo_doc_number: "2001", customer_id: "c1", balance: 1000, due_date: "2026-03-01" },
@@ -59,6 +59,25 @@ test("buildCaseData threads promises into items and metrics", () => {
   expect(data.items.map((i) => i.caseId)).toEqual(["case-1"]);
   expect(data.metrics.brokenPromises.count).toBe(1);
   expect(data.selected?.promiseStatus).toBe("broken");
+});
+
+test("buildCaseData counts the waiting view", () => {
+  const cases: CaseRow[] = [
+    { id: "w1", customerId: "c1", status: "waiting", nextActionType: "waiting", nextActionAt: "2026-07-20", exceptionReason: null, exceptionNote: null },
+    { id: "o1", customerId: "c2", status: "working", nextActionType: "follow_up", nextActionAt: "2026-07-01", exceptionReason: null, exceptionNote: null },
+  ];
+  const invoices = [
+    { id: "i1", qbo_doc_number: "1", customer_id: "c1", balance: 100, due_date: "2026-03-01" },
+    { id: "i2", qbo_doc_number: "2", customer_id: "c2", balance: 100, due_date: "2026-03-01" },
+  ];
+  const customers = [
+    { id: "c1", name: "W", phone: null, email: null, owner: null },
+    { id: "c2", name: "O", phone: null, email: null, owner: null },
+  ];
+  const data = buildCaseData(cases, invoices, customers, [], [],
+    { view: "waiting", sort: "recommended", q: "", caseId: null }, "2026-07-10", new Map(), null);
+  expect(data.viewCounts.waiting).toBe(1);
+  expect(data.items.map((i) => i.caseId)).toEqual(["w1"]);
 });
 
 // DB-backed: proves the RLS-scoped read shape the loader relies on.
