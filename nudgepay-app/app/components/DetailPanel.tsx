@@ -1,17 +1,27 @@
 import { useState } from "react";
 import { Link } from "react-router";
-import { type WorkItem } from "~/lib/worklist";
+import { type CaseItem } from "~/lib/cases";
 import { Icon } from "~/components/Icons";
 import { SMS_TEMPLATES, applyTemplate, type TemplateVars } from "~/lib/sms-templates";
 import type { ActivityEntry, MessageEntry, RosterMember } from "~/routes/dashboard";
 
-// Static tone-to-text-color map — priority.tone and nextAction.tone → Tailwind class.
+// Static tone-to-text-color map — heat.band → Tailwind class.
 // Must be literal strings so Tailwind can tree-shake them; no dynamic construction.
 const TONE_CLASS: Record<string, string> = {
   hot: "text-hot",
   warm: "text-warm",
   cool: "text-cool",
   neutral: "text-muted",
+};
+
+// Static status → display label map. Literal strings for Tailwind v4.
+const STATUS_LABEL: Record<string, string> = {
+  new: "New",
+  working: "Working",
+  promised: "Promised",
+  waiting: "Waiting",
+  on_hold: "On hold",
+  resolved: "Resolved",
 };
 
 function formatDueDate(dueDate: string | null): string {
@@ -67,9 +77,10 @@ const SMS_BANNER: Record<string, { text: string; tone: string }> = {
 };
 
 function MessagesTab({
-  selected, messages, consent, phone, sms, view, sort, q,
+  selected, repInvoiceId, messages, consent, phone, sms, view, sort, q,
 }: {
-  selected: WorkItem;
+  selected: CaseItem;
+  repInvoiceId: string | null;
   messages: MessageEntry[];
   consent: boolean;
   phone: string | null;
@@ -79,18 +90,23 @@ function MessagesTab({
   q: string;
 }) {
   const returnTo = `/dashboard?${new URLSearchParams({
-    invoice: selected.invoiceId, tab: "messages", view, sort, ...(q ? { q } : {}),
+    case: selected.caseId, tab: "messages", view, sort, ...(q ? { q } : {}),
   }).toString()}`;
+
+  const repInvoice = repInvoiceId
+    ? selected.invoices.find((i) => i.invoiceId === repInvoiceId)
+    : null;
 
   const vars: TemplateVars = {
     customer: selected.customerName,
-    invoice: selected.docNumber ?? selected.invoiceId,
-    balance: formatUSD(selected.balance),
-    dueDate: formatDueDate(selected.dueDate),
+    invoice: repInvoice?.docNumber ?? selected.customerName,
+    balance: formatUSD(selected.totalOverdue),
+    dueDate: formatDueDate(repInvoice?.dueDate ?? null),
   };
 
   const [body, setBody] = useState("");
   const banner = sms ? SMS_BANNER[sms] : null;
+  const noInvoice = repInvoiceId === null;
 
   return (
     <section
@@ -109,7 +125,7 @@ function MessagesTab({
           {phone ? <span className="text-muted"> · {phone}</span> : null}
         </span>
         <form method="post" action="/api/sms-consent">
-          <input type="hidden" name="invoiceId" value={selected.invoiceId} />
+          <input type="hidden" name="invoiceId" value={repInvoiceId ?? ""} />
           <input type="hidden" name="returnTo" value={returnTo} />
           <input type="hidden" name="consent" value={consent ? "false" : "true"} />
           <button
@@ -170,7 +186,7 @@ function MessagesTab({
           ))}
         </div>
         <form method="post" action="/api/text/send" className="flex flex-col gap-2">
-          <input type="hidden" name="invoiceId" value={selected.invoiceId} />
+          <input type="hidden" name="invoiceId" value={repInvoiceId ?? ""} />
           <input type="hidden" name="returnTo" value={returnTo} />
           <textarea
             name="body"
@@ -182,12 +198,14 @@ function MessagesTab({
             className="w-full resize-none rounded-md border border-border bg-panel px-3 py-2 text-sm font-sans text-text placeholder:text-muted focus:outline-none focus-visible:ring-2 focus-visible:ring-copper"
           />
           <div className="flex items-center justify-between gap-2">
-            {!consent ? (
+            {noInvoice ? (
+              <span className="text-xs text-muted">No invoice to reference.</span>
+            ) : !consent ? (
               <span className="text-xs text-muted">Mark consent to enable sending.</span>
             ) : <span />}
             <button
               type="submit"
-              disabled={!consent}
+              disabled={!consent || noInvoice}
               className="inline-flex items-center gap-1.5 rounded-md bg-copper px-3 py-1.5 text-xs font-sans font-semibold text-surface hover:bg-copper/90 focus:outline-none focus-visible:ring-2 focus-visible:ring-copper disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
             >
               <Icon name="message" size={14} aria-hidden />
@@ -226,6 +244,7 @@ const TABS = [
 
 export function DetailPanel({
   selected,
+  repInvoiceId,
   activeTab,
   activity,
   messages,
@@ -237,7 +256,8 @@ export function DetailPanel({
   sort,
   q,
 }: {
-  selected: WorkItem | null;
+  selected: CaseItem | null;
+  repInvoiceId: string | null;
   activeTab: "overview" | "activity" | "messages";
   activity: ActivityEntry[];
   messages: MessageEntry[];
@@ -269,9 +289,7 @@ export function DetailPanel({
   }
 
   // ── Derived values ─────────────────────────────────────────────────────────
-  const dueDateFormatted = formatDueDate(selected.dueDate);
-  const docLabel = selected.docNumber ?? selected.invoiceId;
-  const logHref = `?${new URLSearchParams({ invoice: selected.invoiceId, tab: "activity", view, sort, ...(q ? { q } : {}), log: "1" }).toString()}`;
+  const logHref = `?${new URLSearchParams({ case: selected.caseId, tab: "activity", view, sort, ...(q ? { q } : {}), log: "1" }).toString()}`;
 
   return (
     <aside
@@ -301,32 +319,29 @@ export function DetailPanel({
           {selected.customerName}
         </h2>
 
-        {/* Invoice · due · age */}
+        {/* Invoice count · age */}
         <p className="text-sm text-muted font-sans mb-3">
-          {docLabel}
+          {selected.invoiceCount} open invoice(s)
           <span className="mx-1.5 text-border select-none">·</span>
-          Due {dueDateFormatted}
-          <span className="mx-1.5 text-border select-none">·</span>
-          <span className="font-mono text-text">{selected.ageDays}</span>
-          <span className="font-mono text-text">d overdue</span>
+          oldest <span className="font-mono text-text">{selected.oldestAgeDays}</span>d overdue
         </p>
 
-        {/* Dual balance grid */}
+        {/* Balance card + Status chip */}
         <div className="grid grid-cols-2 gap-3 mb-4">
           <div className="flex flex-col gap-0.5 bg-panel rounded-md px-3 py-2">
             <span className="text-xs font-sans text-muted uppercase tracking-wider font-medium">
-              Invoice balance
+              Total overdue
             </span>
             <span className="font-mono text-base font-semibold text-text tabular-nums">
-              {formatUSD(selected.balance)}
+              {formatUSD(selected.totalOverdue)}
             </span>
           </div>
           <div className="flex flex-col gap-0.5 bg-panel rounded-md px-3 py-2">
             <span className="text-xs font-sans text-muted uppercase tracking-wider font-medium">
-              Customer open balance
+              Status
             </span>
-            <span className="font-mono text-base font-semibold text-text tabular-nums">
-              {formatUSD(selected.customerBalance)}
+            <span className={`text-sm font-sans font-semibold ${TONE_CLASS[selected.heat.band] ?? "text-text"}`}>
+              {STATUS_LABEL[selected.status] ?? selected.status}
             </span>
           </div>
         </div>
@@ -350,7 +365,7 @@ export function DetailPanel({
 
           {/* Text → Messages tab */}
           <Link
-            to={`?${new URLSearchParams({ invoice: selected.invoiceId, tab: "messages", view, sort, ...(q ? { q } : {}) }).toString()}`}
+            to={`?${new URLSearchParams({ case: selected.caseId, tab: "messages", view, sort, ...(q ? { q } : {}) }).toString()}`}
             className="inline-flex items-center gap-1.5 text-xs font-sans font-medium text-copper border border-copper/40 rounded-md px-3 py-1.5 hover:bg-copper/5 focus:outline-none focus-visible:ring-2 focus-visible:ring-copper transition-colors"
           >
             <Icon name="message" size={14} aria-hidden />
@@ -390,7 +405,7 @@ export function DetailPanel({
           return (
             <Link
               key={tab.id}
-              to={`?${new URLSearchParams({ invoice: selected.invoiceId, tab: tab.id, view, sort, ...(q ? { q } : {}) }).toString()}`}
+              to={`?${new URLSearchParams({ case: selected.caseId, tab: tab.id, view, sort, ...(q ? { q } : {}) }).toString()}`}
               id={`${tab.id}-tab`}
               role="tab"
               aria-selected={isActive ? "true" : "false"}
@@ -419,14 +434,17 @@ export function DetailPanel({
         >
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <InfoRow
-              label="Priority reason"
-              value={selected.priority.reason}
-              tone={selected.priority.tone}
+              label="Status"
+              value={STATUS_LABEL[selected.status] ?? selected.status}
+              tone={selected.heat.band}
             />
             <InfoRow
               label="Next action"
-              value={selected.nextAction.label}
-              tone={selected.nextAction.tone}
+              value={
+                selected.nextActionType
+                  ? `${selected.nextActionType}${selected.nextActionAt ? ` · ${formatDueDate(selected.nextActionAt)}` : ""}`
+                  : "—"
+              }
             />
             <div className="flex flex-col gap-0.5">
               <span className="text-xs font-sans font-medium uppercase tracking-wider text-muted">
@@ -437,7 +455,7 @@ export function DetailPanel({
                 <input
                   type="hidden"
                   name="returnTo"
-                  value={`/dashboard?${new URLSearchParams({ invoice: selected.invoiceId, tab: "overview", view, sort, ...(q ? { q } : {}) }).toString()}`}
+                  value={`/dashboard?${new URLSearchParams({ case: selected.caseId, tab: "overview", view, sort, ...(q ? { q } : {}) }).toString()}`}
                 />
                 <select
                   name="ownerId"
@@ -455,7 +473,21 @@ export function DetailPanel({
             </div>
             <InfoRow label="Phone" value={selected.phone ?? "—"} />
             <InfoRow label="Email" value={selected.email ?? "—"} />
-            <InfoRow label="Open invoices" value={String(selected.invoiceCount)} />
+          </div>
+
+          {/* Invoice list */}
+          <div className="mt-4">
+            <span className="text-xs font-sans font-medium uppercase tracking-wider text-muted">Invoices</span>
+            <ul className="mt-2 flex flex-col gap-1">
+              {selected.invoices.map((inv) => (
+                <li key={inv.invoiceId} className="flex items-center justify-between gap-2 rounded-md bg-panel px-3 py-2">
+                  <span className="font-mono text-xs text-text">{inv.docNumber ?? inv.invoiceId}</span>
+                  <span className="font-mono text-xs text-muted tabular-nums">
+                    {formatUSD(inv.balance)} · {inv.ageDays > 0 ? `${inv.ageDays}d` : "Due"}
+                  </span>
+                </li>
+              ))}
+            </ul>
           </div>
         </section>
       ) : null}
@@ -507,6 +539,7 @@ export function DetailPanel({
       {activeTab === "messages" ? (
         <MessagesTab
           selected={selected}
+          repInvoiceId={repInvoiceId}
           messages={messages}
           consent={consent}
           phone={phone}
