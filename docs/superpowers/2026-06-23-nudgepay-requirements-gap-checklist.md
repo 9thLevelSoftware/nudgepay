@@ -14,16 +14,14 @@
 
 ## Locked decisions
 - [x] **A1 — Promote the customer account to the primary collections workspace** (customer-centric, not invoice-row-centric). *Accepted 2026-06-23.* Interactions and promises re-key to the customer/case; invoices display within the account. Owner is already customer-level (`customers.owner`, 0008), consistent with this.
-- [ ] **A2 — Adopt "next action" as an enforced system invariant** (decision pending — take into brainstorming). Every active case must carry one of: scheduled follow-up, pending promise, waiting-with-review-date, exception, or closed/paid.
+- [x] **A2 — Adopt "next action" as an enforced system invariant.** ✅ **Decided + shipped in 6c (merged main `be0cd24`).** Every active case carries one of: scheduled follow-up, pending promise, waiting-with-review-date, exception (on_hold), or closed/paid — enforced by a required `nextStep` at log time + server guard.
 
 ---
 
 ## A. Architecture (gates most other work)
 
-- [ ] **A1-impl — Collection-case / customer workspace model.** Introduce a customer-level case grouping its invoices, carrying owner, status, next-action, escalation level, last meaningful outcome. Re-key SMS threads and interactions off per-invoice (`text_messages.invoice_id`) to the customer/case. *Decision A1 accepted; implementation open.*
-  - Current state: `WorkItem` is one-per-invoice (`worklist.ts:11`); status/next-action/priority derived per-invoice, not stored; SMS threads keyed per-invoice (5c design). Document §1/§2 flags the per-invoice conversation model as a defect.
-- [ ] **A2-impl — Next-action invariant + durable follow-up tasks.** Replace the derived `nextActionOf()` label (`worklist.ts:76`) with a real task/state record; auto-surface due actions in a queue; add a "waiting / review-date" status.
-  - Document calls this its single most important principle.
+- [x] **A1-impl — Collection-case / customer workspace model.** ✅ **6a (merged main `1cb6c34`).** `collection_cases` groups a customer's invoices, carrying owner/status/next-action; SMS threads + interactions re-keyed to the case (`case_id` on text_messages/contact_logs); per-customer thread + case-anchored logging shipped.
+- [x] **A2-impl — Next-action invariant + durable follow-up tasks.** ✅ **6a (durable state) + 6c (enforced invariant).** Next-action is a stored case record (`status`/`next_action_type`/`next_action_at`), auto-surfaced via the follow-ups-due view; 6c added the required-`nextStep` enforcement + the `waiting`/`on_hold` review-date states.
 
 ---
 
@@ -46,7 +44,7 @@
 ## C. P1 — throughput & consistency
 
 - [ ] **C1 — Collision / recent-contact warnings & presence.** Warn when a teammate recently contacted or is actively working the same customer.
-- [ ] **C2 — Exception / dispute workflow.** Promote `dispute` from an outcome string to a case **state** (disputed, incorrect-amount, work-incomplete, documentation-requested, wrong-contact, payment-plan, legal/agency, do-not-contact) that suppresses generic reminders.
+- [ ] **C2 — Exception / dispute workflow.** Promote `dispute` from an outcome string to a case **state** (disputed, incorrect-amount, work-incomplete, documentation-requested, wrong-contact, payment-plan, legal/agency, do-not-contact) that suppresses generic reminders. *Minimal slice shipped in 6c: `on_hold` state + `exception_reason` enum (disputed/payment_plan/do_not_contact/other) + note + review-date suppression. Phase 8 expands the taxonomy + workflow.*
 - [ ] **C3 — Email & click-to-call channels.** Add click-to-call; add an email composer (or clearly mark email as log-only so the UI doesn't imply capture we lack). SMS two-way is done.
 - [ ] **C4 — Suggested follow-up dates.** Suggest a cadence-based next date instead of manual-only `follow_up_at`.
 - [ ] **C5 — Bulk assignment & batch messaging.** Assign multiple accounts and send templated SMS in batch (the "50+ invoices" pain). Current: one-at-a-time (`api.assign.tsx`, single send).
@@ -100,7 +98,7 @@
      - **~~New finding (Minor, cross-cutting tidy):~~ ✅ RESOLVED (pre-6b, merged main `8e19195`).** Date display off-by-one in negative-UTC timezones — fixed by a single timezone-safe `formatDate` (`app/lib/dates.ts`) that builds date-only strings as local calendar dates while still localizing real timestamps; replaced `formatDateTime`/`formatDueDate`/`fmtDate`. +4 tests.
      - **~~6a deferred Minors (tidy/6b):~~ ✅ SWEPT (merged main `d3e69af`).** Unused `beforeAll` import removed; `fd()` extracted to `tests/fd.ts`; `ContactLogRow` trimmed to selected columns; `data-label` corrected "Next action" → "Status". **6b carry-ins:** ✅ last-contact now keyed by `case_id` (merged logs + texts); ✅ `promise`/`brokenPromise`/`promiseStatus` populated (broken-promises view live).
    - **6b — Promise + payment loop:** ✅ **DONE (merged main `9068680`, 2026-06-23; 178/178 green, final review Approved-after-fixes).** `promises`(+`promise_invoices`), `payments`, Payment/CreditMemo sync (CDC+webhook), webhook CloudEvents dual-format parser, B3-bug re-pull, balance-delta evaluation (B1, B3, B2). *Not yet live-Chrome-verified.*
-   - **6c — Hard invariant + minimal exceptions:** forced next-step UX, `waiting`/`on_hold` states + review dates, minimal exception placeholder (A2-impl).
+   - **6c — Hard invariant + minimal exceptions:** ✅ **DONE (merged main `be0cd24`, 2026-06-23; 190/190 green, final review READY TO MERGE).** Required `nextStep` at log time + server guard (forced next-step UX); `waiting`/`on_hold` states with `next_action_at` as the review date (free suppression/resurface); minimal exception placeholder (`exception_reason` enum + note, 0011); deferring cancels a pending promise (A2 / A2-impl). *Not yet live-Chrome-verified. PHASE 6 (operational loop) COMPLETE.*
    - *Locked cross-cutting decisions:* hard next-action invariant; auto open/close; minimal exception placeholder; promise matching = invoice balance-delta.
 2. **Phase 7 — fidelity (P0 finish):** B4/B7, B5, B6.
 3. **Phase 8 — throughput (P1):** C1, C2, C5, C4, C7, C8, C6, C3.
