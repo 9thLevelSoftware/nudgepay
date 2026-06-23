@@ -314,8 +314,10 @@ export function DetailPanel({
             </div>
           ) : (
             <ol className="flex flex-col gap-3">
-              {activity.map((a) => {
-                const broken = a.promisedDate != null && a.promisedDate < todayISO();
+              {(() => {
+                const today = todayISO();
+                return activity.map((a) => {
+                const broken = a.promisedDate != null && a.promisedDate < today;
                 return (
                   <li key={a.id} className="flex gap-3 border-b border-border pb-3 last:border-0">
                     <span className="mt-0.5 text-muted shrink-0">
@@ -339,7 +341,8 @@ export function DetailPanel({
                     </div>
                   </li>
                 );
-              })}
+              });
+              })()}
             </ol>
           )}
         </section>

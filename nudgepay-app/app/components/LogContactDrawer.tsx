@@ -1,8 +1,7 @@
 import { useEffect, useRef, useState } from "react";
-import { Form, Link } from "react-router";
+import { Form, Link, useNavigate } from "react-router";
 import type { WorkItem } from "../lib/worklist";
 import { CONTACT_METHODS, CONTACT_OUTCOMES } from "../lib/contact-log";
-import { Icon } from "./Icons";
 
 const METHOD_LABEL: Record<string, string> = {
   call: "Call", email: "Email", text: "Text", note: "Note",
@@ -32,9 +31,36 @@ export function LogContactDrawer({
 }) {
   const [outcome, setOutcome] = useState<string>("no-answer");
   const firstFieldRef = useRef<HTMLSelectElement>(null);
+  const panelRef = useRef<HTMLDivElement>(null);
+  const navigate = useNavigate();
 
   useEffect(() => {
     firstFieldRef.current?.focus();
+  }, []);
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") navigate(returnTo); };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [navigate, returnTo]);
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== "Tab") return;
+      const panel = panelRef.current;
+      if (!panel) return;
+      const focusable = panel.querySelectorAll<HTMLElement>(
+        'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'
+      );
+      if (focusable.length === 0) return;
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
+      else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
+    };
+    const panel = panelRef.current;
+    panel?.addEventListener("keydown", onKey);
+    return () => panel?.removeEventListener("keydown", onKey);
   }, []);
 
   const showPromise = outcome === "promise-to-pay";
@@ -42,10 +68,10 @@ export function LogContactDrawer({
   return (
     <div className="fixed inset-0 z-40 flex justify-end" role="dialog" aria-modal="true" aria-label="Log a contact">
       {/* Scrim — clicking it (a Link) closes the drawer */}
-      <Link to={returnTo} aria-label="Close" className="absolute inset-0 bg-ink/40 motion-safe:transition-opacity" />
+      <Link to={returnTo} aria-hidden="true" tabIndex={-1} className="absolute inset-0 bg-ink/40 motion-safe:transition-opacity" />
 
       {/* Panel */}
-      <div className="relative w-full max-w-md bg-surface border-l border-border h-full overflow-y-auto shadow-xl">
+      <div ref={panelRef} className="relative w-full max-w-md bg-surface border-l border-border h-full overflow-y-auto shadow-xl">
         <div className="flex items-center justify-between px-5 py-4 border-b border-border">
           <h2 className="font-display text-lg font-semibold text-text">Log a contact</h2>
           <Link
@@ -53,7 +79,7 @@ export function LogContactDrawer({
             aria-label="Close"
             className="text-muted hover:text-text rounded focus:outline-none focus-visible:ring-2 focus-visible:ring-copper p-1"
           >
-            <Icon name="chevronRight" size={18} aria-hidden />
+            <span aria-hidden="true" className="text-lg leading-none">×</span>
           </Link>
         </div>
 
