@@ -1,16 +1,24 @@
 @import "tailwindcss" source(".");
 
 @theme {
-	--font-sans:
-		"Inter", ui-sans-serif, system-ui, sans-serif, "Apple Color Emoji",
-		"Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji";
+	--font-display: "Space Grotesk", ui-sans-serif, system-ui, sans-serif;
+	--font-sans: "IBM Plex Sans", ui-sans-serif, system-ui, sans-serif;
+	--font-mono: "IBM Plex Mono", ui-monospace, SFMono-Regular, monospace;
+
+	--color-ink: #16202b;
+	--color-panel: #f5f6f4;
+	--color-surface: #ffffff;
+	--color-copper: #b7702d;
+	--color-cool: #2e7fb8;
+	--color-warm: #e08a1e;
+	--color-hot: #d23b2e;
+	--color-text: #16202b;
+	--color-muted: #5b667a;
+	--color-border: #d7dee8;
 }
 
 html,
 body {
-	@apply bg-white dark:bg-gray-950;
-
-	@media (prefers-color-scheme: dark) {
-		color-scheme: dark;
-	}
+	@apply bg-panel text-text;
+	font-family: var(--font-sans);
 }
