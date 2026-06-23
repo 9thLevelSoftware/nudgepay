@@ -3,7 +3,7 @@
 // pass a mock; routes/cron pass the global fetch. No live calls in tests.
 
 export type QboApiConfig = { baseUrl: string };
-export type QboCdcResult = { invoices: any[]; customers: any[] };
+export type QboCdcResult = { invoices: any[]; customers: any[]; payments: any[]; creditMemos: any[] };
 
 const MINOR_VERSION = "65";
 
@@ -24,7 +24,7 @@ async function getJson(fetchFn: typeof fetch, url: string, accessToken: string):
 
 export async function qboQuery(
   fetchFn: typeof fetch, api: QboApiConfig, accessToken: string,
-  realmId: string, query: string, entityName: "Invoice" | "Customer",
+  realmId: string, query: string, entityName: "Invoice" | "Customer" | "Payment" | "CreditMemo",
 ): Promise<any[]> {
   const url = `${api.baseUrl}/v3/company/${realmId}/query`
     + `?query=${encodeURIComponent(query)}&minorversion=${MINOR_VERSION}`;
@@ -34,7 +34,7 @@ export async function qboQuery(
 
 export async function qboReadEntity(
   fetchFn: typeof fetch, api: QboApiConfig, accessToken: string,
-  realmId: string, entityName: "Invoice" | "Customer", id: string,
+  realmId: string, entityName: "Invoice" | "Customer" | "Payment" | "CreditMemo", id: string,
 ): Promise<any | null> {
   const url = `${api.baseUrl}/v3/company/${realmId}/${entityName.toLowerCase()}/${id}`
     + `?minorversion=${MINOR_VERSION}`;
@@ -47,12 +47,14 @@ export async function qboCdc(
   realmId: string, changedSinceIso: string,
 ): Promise<QboCdcResult> {
   const url = `${api.baseUrl}/v3/company/${realmId}/cdc`
-    + `?entities=Invoice,Customer&changedSince=${encodeURIComponent(changedSinceIso)}`
+    + `?entities=Invoice,Customer,Payment,CreditMemo&changedSince=${encodeURIComponent(changedSinceIso)}`
     + `&minorversion=${MINOR_VERSION}`;
   const data = await getJson(fetchFn, url, accessToken);
   const groups = (data?.CDCResponse?.[0]?.QueryResponse ?? []) as any[];
   return {
     invoices: groups.flatMap((g) => g.Invoice ?? []),
     customers: groups.flatMap((g) => g.Customer ?? []),
+    payments: groups.flatMap((g) => g.Payment ?? []),
+    creditMemos: groups.flatMap((g) => g.CreditMemo ?? []),
   };
 }
