@@ -61,6 +61,7 @@ test("factors are non-zero contributors sorted by points descending; reason join
   expect(s.factors.find((f) => f.key === "silence")?.label).toBe("30 days since contact");
   expect(s.factors.find((f) => f.key === "age")?.label).toBe("92 days overdue");
   expect(s.reason).toContain(s.factors[0].label);
+  expect(s.reason).toContain(s.factors[1].label); // reason joins the TOP TWO
 });
 
 test("empty factor set yields Low score 0 with 'Not yet due' reason", () => {
@@ -81,6 +82,8 @@ test("levelToRank orders Critical<High<Medium<Low", () => {
 
 test("overrideToLevel maps lowercase enum to PascalCase, null passes through", () => {
   expect(overrideToLevel("critical")).toBe("Critical");
+  expect(overrideToLevel("high")).toBe("High");
+  expect(overrideToLevel("medium")).toBe("Medium");
   expect(overrideToLevel("low")).toBe("Low");
   expect(overrideToLevel(null)).toBe(null);
 });

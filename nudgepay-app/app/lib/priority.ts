@@ -52,15 +52,21 @@ function silencePoints(daysSinceContact: number | null): number {
 const FOLLOW_UP_DUE_POINTS = 12;
 
 // --- level thresholds ---
+const LEVEL_META: Record<PriorityLevel, { tone: HeatBand; rank: number }> = {
+  Critical: { tone: "hot", rank: 0 },
+  High: { tone: "warm", rank: 1 },
+  Medium: { tone: "warm", rank: 2 },
+  Low: { tone: "cool", rank: 3 },
+};
+
 function levelOf(score: number): { level: PriorityLevel; tone: HeatBand; rank: number } {
-  if (score >= 80) return { level: "Critical", tone: "hot", rank: 0 };
-  if (score >= 50) return { level: "High", tone: "warm", rank: 1 };
-  if (score >= 25) return { level: "Medium", tone: "warm", rank: 2 };
-  return { level: "Low", tone: "cool", rank: 3 };
+  const level: PriorityLevel =
+    score >= 80 ? "Critical" : score >= 50 ? "High" : score >= 25 ? "Medium" : "Low";
+  return { level, ...LEVEL_META[level] };
 }
 
 export function levelToRank(level: PriorityLevel): number {
-  return level === "Critical" ? 0 : level === "High" ? 1 : level === "Medium" ? 2 : 3;
+  return LEVEL_META[level].rank;
 }
 
 const OVERRIDE_TO_LEVEL: Record<PriorityOverrideLevel, PriorityLevel> = {
