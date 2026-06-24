@@ -11,9 +11,7 @@ login with row-level isolation.
 
 ## Status
 
-Actively built. Current default branch is **`phase7b-priority`** (priority
-scoring + override shipping landed here). The `main` branch carries the
-prior cut; the gap between the two is the active work-in-progress.
+Actively built. 
 
 The high-level requirements gap checklist lives at
 [`docs/superpowers/2026-06-23-nudgepay-requirements-gap-checklist.md`](docs/superpowers/2026-06-23-nudgepay-requirements-gap-checklist.md)
