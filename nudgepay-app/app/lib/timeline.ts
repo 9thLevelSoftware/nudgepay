@@ -50,7 +50,7 @@ export type TimelineEntry =
 // Single source of outcome display copy (manual + SMS-derived). Static literal
 // strings. `other` is "Other" (drawer-friendly); null/unknown render via the
 // caller's "Logged" fallback, not this map.
-export const OUTCOME_LABELS: Record<string, string> = {
+export const OUTCOME_LABELS: Readonly<Record<string, string>> = {
   "promise-to-pay": "Promise to pay",
   dispute: "Dispute",
   "no-commitment": "No commitment",

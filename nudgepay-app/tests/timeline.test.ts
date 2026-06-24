@@ -71,3 +71,13 @@ test("buildTimeline is stable for equal timestamps (logs before sms)", () => {
   const sms: TimelineSmsInput[] = [{ id: "m1", at, direction: "outbound", body: "hi", status: "sent", errorCode: null }];
   expect(buildTimeline(logs, sms).map((e) => e.id)).toEqual(["l1", "m1"]);
 });
+
+test("buildTimeline yields null outcomeLabel for an unmapped log outcome", () => {
+  const logs: TimelineLogInput[] = [{
+    id: "l1", at: "2026-06-20T10:00:00+00:00", method: "call", outcome: "legacy-freetext",
+    notes: null, followUpAt: null, promisedAmount: null, promisedDate: null,
+  }];
+  const [e] = buildTimeline(logs, []);
+  expect(e.kind).toBe("log");
+  if (e.kind === "log") expect(e.outcomeLabel).toBeNull();
+});

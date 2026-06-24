@@ -5,7 +5,7 @@ import { Icon } from "~/components/Icons";
 import { SMS_TEMPLATES, applyTemplate, type TemplateVars } from "~/lib/sms-templates";
 import { formatDate } from "~/lib/dates";
 import type { MessageEntry, RosterMember } from "~/routes/dashboard";
-import { OUTCOME_LABELS, type TimelineEntry } from "~/lib/timeline";
+import type { TimelineEntry } from "~/lib/timeline";
 
 // Static tone-to-text-color map — heat.band → Tailwind class.
 // Must be literal strings so Tailwind can tree-shake them; no dynamic construction.
