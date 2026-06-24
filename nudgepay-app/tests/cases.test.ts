@@ -132,10 +132,8 @@ test("buildCaseItems populates promise, brokenPromise, promiseStatus and case-ke
 // expected scores matching the brief's arithmetic: age45 + balance12 + silence15 = 72.
 const SCORE_TODAY = "2026-06-19";
 
-import { scorePriority } from "../app/lib/priority";
-
 test("buildCaseItems scores via scorePriority and exposes score/factors/effectiveLevel", () => {
-  // Acme: oldest 114d (from 2026-06-19 to 2026-03-01), total 6300, never contacted -> age45 + balance12 + silence15 = 72 -> High
+  // Acme: oldest 110d (2026-03-01 -> SCORE_TODAY 2026-06-19), total 6300, never contacted -> age45 + balance12 + silence15 = 72 -> High
   const items = buildCaseItems(CASES, INVOICES, CUSTOMERS, [], [], SCORE_TODAY, LABELS);
   const acme = items.find((c) => c.customerId === "c1")!;
   expect(acme.score).toBe(72);
