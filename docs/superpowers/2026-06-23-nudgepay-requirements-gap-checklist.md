@@ -31,13 +31,12 @@
 - [x] **B2 — Payment-validated broken-promise detection.** ✅ **6b.** Pure `evaluatePromises` (balance-delta: `received = baseline − current`); kept ≥ promised, partially_kept/broken past a **2-business-day weekend-skip grace** (`addBusinessDays`), pending before grace; `applyPromiseEvaluation` applier on all sync paths + cron. *Configurable grace + holiday calendar deferred to C7.*
 - [x] **B3 — Payment & credit sync (+ fix staleness bug).** ✅ **6b.** `Payment`/`CreditMemo` synced via CDC + webhook (`mapQboPayment`, `payments` table); classification uses invoice balance-delta (no line attribution, per verified Intuit facts).
   - [x] **B3-bug — Periodic-sync staleness.** ✅ **6b.** On any payment/credit synced, re-pull ALL of that customer's invoices regardless of `Balance>0` (`repullCustomerInvoices`) → a paid invoice drops to balance 0 → case auto-resolves. Residual (payment >30d outside CDC AND no webhook ever) noted/accepted.
-- [ ] **B4 — Expand structured interaction outcomes.** Add message-delivered, customer-replied, payment-already-sent, requested-documentation, contact-invalid, escalation-required, follow-up-requested; emit a structured outcome from SMS sends too.
-  - Current: 6 outcomes (`contact-log.ts:6`), manual logs only.
+- [x] **B4 — Expand structured interaction outcomes.** ✅ **7a.** Manual outcomes now 10 (added payment-already-sent, requested-documentation, escalation-required, follow-up-requested); SMS outcomes (message-delivered, customer-replied, contact-invalid, message-sent) derived at read time from `text_messages` status/direction in `timeline.ts` (`deriveSmsOutcome`). One shared `OUTCOME_LABELS`. No migration (`outcome` is free text).
 - [ ] **B5 — Multi-factor + override-able priority.** Feed balance, broken promises, time-since-last-contact, prior attempts, and follow-up-due into the score; add a manual override that leaves financial data untouched.
   - Current: age-only buckets + `neverContacted` boost (`worklist.ts:66`); explainable *reason* exists but factors are narrow; no override.
 - [ ] **B6 — Sync & error visibility.** Surface failed-sync state and an "unresolved sync errors" count.
   - Current: connection status + "Synced Xm ago" label + `truncated` flag only (`dashboard.tsx:179`).
-- [ ] **B7 — Channel-uniform activity timeline.** Unify `contact_logs` (manual) and `text_messages` (SMS) into one standardized chronological interaction stream per customer/case. (Couples with A1/B4.)
+- [x] **B7 — Channel-uniform activity timeline.** ✅ **7a.** Pure `buildTimeline` (`timeline.ts`) merges case-scoped `contact_logs` + `text_messages` into one chronological `TimelineEntry[]` (newest-first, discriminated union); the DetailPanel "Activity" tab became a read-only "Timeline" rendering it. Messages tab stays the live SMS console. Merge-at-read (no new table).
 
 ---
 
