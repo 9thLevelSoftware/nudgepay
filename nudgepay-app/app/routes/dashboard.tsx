@@ -16,6 +16,7 @@ import {
   type CaseItem, type CaseRow, type CaseStatus, type NextActionType,
   type CasePromiseInput, type CaseLastContactInput,
 } from "../lib/cases";
+import type { PriorityOverrideLevel } from "../lib/priority";
 import type { ExceptionReason } from "../lib/contact-log";
 import { AppShell } from "../components/AppShell";
 import { MetricsStrip } from "../components/MetricsStrip";
@@ -113,6 +114,10 @@ type CaseRowRaw = {
   next_action_at: string | null;
   exception_reason: string | null;
   exception_note: string | null;
+  priority_override: string | null;
+  priority_override_reason: string | null;
+  priority_override_by: string | null;
+  priority_override_at: string | null;
 };
 
 type SelectedMessageRow = {
@@ -275,13 +280,17 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
     // Load open cases (USER client)
     const { data: caseRows } = await supabase
       .from("collection_cases")
-      .select("id, customer_id, status, next_action_type, next_action_at, exception_reason, exception_note")
+      .select("id, customer_id, status, next_action_type, next_action_at, exception_reason, exception_note, priority_override, priority_override_reason, priority_override_by, priority_override_at")
       .eq("org_id", org.org_id)
       .is("closed_at", null);
     const cases: CaseRow[] = ((caseRows as CaseRowRaw[]) ?? []).map((r) => ({
       id: r.id, customerId: r.customer_id, status: r.status as CaseStatus,
       nextActionType: r.next_action_type as NextActionType | null, nextActionAt: r.next_action_at,
       exceptionReason: r.exception_reason as ExceptionReason | null, exceptionNote: r.exception_note,
+      priorityOverride: (r.priority_override as PriorityOverrideLevel | null) ?? null,
+      priorityOverrideReason: r.priority_override_reason,
+      priorityOverrideBy: r.priority_override_by,
+      priorityOverrideAt: r.priority_override_at,
     }));
 
     // Per-case last contact, merged from contact_logs + text_messages (both carry case_id since 0009).
