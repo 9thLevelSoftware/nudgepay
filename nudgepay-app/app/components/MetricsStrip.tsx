@@ -1,3 +1,4 @@
+import { Link } from "react-router";
 import type { Metrics, ViewId, SortId } from "../lib/worklist";
 
 const usd = new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" });
@@ -6,40 +7,47 @@ interface TileProps {
   label: string;
   count: number;
   amount: number;
-  /** Optional accent class applied to the count text and a thin top border strip. */
-  accent?: "hot" | "warm" | "copper" | "ink";
+  viewId: ViewId;
+  active: boolean;
+  href: string;
+  accent: "hot" | "warm" | "copper" | "ink";
 }
 
-/** Accent → token mappings (static literals so Tailwind v4 scanner picks them up). */
-const accentTokens: Record<NonNullable<TileProps["accent"]>, { count: string; bar: string }> = {
-  hot:    { count: "text-hot",    bar: "bg-hot" },
-  warm:   { count: "text-warm",   bar: "bg-warm" },
-  copper: { count: "text-copper", bar: "bg-copper" },
-  ink:    { count: "text-ink",    bar: "bg-ink" },
+// Accent → count-text token (static literals for the Tailwind scanner).
+const accentText: Record<TileProps["accent"], string> = {
+  hot: "text-hot",
+  warm: "text-warm",
+  copper: "text-copper",
+  ink: "text-text",
 };
 
-function MetricTile({ label, count, amount, accent = "ink" }: TileProps) {
-  const tokens = accentTokens[accent];
+/**
+ * MetricTile — a clickable KPI tile.
+ *
+ * Leads with the dollar amount (the at-a-glance financial signal), with the
+ * count + label beneath. The whole tile is a `<Link>` to its `?view=` filter,
+ * mirroring the queue's URL-driven selection. The tile whose view is active
+ * gets the single copper active treatment (ring + faint tint).
+ */
+function MetricTile({ label, count, amount, active, href, accent }: TileProps) {
   return (
-    <div className="relative bg-surface rounded-lg border border-border overflow-hidden flex flex-col gap-1 px-4 py-3 min-w-0">
-      {/* Thin accent bar along the top edge */}
-      <span className={`absolute inset-x-0 top-0 h-0.5 ${tokens.bar} opacity-70`} aria-hidden="true" />
-
-      {/* Count — display font, prominent */}
-      <span className={`font-display text-3xl font-semibold leading-none tracking-tight ${tokens.count}`}>
-        {count}
-      </span>
-
-      {/* Dollar total — mono, tabular */}
-      <span className="font-mono text-sm text-muted leading-snug tabular-nums">
+    <Link
+      to={href}
+      aria-label={`${label}: ${count} accounts, ${usd.format(amount)}`}
+      aria-current={active ? "true" : undefined}
+      className={[
+        "flex flex-col gap-1 p-4 rounded-tile bg-surface shadow-tile min-w-0 transition-colors",
+        "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-copper",
+        active ? "ring-2 ring-copper bg-copper/5" : "border border-border hover:border-copper/50",
+      ].join(" ")}
+    >
+      <span className="font-display text-2xl font-semibold leading-none tracking-tight tabular-nums text-text">
         {usd.format(amount)}
       </span>
-
-      {/* Label — body, muted caption */}
       <span className="font-sans text-xs text-muted uppercase tracking-wide leading-none mt-0.5">
-        {label}
+        <span className={`font-mono font-medium ${accentText[accent]}`}>{count}</span> · {label}
       </span>
-    </div>
+    </Link>
   );
 }
 
@@ -51,55 +59,50 @@ interface MetricsStripProps {
 }
 
 /**
- * MetricsStrip — six summary tiles across the top of the collections workspace.
+ * MetricsStrip — six clickable summary tiles across the top of the workspace.
  *
- * Tile order (per spec): 30+ days past due · High value · Never contacted · All open · Follow-ups due · Broken promises.
- * Hot accent on 30+ (urgency signal), warm on Never contacted (attention signal),
- * copper on High value (brand/value signal), ink-neutral on All open,
- * warm on Follow-ups due, hot on Broken promises.
+ * Tile order (per spec): 30+ days past due · High value · Never contacted ·
+ * All open · Follow-ups due · Broken promises. Each tile links to its `?view=`
+ * filter (preserving the current sort + search); the active view's tile carries
+ * the copper active treatment. Hot accent on 30+/Broken promises (urgency),
+ * warm on Never contacted/Follow-ups due (attention), copper on High value
+ * (brand/value), neutral ink on All open.
  */
-export function MetricsStrip({ metrics }: MetricsStripProps) {
+export function MetricsStrip({ metrics, view, sort = "recommended", search = "" }: MetricsStripProps) {
+  const href = (v: ViewId) => {
+    const p = new URLSearchParams({ view: v, sort, ...(search ? { q: search } : {}) });
+    return `?${p.toString()}`;
+  };
+  const tiles: {
+    label: string;
+    viewId: ViewId;
+    accent: TileProps["accent"];
+    m: { count: number; amount: number };
+  }[] = [
+    { label: "30+ days past due", viewId: "30-plus", accent: "hot", m: metrics.thirtyPlus },
+    { label: "High value", viewId: "high-value", accent: "copper", m: metrics.highValue },
+    { label: "Never contacted", viewId: "never-contacted", accent: "warm", m: metrics.neverContacted },
+    { label: "All open", viewId: "all-open", accent: "ink", m: metrics.allOpen },
+    { label: "Follow-ups due", viewId: "follow-ups-due", accent: "warm", m: metrics.followUpsDue },
+    { label: "Broken promises", viewId: "broken-promises", accent: "hot", m: metrics.brokenPromises },
+  ];
   return (
     <div
-      className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-6"
+      className="grid grid-cols-2 gap-6 sm:grid-cols-3 xl:grid-cols-6"
       aria-label="Collections summary metrics"
     >
-      <MetricTile
-        label="30+ days past due"
-        count={metrics.thirtyPlus.count}
-        amount={metrics.thirtyPlus.amount}
-        accent="hot"
-      />
-      <MetricTile
-        label="High value"
-        count={metrics.highValue.count}
-        amount={metrics.highValue.amount}
-        accent="copper"
-      />
-      <MetricTile
-        label="Never contacted"
-        count={metrics.neverContacted.count}
-        amount={metrics.neverContacted.amount}
-        accent="warm"
-      />
-      <MetricTile
-        label="All open"
-        count={metrics.allOpen.count}
-        amount={metrics.allOpen.amount}
-        accent="ink"
-      />
-      <MetricTile
-        label="Follow-ups due"
-        count={metrics.followUpsDue.count}
-        amount={metrics.followUpsDue.amount}
-        accent="warm"
-      />
-      <MetricTile
-        label="Broken promises"
-        count={metrics.brokenPromises.count}
-        amount={metrics.brokenPromises.amount}
-        accent="hot"
-      />
+      {tiles.map((t) => (
+        <MetricTile
+          key={t.viewId}
+          label={t.label}
+          count={t.m.count}
+          amount={t.m.amount}
+          viewId={t.viewId}
+          active={view === t.viewId}
+          href={href(t.viewId)}
+          accent={t.accent}
+        />
+      ))}
     </div>
   );
 }
