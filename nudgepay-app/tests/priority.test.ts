@@ -2,12 +2,15 @@ import { expect, test } from "vitest";
 import { scorePriority, levelToRank, overrideToLevel } from "../app/lib/priority";
 
 // --- factor bucket boundaries ---
-test("age buckets step at 30/60/90", () => {
+test("age buckets: 0 contributes nothing, 1-29 -> 8, then 30/60/90", () => {
   const base = { balance: 0, brokenPromise: false, daysSinceContact: 0, followUpDue: false };
-  expect(scorePriority({ ...base, ageDays: 29 }).factors.find((f) => f.key === "age")?.points).toBeUndefined();
-  expect(scorePriority({ ...base, ageDays: 30 }).factors.find((f) => f.key === "age")?.points).toBe(20);
-  expect(scorePriority({ ...base, ageDays: 60 }).factors.find((f) => f.key === "age")?.points).toBe(32);
-  expect(scorePriority({ ...base, ageDays: 90 }).factors.find((f) => f.key === "age")?.points).toBe(45);
+  const age = (d: number) => scorePriority({ ...base, ageDays: d }).factors.find((f) => f.key === "age")?.points;
+  expect(age(0)).toBeUndefined();
+  expect(age(1)).toBe(8);
+  expect(age(29)).toBe(8);
+  expect(age(30)).toBe(20);
+  expect(age(60)).toBe(32);
+  expect(age(90)).toBe(45);
 });
 
 test("balance buckets step at 1k/5k/10k/25k; zero balance contributes nothing", () => {

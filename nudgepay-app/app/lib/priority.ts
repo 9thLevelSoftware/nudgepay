@@ -30,6 +30,7 @@ function agePoints(ageDays: number): number {
   if (ageDays >= 90) return 45;
   if (ageDays >= 60) return 32;
   if (ageDays >= 30) return 20;
+  if (ageDays >= 1) return 8;
   return 0;
 }
 function balancePoints(balance: number): number {
