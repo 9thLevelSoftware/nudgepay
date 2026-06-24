@@ -112,6 +112,7 @@ type CaseRowRaw = {
   status: string;
   next_action_type: string | null;
   next_action_at: string | null;
+  opened_at: string;
   exception_reason: string | null;
   exception_note: string | null;
   priority_override: string | null;
@@ -280,7 +281,7 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
     // Load open cases (USER client)
     const { data: caseRows } = await supabase
       .from("collection_cases")
-      .select("id, customer_id, status, next_action_type, next_action_at, exception_reason, exception_note, priority_override, priority_override_reason, priority_override_by, priority_override_at")
+      .select("id, customer_id, status, next_action_type, next_action_at, opened_at, exception_reason, exception_note, priority_override, priority_override_reason, priority_override_by, priority_override_at")
       .eq("org_id", org.org_id)
       .is("closed_at", null);
     const cases: CaseRow[] = ((caseRows as CaseRowRaw[]) ?? []).map((r) => ({
@@ -293,14 +294,18 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
       priorityOverrideAt: r.priority_override_at,
     }));
 
-    // Per-case last contact: contact_logs are keyed by case_id (set at log time);
-    // outbound texts are keyed by CUSTOMER and mapped to the open case, because
-    // sendInvoiceText does not stamp case_id on the row — keying texts by case_id
-    // would miss every SMS sent from the Messages tab and mis-score those cases as
-    // "never contacted" (+15 silence). One open case per customer makes the map exact.
+    // Per-case last contact: contact_logs are keyed by case_id (set at log time),
+    // so a prior closed case's logs are already excluded by the caseIds filter.
+    // Outbound texts carry no reliable case_id (sendInvoiceText never stamps it),
+    // so they're keyed by CUSTOMER and mapped to the current open case — but ONLY
+    // texts sent at/after that case's opened_at, so a re-opened case doesn't inherit
+    // the previous cycle's SMS as contact/attempts. One open case per customer.
     const caseIds = cases.map((c) => c.id);
-    const caseByCustomer = new Map(cases.map((c) => [c.customerId, c.id]));
-    const customerIds = cases.map((c) => c.customerId);
+    const openCaseByCustomer = new Map<string, { caseId: string; openedAt: string }>();
+    for (const r of (caseRows as CaseRowRaw[]) ?? []) {
+      openCaseByCustomer.set(r.customer_id, { caseId: r.id, openedAt: r.opened_at });
+    }
+    const customerIds = [...openCaseByCustomer.keys()];
     const lastContactsInput: CaseLastContactInput[] = [];
     if (caseIds.length > 0) {
       const { data: logRows } = await supabase
@@ -318,8 +323,12 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
         .eq("org_id", org.org_id).in("customer_id", customerIds).eq("direction", "outbound")
         .order("created_at", { ascending: false });
       for (const r of (msgRows as any[]) ?? []) {
-        const cid = caseByCustomer.get(r.customer_id);
-        if (cid) lastContactsInput.push({ caseId: cid, date: r.created_at, channel: "Text" });
+        const oc = openCaseByCustomer.get(r.customer_id);
+        // Only count texts within the current case window (created_at >= opened_at);
+        // ISO-8601 timestamptz strings from the same column compare chronologically.
+        if (oc && r.created_at >= oc.openedAt) {
+          lastContactsInput.push({ caseId: oc.caseId, date: r.created_at, channel: "Text" });
+        }
       }
     }
 
