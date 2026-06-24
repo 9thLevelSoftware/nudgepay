@@ -61,3 +61,20 @@ test("parse: exception needs a valid reason + review date", () => {
   expect(r.ok).toBe(true);
   if (r.ok) { expect(r.fields.exceptionReason).toBe("disputed"); expect(r.fields.exceptionNote).toBe("line 3 wrong"); expect(r.fields.reviewAt).toBe("2026-07-08"); }
 });
+
+test("parse: accepts the new B4 manual outcomes", () => {
+  for (const outcome of [
+    "payment-already-sent", "requested-documentation", "escalation-required", "follow-up-requested",
+  ]) {
+    const r = parseContactLogForm(
+      fd({ caseId: "c1", method: "call", outcome, nextStep: "follow_up", followUpAt: "2026-07-01" }),
+    );
+    expect(r.ok, `${outcome} should be accepted`).toBe(true);
+    if (r.ok) expect(r.fields.outcome).toBe(outcome);
+  }
+});
+
+test("parse: rejects an unknown outcome", () => {
+  expect(parseContactLogForm(fd({ caseId: "c1", method: "call", outcome: "totally-made-up", nextStep: "follow_up", followUpAt: "2026-07-01" })))
+    .toEqual({ ok: false, error: "bad-outcome" });
+});

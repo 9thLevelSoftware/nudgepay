@@ -2,17 +2,10 @@ import { useEffect, useRef, useState } from "react";
 import { Form, Link, useNavigate } from "react-router";
 import type { CaseItem } from "../lib/cases";
 import { CONTACT_METHODS, CONTACT_OUTCOMES } from "../lib/contact-log";
+import { OUTCOME_LABELS } from "../lib/timeline";
 
 const METHOD_LABEL: Record<string, string> = {
   call: "Call", email: "Email", text: "Text", note: "Note",
-};
-const OUTCOME_LABEL: Record<string, string> = {
-  "promise-to-pay": "Promise to pay",
-  dispute: "Dispute",
-  "no-commitment": "No commitment",
-  "left-voicemail": "Left voicemail",
-  "no-answer": "No answer",
-  other: "Other",
 };
 const NEXT_STEP_LABEL: Record<string, string> = {
   follow_up: "Follow up", promise: "Promise to pay", waiting: "Waiting on customer", exception: "Exception (hold)",
@@ -136,7 +129,7 @@ export function LogContactDrawer({
               className="rounded-md border border-border bg-panel px-3 py-2 text-sm font-sans text-text focus:outline-none focus-visible:ring-2 focus-visible:ring-copper"
             >
               {CONTACT_OUTCOMES.map((o) => (
-                <option key={o} value={o}>{OUTCOME_LABEL[o]}</option>
+                <option key={o} value={o}>{OUTCOME_LABELS[o]}</option>
               ))}
             </select>
           </label>

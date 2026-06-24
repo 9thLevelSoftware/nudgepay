@@ -5,6 +5,7 @@
 export const CONTACT_METHODS = ["call", "email", "text", "note"] as const;
 export const CONTACT_OUTCOMES = [
   "promise-to-pay", "dispute", "no-commitment", "left-voicemail", "no-answer", "other",
+  "payment-already-sent", "requested-documentation", "escalation-required", "follow-up-requested",
 ] as const;
 
 export type ContactMethod = (typeof CONTACT_METHODS)[number];
