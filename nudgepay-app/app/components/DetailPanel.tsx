@@ -16,6 +16,12 @@ const TONE_CLASS: Record<string, string> = {
   neutral: "text-muted",
 };
 
+// Static effective-level → text tone (keeps the "Why this priority" header consistent
+// with the queue badge, which colors by effective level — not age heat).
+const LEVEL_TONE: Record<string, string> = {
+  Critical: "text-hot", High: "text-warm", Medium: "text-warm", Low: "text-cool",
+};
+
 // Static status → display label map. Literal strings for Tailwind v4.
 const STATUS_LABEL: Record<string, string> = {
   new: "New",
@@ -483,7 +489,7 @@ export function DetailPanel({
               <span className="text-xs font-sans font-medium uppercase tracking-wider text-muted">
                 Why this priority
               </span>
-              <span className={`text-sm font-sans font-semibold ${TONE_CLASS[selected.heat.band] ?? "text-text"}`}>
+              <span className={`text-sm font-sans font-semibold ${LEVEL_TONE[selected.effectiveLevel] ?? "text-text"}`}>
                 {selected.effectiveLevel}
                 {selected.override ? <span aria-hidden> 📌</span> : null}
               </span>
