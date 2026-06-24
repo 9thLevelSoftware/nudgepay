@@ -16,9 +16,11 @@ export async function action({ request, context }: ActionFunctionArgs) {
   const caseId = typeof form.get("caseId") === "string" ? (form.get("caseId") as string) : "";
   if (!caseId) return redirect(returnTo, { headers });
 
-  // Cross-org guard: the RLS user client only sees own-org cases.
+  // Scope to the resolved org: RLS permits every org the user belongs to, so a
+  // multi-org member could otherwise pin/clear a case outside the active dashboard
+  // org. Bind both the guard and the update to org.org_id.
   const { data: cse } = await supabase
-    .from("collection_cases").select("id").eq("id", caseId).maybeSingle();
+    .from("collection_cases").select("id").eq("org_id", org.org_id).eq("id", caseId).maybeSingle();
   if (!cse) return redirect(returnTo, { headers });
 
   const levelRaw = form.get("level");
@@ -33,7 +35,7 @@ export async function action({ request, context }: ActionFunctionArgs) {
     priority_override_reason: reason,
     priority_override_by: level ? user.id : null,
     priority_override_at: level ? new Date().toISOString() : null,
-  }).eq("id", caseId);
+  }).eq("org_id", org.org_id).eq("id", caseId);
   // Don't swallow a failed write — a silent redirect would imply the override
   // saved when it didn't. Surface it to the error boundary.
   if (error) throw new Error(`Failed to update priority override: ${error.message}`);
