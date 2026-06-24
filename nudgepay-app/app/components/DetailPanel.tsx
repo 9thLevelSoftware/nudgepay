@@ -16,6 +16,12 @@ const TONE_CLASS: Record<string, string> = {
   neutral: "text-muted",
 };
 
+// Static effective-level → text tone (keeps the "Why this priority" header consistent
+// with the queue badge, which colors by effective level — not age heat).
+const LEVEL_TONE: Record<string, string> = {
+  Critical: "text-hot", High: "text-warm", Medium: "text-warm", Low: "text-cool",
+};
+
 // Static status → display label map. Literal strings for Tailwind v4.
 const STATUS_LABEL: Record<string, string> = {
   new: "New",
@@ -475,6 +481,78 @@ export function DetailPanel({
             </div>
             <InfoRow label="Phone" value={selected.phone ?? "—"} />
             <InfoRow label="Email" value={selected.email ?? "—"} />
+          </div>
+
+          {/* Why this priority */}
+          <div className="mt-4 rounded-card bg-panel p-4 shadow-tile">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-sans font-medium uppercase tracking-wider text-muted">
+                Why this priority
+              </span>
+              <span className={`text-sm font-sans font-semibold ${LEVEL_TONE[selected.effectiveLevel] ?? "text-text"}`}>
+                {selected.effectiveLevel}
+                {selected.override ? <span aria-hidden> 📌</span> : null}
+              </span>
+            </div>
+
+            <ul aria-label="Priority factors" className="mt-2 flex flex-col gap-1">
+              {selected.factors.map((f) => (
+                <li key={f.key} className="flex items-center justify-between text-xs">
+                  <span className="text-text">{f.label}</span>
+                  <span className="font-mono text-muted tabular-nums">+{f.points}</span>
+                </li>
+              ))}
+              {selected.factors.length === 0 ? (
+                <li className="text-xs text-muted">Not yet due</li>
+              ) : null}
+            </ul>
+
+            <p className="mt-2 text-xs text-muted">
+              Computed: {selected.priority.level} · score {selected.score}
+              {selected.override ? (
+                <> · pinned to {selected.override.level}
+                  {selected.override.by
+                    ? ` by ${roster.find((m) => m.userId === selected.override!.by)?.label ?? selected.override.by}`
+                    : ""}
+                </>
+              ) : null}
+            </p>
+            {selected.override?.reason ? (
+              <p className="mt-1 text-xs italic text-muted">"{selected.override.reason}"</p>
+            ) : null}
+
+            {/* Override control. key by caseId so the uncontrolled defaultValue
+                inputs reset when switching accounts (DetailPanel is reused, not remounted). */}
+            <form key={selected.caseId} method="post" action="/api/priority-override" className="mt-3 flex items-center gap-2">
+              <input type="hidden" name="caseId" value={selected.caseId} />
+              <input type="hidden" name="returnTo" value={overviewReturnTo} />
+              <select
+                name="level"
+                defaultValue={selected.override ? selected.override.level.toLowerCase() : ""}
+                aria-label="Override priority level"
+                className="rounded-md border border-border bg-surface px-2 py-1 text-xs font-sans text-text focus:outline-none focus-visible:ring-2 focus-visible:ring-copper"
+              >
+                <option value="">No override</option>
+                <option value="critical">Critical</option>
+                <option value="high">High</option>
+                <option value="medium">Medium</option>
+                <option value="low">Low</option>
+              </select>
+              <input
+                name="reason"
+                type="text"
+                aria-label="Override reason"
+                placeholder="Reason (optional)"
+                defaultValue={selected.override?.reason ?? ""}
+                className="min-w-0 flex-1 rounded-md border border-border bg-surface px-2 py-1 text-xs font-sans text-text placeholder:text-muted focus:outline-none focus-visible:ring-2 focus-visible:ring-copper"
+              />
+              <button
+                type="submit"
+                className="rounded-md border border-copper/40 px-3 py-1 text-xs font-sans font-medium text-copper hover:bg-copper/5 focus:outline-none focus-visible:ring-2 focus-visible:ring-copper transition-colors"
+              >
+                Save
+              </button>
+            </form>
           </div>
 
           {/* Invoice list */}

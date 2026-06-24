@@ -3,10 +3,14 @@
 // type-only imports). Reuses the invoice-level heat/priority helpers from worklist.ts.
 
 import {
-  heatOf, priorityOf, ageInDays, HIGH_VALUE_THRESHOLD,
+  heatOf, ageInDays, HIGH_VALUE_THRESHOLD,
   type Heat, type Priority, type LastContact, type Metric, type Metrics,
   type ViewId, type SortId, type InvoiceInput, type CustomerInput,
 } from "./worklist";
+import {
+  scorePriority, levelToRank, overrideToLevel,
+  type PriorityLevel, type PriorityOverrideLevel, type PriorityFactor,
+} from "./priority";
 import type { PromiseStatus } from "./promises";
 import type { ExceptionReason } from "./contact-log";
 
@@ -30,6 +34,10 @@ export type CaseRow = {
   nextActionAt: string | null;
   exceptionReason: ExceptionReason | null;
   exceptionNote: string | null;
+  priorityOverride?: PriorityOverrideLevel | null;
+  priorityOverrideReason?: string | null;
+  priorityOverrideBy?: string | null;
+  priorityOverrideAt?: string | null;
 };
 
 export type CaseInvoice = {
@@ -55,6 +63,11 @@ export type CaseItem = {
   oldestAgeDays: number;
   heat: Heat;
   priority: Priority;
+  score: number;
+  factors: PriorityFactor[];
+  effectiveLevel: PriorityLevel;
+  priorAttempts: number;
+  override: { level: PriorityLevel; reason: string | null; by: string | null; at: string | null } | null;
   lastContact: LastContact;
   phone: string | null;
   email: string | null;
@@ -121,9 +134,11 @@ export function buildCaseItems(
     invoicesByCustomer.set(inv.customer_id, list);
   }
 
-  // Most-recent contact per CASE (max-by-date; do not rely on order).
+  // Most-recent contact per CASE (max-by-date) and attempt count per case.
   const lastByCase = new Map<string, CaseLastContactInput>();
+  const attemptsByCase = new Map<string, number>();
   for (const lc of lastContacts) {
+    attemptsByCase.set(lc.caseId, (attemptsByCase.get(lc.caseId) ?? 0) + 1);
     const prev = lastByCase.get(lc.caseId);
     if (!prev || lc.date > prev.date) lastByCase.set(lc.caseId, lc);
   }
@@ -140,12 +155,21 @@ export function buildCaseItems(
     const totalOverdue = invList.reduce((s, i) => s + i.balance, 0);
     const oldestAgeDays = invList.length ? invList[0].ageDays : 0;
     const lc = lastByCase.get(cse.id) ?? null;
-    const neverContacted = !lc;
     const ownerId = cust?.owner ?? null;
     const owner = ownerId ? (ownerLabels.get(ownerId) ?? "Unknown") : "Unassigned";
     const name = cust?.name ?? "(unknown customer)";
     const followUpDue = cse.nextActionAt != null && cse.nextActionAt <= today;
     const prom = promiseByCase.get(cse.id) ?? null;
+    const daysSinceContact = lc ? ageInDays(lc.date, today) : null;
+    const scored = scorePriority({
+      ageDays: oldestAgeDays,
+      balance: totalOverdue,
+      brokenPromise: prom?.status === "broken",
+      daysSinceContact,
+      followUpDue,
+    });
+    const overrideLevel = overrideToLevel(cse.priorityOverride ?? null);
+    const priorAttempts = attemptsByCase.get(cse.id) ?? 0;
 
     return {
       caseId: cse.id,
@@ -160,7 +184,14 @@ export function buildCaseItems(
       invoiceCount: invList.length,
       oldestAgeDays,
       heat: heatOf(oldestAgeDays),
-      priority: priorityOf(oldestAgeDays, neverContacted),
+      priority: { level: scored.level, tone: scored.tone, reason: scored.reason, rank: scored.rank },
+      score: scored.score,
+      factors: scored.factors,
+      effectiveLevel: overrideLevel ?? scored.level,
+      priorAttempts,
+      override: overrideLevel
+        ? { level: overrideLevel, reason: cse.priorityOverrideReason ?? null, by: cse.priorityOverrideBy ?? null, at: cse.priorityOverrideAt ?? null }
+        : null,
       lastContact: lc ? { date: lc.date, channel: lc.channel } : null,
       phone: cust?.phone ?? null,
       email: cust?.email ?? null,
@@ -196,7 +227,12 @@ export function sortCaseItems(items: CaseItem[], sort: SortId): CaseItem[] {
   if (sort === "most-overdue") return copy.sort((a, b) => b.oldestAgeDays - a.oldestAgeDays);
   if (sort === "highest-balance") return copy.sort((a, b) => b.totalOverdue - a.totalOverdue);
   if (sort === "customer") return copy.sort((a, b) => a.customerName.localeCompare(b.customerName));
-  return copy.sort((a, b) => a.priority.rank - b.priority.rank || b.oldestAgeDays - a.oldestAgeDays || b.totalOverdue - a.totalOverdue);
+  return copy.sort((a, b) =>
+    levelToRank(a.effectiveLevel) - levelToRank(b.effectiveLevel)
+    || b.score - a.score
+    || b.priorAttempts - a.priorAttempts
+    || b.oldestAgeDays - a.oldestAgeDays
+    || b.totalOverdue - a.totalOverdue);
 }
 
 export function computeCaseMetrics(items: CaseItem[], today: string): Metrics {

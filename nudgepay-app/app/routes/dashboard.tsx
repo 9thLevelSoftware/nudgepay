@@ -16,6 +16,7 @@ import {
   type CaseItem, type CaseRow, type CaseStatus, type NextActionType,
   type CasePromiseInput, type CaseLastContactInput,
 } from "../lib/cases";
+import type { PriorityOverrideLevel } from "../lib/priority";
 import type { ExceptionReason } from "../lib/contact-log";
 import { AppShell } from "../components/AppShell";
 import { MetricsStrip } from "../components/MetricsStrip";
@@ -111,8 +112,13 @@ type CaseRowRaw = {
   status: string;
   next_action_type: string | null;
   next_action_at: string | null;
+  opened_at: string;
   exception_reason: string | null;
   exception_note: string | null;
+  priority_override: string | null;
+  priority_override_reason: string | null;
+  priority_override_by: string | null;
+  priority_override_at: string | null;
 };
 
 type SelectedMessageRow = {
@@ -275,17 +281,31 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
     // Load open cases (USER client)
     const { data: caseRows } = await supabase
       .from("collection_cases")
-      .select("id, customer_id, status, next_action_type, next_action_at, exception_reason, exception_note")
+      .select("id, customer_id, status, next_action_type, next_action_at, opened_at, exception_reason, exception_note, priority_override, priority_override_reason, priority_override_by, priority_override_at")
       .eq("org_id", org.org_id)
       .is("closed_at", null);
     const cases: CaseRow[] = ((caseRows as CaseRowRaw[]) ?? []).map((r) => ({
       id: r.id, customerId: r.customer_id, status: r.status as CaseStatus,
       nextActionType: r.next_action_type as NextActionType | null, nextActionAt: r.next_action_at,
       exceptionReason: r.exception_reason as ExceptionReason | null, exceptionNote: r.exception_note,
+      priorityOverride: (r.priority_override as PriorityOverrideLevel | null) ?? null,
+      priorityOverrideReason: r.priority_override_reason,
+      priorityOverrideBy: r.priority_override_by,
+      priorityOverrideAt: r.priority_override_at,
     }));
 
-    // Per-case last contact, merged from contact_logs + text_messages (both carry case_id since 0009).
+    // Per-case last contact: contact_logs are keyed by case_id (set at log time),
+    // so a prior closed case's logs are already excluded by the caseIds filter.
+    // Outbound texts carry no reliable case_id (sendInvoiceText never stamps it),
+    // so they're keyed by CUSTOMER and mapped to the current open case — but ONLY
+    // texts sent at/after that case's opened_at, so a re-opened case doesn't inherit
+    // the previous cycle's SMS as contact/attempts. One open case per customer.
     const caseIds = cases.map((c) => c.id);
+    const openCaseByCustomer = new Map<string, { caseId: string; openedAt: string }>();
+    for (const r of (caseRows as CaseRowRaw[]) ?? []) {
+      openCaseByCustomer.set(r.customer_id, { caseId: r.id, openedAt: r.opened_at });
+    }
+    const customerIds = [...openCaseByCustomer.keys()];
     const lastContactsInput: CaseLastContactInput[] = [];
     if (caseIds.length > 0) {
       const { data: logRows } = await supabase
@@ -299,11 +319,16 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
       }
       const { data: msgRows } = await supabase
         .from("text_messages")
-        .select("case_id, created_at")
-        .eq("org_id", org.org_id).in("case_id", caseIds).eq("direction", "outbound")
+        .select("customer_id, created_at")
+        .eq("org_id", org.org_id).in("customer_id", customerIds).eq("direction", "outbound")
         .order("created_at", { ascending: false });
       for (const r of (msgRows as any[]) ?? []) {
-        if (r.case_id) lastContactsInput.push({ caseId: r.case_id, date: r.created_at, channel: "Text" });
+        const oc = openCaseByCustomer.get(r.customer_id);
+        // Only count texts within the current case window (created_at >= opened_at);
+        // ISO-8601 timestamptz strings from the same column compare chronologically.
+        if (oc && r.created_at >= oc.openedAt) {
+          lastContactsInput.push({ caseId: oc.caseId, date: r.created_at, channel: "Text" });
+        }
       }
     }
 

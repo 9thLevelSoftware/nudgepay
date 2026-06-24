@@ -126,6 +126,59 @@ test("buildCaseItems populates promise, brokenPromise, promiseStatus and case-ke
   expect(items[0].lastContact).toEqual({ date: "2026-06-20T10:00:00Z", channel: "Text" });
 });
 
+// --- Phase 7b scorer tests ---
+// SCORE_TODAY is one day before the follow-up due date ("2026-06-20") so that
+// followUpDue is false for case-1 in the shared CASES fixture. This keeps the
+// expected scores matching the brief's arithmetic: age45 + balance12 + silence15 = 72.
+const SCORE_TODAY = "2026-06-19";
+
+test("buildCaseItems scores via scorePriority and exposes score/factors/effectiveLevel", () => {
+  // Acme: oldest 110d (2026-03-01 -> SCORE_TODAY 2026-06-19), total 6300, never contacted -> age45 + balance12 + silence15 = 72 -> High
+  const items = buildCaseItems(CASES, INVOICES, CUSTOMERS, [], [], SCORE_TODAY, LABELS);
+  const acme = items.find((c) => c.customerId === "c1")!;
+  expect(acme.score).toBe(72);
+  expect(acme.priority.level).toBe("High");
+  expect(acme.effectiveLevel).toBe("High"); // no override
+  expect(acme.factors.map((f) => f.key)).toContain("age");
+  expect(acme.override).toBe(null);
+});
+
+test("buildCaseItems derives priorAttempts from the per-case contact count", () => {
+  const lastContacts: CaseLastContactInput[] = [
+    { caseId: "case-1", date: "2026-06-10T00:00:00Z", channel: "Text" },
+    { caseId: "case-1", date: "2026-06-17T00:00:00Z", channel: "Email" },
+    { caseId: "case-1", date: "2026-06-19T00:00:00Z", channel: "Text" },
+  ];
+  const items = buildCaseItems(CASES, INVOICES, CUSTOMERS, lastContacts, [], SCORE_TODAY, LABELS);
+  expect(items.find((c) => c.caseId === "case-1")!.priorAttempts).toBe(3);
+  expect(items.find((c) => c.caseId === "case-2")!.priorAttempts).toBe(0);
+});
+
+test("an override pins the effective level while leaving the computed score intact", () => {
+  const cases: CaseRow[] = [
+    { id: "case-1", customerId: "c1", status: "working", nextActionType: "follow_up", nextActionAt: "2026-06-20",
+      exceptionReason: null, exceptionNote: null,
+      priorityOverride: "critical", priorityOverrideReason: "CEO escalation",
+      priorityOverrideBy: "u1", priorityOverrideAt: "2026-06-24T00:00:00Z" },
+  ];
+  const items = buildCaseItems(cases, INVOICES, CUSTOMERS, [], [], SCORE_TODAY, LABELS);
+  const c = items[0];
+  expect(c.priority.level).toBe("High");     // computed unchanged
+  expect(c.effectiveLevel).toBe("Critical"); // pinned up
+  expect(c.override).toEqual({ level: "Critical", reason: "CEO escalation", by: "u1", at: "2026-06-24T00:00:00Z" });
+});
+
+test("sortCaseItems recommended orders by effective level, then score, then priorAttempts", () => {
+  // c2 pinned to critical should lead despite a lower computed score than c1.
+  const cases: CaseRow[] = [
+    { id: "case-1", customerId: "c1", status: "working", nextActionType: "follow_up", nextActionAt: "2026-06-20", exceptionReason: null, exceptionNote: null },
+    { id: "case-2", customerId: "c2", status: "new", nextActionType: "contact", nextActionAt: "2026-06-25", exceptionReason: null, exceptionNote: null,
+      priorityOverride: "critical", priorityOverrideReason: null, priorityOverrideBy: null, priorityOverrideAt: null },
+  ];
+  const items = buildCaseItems(cases, INVOICES, CUSTOMERS, [], [], SCORE_TODAY, LABELS);
+  expect(sortCaseItems(items, "recommended").map((c) => c.customerId)).toEqual(["c2", "c1"]);
+});
+
 test("waiting view selects waiting + on_hold cases; exception fields flow through", () => {
   const cases: CaseRow[] = [
     { id: "c-w", customerId: "x1", status: "waiting", nextActionType: "waiting", nextActionAt: "2026-07-20", exceptionReason: null, exceptionNote: null },
