@@ -15,6 +15,14 @@
 	--color-text: #16202b;
 	--color-muted: #5b667a;
 	--color-border: #d7dee8;
+
+	/* Radii → rounded-tile, rounded-card */
+	--radius-tile: 10px;
+	--radius-card: 12px;
+
+	/* Elevation → shadow-tile, shadow-panel */
+	--shadow-tile: 0 1px 2px rgba(22, 32, 43, 0.06), 0 1px 1px rgba(22, 32, 43, 0.04);
+	--shadow-panel: -1px 0 3px rgba(22, 32, 43, 0.05);
 }
 
 @utility scrollbar-none {
