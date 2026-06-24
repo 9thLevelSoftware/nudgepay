@@ -337,7 +337,7 @@ export function DetailPanel({
 
         {/* Balance card + Status chip */}
         <div className="grid grid-cols-2 gap-3 mb-4">
-          <div className="flex flex-col gap-0.5 bg-panel rounded-md px-3 py-2">
+          <div className="flex flex-col gap-0.5 bg-panel rounded-card p-4 shadow-tile">
             <span className="text-xs font-sans text-muted uppercase tracking-wider font-medium">
               Total overdue
             </span>
@@ -345,7 +345,7 @@ export function DetailPanel({
               {formatUSD(selected.totalOverdue)}
             </span>
           </div>
-          <div className="flex flex-col gap-0.5 bg-panel rounded-md px-3 py-2">
+          <div className="flex flex-col gap-0.5 bg-panel rounded-card p-4 shadow-tile">
             <span className="text-xs font-sans text-muted uppercase tracking-wider font-medium">
               Status
             </span>
@@ -365,7 +365,7 @@ export function DetailPanel({
           {selected.phone ? (
             <a
               href={`tel:${selected.phone}`}
-              className="inline-flex items-center gap-1.5 text-xs font-sans font-medium text-copper border border-copper/40 rounded-md px-3 py-1.5 hover:bg-copper/5 focus:outline-none focus-visible:ring-2 focus-visible:ring-copper transition-colors"
+              className="inline-flex items-center gap-1.5 text-xs font-sans font-medium text-copper border border-copper/40 rounded-md px-3 h-9 hover:bg-copper/5 focus:outline-none focus-visible:ring-2 focus-visible:ring-copper transition-colors"
             >
               <Icon name="phone" size={14} aria-hidden />
               Call
@@ -375,7 +375,7 @@ export function DetailPanel({
           {/* Text → Messages tab */}
           <Link
             to={`?${new URLSearchParams({ case: selected.caseId, tab: "messages", view, sort, ...(q ? { q } : {}) }).toString()}`}
-            className="inline-flex items-center gap-1.5 text-xs font-sans font-medium text-copper border border-copper/40 rounded-md px-3 py-1.5 hover:bg-copper/5 focus:outline-none focus-visible:ring-2 focus-visible:ring-copper transition-colors"
+            className="inline-flex items-center gap-1.5 text-xs font-sans font-medium text-copper border border-copper/40 rounded-md px-3 h-9 hover:bg-copper/5 focus:outline-none focus-visible:ring-2 focus-visible:ring-copper transition-colors"
           >
             <Icon name="message" size={14} aria-hidden />
             Text
@@ -385,7 +385,7 @@ export function DetailPanel({
           {selected.email ? (
             <a
               href={`mailto:${selected.email}`}
-              className="inline-flex items-center gap-1.5 text-xs font-sans font-medium text-copper border border-copper/40 rounded-md px-3 py-1.5 hover:bg-copper/5 focus:outline-none focus-visible:ring-2 focus-visible:ring-copper transition-colors"
+              className="inline-flex items-center gap-1.5 text-xs font-sans font-medium text-copper border border-copper/40 rounded-md px-3 h-9 hover:bg-copper/5 focus:outline-none focus-visible:ring-2 focus-visible:ring-copper transition-colors"
             >
               <Icon name="mail" size={14} aria-hidden />
               Email
@@ -395,7 +395,7 @@ export function DetailPanel({
           {/* Log — opens the log-contact drawer */}
           <Link
             to={logHref}
-            className="inline-flex items-center gap-1.5 text-xs font-sans font-medium text-copper border border-copper/40 rounded-md px-3 py-1.5 hover:bg-copper/5 focus:outline-none focus-visible:ring-2 focus-visible:ring-copper transition-colors"
+            className="inline-flex items-center gap-1.5 text-xs font-sans font-medium text-copper border border-copper/40 rounded-md px-3 h-9 hover:bg-copper/5 focus:outline-none focus-visible:ring-2 focus-visible:ring-copper transition-colors"
           >
             <Icon name="note" size={14} aria-hidden />
             Log
@@ -441,7 +441,7 @@ export function DetailPanel({
           aria-labelledby="overview-tab"
           className="flex-1 px-5 py-4"
         >
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+          <div className="grid grid-cols-1 gap-6 sm:grid-cols-2">
             <InfoRow
               label="Status"
               value={STATUS_LABEL[selected.status] ?? selected.status}
@@ -501,7 +501,7 @@ export function DetailPanel({
 
           {/* Exception panel */}
           {selected.status === "on_hold" && selected.exceptionReason ? (
-            <div className="mt-4 rounded-lg border border-border bg-panel px-4 py-3">
+            <div className="mt-4 rounded-card bg-panel p-4 shadow-tile">
               <span className="text-sm font-sans font-semibold text-warm">
                 Exception · {EXCEPTION_REASON_LABEL[selected.exceptionReason] ?? selected.exceptionReason}
               </span>
@@ -513,7 +513,7 @@ export function DetailPanel({
 
           {/* Promise card */}
           {selected.promiseStatus ? (
-            <div className="mt-4 rounded-lg border border-border bg-panel px-4 py-3">
+            <div className="mt-4 rounded-card bg-panel p-4 shadow-tile">
               <div className="flex items-center justify-between">
                 <span className={`text-sm font-sans font-semibold ${PROMISE_STATUS[selected.promiseStatus]?.tone ?? "text-text"}`}>
                   {PROMISE_STATUS[selected.promiseStatus]?.label ?? selected.promiseStatus}

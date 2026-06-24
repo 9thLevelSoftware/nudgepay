@@ -9,6 +9,8 @@ interface AppShellProps {
   connected: boolean;
   /** Reserved for future owner-gated header actions (Task 6+). */
   isOwner: boolean;
+  /** Optional controls rendered in the topbar right-controls group. */
+  headerActions?: React.ReactNode;
   children: React.ReactNode;
 }
 
@@ -52,6 +54,7 @@ export function AppShell({
   syncLabel,
   connected,
   isOwner: _isOwner,
+  headerActions,
   children,
 }: AppShellProps) {
   const [navOpen, setNavOpen] = useState(false);
@@ -106,6 +109,8 @@ export function AppShell({
               {syncLabel}
             </span>
           </div>
+
+          {headerActions}
 
           {/* Settings */}
           <button

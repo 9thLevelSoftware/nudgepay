@@ -464,37 +464,39 @@ export default function Dashboard() {
       syncLabel={syncLabel}
       connected={connected}
       isOwner={isOwner}
-    >
-      {connected ? (
-        <div className="flex flex-col h-full">
-          {/* Metrics strip */}
-          <div className="px-4 pt-4 pb-3 border-b border-border bg-panel shrink-0">
-            <MetricsStrip metrics={metrics} />
-          </div>
-
-          {/* Refresh / Disconnect actions (compact row below metrics) */}
-          <div className="flex items-center gap-2 px-4 py-2 border-b border-border bg-surface shrink-0">
+      headerActions={
+        connected ? (
+          <div className="hidden sm:flex items-center gap-1.5">
             <Form method="post" action="/api/qbo/refresh">
               <button
                 type="submit"
-                className="inline-flex items-center gap-1.5 rounded-md border border-border bg-panel px-3 py-1.5 text-xs font-sans text-muted hover:text-text hover:border-copper transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-copper"
+                className="inline-flex items-center gap-1.5 rounded-md border border-surface/15 bg-surface/5 px-2.5 h-8 text-xs font-sans text-surface/70 hover:text-surface hover:border-copper transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-copper"
               >
-                Refresh from QuickBooks
+                Refresh
               </button>
             </Form>
             {isOwner && (
               <Form method="post" action="/api/qbo/disconnect">
                 <button
                   type="submit"
-                  className="inline-flex items-center gap-1.5 rounded-md border border-border bg-panel px-3 py-1.5 text-xs font-sans text-muted hover:text-text hover:border-copper transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-copper"
+                  className="inline-flex items-center gap-1.5 rounded-md border border-surface/15 bg-surface/5 px-2.5 h-8 text-xs font-sans text-surface/60 hover:text-surface hover:border-copper transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-copper"
                 >
                   Disconnect
                 </button>
               </Form>
             )}
           </div>
+        ) : null
+      }
+    >
+      {connected ? (
+        <div className="flex flex-col h-full">
+          {/* Metrics strip */}
+          <div className="px-6 py-3 border-b border-border bg-panel shrink-0">
+            <MetricsStrip metrics={metrics} view={view} sort={sort} search={q} />
+          </div>
 
-          {/* Two-pane workspace */}
+          {/* Workspace: queue full-width until a case is selected, then two-pane */}
           <div className="flex flex-1 overflow-hidden">
             {/* Work queue — left pane */}
             <div className="flex flex-col min-w-0 flex-1 overflow-hidden">
@@ -509,31 +511,27 @@ export default function Dashboard() {
               />
             </div>
 
-            {/* Detail panel — right pane, hidden on mobile when nothing selected */}
-            <div
-              className={[
-                "w-80 xl:w-96 shrink-0 overflow-hidden",
-                // On mobile: only show if a case is selected
-                selected ? "block" : "hidden md:block",
-              ].join(" ")}
-            >
-              <DetailPanel
-                selected={selected ?? null}
-                repInvoiceId={repInvoiceId ?? null}
-                activeTab={tab}
-                activity={selectedActivity}
-                messages={selectedMessages}
-                consent={selectedConsent}
-                phone={selectedPhone}
-                selectedPromiseId={selectedPromiseId}
-                roster={roster}
-                sms={sms}
-                promiseError={promiseError}
-                view={view}
-                sort={sort}
-                q={q}
-              />
-            </div>
+            {/* Detail panel — slide-in right pane, mounted only when a case is selected */}
+            {selected ? (
+              <div className="w-80 xl:w-96 shrink-0 overflow-hidden border-l border-border shadow-panel">
+                <DetailPanel
+                  selected={selected ?? null}
+                  repInvoiceId={repInvoiceId ?? null}
+                  activeTab={tab}
+                  activity={selectedActivity}
+                  messages={selectedMessages}
+                  consent={selectedConsent}
+                  phone={selectedPhone}
+                  selectedPromiseId={selectedPromiseId}
+                  roster={roster}
+                  sms={sms}
+                  promiseError={promiseError}
+                  view={view}
+                  sort={sort}
+                  q={q}
+                />
+              </div>
+            ) : null}
           </div>
 
           {log && selected ? (

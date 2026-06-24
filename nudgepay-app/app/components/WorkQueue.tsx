@@ -88,9 +88,14 @@ function QueueRow({
       aria-label={`Open ${item.customerName}`}
       aria-current={selected ? "true" : undefined}
       className={[
-        // Base row layout
-        "group grid grid-cols-[auto_1fr_auto_auto_auto_auto_auto] items-center gap-x-4 gap-y-0",
-        "border-b border-border px-4 py-3 text-sm",
+        // Base row layout — per-breakpoint templates match the visible column
+        // count (4 at md, 6 at lg, 7 at xl) so trailing tracks never reserve
+        // empty space below xl.
+        "group grid items-center gap-x-6 gap-y-0",
+        "grid-cols-[auto_minmax(176px,1.5fr)_minmax(96px,0.9fr)_minmax(56px,0.5fr)]",
+        "lg:grid-cols-[auto_minmax(176px,1.3fr)_minmax(96px,0.8fr)_minmax(56px,0.5fr)_minmax(96px,0.85fr)_minmax(230px,2fr)]",
+        "xl:grid-cols-[auto_minmax(176px,1.3fr)_minmax(96px,0.8fr)_minmax(56px,0.5fr)_minmax(96px,0.85fr)_minmax(230px,2fr)_minmax(104px,0.75fr)]",
+        "border-b border-border px-6 py-2.5 text-sm",
         "transition-colors duration-100",
         // Focus ring
         "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-copper focus-visible:ring-inset",
@@ -142,13 +147,11 @@ function QueueRow({
       </span>
 
       {/* Status + next action date */}
-      <span data-label="Status" className="hidden lg:block text-xs font-sans font-medium whitespace-nowrap text-text">
+      <span data-label="Status" className="hidden lg:block min-w-0 text-xs font-sans font-medium whitespace-nowrap text-text">
         {STATUS_LABEL[item.status] ?? item.status}
         {item.nextActionAt ? <span className="text-muted"> · {formatDate(item.nextActionAt)}</span> : null}
         {item.promiseStatus === "broken" ? (
           <span className="text-hot"> · Promise broken</span>
-        ) : item.promiseStatus === "pending" ? (
-          <span className="text-cool"> · Promised</span>
         ) : null}
       </span>
 
@@ -197,7 +200,7 @@ function MobileCard({
       className={[
         "block bg-surface border border-border rounded-lg p-4 mb-2",
         "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-copper",
-        selected ? "border-copper ring-1 ring-copper bg-copper/5" : "",
+        selected ? "border-copper ring-2 ring-copper bg-copper/5" : "",
       ].join(" ")}
     >
       {/* Row 1: ThermalBand + customer name + total overdue */}
@@ -224,8 +227,6 @@ function MobileCard({
           {item.nextActionAt ? <span className="text-muted"> · {formatDate(item.nextActionAt)}</span> : null}
           {item.promiseStatus === "broken" ? (
             <span className="text-hot"> · Promise broken</span>
-          ) : item.promiseStatus === "pending" ? (
-            <span className="text-cool"> · Promised</span>
           ) : null}
         </span>
       </div>
@@ -266,65 +267,62 @@ export function WorkQueue({
 }: WorkQueueProps) {
   return (
     <section className="flex flex-col min-h-0" aria-labelledby="work-queue-title">
-      {/* Header */}
-      <div className="flex flex-col gap-0.5 px-4 pt-4 pb-2 border-b border-border bg-surface">
-        <h2
-          id="work-queue-title"
-          className="font-display text-xl font-semibold text-text leading-tight"
-        >
-          Work queue
-        </h2>
-        <p className="font-sans text-xs text-muted">
-          {items.length} matching · {totalCount} open
-        </p>
-      </div>
-
-      {/* Toolbar — GET form; submit preserves view via hidden input */}
-      <Form
-        method="get"
-        className="flex flex-wrap items-center gap-2 px-4 py-2.5 border-b border-border bg-surface"
-      >
-        {/* Preserve active view when submitting search/sort */}
-        <input type="hidden" name="view" value={view} />
-
-        {/* Search input */}
-        <label className="flex items-center gap-1.5 flex-1 min-w-48 rounded-md border border-border bg-panel px-2.5 py-1.5 text-sm text-text focus-within:ring-2 focus-within:ring-copper focus-within:border-transparent transition-shadow">
-          <Icon name="search" size={15} className="text-muted shrink-0" />
-          <span className="sr-only">Search queue</span>
-          <input
-            name="q"
-            type="search"
-            defaultValue={search}
-            placeholder="Search customers, invoices…"
-            className="flex-1 bg-transparent border-none outline-none font-sans text-sm text-text placeholder:text-muted"
-          />
-        </label>
-
-        {/* Sort select */}
-        <label className="flex items-center gap-1.5 rounded-md border border-border bg-panel px-2.5 py-1.5 text-sm text-text focus-within:ring-2 focus-within:ring-copper focus-within:border-transparent transition-shadow cursor-pointer">
-          <Icon name="arrowDownUp" size={15} className="text-muted shrink-0" />
-          <span className="sr-only">Sort work queue</span>
-          <select
-            name="sort"
-            defaultValue={sort}
-            className="bg-transparent border-none outline-none font-sans text-sm text-text cursor-pointer"
+      {/* Header + toolbar (single band) */}
+      <div className="flex flex-wrap items-center gap-3 px-6 py-3 border-b border-border bg-surface">
+        <div className="min-w-0">
+          <h2
+            id="work-queue-title"
+            className="font-display text-lg font-semibold text-text leading-tight"
           >
-            {SORT_OPTIONS.map((opt) => (
-              <option key={opt.id} value={opt.id}>
-                {opt.label}
-              </option>
-            ))}
-          </select>
-        </label>
+            Work queue
+          </h2>
+          <p className="font-sans text-xs text-muted">
+            {items.length} matching · {totalCount} open
+          </p>
+        </div>
 
-        {/* Submit (visible for no-JS; hidden from sighted users via sr-only is too aggressive — keep small) */}
-        <button
-          type="submit"
-          className="rounded-md border border-border bg-panel px-3 py-1.5 text-xs font-sans text-muted hover:text-text hover:border-copper transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-copper"
-        >
-          Apply
-        </button>
-      </Form>
+        {/* GET form; submit preserves view via hidden input */}
+        <Form method="get" className="flex items-center gap-2 ml-auto">
+          <input type="hidden" name="view" value={view} />
+
+          {/* Search input */}
+          <label className="flex items-center gap-1.5 w-56 rounded-md border border-border bg-panel px-2.5 h-9 text-sm text-text focus-within:ring-2 focus-within:ring-copper focus-within:border-transparent transition-shadow">
+            <Icon name="search" size={15} className="text-muted shrink-0" />
+            <span className="sr-only">Search queue</span>
+            <input
+              name="q"
+              type="search"
+              defaultValue={search}
+              placeholder="Search…"
+              className="flex-1 min-w-0 bg-transparent border-none outline-none font-sans text-sm text-text placeholder:text-muted"
+            />
+          </label>
+
+          {/* Sort select */}
+          <label className="flex items-center gap-1.5 rounded-md border border-border bg-panel px-2.5 h-9 text-sm text-text focus-within:ring-2 focus-within:ring-copper focus-within:border-transparent transition-shadow cursor-pointer">
+            <Icon name="arrowDownUp" size={15} className="text-muted shrink-0" />
+            <span className="sr-only">Sort work queue</span>
+            <select
+              name="sort"
+              defaultValue={sort}
+              className="bg-transparent border-none outline-none font-sans text-sm text-text cursor-pointer"
+            >
+              {SORT_OPTIONS.map((opt) => (
+                <option key={opt.id} value={opt.id}>
+                  {opt.label}
+                </option>
+              ))}
+            </select>
+          </label>
+
+          <button
+            type="submit"
+            className="rounded-md border border-border bg-panel px-3 h-9 text-xs font-sans text-muted hover:text-text hover:border-copper transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-copper"
+          >
+            Apply
+          </button>
+        </Form>
+      </div>
 
       {/* Saved-view tabs */}
       <div
@@ -385,7 +383,7 @@ export function WorkQueue({
             <div className="hidden md:block" aria-label="Work queue table">
               {/* Column header */}
               <div
-                className="grid grid-cols-[auto_1fr_auto_auto_auto_auto_auto] items-center gap-x-4 px-4 py-2 border-b border-border bg-panel"
+                className="grid items-center gap-x-6 px-6 py-2 border-b border-border bg-panel grid-cols-[auto_minmax(176px,1.5fr)_minmax(96px,0.9fr)_minmax(56px,0.5fr)] lg:grid-cols-[auto_minmax(176px,1.3fr)_minmax(96px,0.8fr)_minmax(56px,0.5fr)_minmax(96px,0.85fr)_minmax(230px,2fr)] xl:grid-cols-[auto_minmax(176px,1.3fr)_minmax(96px,0.8fr)_minmax(56px,0.5fr)_minmax(96px,0.85fr)_minmax(230px,2fr)_minmax(104px,0.75fr)]"
                 aria-hidden="true"
               >
                 <span className="font-sans text-xs text-muted uppercase tracking-wide">Heat</span>
