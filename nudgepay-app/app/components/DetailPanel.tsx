@@ -521,8 +521,9 @@ export function DetailPanel({
               <p className="mt-1 text-xs italic text-muted">"{selected.override.reason}"</p>
             ) : null}
 
-            {/* Override control */}
-            <form method="post" action="/api/priority-override" className="mt-3 flex items-center gap-2">
+            {/* Override control. key by caseId so the uncontrolled defaultValue
+                inputs reset when switching accounts (DetailPanel is reused, not remounted). */}
+            <form key={selected.caseId} method="post" action="/api/priority-override" className="mt-3 flex items-center gap-2">
               <input type="hidden" name="caseId" value={selected.caseId} />
               <input type="hidden" name="returnTo" value={overviewReturnTo} />
               <select

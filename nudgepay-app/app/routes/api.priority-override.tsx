@@ -28,12 +28,15 @@ export async function action({ request, context }: ActionFunctionArgs) {
   const reason = level && typeof reasonRaw === "string" && reasonRaw.trim().length > 0
     ? reasonRaw.trim().slice(0, 280) : null;
 
-  await supabase.from("collection_cases").update({
+  const { error } = await supabase.from("collection_cases").update({
     priority_override: level,
     priority_override_reason: reason,
     priority_override_by: level ? user.id : null,
     priority_override_at: level ? new Date().toISOString() : null,
   }).eq("id", caseId);
+  // Don't swallow a failed write — a silent redirect would imply the override
+  // saved when it didn't. Surface it to the error boundary.
+  if (error) throw new Error(`Failed to update priority override: ${error.message}`);
 
   return redirect(returnTo, { headers });
 }

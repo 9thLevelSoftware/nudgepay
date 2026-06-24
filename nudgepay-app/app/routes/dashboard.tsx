@@ -293,8 +293,14 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
       priorityOverrideAt: r.priority_override_at,
     }));
 
-    // Per-case last contact, merged from contact_logs + text_messages (both carry case_id since 0009).
+    // Per-case last contact: contact_logs are keyed by case_id (set at log time);
+    // outbound texts are keyed by CUSTOMER and mapped to the open case, because
+    // sendInvoiceText does not stamp case_id on the row — keying texts by case_id
+    // would miss every SMS sent from the Messages tab and mis-score those cases as
+    // "never contacted" (+15 silence). One open case per customer makes the map exact.
     const caseIds = cases.map((c) => c.id);
+    const caseByCustomer = new Map(cases.map((c) => [c.customerId, c.id]));
+    const customerIds = cases.map((c) => c.customerId);
     const lastContactsInput: CaseLastContactInput[] = [];
     if (caseIds.length > 0) {
       const { data: logRows } = await supabase
@@ -308,11 +314,12 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
       }
       const { data: msgRows } = await supabase
         .from("text_messages")
-        .select("case_id, created_at")
-        .eq("org_id", org.org_id).in("case_id", caseIds).eq("direction", "outbound")
+        .select("customer_id, created_at")
+        .eq("org_id", org.org_id).in("customer_id", customerIds).eq("direction", "outbound")
         .order("created_at", { ascending: false });
       for (const r of (msgRows as any[]) ?? []) {
-        if (r.case_id) lastContactsInput.push({ caseId: r.case_id, date: r.created_at, channel: "Text" });
+        const cid = caseByCustomer.get(r.customer_id);
+        if (cid) lastContactsInput.push({ caseId: cid, date: r.created_at, channel: "Text" });
       }
     }
 
