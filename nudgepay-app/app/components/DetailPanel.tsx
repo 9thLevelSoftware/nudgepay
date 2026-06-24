@@ -4,7 +4,8 @@ import { type CaseItem } from "~/lib/cases";
 import { Icon } from "~/components/Icons";
 import { SMS_TEMPLATES, applyTemplate, type TemplateVars } from "~/lib/sms-templates";
 import { formatDate } from "~/lib/dates";
-import type { ActivityEntry, MessageEntry, RosterMember } from "~/routes/dashboard";
+import type { MessageEntry, RosterMember } from "~/routes/dashboard";
+import type { TimelineEntry } from "~/lib/timeline";
 
 // Static tone-to-text-color map — heat.band → Tailwind class.
 // Must be literal strings so Tailwind can tree-shake them; no dynamic construction.
@@ -45,14 +46,6 @@ function formatUSD(amount: number): string {
 
 const METHOD_ICON: Record<string, "phone" | "mail" | "message" | "note"> = {
   call: "phone", email: "mail", text: "message", note: "note",
-};
-const OUTCOME_TEXT: Record<string, string> = {
-  "promise-to-pay": "Promise to pay",
-  dispute: "Dispute",
-  "no-commitment": "No commitment",
-  "left-voicemail": "Left voicemail",
-  "no-answer": "No answer",
-  other: "Logged",
 };
 function todayISO(): string {
   return new Date().toISOString().slice(0, 10);
@@ -240,7 +233,7 @@ function InfoRow({ label, value, tone }: { label: string; value: string; tone?: 
 
 const TABS = [
   { id: "overview" as const, label: "Overview" },
-  { id: "activity" as const, label: "Activity" },
+  { id: "activity" as const, label: "Timeline" },
   { id: "messages" as const, label: "Messages" },
 ];
 
@@ -250,7 +243,7 @@ export function DetailPanel({
   selected,
   repInvoiceId,
   activeTab,
-  activity,
+  timeline,
   messages,
   consent,
   phone,
@@ -265,7 +258,7 @@ export function DetailPanel({
   selected: CaseItem | null;
   repInvoiceId: string | null;
   activeTab: "overview" | "activity" | "messages";
-  activity: ActivityEntry[];
+  timeline: TimelineEntry[];
   messages: MessageEntry[];
   consent: boolean;
   phone: string | null;
@@ -549,42 +542,64 @@ export function DetailPanel({
 
       {activeTab === "activity" ? (
         <section id="activity-panel" role="tabpanel" aria-labelledby="activity-tab" className="flex-1 px-5 py-4">
-          {activity.length === 0 ? (
+          {timeline.length === 0 ? (
             <div className="flex flex-col items-center justify-center gap-2 py-10 text-center">
               <Icon name="note" size={24} className="text-border" aria-hidden />
-              <p className="text-sm font-sans font-semibold text-text">No contact logged yet.</p>
-              <p className="text-xs text-muted max-w-xs">Use Log to record a call or note.</p>
+              <p className="text-sm font-sans font-semibold text-text">No activity yet.</p>
+              <p className="text-xs text-muted max-w-xs">Logged contacts and texts will appear here.</p>
             </div>
           ) : (
             <ol className="flex flex-col gap-3">
               {(() => {
                 const today = todayISO();
-                return activity.map((a) => {
-                const broken = a.promisedDate != null && a.promisedDate < today;
-                return (
-                  <li key={a.id} className="flex gap-3 border-b border-border pb-3 last:border-0">
-                    <span className="mt-0.5 text-muted shrink-0">
-                      <Icon name={METHOD_ICON[a.method] ?? "note"} size={15} aria-hidden />
-                    </span>
-                    <div className="min-w-0 flex flex-col gap-0.5">
-                      <span className="text-sm font-sans font-semibold text-text">
-                        {OUTCOME_TEXT[a.outcome ?? "other"] ?? "Logged"}
-                      </span>
-                      <span className="font-mono text-xs text-muted">{formatDate(a.createdAt)}</span>
-                      {a.promisedAmount != null && a.promisedDate != null && (
-                        <span className={`text-xs font-sans font-medium ${broken ? "text-hot" : "text-text"}`}>
-                          Promised {formatUSD(a.promisedAmount)} by {formatDate(a.promisedDate)}
-                          {broken ? " · broken" : ""}
+                return timeline.map((e) => {
+                  if (e.kind === "sms") {
+                    const inbound = e.direction === "inbound";
+                    return (
+                      <li key={e.id} className="flex gap-3 border-b border-border pb-3 last:border-0">
+                        <span className="mt-0.5 text-muted shrink-0">
+                          <Icon name="message" size={15} aria-hidden />
                         </span>
-                      )}
-                      {a.followUpAt && (
-                        <span className="text-xs font-sans text-muted">Follow up {formatDate(a.followUpAt)}</span>
-                      )}
-                      {a.notes && <span className="text-xs text-muted whitespace-pre-wrap">{a.notes}</span>}
-                    </div>
-                  </li>
-                );
-              });
+                        <div className="min-w-0 flex flex-col gap-0.5">
+                          <span className={`text-sm font-sans font-semibold ${inbound ? "text-cool" : "text-text"}`}>
+                            {e.outcomeLabel}
+                          </span>
+                          <span className="font-mono text-xs text-muted">{formatDate(e.at)}</span>
+                          {e.body ? (
+                            <span className="text-xs text-muted whitespace-pre-wrap line-clamp-3">{e.body}</span>
+                          ) : null}
+                          {e.errorCode ? (
+                            <span className="text-xs font-sans text-hot">Error {e.errorCode}</span>
+                          ) : null}
+                        </div>
+                      </li>
+                    );
+                  }
+                  const broken = e.promisedDate != null && e.promisedDate < today;
+                  return (
+                    <li key={e.id} className="flex gap-3 border-b border-border pb-3 last:border-0">
+                      <span className="mt-0.5 text-muted shrink-0">
+                        <Icon name={METHOD_ICON[e.method] ?? "note"} size={15} aria-hidden />
+                      </span>
+                      <div className="min-w-0 flex flex-col gap-0.5">
+                        <span className="text-sm font-sans font-semibold text-text">
+                          {e.outcomeLabel ?? "Logged"}
+                        </span>
+                        <span className="font-mono text-xs text-muted">{formatDate(e.at)}</span>
+                        {e.promisedAmount != null && e.promisedDate != null && (
+                          <span className={`text-xs font-sans font-medium ${broken ? "text-hot" : "text-text"}`}>
+                            Promised {formatUSD(e.promisedAmount)} by {formatDate(e.promisedDate)}
+                            {broken ? " · broken" : ""}
+                          </span>
+                        )}
+                        {e.followUpAt && (
+                          <span className="text-xs font-sans text-muted">Follow up {formatDate(e.followUpAt)}</span>
+                        )}
+                        {e.notes && <span className="text-xs text-muted whitespace-pre-wrap">{e.notes}</span>}
+                      </div>
+                    </li>
+                  );
+                });
               })()}
             </ol>
           )}

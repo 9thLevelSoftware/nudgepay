@@ -22,6 +22,7 @@ import { MetricsStrip } from "../components/MetricsStrip";
 import { WorkQueue } from "../components/WorkQueue";
 import { DetailPanel } from "../components/DetailPanel";
 import { LogContactDrawer } from "../components/LogContactDrawer";
+import { buildTimeline, type TimelineEntry, type TimelineLogInput, type TimelineSmsInput } from "~/lib/timeline";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -103,16 +104,6 @@ type ContactLogRow = {
   promised_date: string | null;
 };
 
-export type ActivityEntry = {
-  id: string;
-  method: string;
-  outcome: string | null;
-  notes: string | null;
-  createdAt: string;
-  followUpAt: string | null;
-  promisedAmount: number | null;
-  promisedDate: string | null;
-};
 
 type CaseRowRaw = {
   id: string;
@@ -222,7 +213,7 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
 
   const today = new Date().toISOString().slice(0, 10);
 
-  let selectedActivity: ActivityEntry[] = [];
+  let selectedTimeline: TimelineEntry[] = [];
   let selectedMessages: MessageEntry[] = [];
   let selectedConsent = false;
   let selectedPhone: string | null = null;
@@ -354,31 +345,42 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
           ? invoice
           : (sel.invoices[0]?.invoiceId ?? null);
 
-      // Activity: contact logs for the case.
+      // Activity: contact logs for the case (timeline input).
       const { data: actRows } = await supabase
         .from("contact_logs")
         .select("id, method, outcome, notes, created_at, follow_up_at, promised_amount, promised_date")
         .eq("org_id", org.org_id)
         .eq("case_id", sel.caseId)
         .order("created_at", { ascending: false });
-      selectedActivity = ((actRows as unknown as ContactLogRow[]) ?? []).map((r) => ({
-        id: r.id, method: r.method, outcome: r.outcome, notes: r.notes,
-        createdAt: r.created_at, followUpAt: r.follow_up_at,
+      const logInputs: TimelineLogInput[] = ((actRows as unknown as ContactLogRow[]) ?? []).map((r) => ({
+        id: r.id, at: r.created_at, method: r.method, outcome: r.outcome, notes: r.notes,
+        followUpAt: r.follow_up_at,
         promisedAmount: r.promised_amount == null ? null : Number(r.promised_amount),
         promisedDate: r.promised_date,
       }));
 
-      // Messages: thread by CUSTOMER (one conversation per customer).
+      // Messages: thread by CUSTOMER (one conversation per customer); also carries
+      // case_id so we can derive the per-case slice for the timeline.
       const { data: msgRows } = await supabase
         .from("text_messages")
-        .select("id, direction, body, status, error_code, created_at")
+        .select("id, case_id, direction, body, status, error_code, created_at")
         .eq("org_id", org.org_id)
         .eq("customer_id", customerId)
         .order("created_at", { ascending: true });
-      selectedMessages = ((msgRows as unknown as SelectedMessageRow[]) ?? []).map((r) => ({
+      const msgRowsTyped = (msgRows as unknown as (SelectedMessageRow & { case_id: string | null })[]) ?? [];
+      selectedMessages = msgRowsTyped.map((r) => ({
         id: r.id, direction: r.direction, body: r.body, status: r.status,
         errorCode: r.error_code, createdAt: r.created_at,
       }));
+
+      // Timeline: case-scoped logs + case-scoped SMS, merged newest-first.
+      const smsInputs: TimelineSmsInput[] = msgRowsTyped
+        .filter((r) => r.case_id === sel.caseId)
+        .map((r) => ({
+          id: r.id, at: r.created_at, direction: r.direction,
+          body: r.body, status: r.status, errorCode: r.error_code,
+        }));
+      selectedTimeline = buildTimeline(logInputs, smsInputs);
 
       // Consent + phone from the customer.
       const { data: custRow } = await supabase
@@ -410,7 +412,7 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
       tab,
       log,
       logError,
-      selectedActivity,
+      selectedTimeline,
       selectedMessages,
       selectedConsent,
       selectedPhone,
@@ -443,7 +445,7 @@ export default function Dashboard() {
     log,
     logError,
     promiseError,
-    selectedActivity,
+    selectedTimeline,
     selectedMessages,
     selectedConsent,
     selectedPhone,
@@ -518,7 +520,7 @@ export default function Dashboard() {
                   selected={selected ?? null}
                   repInvoiceId={repInvoiceId ?? null}
                   activeTab={tab}
-                  activity={selectedActivity}
+                  timeline={selectedTimeline}
                   messages={selectedMessages}
                   consent={selectedConsent}
                   phone={selectedPhone}
