@@ -489,7 +489,7 @@ export function DetailPanel({
               </span>
             </div>
 
-            <ul className="mt-2 flex flex-col gap-1">
+            <ul aria-label="Priority factors" className="mt-2 flex flex-col gap-1">
               {selected.factors.map((f) => (
                 <li key={f.key} className="flex items-center justify-between text-xs">
                   <span className="text-text">{f.label}</span>
@@ -534,6 +534,7 @@ export function DetailPanel({
               <input
                 name="reason"
                 type="text"
+                aria-label="Override reason"
                 placeholder="Reason (optional)"
                 defaultValue={selected.override?.reason ?? ""}
                 className="min-w-0 flex-1 rounded-md border border-border bg-surface px-2 py-1 text-xs font-sans text-text placeholder:text-muted focus:outline-none focus-visible:ring-2 focus-visible:ring-copper"
