@@ -19,6 +19,14 @@ const STATUS_LABEL: Record<string, string> = {
   resolved: "Resolved",
 };
 
+// Static effective-level → badge classes (Tailwind v4 needs literal strings).
+const LEVEL_BADGE: Record<string, string> = {
+  Critical: "bg-hot/10 text-hot",
+  High: "bg-warm/10 text-warm",
+  Medium: "bg-warm/5 text-warm",
+  Low: "bg-cool/10 text-cool",
+};
+
 const usd = new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" });
 
 // ---------------------------------------------------------------------------
@@ -115,7 +123,13 @@ function QueueRow({
       {/* Customer */}
       <span data-label="Customer" className="min-w-0">
         <span className="block font-sans text-text truncate">{item.customerName}</span>
-        <span className="block font-mono text-xs text-muted">{item.invoiceCount} invoice(s)</span>
+        <span className="flex items-center gap-1.5">
+          <span className="font-mono text-xs text-muted">{item.invoiceCount} invoice(s)</span>
+          <span className={`inline-flex items-center gap-0.5 rounded px-1.5 py-0.5 text-[10px] font-sans font-semibold ${LEVEL_BADGE[item.effectiveLevel] ?? "text-muted"}`}>
+            {item.override ? <span aria-hidden>📌</span> : null}
+            {item.effectiveLevel}
+          </span>
+        </span>
       </span>
 
       {/* Total overdue */}
@@ -209,7 +223,13 @@ function MobileCard({
           <ThermalBand heat={item.heat} />
           <div className="min-w-0">
             <p className="font-sans text-text font-medium truncate">{item.customerName}</p>
-            <p className="font-mono text-xs text-muted">{item.invoiceCount} invoice(s)</p>
+            <p className="flex items-center gap-1.5">
+              <span className="font-mono text-xs text-muted">{item.invoiceCount} invoice(s)</span>
+              <span className={`inline-flex items-center gap-0.5 rounded px-1.5 py-0.5 text-[10px] font-sans font-semibold ${LEVEL_BADGE[item.effectiveLevel] ?? "text-muted"}`}>
+                {item.override ? <span aria-hidden>📌</span> : null}
+                {item.effectiveLevel}
+              </span>
+            </p>
           </div>
         </div>
         <span className="font-mono text-text tabular-nums text-right shrink-0 text-sm">
