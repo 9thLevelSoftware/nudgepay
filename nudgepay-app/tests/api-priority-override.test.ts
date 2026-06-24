@@ -14,10 +14,11 @@ test("a member sets and clears a priority override on an own-org case via RLS", 
     .insert({ org_id: orgId, customer_id: cust!.id, status: "working" }).select("id").single();
 
   // set
-  await a.client.from("collection_cases").update({
+  const { error: setErr } = await a.client.from("collection_cases").update({
     priority_override: "critical", priority_override_reason: "CEO escalation",
     priority_override_by: a.userId, priority_override_at: new Date().toISOString(),
   }).eq("id", cse!.id);
+  expect(setErr).toBeNull();
   let { data: after } = await svc.from("collection_cases")
     .select("priority_override, priority_override_reason, priority_override_by").eq("id", cse!.id).single();
   expect(after!.priority_override).toBe("critical");
@@ -25,12 +26,15 @@ test("a member sets and clears a priority override on an own-org case via RLS", 
   expect(after!.priority_override_by).toBe(a.userId);
 
   // clear
-  await a.client.from("collection_cases").update({
+  const { error: clearErr } = await a.client.from("collection_cases").update({
     priority_override: null, priority_override_reason: null, priority_override_by: null, priority_override_at: null,
   }).eq("id", cse!.id);
+  expect(clearErr).toBeNull();
   ({ data: after } = await svc.from("collection_cases")
     .select("priority_override, priority_override_reason, priority_override_by").eq("id", cse!.id).single());
   expect(after!.priority_override).toBe(null);
+  expect(after!.priority_override_reason).toBe(null);
+  expect(after!.priority_override_by).toBe(null);
 });
 
 test("a member of another org cannot override the case (RLS blocks)", async () => {
