@@ -1,4 +1,4 @@
-import type { Metrics } from "../lib/worklist";
+import type { Metrics, ViewId, SortId } from "../lib/worklist";
 
 const usd = new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" });
 
@@ -45,6 +45,9 @@ function MetricTile({ label, count, amount, accent = "ink" }: TileProps) {
 
 interface MetricsStripProps {
   metrics: Metrics;
+  view?: ViewId;
+  sort?: SortId;
+  search?: string;
 }
 
 /**
