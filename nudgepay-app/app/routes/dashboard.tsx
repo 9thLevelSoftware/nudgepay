@@ -19,6 +19,7 @@ import {
 import type { PriorityOverrideLevel } from "../lib/priority";
 import type { ExceptionReason } from "../lib/contact-log";
 import { AppShell } from "../components/AppShell";
+import { SyncIssues } from "../components/SyncIssues";
 import { MetricsStrip } from "../components/MetricsStrip";
 import { WorkQueue } from "../components/WorkQueue";
 import { DetailPanel } from "../components/DetailPanel";
@@ -188,6 +189,18 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
       syncLabel = "Connected";
     }
   }
+
+  // Unresolved sync errors for this org (B6). USER client → RLS scopes to own org.
+  const { data: syncErrorRows } = await supabase
+    .from("sync_errors")
+    .select("id, source, scope, message, occurred_at")
+    .is("resolved_at", null)
+    .order("occurred_at", { ascending: false })
+    .limit(20);
+  const syncIssues = ((syncErrorRows as any[]) ?? []).map((r) => ({
+    id: r.id as string, source: r.source as string, scope: r.scope as string,
+    message: r.message as string, occurredAt: r.occurred_at as string,
+  }));
 
   // Parse URL params
   const url = new URL(request.url);
@@ -428,6 +441,7 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
       isOwner: org.role === "owner",
       connected,
       syncLabel,
+      syncIssues,
       view,
       sort,
       q,
@@ -463,6 +477,7 @@ export default function Dashboard() {
     isOwner,
     connected,
     syncLabel,
+    syncIssues,
     view,
     sort,
     q,
@@ -491,6 +506,12 @@ export default function Dashboard() {
       syncLabel={syncLabel}
       connected={connected}
       isOwner={isOwner}
+      syncIssues={
+        <SyncIssues
+          issues={syncIssues}
+          returnTo={`/dashboard?${new URLSearchParams({ view, sort, ...(q ? { q } : {}), ...(selected ? { case: selected.caseId } : {}), tab }).toString()}`}
+        />
+      }
       headerActions={
         connected ? (
           <div className="hidden sm:flex items-center gap-1.5">
