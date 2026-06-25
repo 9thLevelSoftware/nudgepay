@@ -24,6 +24,7 @@ export default [
   route("auth/qbo/callback", "routes/auth.qbo.callback.tsx"),
   route("webhooks/qbo", "routes/webhooks.qbo.tsx"),
   route("api/text/send", "routes/api.text.send.tsx"),
+  route("api/bulk-sms", "routes/api.bulk-sms.tsx"),
   route("webhooks/twilio/inbound", "routes/webhooks.twilio.inbound.tsx"),
   route("webhooks/twilio/status", "routes/webhooks.twilio.status.tsx"),
 ] satisfies RouteConfig;
