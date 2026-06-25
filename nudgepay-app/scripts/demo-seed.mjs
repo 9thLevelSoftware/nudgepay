@@ -43,7 +43,8 @@ async function main() {
   const { data: priorOrgs } = await svc.from("organizations")
     .select("id").eq("name", "Chancey Heating & Cooling");
   for (const o of priorOrgs ?? []) {
-    await svc.from("organizations").delete().eq("id", o.id); // cascades
+    const { error: delErr } = await svc.from("organizations").delete().eq("id", o.id); // cascades
+    if (delErr) throw delErr;
   }
 
   const ownerId = await ensureOwner();
@@ -53,14 +54,16 @@ async function main() {
   if (orgErr) throw orgErr;
   const orgId = org.id;
 
-  await svc.from("memberships").insert({ org_id: orgId, user_id: ownerId, role: "owner" });
+  const { error: memErr } = await svc.from("memberships").insert({ org_id: orgId, user_id: ownerId, role: "owner" });
+  if (memErr) throw memErr;
 
   // Display-only "connected" QBO row (null encrypted tokens — no live calls).
   // The dashboard gates the worklist on status === "connected".
-  await svc.from("qbo_connections").insert({
+  const { error: qboErr } = await svc.from("qbo_connections").insert({
     org_id: orgId, realm_id: "demo-realm-123", status: "connected",
     last_sync_at: new Date().toISOString(),
   });
+  if (qboErr) throw qboErr;
 
   const customerRows = [
     { name: "Riverside Apartments LLC", phone: "+13105550111", sms_consent: true,  email: "ap@riverside.example" },
@@ -117,8 +120,9 @@ async function main() {
   const caseByCustomer = Object.fromEntries(cases.map((c) => [c.customer_id, c.id]));
 
   // Assign two accounts to the demo owner so "My work" is populated.
-  await svc.from("customers").update({ owner: ownerId })
+  const { error: updateErr } = await svc.from("customers").update({ owner: ownerId })
     .in("id", [byName["Riverside Apartments LLC"].id, byName["Northgate Property Mgmt"].id]);
+  if (updateErr) throw updateErr;
 
   // Promises: a PENDING one on Riverside (promise card) and a BROKEN one on
   // Delgado (Broken-promises view + row indicator).
@@ -135,15 +139,16 @@ async function main() {
   ]).select("id, case_id");
   if (promErr) throw promErr;
   const promByCase = Object.fromEntries(proms.map((p) => [p.case_id, p.id]));
-  await svc.from("promise_invoices").insert([
+  const { error: promInvErr } = await svc.from("promise_invoices").insert([
     ...invByCustomer(riversideId).map((i) => ({ promise_id: promByCase[caseByCustomer[riversideId]], invoice_id: i.id, org_id: orgId, baseline_balance: 0 })),
     ...invByCustomer(delgadoId).map((i) => ({ promise_id: promByCase[caseByCustomer[delgadoId]], invoice_id: i.id, org_id: orgId, baseline_balance: 0 })),
   ]);
+  if (promInvErr) throw promInvErr;
 
   // One SMS thread on the largest Riverside invoice (#1042), linked to its case.
   const riverside = byName["Riverside Apartments LLC"];
   const inv1042 = invoices.find((i) => i.qbo_doc_number === "1042");
-  await svc.from("text_messages").insert([
+  const { error: smsErr } = await svc.from("text_messages").insert([
     {
       org_id: orgId, invoice_id: inv1042.id, customer_id: riverside.id,
       case_id: caseByCustomer[riverside.id],
@@ -159,6 +164,7 @@ async function main() {
       body: "Thanks — check is going out Friday. Can you send a copy of the invoice?",
     },
   ]);
+  if (smsErr) throw smsErr;
 
   console.log(JSON.stringify({
     ok: true, orgId, ownerEmail: OWNER_EMAIL,

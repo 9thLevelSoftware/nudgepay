@@ -1,7 +1,7 @@
 import { chromium } from "playwright";
 
 const TARGET = process.env.URL || "http://localhost:5173/";
-const out = "C:/Users/dasbl/WebstormProjects/nudgepay/nudgepay-app/demo-recording/frontend-screenshot.png";
+const out = new URL("../demo-recording/frontend-screenshot.png", import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, "$1");
 
 const browser = await chromium.launch();
 const ctx = await browser.newContext({ viewport: { width: 1440, height: 900 } });

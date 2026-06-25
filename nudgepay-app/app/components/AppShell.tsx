@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Link } from "react-router";
+import { Form, Link } from "react-router";
 import { Icon } from "./Icons";
 
 interface AppShellProps {
@@ -128,15 +128,17 @@ export function AppShell({
             <Icon name="settings" size={16} />
           </button>
 
-          {/* User avatar → sign out */}
-          <Link
-            to="/logout"
-            className="flex items-center justify-center w-7 h-7 rounded-full bg-copper/20 border border-copper/40 text-copper font-sans text-[11px] font-semibold uppercase leading-none select-none hover:bg-copper/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-copper"
-            aria-label={`Sign out (${userInitials})`}
-            title="Sign out"
-          >
-            {userInitials}
-          </Link>
+          {/* User avatar → sign out (POST so the action runs) */}
+          <Form method="post" action="/logout" className="contents">
+            <button
+              type="submit"
+              className="flex items-center justify-center w-7 h-7 rounded-full bg-copper/20 border border-copper/40 text-copper font-sans text-[11px] font-semibold uppercase leading-none select-none hover:bg-copper/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-copper"
+              aria-label={`Sign out (${userInitials})`}
+              title="Sign out"
+            >
+              {userInitials}
+            </button>
+          </Form>
         </div>
       </header>
 

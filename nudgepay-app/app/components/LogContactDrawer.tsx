@@ -12,6 +12,8 @@ const NEXT_STEP_LABEL: Record<string, string> = {
   follow_up: "Follow up", promise: "Promise to pay", waiting: "Waiting on customer", exception: "Exception (hold)",
 };
 const ERROR_MESSAGE: Record<string, string> = {
+  "bad-method": "Choose a contact method.",
+  "bad-outcome": "Choose an outcome.",
   "promise-required": "Add a promised amount and date, or change the outcome.",
   "bad-amount": "Enter a valid promised amount greater than zero.",
   "bad-date": "Enter a valid date.",
