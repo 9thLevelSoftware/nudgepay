@@ -34,7 +34,7 @@
 | `app/routes/api.sync-errors.dismiss.tsx` (create) | 3 | org-scoped manual-dismiss resource route |
 | `app/routes.ts` (modify) | 3 | register the dismiss route |
 | `tests/api-sync-errors-dismiss.test.ts` (create) | 3 | dismiss RLS contract |
-| `app/routes/api.qbo.refresh.tsx` (modify) | 4 | record on failure / resolve-all on success |
+| `app/routes/api.qbo.refresh.tsx` (modify) | 4 | record on failure / resolve own `full` scope on success |
 | `app/lib/qbo-cron.server.ts` (modify) | 4 | per-org record/resolve |
 | `app/routes/webhooks.qbo.tsx` (modify) | 4 | per-event isolation + record/resolve |
 | `tests/sync-errors-wiring.test.ts` (create) | 4 | cron-recording + webhook per-event isolation |
@@ -439,7 +439,8 @@ Replace lines 23–29 (the `try { await syncOverdueInvoices… } catch { … }` 
 ```ts
   try {
     await syncOverdueInvoices(deps, org.org_id);
-    await resolveSyncErrors(service, { orgId: org.org_id }); // full sync heals all prior errors
+    // Overdue-only refresh is NOT a full catch-up — resolve only its own scope.
+    await resolveSyncErrors(service, { orgId: org.org_id, scope: "full" });
     return redirect("/dashboard?sync=ok", { headers });
   } catch (err) {
     await recordSyncError(service, {

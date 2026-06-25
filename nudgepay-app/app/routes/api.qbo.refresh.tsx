@@ -23,7 +23,12 @@ export async function action({ request, context }: ActionFunctionArgs) {
   };
   try {
     await syncOverdueInvoices(deps, org.org_id);
-    await resolveSyncErrors(service, { orgId: org.org_id }); // full sync heals all prior errors
+    // Resolve ONLY this path's own scope. A manual refresh pulls overdue invoices
+    // (Balance>0 AND DueDate<today) + their payments — it is NOT a full catch-up,
+    // so it must not clear webhook/cdc errors for entities it never re-fetched
+    // (e.g. a payment that zeroed an invoice). Those clear on the next cron CDC
+    // catch-up (a true re-pull) or a successful webhook retry.
+    await resolveSyncErrors(service, { orgId: org.org_id, scope: "full" });
     return redirect("/dashboard?sync=ok", { headers });
   } catch (err) {
     // Log before recording (mirrors the cron + webhook paths) so a failure is
