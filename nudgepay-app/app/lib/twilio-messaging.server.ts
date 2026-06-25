@@ -30,8 +30,11 @@ export async function resolveSender(
 export async function activeCaseId(
   service: SupabaseClient, orgId: string, customerId: string,
 ): Promise<string | null> {
-  const { data } = await service.from("collection_cases")
+  const { data, error } = await service.from("collection_cases")
     .select("id").eq("org_id", orgId).eq("customer_id", customerId).is("closed_at", null).maybeSingle();
+  // Don't swallow a DB error: a silent null would drop case_id and mis-attribute
+  // the message. Surface it like the other reads in this module (e.g. invErr).
+  if (error) throw error;
   return (data?.id as string) ?? null;
 }
 

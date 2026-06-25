@@ -33,8 +33,16 @@ export async function action({ request, context }: ActionFunctionArgs) {
   // re-delivers the batch (upserts are idempotent, so re-applied events are safe).
   let hadFailure = false;
   for (const ev of parseQboWebhook(rawBody)) {
-    const { data: conn } = await service.from("qbo_connections")
+    const { data: conn, error: connErr } = await service.from("qbo_connections")
       .select("org_id").eq("realm_id", ev.realmId).eq("status", "connected").maybeSingle();
+    if (connErr) {
+      // A DB error here is NOT "unknown realm" — failing open via `continue` could
+      // let the batch return 200 and stop Intuit retrying, desyncing permanently.
+      // We can't recordSyncError (no org), so force a retry instead. No orgId to scope.
+      hadFailure = true;
+      console.error("Failed to look up QBO connection for realm", ev.realmId, connErr);
+      continue;
+    }
     if (!conn) continue; // unknown/disconnected realm — ignore
     const orgId = conn.org_id as string;
     const scope = `${ev.entityName.toLowerCase()}:${ev.id}`;

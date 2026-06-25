@@ -26,6 +26,9 @@ export async function action({ request, context }: ActionFunctionArgs) {
     await resolveSyncErrors(service, { orgId: org.org_id }); // full sync heals all prior errors
     return redirect("/dashboard?sync=ok", { headers });
   } catch (err) {
+    // Log before recording (mirrors the cron + webhook paths) so a failure is
+    // visible to operators even if the DB record itself fails.
+    console.error("[refresh] sync failed for org", org.org_id, ":", err);
     await recordSyncError(service, {
       orgId: org.org_id, source: "manual", scope: "full",
       message: err instanceof Error ? err.message : String(err),

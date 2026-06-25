@@ -190,10 +190,14 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
     }
   }
 
-  // Unresolved sync errors for this org (B6). USER client → RLS scopes to own org.
+  // Unresolved sync errors for this org (B6). USER client → RLS, but RLS permits
+  // EVERY org the user belongs to, so bind explicitly to the active dashboard org
+  // (matching the dismiss route's .eq("org_id")) — otherwise a multi-org user could
+  // see another org's error here that the dismiss route then cannot clear.
   const { data: syncErrorRows } = await supabase
     .from("sync_errors")
     .select("id, source, scope, message, occurred_at")
+    .eq("org_id", org.org_id)
     .is("resolved_at", null)
     .order("occurred_at", { ascending: false })
     .limit(20);

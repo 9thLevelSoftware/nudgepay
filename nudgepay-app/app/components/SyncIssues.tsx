@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Form } from "react-router";
 
 export type SyncIssue = {
@@ -26,11 +26,30 @@ function relativeTime(iso: string): string {
  */
 export function SyncIssues({ issues, returnTo }: { issues: SyncIssue[]; returnTo: string }) {
   const [open, setOpen] = useState(false);
+  const rootRef = useRef<HTMLDivElement>(null);
+
+  // Close the panel on Escape or a click outside it (only while open).
+  useEffect(() => {
+    if (!open) return;
+    function onKey(e: KeyboardEvent) {
+      if (e.key === "Escape") setOpen(false);
+    }
+    function onPointer(e: MouseEvent) {
+      if (rootRef.current && !rootRef.current.contains(e.target as Node)) setOpen(false);
+    }
+    document.addEventListener("keydown", onKey);
+    document.addEventListener("mousedown", onPointer);
+    return () => {
+      document.removeEventListener("keydown", onKey);
+      document.removeEventListener("mousedown", onPointer);
+    };
+  }, [open]);
+
   if (issues.length === 0) return null;
   const label = issues.length === 1 ? "1 sync issue" : `${issues.length} sync issues`;
 
   return (
-    <div className="relative">
+    <div className="relative" ref={rootRef}>
       <button
         type="button"
         className="hidden sm:inline-flex items-center gap-1.5 rounded-md border border-amber-400/40 bg-amber-400/10 px-2.5 h-8 text-xs font-sans text-amber-200 hover:border-amber-300 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-copper"
@@ -57,7 +76,8 @@ export function SyncIssues({ issues, returnTo }: { issues: SyncIssue[]; returnTo
               <li key={it.id} className="rounded-md border border-border p-2 text-xs font-sans">
                 <div className="flex items-center justify-between gap-2">
                   <span className="font-medium text-text capitalize">{it.source}</span>
-                  <span className="text-muted">{relativeTime(it.occurredAt)}</span>
+                  {/* relativeTime() reads Date.now(); suppress the SSR/client diff. */}
+                  <span className="text-muted" suppressHydrationWarning>{relativeTime(it.occurredAt)}</span>
                 </div>
                 <p className="mt-0.5 break-words text-text/80">{it.message}</p>
                 <Form method="post" action="/api/sync-errors/dismiss" className="mt-1.5">
