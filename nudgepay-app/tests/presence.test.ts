@@ -1,6 +1,7 @@
 import { expect, test } from "vitest";
 import { serviceClient, makeUserClient } from "./helpers";
 import { recordHeartbeat, readPresence } from "../app/lib/presence.server";
+import { collisionState } from "../app/lib/collision";
 
 test("cross-org RLS: a member of org A cannot read or write org B presence", async () => {
   const svc = serviceClient();
@@ -66,4 +67,34 @@ test("readPresence returns the org's rows for the requested customers and [] for
   const rows = await readPresence(u.client, { orgId: org!.id, customerIds: [cust!.id] });
   expect(rows.map((r) => r.user_id)).toEqual([u.userId]);
   expect(rows[0].customer_id).toBe(cust!.id);
+});
+
+test("loader collision compute: a teammate's recent contact yields a recent-level collision", async () => {
+  // Mirrors the loader's per-case compute over real rows (the loader is not exported,
+  // so we exercise the same query + collisionState it runs).
+  const svc = serviceClient();
+  const { data: org } = await svc.from("organizations").insert({ name: "Collide Loader" }).select("id").single();
+  const me = await makeUserClient("collide-me@example.com");
+  const jane = await makeUserClient("collide-jane@example.com");
+  await svc.from("memberships").insert([
+    { org_id: org!.id, user_id: me.userId, role: "owner" },
+    { org_id: org!.id, user_id: jane.userId, role: "member" },
+  ]);
+  const { data: cust } = await svc.from("customers")
+    .insert({ org_id: org!.id, qbo_id: "cl-1", name: "CL Co" }).select("id").single();
+  const { data: cse } = await svc.from("collection_cases")
+    .insert({ org_id: org!.id, customer_id: cust!.id, status: "working" }).select("id").single();
+  await svc.from("contact_logs").insert({
+    org_id: org!.id, case_id: cse!.id, customer_id: cust!.id, user_id: jane.userId, method: "call",
+  });
+
+  const { data: logRows } = await me.client.from("contact_logs")
+    .select("case_id, created_at, user_id").eq("org_id", org!.id).in("case_id", [cse!.id]);
+  const contacts = (logRows ?? []).map((r) => ({ userId: r.user_id, at: r.created_at }));
+  const c = collisionState({
+    contacts, heartbeats: [], currentUserId: me.userId, nowMs: Date.now(),
+    label: (id) => (id === jane.userId ? "collide-jane" : "A teammate"),
+  });
+  expect(c.level).toBe("recent");
+  expect(c.byUser).toBe("collide-jane");
 });
