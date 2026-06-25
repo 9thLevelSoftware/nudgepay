@@ -14,6 +14,7 @@ export default [
   route("api/contact-logs", "routes/api.contact-logs.tsx"),
   route("api/sms-consent", "routes/api.sms-consent.tsx"),
   route("api/assign", "routes/api.assign.tsx"),
+  route("api/bulk-assign", "routes/api.bulk-assign.tsx"),
   route("api/priority-override", "routes/api.priority-override.tsx"),
   route("api/sync-errors/dismiss", "routes/api.sync-errors.dismiss.tsx"),
   route("api/promises/cancel", "routes/api.promises.cancel.tsx"),
