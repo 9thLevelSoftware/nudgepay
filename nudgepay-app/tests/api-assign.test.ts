@@ -56,3 +56,24 @@ test("the membership guard rejects a non-member target", async () => {
     .select("user_id").eq("org_id", orgId).eq("user_id", stranger.userId).maybeSingle();
   expect(isMember).toBeNull(); // route would reject and not assign
 });
+
+test("the owner update is org-scoped: a customer in another org is not reassigned", async () => {
+  const svc = serviceClient();
+  // Org A: caller's resolved org, with member to assign.
+  const { data: orgA } = await svc.from("organizations").insert({ name: "Assign Scope A" }).select("id").single();
+  const a = await makeUserClient("assign-scope-a@example.com");
+  await svc.from("memberships").insert({ org_id: orgA!.id, user_id: a.userId, role: "owner" });
+  // Org B: the caller is ALSO a member (so RLS alone would permit the write).
+  const { data: orgB } = await svc.from("organizations").insert({ name: "Assign Scope B" }).select("id").single();
+  await svc.from("memberships").insert({ org_id: orgB!.id, user_id: a.userId, role: "member" });
+  const { data: custB } = await svc.from("customers")
+    .insert({ org_id: orgB!.id, qbo_id: "scope-b1", name: "Org B Co" }).select("id").single();
+
+  // The route binds the update to the RESOLVED org (A). A customer in org B must
+  // not be updated even though RLS would allow it.
+  const { error } = await a.client.from("customers")
+    .update({ owner: a.userId }).eq("org_id", orgA!.id).eq("id", custB!.id);
+  expect(error).toBeNull(); // update matched 0 rows, not an error
+  const { data: after } = await svc.from("customers").select("owner").eq("id", custB!.id).single();
+  expect(after!.owner).toBe(null); // unchanged — org scope prevented the cross-org write
+});
