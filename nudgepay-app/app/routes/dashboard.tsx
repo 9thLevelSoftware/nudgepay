@@ -86,7 +86,7 @@ type InvoiceRow = {
   balance: number | string | null;
   due_date: string | null;
   customer_id: string | null;
-  customers: { name: string | null; phone: string | null; email: string | null; owner: string | null } | null;
+  customers: { name: string | null; phone: string | null; email: string | null; owner: string | null; sms_consent: boolean | null } | null;
 };
 
 type TextMessageRow = {
@@ -265,7 +265,7 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
     // RLS-scoped invoice read (USER client)
     const { data: invRows } = await supabase
       .from("invoices")
-      .select("id, qbo_doc_number, balance, due_date, customer_id, customers(name, phone, email, owner)")
+      .select("id, qbo_doc_number, balance, due_date, customer_id, customers(name, phone, email, owner, sms_consent)")
       .eq("org_id", org.org_id)
       .gt("balance", 0)
       .lt("due_date", today);
@@ -291,6 +291,7 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
           phone: r.customers.phone ?? null,
           email: r.customers.email ?? null,
           owner: r.customers.owner ?? null,
+          smsConsent: r.customers.sms_consent ?? false,
         });
       }
     }

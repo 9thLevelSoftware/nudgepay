@@ -70,6 +70,7 @@ export type CaseItem = {
   override: { level: PriorityLevel; reason: string | null; by: string | null; at: string | null } | null;
   lastContact: LastContact;
   phone: string | null;
+  smsConsent: boolean;
   email: string | null;
   promise: { amount: number; date: string } | null;
   brokenPromise: boolean;
@@ -194,6 +195,7 @@ export function buildCaseItems(
         : null,
       lastContact: lc ? { date: lc.date, channel: lc.channel } : null,
       phone: cust?.phone ?? null,
+      smsConsent: cust?.smsConsent ?? false,
       email: cust?.email ?? null,
       promise: prom ? { amount: prom.promisedAmount, date: prom.promisedDate } : null,
       brokenPromise: prom?.status === "broken",
