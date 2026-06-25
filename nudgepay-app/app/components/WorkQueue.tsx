@@ -1,8 +1,12 @@
-import { Form, Link } from "react-router";
+import { useEffect, useRef, useState } from "react";
+import { Form, Link, useNavigation } from "react-router";
 import type { ViewId, SortId } from "../lib/worklist";
 import type { CaseItem } from "../lib/cases";
 import { formatDate } from "../lib/dates";
 import { STATUS_LABEL, formatUSD } from "../lib/format";
+import { partitionEligibility, clampBatch, MAX_BATCH } from "../lib/bulk";
+import { BulkActionBar } from "./BulkActionBar";
+import { BulkSmsDrawer } from "./BulkSmsDrawer";
 import { ThermalBand } from "./ThermalBand";
 import { Icon } from "./Icons";
 
@@ -54,10 +58,12 @@ interface WorkQueueProps {
   selectedCaseId: string | null;
   totalCount: number;
   viewCounts: Record<ViewId, number>;
+  roster: { userId: string; label: string }[];
+  returnTo: string;
 }
 
 // ---------------------------------------------------------------------------
-// Row — <Link> styled as a table row; keyboard-focusable, copper focus ring.
+// Row — flex wrapper with a sibling checkbox + flex-1 Link; keyboard-focusable.
 // ---------------------------------------------------------------------------
 
 function QueueRow({
@@ -66,109 +72,105 @@ function QueueRow({
   view,
   sort,
   search,
+  checked,
+  onToggle,
+  disabled,
 }: {
   item: CaseItem;
   selected: boolean;
   view: ViewId;
   sort: SortId;
   search: string;
+  checked: boolean;
+  onToggle: (id: string) => void;
+  disabled: boolean;
 }) {
-  const params = new URLSearchParams({
-    case: item.caseId,
-    view,
-    sort,
-    ...(search ? { q: search } : {}),
-  });
+  const params = new URLSearchParams({ case: item.caseId, view, sort, ...(search ? { q: search } : {}) });
   const href = `?${params.toString()}`;
 
   return (
-    <Link
-      to={href}
-      aria-label={`Open ${item.customerName}`}
-      aria-current={selected ? "true" : undefined}
+    <div
       className={[
-        // Base row layout — per-breakpoint templates match the visible column
-        // count (4 at md, 6 at lg, 7 at xl) so trailing tracks never reserve
-        // empty space below xl.
-        "group grid items-center gap-x-6 gap-y-0",
-        "grid-cols-[auto_minmax(140px,1.5fr)_minmax(96px,0.9fr)_minmax(56px,0.5fr)]",
-        "lg:grid-cols-[auto_minmax(140px,1.3fr)_minmax(96px,0.8fr)_minmax(56px,0.5fr)_minmax(96px,0.85fr)_minmax(230px,2fr)]",
-        "xl:grid-cols-[auto_minmax(140px,1.3fr)_minmax(96px,0.8fr)_minmax(56px,0.5fr)_minmax(96px,0.85fr)_minmax(230px,2fr)_minmax(104px,0.75fr)]",
-        "border-b border-border px-6 py-2.5 text-sm",
-        "transition-colors duration-100",
-        // Focus ring
-        "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-copper focus-visible:ring-inset",
-        // Hover
-        "hover:bg-panel",
-        // Selected: copper left border + tint
-        selected
-          ? "border-l-2 border-l-copper bg-copper/5"
-          : "border-l-2 border-l-transparent",
+        "flex items-center border-b border-border transition-colors duration-100 hover:bg-panel",
+        selected ? "border-l-2 border-l-copper bg-copper/5" : "border-l-2 border-l-transparent",
       ].join(" ")}
     >
-      {/* Heat */}
-      <span data-label="Heat" className="hidden md:flex">
-        <ThermalBand heat={item.heat} />
-      </span>
+      <label className="flex items-center pl-4 pr-1 cursor-pointer" onClick={(e) => e.stopPropagation()}>
+        <span className="sr-only">Select {item.customerName}</span>
+        <input
+          type="checkbox"
+          checked={checked}
+          onChange={() => onToggle(item.caseId)}
+          disabled={disabled}
+          className="h-4 w-4 rounded border-border text-copper focus-visible:ring-2 focus-visible:ring-copper"
+        />
+      </label>
+      <Link
+        to={href}
+        aria-label={`Open ${item.customerName}`}
+        aria-current={selected ? "true" : undefined}
+        className={[
+          "group flex-1 grid items-center gap-x-6 gap-y-0",
+          "grid-cols-[auto_minmax(140px,1.5fr)_minmax(96px,0.9fr)_minmax(56px,0.5fr)]",
+          "lg:grid-cols-[auto_minmax(140px,1.3fr)_minmax(96px,0.8fr)_minmax(56px,0.5fr)_minmax(96px,0.85fr)_minmax(230px,2fr)]",
+          "xl:grid-cols-[auto_minmax(140px,1.3fr)_minmax(96px,0.8fr)_minmax(56px,0.5fr)_minmax(96px,0.85fr)_minmax(230px,2fr)_minmax(104px,0.75fr)]",
+          "px-4 py-2.5 text-sm",
+          "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-copper focus-visible:ring-inset",
+        ].join(" ")}
+      >
+        {/* Heat */}
+        <span data-label="Heat" className="hidden md:flex">
+          <ThermalBand heat={item.heat} />
+        </span>
 
-      {/* Customer */}
-      <span data-label="Customer" className="min-w-0">
-        <span className="block font-sans text-text truncate">{item.customerName}</span>
-        <span className="flex items-center gap-1.5">
-          <span className="font-mono text-xs text-muted">{item.invoiceCount} invoice(s)</span>
-          <span className={`inline-flex items-center gap-0.5 rounded px-1.5 py-0.5 text-[10px] font-sans font-semibold ${LEVEL_BADGE[item.effectiveLevel] ?? "text-muted"}`}>
-            {item.override ? <span aria-hidden>📌</span> : null}
-            {item.effectiveLevel}
+        {/* Customer */}
+        <span data-label="Customer" className="min-w-0">
+          <span className="block font-sans text-text truncate">{item.customerName}</span>
+          <span className="flex items-center gap-1.5">
+            <span className="font-mono text-xs text-muted">{item.invoiceCount} invoice(s)</span>
+            <span className={`inline-flex items-center gap-0.5 rounded px-1.5 py-0.5 text-[10px] font-sans font-semibold ${LEVEL_BADGE[item.effectiveLevel] ?? "text-muted"}`}>
+              {item.override ? <span aria-hidden>📌</span> : null}
+              {item.effectiveLevel}
+            </span>
           </span>
         </span>
-      </span>
 
-      {/* Total overdue */}
-      <span
-        data-label="Total overdue"
-        className="font-mono text-text tabular-nums text-right hidden md:block"
-      >
-        {formatUSD(item.totalOverdue)}
-      </span>
+        {/* Total overdue */}
+        <span data-label="Total overdue" className="font-mono text-text tabular-nums text-right hidden md:block">
+          {formatUSD(item.totalOverdue)}
+        </span>
 
-      {/* Oldest age */}
-      <span
-        data-label="Oldest age"
-        className="font-mono text-sm text-muted tabular-nums hidden md:block whitespace-nowrap"
-      >
-        {item.oldestAgeDays > 0 ? `${item.oldestAgeDays}d` : "Due"}
-      </span>
+        {/* Oldest age */}
+        <span data-label="Oldest age" className="font-mono text-sm text-muted tabular-nums hidden md:block whitespace-nowrap">
+          {item.oldestAgeDays > 0 ? `${item.oldestAgeDays}d` : "Due"}
+        </span>
 
-      {/* Last contact */}
-      <span data-label="Last contact" className="hidden lg:block min-w-0">
-        {item.lastContact ? (
-          <>
-            <span className="block text-text text-xs">{formatDate(item.lastContact.date)}</span>
-            <span className="block text-muted text-xs capitalize">{item.lastContact.channel}</span>
-          </>
-        ) : (
-          <span className="text-muted text-xs">Never contacted</span>
-        )}
-      </span>
+        {/* Last contact */}
+        <span data-label="Last contact" className="hidden lg:block min-w-0">
+          {item.lastContact ? (
+            <>
+              <span className="block text-text text-xs">{formatDate(item.lastContact.date)}</span>
+              <span className="block text-muted text-xs capitalize">{item.lastContact.channel}</span>
+            </>
+          ) : (
+            <span className="text-muted text-xs">Never contacted</span>
+          )}
+        </span>
 
-      {/* Status + next action date */}
-      <span data-label="Status" className="hidden lg:block min-w-0 text-xs font-sans font-medium whitespace-nowrap text-text">
-        {STATUS_LABEL[item.status] ?? item.status}
-        {item.nextActionAt ? <span className="text-muted"> · {formatDate(item.nextActionAt)}</span> : null}
-        {item.promiseStatus === "broken" ? (
-          <span className="text-hot"> · Promise broken</span>
-        ) : null}
-      </span>
+        {/* Status + next action date */}
+        <span data-label="Status" className="hidden lg:block min-w-0 text-xs font-sans font-medium whitespace-nowrap text-text">
+          {STATUS_LABEL[item.status] ?? item.status}
+          {item.nextActionAt ? <span className="text-muted"> · {formatDate(item.nextActionAt)}</span> : null}
+          {item.promiseStatus === "broken" ? <span className="text-hot"> · Promise broken</span> : null}
+        </span>
 
-      {/* Owner chip */}
-      <span
-        data-label="Owner"
-        className="hidden xl:inline-flex items-center gap-1 rounded-full bg-panel border border-border px-2 py-0.5 text-xs text-muted font-sans whitespace-nowrap"
-      >
-        <Icon name="user" size={12} aria-hidden />
-        {item.owner}
-      </span>
-    </Link>
+        {/* Owner chip */}
+        <span data-label="Owner" className="hidden xl:inline-flex items-center gap-1 rounded-full bg-panel border border-border px-2 py-0.5 text-xs text-muted font-sans whitespace-nowrap">
+          <Icon name="user" size={12} aria-hidden />
+          {item.owner}
+        </span>
+      </Link>
+    </div>
   );
 }
 
@@ -177,82 +179,53 @@ function QueueRow({
 // ---------------------------------------------------------------------------
 
 function MobileCard({
-  item,
-  selected,
-  view,
-  sort,
-  search,
+  item, selected, view, sort, search, checked, onToggle, disabled,
 }: {
-  item: CaseItem;
-  selected: boolean;
-  view: ViewId;
-  sort: SortId;
-  search: string;
+  item: CaseItem; selected: boolean; view: ViewId; sort: SortId; search: string;
+  checked: boolean; onToggle: (id: string) => void; disabled: boolean;
 }) {
-  const params = new URLSearchParams({
-    case: item.caseId,
-    view,
-    sort,
-    ...(search ? { q: search } : {}),
-  });
+  const params = new URLSearchParams({ case: item.caseId, view, sort, ...(search ? { q: search } : {}) });
   const href = `?${params.toString()}`;
-
   return (
-    <Link
-      to={href}
-      aria-label={`Open ${item.customerName}`}
-      aria-current={selected ? "true" : undefined}
-      className={[
-        "block bg-surface border border-border rounded-lg p-4 mb-2",
-        "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-copper",
-        selected ? "border-copper ring-2 ring-copper bg-copper/5" : "",
-      ].join(" ")}
-    >
-      {/* Row 1: ThermalBand + customer name + total overdue */}
-      <div className="flex items-start justify-between gap-3 mb-2">
-        <div className="flex items-center gap-2 min-w-0">
-          <ThermalBand heat={item.heat} />
-          <div className="min-w-0">
-            <p className="font-sans text-text font-medium truncate">{item.customerName}</p>
-            <p className="flex items-center gap-1.5">
-              <span className="font-mono text-xs text-muted">{item.invoiceCount} invoice(s)</span>
-              <span className={`inline-flex items-center gap-0.5 rounded px-1.5 py-0.5 text-[10px] font-sans font-semibold ${LEVEL_BADGE[item.effectiveLevel] ?? "text-muted"}`}>
-                {item.override ? <span aria-hidden>📌</span> : null}
-                {item.effectiveLevel}
-              </span>
-            </p>
+    <div className={["flex gap-2 items-start bg-surface border rounded-lg p-3 mb-2", selected ? "border-copper ring-2 ring-copper bg-copper/5" : "border-border"].join(" ")}>
+      <label className="pt-1 cursor-pointer" onClick={(e) => e.stopPropagation()}>
+        <span className="sr-only">Select {item.customerName}</span>
+        <input type="checkbox" checked={checked} onChange={() => onToggle(item.caseId)} disabled={disabled} className="h-4 w-4 rounded border-border text-copper focus-visible:ring-2 focus-visible:ring-copper" />
+      </label>
+      <Link to={href} aria-label={`Open ${item.customerName}`} aria-current={selected ? "true" : undefined} className="flex-1 min-w-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-copper rounded">
+        <div className="flex items-start justify-between gap-3 mb-2">
+          <div className="flex items-center gap-2 min-w-0">
+            <ThermalBand heat={item.heat} />
+            <div className="min-w-0">
+              <p className="font-sans text-text font-medium truncate">{item.customerName}</p>
+              <p className="flex items-center gap-1.5">
+                <span className="font-mono text-xs text-muted">{item.invoiceCount} invoice(s)</span>
+                <span className={`inline-flex items-center gap-0.5 rounded px-1.5 py-0.5 text-[10px] font-sans font-semibold ${LEVEL_BADGE[item.effectiveLevel] ?? "text-muted"}`}>
+                  {item.override ? <span aria-hidden>📌</span> : null}
+                  {item.effectiveLevel}
+                </span>
+              </p>
+            </div>
           </div>
+          <span className="font-mono text-text tabular-nums text-right shrink-0 text-sm">{formatUSD(item.totalOverdue)}</span>
         </div>
-        <span className="font-mono text-text tabular-nums text-right shrink-0 text-sm">
-          {formatUSD(item.totalOverdue)}
-        </span>
-      </div>
-
-      {/* Row 2: Oldest age + status */}
-      <div className="flex items-center gap-3 text-xs">
-        <span className="font-mono text-muted tabular-nums">
-          {item.oldestAgeDays > 0 ? `${item.oldestAgeDays}d` : "Due"}
-        </span>
-        <span className="font-sans font-medium text-text">
-          {STATUS_LABEL[item.status] ?? item.status}
-          {item.nextActionAt ? <span className="text-muted"> · {formatDate(item.nextActionAt)}</span> : null}
-          {item.promiseStatus === "broken" ? (
-            <span className="text-hot"> · Promise broken</span>
-          ) : null}
-        </span>
-      </div>
-
-      {/* Row 3: Last contact */}
-      <div className="mt-1 text-xs">
-        {item.lastContact ? (
-          <span className="text-muted">
-            {formatDate(item.lastContact.date)} · {item.lastContact.channel}
+        <div className="flex items-center gap-3 text-xs">
+          <span className="font-mono text-muted tabular-nums">{item.oldestAgeDays > 0 ? `${item.oldestAgeDays}d` : "Due"}</span>
+          <span className="font-sans font-medium text-text">
+            {STATUS_LABEL[item.status] ?? item.status}
+            {item.nextActionAt ? <span className="text-muted"> · {formatDate(item.nextActionAt)}</span> : null}
+            {item.promiseStatus === "broken" ? <span className="text-hot"> · Promise broken</span> : null}
           </span>
-        ) : (
-          <span className="text-muted">Never contacted</span>
-        )}
-      </div>
-    </Link>
+        </div>
+        <div className="mt-1 text-xs">
+          {item.lastContact ? (
+            <span className="text-muted">{formatDate(item.lastContact.date)} · {item.lastContact.channel}</span>
+          ) : (
+            <span className="text-muted">Never contacted</span>
+          )}
+        </div>
+      </Link>
+    </div>
   );
 }
 
@@ -275,7 +248,77 @@ export function WorkQueue({
   selectedCaseId,
   totalCount,
   viewCounts,
+  roster,
+  returnTo,
 }: WorkQueueProps) {
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [smsOpen, setSmsOpen] = useState(false);
+  const nav = useNavigation();
+
+  // Selection is per-view: clear it whenever the filter/sort/search changes
+  // (the queue re-renders with a different item set on navigation).
+  useEffect(() => {
+    setSelected(new Set());
+    setSmsOpen(false);
+  }, [view, sort, search]);
+
+  // After a bulk action the loader revalidates without remounting (same filter
+  // params), so items can change while `selected` keeps IDs that left the view.
+  // Prune selection to currently-visible cases. (View/sort/search changes are
+  // handled by the full-clear effect above.)
+  useEffect(() => {
+    setSelected((prev) => {
+      if (prev.size === 0) return prev;
+      const visible = new Set(items.map((i) => i.caseId));
+      const next = new Set<string>();
+      for (const id of prev) if (visible.has(id)) next.add(id);
+      return next.size === prev.size ? prev : next; // subset-only: equal size ⇒ nothing pruned ⇒ no re-render
+    });
+  }, [items]);
+
+  // A bulk assign/SMS submits via <Form> (a navigation). When that navigation
+  // settles back to idle, the action has completed + the loader revalidated, so
+  // clear the selection and close the drawer. Without this, a redirect back to
+  // the same view (only result params added) leaves the drawer open on its
+  // confirm step with the Send button re-enabling on the same caseIds/body —
+  // a one-click accidental re-send of an irreversible batch.
+  const bulkSubmitInFlight = useRef(false);
+  useEffect(() => {
+    const action = nav.formAction ?? "";
+    const isBulk = action.includes("/api/bulk-sms") || action.includes("/api/bulk-assign");
+    if (nav.state !== "idle" && isBulk) {
+      bulkSubmitInFlight.current = true;
+    } else if (nav.state === "idle" && bulkSubmitInFlight.current) {
+      bulkSubmitInFlight.current = false;
+      setSelected(new Set());
+      setSmsOpen(false);
+    }
+  }, [nav.state, nav.formAction]);
+
+  const toggle = (id: string) =>
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else if (next.size < MAX_BATCH) next.add(id);
+      return next;
+    });
+
+  const allVisibleIds = clampBatch(items.map((i) => i.caseId));
+  const allSelected = allVisibleIds.length > 0 && allVisibleIds.every((id) => selected.has(id));
+  const toggleAll = () =>
+    setSelected((prev) => (allSelected ? new Set() : new Set(allVisibleIds)));
+
+  const headerRef = useRef<HTMLInputElement>(null);
+  useEffect(() => {
+    if (headerRef.current) {
+      headerRef.current.indeterminate = !allSelected && allVisibleIds.some((id) => selected.has(id));
+    }
+  }, [allSelected, allVisibleIds, selected]);
+
+  const capReached = selected.size >= MAX_BATCH;
+  const selectedCases = items.filter((i) => selected.has(i.caseId));
+  const eligibleCount = partitionEligibility(selectedCases).eligible.length;
+
   return (
     <section className="flex flex-col min-h-0" aria-labelledby="work-queue-title">
       {/* Header + toolbar (single band) */}
@@ -395,16 +438,28 @@ export function WorkQueue({
             <div className="hidden md:block" aria-label="Work queue table">
               {/* Column header */}
               <div
-                className="grid items-center gap-x-6 px-6 py-2 border-b border-border bg-panel grid-cols-[auto_minmax(140px,1.5fr)_minmax(96px,0.9fr)_minmax(56px,0.5fr)] lg:grid-cols-[auto_minmax(140px,1.3fr)_minmax(96px,0.8fr)_minmax(56px,0.5fr)_minmax(96px,0.85fr)_minmax(230px,2fr)] xl:grid-cols-[auto_minmax(140px,1.3fr)_minmax(96px,0.8fr)_minmax(56px,0.5fr)_minmax(96px,0.85fr)_minmax(230px,2fr)_minmax(104px,0.75fr)]"
-                aria-hidden="true"
+                className="flex items-center px-4 py-2 border-b border-border bg-panel"
+                aria-hidden="false"
               >
-                <span className="font-sans text-xs text-muted uppercase tracking-wide">Heat</span>
-                <span className="font-sans text-xs text-muted uppercase tracking-wide">Customer</span>
-                <span className="font-sans text-xs text-muted uppercase tracking-wide text-right">Total overdue</span>
-                <span className="font-sans text-xs text-muted uppercase tracking-wide">Oldest age</span>
-                <span className="font-sans text-xs text-muted uppercase tracking-wide hidden lg:block">Last contact</span>
-                <span className="font-sans text-xs text-muted uppercase tracking-wide hidden lg:block">Status</span>
-                <span className="font-sans text-xs text-muted uppercase tracking-wide hidden xl:block">Owner</span>
+                <label className="flex items-center pl-4 pr-1 cursor-pointer">
+                  <span className="sr-only">Select all matching</span>
+                  <input
+                    ref={headerRef}
+                    type="checkbox"
+                    checked={allSelected}
+                    onChange={toggleAll}
+                    className="h-4 w-4 rounded border-border text-copper focus-visible:ring-2 focus-visible:ring-copper"
+                  />
+                </label>
+                <div className="flex-1 grid items-center gap-x-6 grid-cols-[auto_minmax(140px,1.5fr)_minmax(96px,0.9fr)_minmax(56px,0.5fr)] lg:grid-cols-[auto_minmax(140px,1.3fr)_minmax(96px,0.8fr)_minmax(56px,0.5fr)_minmax(96px,0.85fr)_minmax(230px,2fr)] xl:grid-cols-[auto_minmax(140px,1.3fr)_minmax(96px,0.8fr)_minmax(56px,0.5fr)_minmax(96px,0.85fr)_minmax(230px,2fr)_minmax(104px,0.75fr)]">
+                  <span className="font-sans text-xs text-muted uppercase tracking-wide">Heat</span>
+                  <span className="font-sans text-xs text-muted uppercase tracking-wide">Customer</span>
+                  <span className="font-sans text-xs text-muted uppercase tracking-wide text-right">Total overdue</span>
+                  <span className="font-sans text-xs text-muted uppercase tracking-wide">Oldest age</span>
+                  <span className="font-sans text-xs text-muted uppercase tracking-wide hidden lg:block">Last contact</span>
+                  <span className="font-sans text-xs text-muted uppercase tracking-wide hidden lg:block">Status</span>
+                  <span className="font-sans text-xs text-muted uppercase tracking-wide hidden xl:block">Owner</span>
+                </div>
               </div>
 
               {/* Rows */}
@@ -417,6 +472,9 @@ export function WorkQueue({
                       view={view}
                       sort={sort}
                       search={search}
+                      checked={selected.has(item.caseId)}
+                      onToggle={toggle}
+                      disabled={!selected.has(item.caseId) && capReached}
                     />
                   </div>
                 ))}
@@ -433,12 +491,32 @@ export function WorkQueue({
                   view={view}
                   sort={sort}
                   search={search}
+                  checked={selected.has(item.caseId)}
+                  onToggle={toggle}
+                  disabled={!selected.has(item.caseId) && capReached}
                 />
               ))}
             </div>
           </>
         )}
       </div>
+
+      {selected.size > 0 ? (
+        <BulkActionBar
+          selectedCaseIds={[...selected]}
+          eligibleCount={eligibleCount}
+          roster={roster}
+          returnTo={returnTo}
+          onClear={() => setSelected(new Set())}
+          onOpenSms={() => setSmsOpen(true)}
+        />
+      ) : null}
+      <BulkSmsDrawer
+        open={smsOpen}
+        onClose={() => setSmsOpen(false)}
+        cases={selectedCases}
+        returnTo={returnTo}
+      />
     </section>
   );
 }

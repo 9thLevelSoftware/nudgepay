@@ -207,3 +207,23 @@ test("waiting view selects waiting + on_hold cases; exception fields flow throug
   const due = applyCaseView(items, "follow-ups-due", "2026-07-10", null).map((i) => i.caseId);
   expect(due).toEqual(["c-o"]);
 });
+
+test("buildCaseItems threads smsConsent from the customer (defaults false)", () => {
+  const today = "2026-06-25";
+  const cases = [
+    { id: "case-1", customerId: "cust-1", status: "working" as const, nextActionType: null, nextActionAt: null, exceptionReason: null, exceptionNote: null },
+    { id: "case-2", customerId: "cust-2", status: "working" as const, nextActionType: null, nextActionAt: null, exceptionReason: null, exceptionNote: null },
+  ];
+  const invoices = [
+    { id: "inv-1", qbo_doc_number: "1001", customer_id: "cust-1", balance: 100, due_date: "2026-05-01" },
+    { id: "inv-2", qbo_doc_number: "1002", customer_id: "cust-2", balance: 50, due_date: "2026-05-01" },
+  ];
+  const customers = [
+    { id: "cust-1", name: "Yes Co", phone: "+12295550100", email: null, owner: null, smsConsent: true },
+    { id: "cust-2", name: "No Co", phone: "+12295550101", email: null, owner: null }, // smsConsent omitted -> false
+  ];
+  const items = buildCaseItems(cases, invoices, customers, [], [], today, new Map());
+  const byId = Object.fromEntries(items.map((i) => [i.caseId, i]));
+  expect(byId["case-1"].smsConsent).toBe(true);
+  expect(byId["case-2"].smsConsent).toBe(false);
+});

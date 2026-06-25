@@ -37,7 +37,7 @@ export type ViewId = "all-open" | "30-plus" | "high-value" | "never-contacted" |
 export type SortId = "recommended" | "most-overdue" | "highest-balance" | "customer";
 
 export type InvoiceInput = { id: string; qbo_doc_number: string | null; customer_id: string | null; balance: number; due_date: string | null };
-export type CustomerInput = { id: string; name: string; phone: string | null; email: string | null; owner?: string | null };
+export type CustomerInput = { id: string; name: string; phone: string | null; email: string | null; owner?: string | null; smsConsent?: boolean | null };
 export type LastContactInput = { invoiceId: string; date: string; channel: string };
 export type PromiseSignalInput = {
   invoiceId: string;

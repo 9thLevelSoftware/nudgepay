@@ -86,7 +86,7 @@ type InvoiceRow = {
   balance: number | string | null;
   due_date: string | null;
   customer_id: string | null;
-  customers: { name: string | null; phone: string | null; email: string | null; owner: string | null } | null;
+  customers: { name: string | null; phone: string | null; email: string | null; owner: string | null; sms_consent: boolean | null } | null;
 };
 
 type TextMessageRow = {
@@ -235,6 +235,13 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
   const promiseError = sp.get("promiseError");
   const saved = sp.get("saved") === "1";
 
+  const bulkAssign = sp.get("bulkAssign");
+  const bulkAssignCount = sp.get("count");
+  const bulkSms = sp.get("bulkSms");
+  const bulkSent = sp.get("sent");
+  const bulkFailed = sp.get("failed");
+  const bulkSkipped = sp.get("skipped");
+
   const today = new Date().toISOString().slice(0, 10);
 
   let selectedTimeline: TimelineEntry[] = [];
@@ -265,7 +272,7 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
     // RLS-scoped invoice read (USER client)
     const { data: invRows } = await supabase
       .from("invoices")
-      .select("id, qbo_doc_number, balance, due_date, customer_id, customers(name, phone, email, owner)")
+      .select("id, qbo_doc_number, balance, due_date, customer_id, customers(name, phone, email, owner, sms_consent)")
       .eq("org_id", org.org_id)
       .gt("balance", 0)
       .lt("due_date", today);
@@ -291,6 +298,7 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
           phone: r.customers.phone ?? null,
           email: r.customers.email ?? null,
           owner: r.customers.owner ?? null,
+          smsConsent: r.customers.sms_consent ?? false,
         });
       }
     }
@@ -452,6 +460,12 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
       sms,
       promiseError,
       saved,
+      bulkAssign,
+      bulkAssignCount,
+      bulkSms,
+      bulkSent,
+      bulkFailed,
+      bulkSkipped,
       roster,
       currentUserId: user.id,
       ...dashboardData,
@@ -486,6 +500,12 @@ export default function Dashboard() {
     selectedPromiseId,
     sms,
     saved,
+    bulkAssign,
+    bulkAssignCount,
+    bulkSms,
+    bulkSent,
+    bulkFailed,
+    bulkSkipped,
     roster,
     items,
     metrics,
@@ -537,6 +557,16 @@ export default function Dashboard() {
           Contact logged successfully.
         </div>
       ) : null}
+      {bulkAssign === "done" ? (
+        <div className="px-6 py-2 bg-cool/10 border-b border-cool/30 text-sm font-sans font-medium text-cool" role="status">
+          Reassigned {bulkAssignCount ?? "0"} account(s).
+        </div>
+      ) : null}
+      {bulkSms === "done" ? (
+        <div className="px-6 py-2 bg-cool/10 border-b border-cool/30 text-sm font-sans font-medium text-cool" role="status">
+          Sent {bulkSent ?? "0"} · Failed {bulkFailed ?? "0"} · Skipped {bulkSkipped ?? "0"}.
+        </div>
+      ) : null}
 
       {connected ? (
         <div className="flex flex-col h-full">
@@ -557,6 +587,8 @@ export default function Dashboard() {
                 selectedCaseId={selected?.caseId ?? null}
                 totalCount={viewCounts["all-open"]}
                 viewCounts={viewCounts}
+                roster={roster}
+                returnTo={`/dashboard?${new URLSearchParams({ view, sort, ...(q ? { q } : {}) }).toString()}`}
               />
             </div>
 
