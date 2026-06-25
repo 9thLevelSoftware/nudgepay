@@ -2,12 +2,19 @@
 .codex/mcp/quickbooks/quickbooks-online-mcp-server/
 
 
-/nudgepay-backend/package-lock.json
-/nudgepay-backend/node_modules/
-/nudgepay-frontend/node_modules/
-/nudgepay-frontend/package-lock.json
+# Nested prototype repos — each has its own .git, tracked separately from this repo
+/nudgepay-backend/
+/nudgepay-frontend/
 /.codex/
 /.agents/
 /AGENTS.md
 /NudgePay_Developer_Handoff_Brief.docx
 /NudgePay_Product_Overview.docx
+
+# IDE + root dependency installs
+/.idea/
+/node_modules/
+
+# Demo videos — large binaries kept out of history
+nudgepay-app/demo-recording/*.mp4
+nudgepay-app/demo-recording/*.webm

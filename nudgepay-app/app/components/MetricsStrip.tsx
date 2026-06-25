@@ -1,7 +1,6 @@
 import { Link } from "react-router";
 import type { Metrics, ViewId, SortId } from "../lib/worklist";
-
-const usd = new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" });
+import { formatUSD } from "../lib/format";
 
 interface TileProps {
   label: string;
@@ -33,7 +32,7 @@ function MetricTile({ label, count, amount, active, href, accent }: TileProps) {
   return (
     <Link
       to={href}
-      aria-label={`${label}: ${count} accounts, ${usd.format(amount)}`}
+      aria-label={`${label}: ${count} accounts, ${formatUSD(amount)}`}
       aria-current={active ? "true" : undefined}
       className={[
         "flex flex-col gap-1 p-4 rounded-tile bg-surface shadow-tile min-w-0 transition-colors",
@@ -42,7 +41,7 @@ function MetricTile({ label, count, amount, active, href, accent }: TileProps) {
       ].join(" ")}
     >
       <span className="font-display text-2xl font-semibold leading-none tracking-tight tabular-nums text-text">
-        {usd.format(amount)}
+        {formatUSD(amount)}
       </span>
       <span className="font-sans text-xs text-muted uppercase tracking-wide leading-none mt-0.5">
         <span className={`font-mono font-medium ${accentText[accent]}`}>{count}</span> · {label}
@@ -88,7 +87,7 @@ export function MetricsStrip({ metrics, view, sort = "recommended", search = "" 
   ];
   return (
     <div
-      className="grid grid-cols-2 gap-6 sm:grid-cols-3 xl:grid-cols-6"
+      className="grid grid-cols-2 gap-3 sm:gap-6 sm:grid-cols-3 xl:grid-cols-6"
       aria-label="Collections summary metrics"
     >
       {tiles.map((t) => (

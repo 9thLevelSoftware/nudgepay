@@ -4,6 +4,7 @@ import { type CaseItem } from "~/lib/cases";
 import { Icon } from "~/components/Icons";
 import { SMS_TEMPLATES, applyTemplate, type TemplateVars } from "~/lib/sms-templates";
 import { formatDate } from "~/lib/dates";
+import { STATUS_LABEL, EXCEPTION_REASON_LABEL, formatUSD } from "~/lib/format";
 import type { MessageEntry, RosterMember } from "~/routes/dashboard";
 import type { TimelineEntry } from "~/lib/timeline";
 
@@ -22,16 +23,6 @@ const LEVEL_TONE: Record<string, string> = {
   Critical: "text-hot", High: "text-warm", Medium: "text-warm", Low: "text-cool",
 };
 
-// Static status → display label map. Literal strings for Tailwind v4.
-const STATUS_LABEL: Record<string, string> = {
-  new: "New",
-  working: "Working",
-  promised: "Promised",
-  waiting: "Waiting",
-  on_hold: "On hold",
-  resolved: "Resolved",
-};
-
 // Static promise status → label + tone. Literal class strings for Tailwind v4.
 const PROMISE_STATUS: Record<string, { label: string; tone: string }> = {
   pending:        { label: "Promise pending",  tone: "text-cool" },
@@ -41,14 +32,6 @@ const PROMISE_STATUS: Record<string, { label: string; tone: string }> = {
   renegotiated:   { label: "Renegotiated",     tone: "text-muted" },
   cancelled:      { label: "Cancelled",        tone: "text-muted" },
 };
-
-function formatUSD(amount: number): string {
-  return new Intl.NumberFormat("en-US", {
-    style: "currency",
-    currency: "USD",
-    minimumFractionDigits: 2,
-  }).format(amount);
-}
 
 const METHOD_ICON: Record<string, "phone" | "mail" | "message" | "note"> = {
   call: "phone", email: "mail", text: "message", note: "note",
@@ -66,11 +49,6 @@ const SMS_BANNER: Record<string, { text: string; tone: string }> = {
   sent: { text: "Text sent.", tone: "text-cool" },
   noconsent: { text: "Not sent — customer has not consented to SMS.", tone: "text-hot" },
   error: { text: "Could not send the text.", tone: "text-hot" },
-};
-
-// Static exception reason → label. Literal strings for Tailwind v4.
-const EXCEPTION_REASON_LABEL: Record<string, string> = {
-  disputed: "Disputed", payment_plan: "Payment plan", do_not_contact: "Do not contact", other: "Other",
 };
 
 // Static promise-error code → copy. Literal strings for Tailwind v4.
@@ -133,7 +111,7 @@ function MessagesTab({
           <input type="hidden" name="consent" value={consent ? "false" : "true"} />
           <button
             type="submit"
-            className="text-xs font-sans font-medium text-copper hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-copper rounded"
+            className="text-xs font-sans font-medium text-copper hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-copper rounded"
           >
             {consent ? "Revoke consent" : "Mark consented"}
           </button>
@@ -182,7 +160,7 @@ function MessagesTab({
               key={t.id}
               type="button"
               onClick={() => setBody(applyTemplate(t.body, vars))}
-              className="text-xs font-sans text-muted border border-border rounded-md px-2 py-1 hover:text-copper hover:border-copper focus:outline-none focus-visible:ring-2 focus-visible:ring-copper transition-colors"
+              className="text-xs font-sans text-muted border border-border rounded-md px-2 py-1 hover:text-copper hover:border-copper focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-copper transition-colors"
             >
               {t.label}
             </button>
@@ -198,7 +176,7 @@ function MessagesTab({
             onChange={(e) => setBody(e.target.value)}
             placeholder="Type a message…"
             required
-            className="w-full resize-none rounded-md border border-border bg-panel px-3 py-2 text-sm font-sans text-text placeholder:text-muted focus:outline-none focus-visible:ring-2 focus-visible:ring-copper"
+            className="w-full resize-none rounded-md border border-border bg-panel px-3 py-2 text-sm font-sans text-text placeholder:text-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-copper"
           />
           <div className="flex items-center justify-between gap-2">
             {noInvoice ? (
@@ -209,7 +187,7 @@ function MessagesTab({
             <button
               type="submit"
               disabled={!consent || noInvoice}
-              className="inline-flex items-center gap-1.5 rounded-md bg-copper px-3 py-1.5 text-xs font-sans font-semibold text-surface hover:bg-copper/90 focus:outline-none focus-visible:ring-2 focus-visible:ring-copper disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+              className="inline-flex items-center gap-1.5 rounded-md bg-copper px-3 py-1.5 text-xs font-sans font-semibold text-surface hover:bg-copper/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-copper disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
             >
               <Icon name="message" size={14} aria-hidden />
               Send text
@@ -307,8 +285,8 @@ export function DetailPanel({
       {/* Mobile: back to queue */}
       <div className="md:hidden px-4 pt-3 pb-1">
         <Link
-          to="?"
-          className="inline-flex items-center gap-1 text-xs text-muted hover:text-copper focus:outline-none focus-visible:ring-2 focus-visible:ring-copper rounded"
+          to={`?${new URLSearchParams({ view, sort, ...(q ? { q } : {}) }).toString()}`}
+          className="inline-flex items-center gap-1 text-xs text-muted hover:text-copper focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-copper rounded"
         >
           <Icon name="chevronRight" size={13} className="rotate-180" aria-hidden />
           Back to queue
@@ -317,10 +295,19 @@ export function DetailPanel({
 
       {/* ── Header ──────────────────────────────────────────────────────────── */}
       <div className="px-5 pt-4 pb-3 border-b border-border">
-        {/* Kicker */}
-        <p className="text-xs font-sans font-medium uppercase tracking-wider text-muted mb-1">
-          Selected account
-        </p>
+        {/* Kicker + close */}
+        <div className="flex items-center justify-between mb-1">
+          <p className="text-xs font-sans font-medium uppercase tracking-wider text-muted">
+            Selected account
+          </p>
+          <Link
+            to={`?${new URLSearchParams({ view, sort, ...(q ? { q } : {}) }).toString()}`}
+            aria-label="Close detail panel"
+            className="hidden md:flex items-center justify-center w-6 h-6 rounded text-muted hover:text-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-copper"
+          >
+            <span aria-hidden="true" className="text-base leading-none">×</span>
+          </Link>
+        </div>
 
         {/* Customer name */}
         <h2 className="font-display text-xl font-semibold text-text leading-tight mb-1">
@@ -364,7 +351,7 @@ export function DetailPanel({
           {selected.phone ? (
             <a
               href={`tel:${selected.phone}`}
-              className="inline-flex items-center gap-1.5 text-xs font-sans font-medium text-copper border border-copper/40 rounded-md px-3 h-9 hover:bg-copper/5 focus:outline-none focus-visible:ring-2 focus-visible:ring-copper transition-colors"
+              className="inline-flex items-center gap-1.5 text-xs font-sans font-medium text-copper border border-copper/40 rounded-md px-3 h-9 hover:bg-copper/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-copper transition-colors"
             >
               <Icon name="phone" size={14} aria-hidden />
               Call
@@ -374,7 +361,7 @@ export function DetailPanel({
           {/* Text → Messages tab */}
           <Link
             to={`?${new URLSearchParams({ case: selected.caseId, tab: "messages", view, sort, ...(q ? { q } : {}) }).toString()}`}
-            className="inline-flex items-center gap-1.5 text-xs font-sans font-medium text-copper border border-copper/40 rounded-md px-3 h-9 hover:bg-copper/5 focus:outline-none focus-visible:ring-2 focus-visible:ring-copper transition-colors"
+            className="inline-flex items-center gap-1.5 text-xs font-sans font-medium text-copper border border-copper/40 rounded-md px-3 h-9 hover:bg-copper/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-copper transition-colors"
           >
             <Icon name="message" size={14} aria-hidden />
             Text
@@ -384,7 +371,7 @@ export function DetailPanel({
           {selected.email ? (
             <a
               href={`mailto:${selected.email}`}
-              className="inline-flex items-center gap-1.5 text-xs font-sans font-medium text-copper border border-copper/40 rounded-md px-3 h-9 hover:bg-copper/5 focus:outline-none focus-visible:ring-2 focus-visible:ring-copper transition-colors"
+              className="inline-flex items-center gap-1.5 text-xs font-sans font-medium text-copper border border-copper/40 rounded-md px-3 h-9 hover:bg-copper/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-copper transition-colors"
             >
               <Icon name="mail" size={14} aria-hidden />
               Email
@@ -394,7 +381,7 @@ export function DetailPanel({
           {/* Log — opens the log-contact drawer */}
           <Link
             to={logHref}
-            className="inline-flex items-center gap-1.5 text-xs font-sans font-medium text-copper border border-copper/40 rounded-md px-3 h-9 hover:bg-copper/5 focus:outline-none focus-visible:ring-2 focus-visible:ring-copper transition-colors"
+            className="inline-flex items-center gap-1.5 text-xs font-sans font-medium text-copper border border-copper/40 rounded-md px-3 h-9 hover:bg-copper/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-copper transition-colors"
           >
             <Icon name="note" size={14} aria-hidden />
             Log
@@ -419,7 +406,7 @@ export function DetailPanel({
               aria-selected={isActive ? "true" : "false"}
               aria-controls={`${tab.id}-panel`}
               className={[
-                "px-4 py-2.5 text-xs font-sans font-medium focus:outline-none focus-visible:ring-2 focus-visible:ring-copper rounded-t transition-colors",
+                "px-4 py-2.5 text-xs font-sans font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-copper rounded-t transition-colors",
                 isActive
                   ? "border-b-2 border-copper text-copper -mb-px"
                   : "text-muted hover:text-text",
@@ -470,7 +457,7 @@ export function DetailPanel({
                   defaultValue={selected.ownerId ?? ""}
                   onChange={(e) => e.currentTarget.form?.requestSubmit()}
                   aria-label="Assign owner"
-                  className="w-full rounded-md border border-border bg-panel px-2 py-1 text-sm font-sans text-text focus:outline-none focus-visible:ring-2 focus-visible:ring-copper"
+                  className="w-full rounded-md border border-border bg-panel px-2 py-1 text-sm font-sans text-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-copper"
                 >
                   <option value="">Unassigned</option>
                   {roster.map((m) => (
@@ -530,7 +517,7 @@ export function DetailPanel({
                 name="level"
                 defaultValue={selected.override ? selected.override.level.toLowerCase() : ""}
                 aria-label="Override priority level"
-                className="rounded-md border border-border bg-surface px-2 py-1 text-xs font-sans text-text focus:outline-none focus-visible:ring-2 focus-visible:ring-copper"
+                className="rounded-md border border-border bg-surface px-2 py-1 text-xs font-sans text-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-copper"
               >
                 <option value="">No override</option>
                 <option value="critical">Critical</option>
@@ -544,11 +531,11 @@ export function DetailPanel({
                 aria-label="Override reason"
                 placeholder="Reason (optional)"
                 defaultValue={selected.override?.reason ?? ""}
-                className="min-w-0 flex-1 rounded-md border border-border bg-surface px-2 py-1 text-xs font-sans text-text placeholder:text-muted focus:outline-none focus-visible:ring-2 focus-visible:ring-copper"
+                className="min-w-0 flex-1 rounded-md border border-border bg-surface px-2 py-1 text-xs font-sans text-text placeholder:text-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-copper"
               />
               <button
                 type="submit"
-                className="rounded-md border border-copper/40 px-3 py-1 text-xs font-sans font-medium text-copper hover:bg-copper/5 focus:outline-none focus-visible:ring-2 focus-visible:ring-copper transition-colors"
+                className="rounded-md border border-copper/40 px-3 py-1 text-xs font-sans font-medium text-copper hover:bg-copper/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-copper transition-colors"
               >
                 Save
               </button>
@@ -608,7 +595,7 @@ export function DetailPanel({
                 <form method="post" action="/api/promises/cancel" className="mt-2">
                   <input type="hidden" name="promiseId" value={selectedPromiseId} />
                   <input type="hidden" name="returnTo" value={overviewReturnTo} />
-                  <button type="submit" className="text-xs font-sans font-medium text-copper hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-copper rounded">
+                  <button type="submit" className="text-xs font-sans font-medium text-copper hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-copper rounded">
                     Cancel promise
                   </button>
                 </form>

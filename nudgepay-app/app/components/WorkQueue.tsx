@@ -2,6 +2,7 @@ import { Form, Link } from "react-router";
 import type { ViewId, SortId } from "../lib/worklist";
 import type { CaseItem } from "../lib/cases";
 import { formatDate } from "../lib/dates";
+import { STATUS_LABEL, formatUSD } from "../lib/format";
 import { ThermalBand } from "./ThermalBand";
 import { Icon } from "./Icons";
 
@@ -9,15 +10,6 @@ import { Icon } from "./Icons";
 // Static maps — Tailwind v4 scanner requires literal class strings; no template
 // interpolation like `text-${tone}` is allowed.
 // ---------------------------------------------------------------------------
-
-const STATUS_LABEL: Record<string, string> = {
-  new: "New",
-  working: "Working",
-  promised: "Promised",
-  waiting: "Waiting",
-  on_hold: "On hold",
-  resolved: "Resolved",
-};
 
 // Static effective-level → badge classes (Tailwind v4 needs literal strings).
 const LEVEL_BADGE: Record<string, string> = {
@@ -27,7 +19,6 @@ const LEVEL_BADGE: Record<string, string> = {
   Low: "bg-cool/10 text-cool",
 };
 
-const usd = new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" });
 
 // ---------------------------------------------------------------------------
 // Saved-view tab definitions
@@ -100,9 +91,9 @@ function QueueRow({
         // count (4 at md, 6 at lg, 7 at xl) so trailing tracks never reserve
         // empty space below xl.
         "group grid items-center gap-x-6 gap-y-0",
-        "grid-cols-[auto_minmax(176px,1.5fr)_minmax(96px,0.9fr)_minmax(56px,0.5fr)]",
-        "lg:grid-cols-[auto_minmax(176px,1.3fr)_minmax(96px,0.8fr)_minmax(56px,0.5fr)_minmax(96px,0.85fr)_minmax(230px,2fr)]",
-        "xl:grid-cols-[auto_minmax(176px,1.3fr)_minmax(96px,0.8fr)_minmax(56px,0.5fr)_minmax(96px,0.85fr)_minmax(230px,2fr)_minmax(104px,0.75fr)]",
+        "grid-cols-[auto_minmax(140px,1.5fr)_minmax(96px,0.9fr)_minmax(56px,0.5fr)]",
+        "lg:grid-cols-[auto_minmax(140px,1.3fr)_minmax(96px,0.8fr)_minmax(56px,0.5fr)_minmax(96px,0.85fr)_minmax(230px,2fr)]",
+        "xl:grid-cols-[auto_minmax(140px,1.3fr)_minmax(96px,0.8fr)_minmax(56px,0.5fr)_minmax(96px,0.85fr)_minmax(230px,2fr)_minmax(104px,0.75fr)]",
         "border-b border-border px-6 py-2.5 text-sm",
         "transition-colors duration-100",
         // Focus ring
@@ -137,7 +128,7 @@ function QueueRow({
         data-label="Total overdue"
         className="font-mono text-text tabular-nums text-right hidden md:block"
       >
-        {usd.format(item.totalOverdue)}
+        {formatUSD(item.totalOverdue)}
       </span>
 
       {/* Oldest age */}
@@ -233,7 +224,7 @@ function MobileCard({
           </div>
         </div>
         <span className="font-mono text-text tabular-nums text-right shrink-0 text-sm">
-          {usd.format(item.totalOverdue)}
+          {formatUSD(item.totalOverdue)}
         </span>
       </div>
 
@@ -325,6 +316,7 @@ export function WorkQueue({
             <select
               name="sort"
               defaultValue={sort}
+              onChange={(e) => e.currentTarget.form?.requestSubmit()}
               className="bg-transparent border-none outline-none font-sans text-sm text-text cursor-pointer"
             >
               {SORT_OPTIONS.map((opt) => (
@@ -403,7 +395,7 @@ export function WorkQueue({
             <div className="hidden md:block" aria-label="Work queue table">
               {/* Column header */}
               <div
-                className="grid items-center gap-x-6 px-6 py-2 border-b border-border bg-panel grid-cols-[auto_minmax(176px,1.5fr)_minmax(96px,0.9fr)_minmax(56px,0.5fr)] lg:grid-cols-[auto_minmax(176px,1.3fr)_minmax(96px,0.8fr)_minmax(56px,0.5fr)_minmax(96px,0.85fr)_minmax(230px,2fr)] xl:grid-cols-[auto_minmax(176px,1.3fr)_minmax(96px,0.8fr)_minmax(56px,0.5fr)_minmax(96px,0.85fr)_minmax(230px,2fr)_minmax(104px,0.75fr)]"
+                className="grid items-center gap-x-6 px-6 py-2 border-b border-border bg-panel grid-cols-[auto_minmax(140px,1.5fr)_minmax(96px,0.9fr)_minmax(56px,0.5fr)] lg:grid-cols-[auto_minmax(140px,1.3fr)_minmax(96px,0.8fr)_minmax(56px,0.5fr)_minmax(96px,0.85fr)_minmax(230px,2fr)] xl:grid-cols-[auto_minmax(140px,1.3fr)_minmax(96px,0.8fr)_minmax(56px,0.5fr)_minmax(96px,0.85fr)_minmax(230px,2fr)_minmax(104px,0.75fr)]"
                 aria-hidden="true"
               >
                 <span className="font-sans text-xs text-muted uppercase tracking-wide">Heat</span>
