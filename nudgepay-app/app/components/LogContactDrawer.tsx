@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { Form, Link, useNavigate } from "react-router";
 import type { CaseItem } from "../lib/cases";
 import { CONTACT_METHODS, CONTACT_OUTCOMES } from "../lib/contact-log";
+import { EXCEPTION_REASON_LABEL, formatUSD } from "../lib/format";
 import { OUTCOME_LABELS } from "../lib/timeline";
 
 const METHOD_LABEL: Record<string, string> = {
@@ -9,9 +10,6 @@ const METHOD_LABEL: Record<string, string> = {
 };
 const NEXT_STEP_LABEL: Record<string, string> = {
   follow_up: "Follow up", promise: "Promise to pay", waiting: "Waiting on customer", exception: "Exception (hold)",
-};
-const EXCEPTION_REASON_LABEL: Record<string, string> = {
-  disputed: "Disputed", payment_plan: "Payment plan", do_not_contact: "Do not contact", other: "Other",
 };
 const ERROR_MESSAGE: Record<string, string> = {
   "promise-required": "Add a promised amount and date, or change the outcome.",
@@ -33,8 +31,8 @@ export function LogContactDrawer({
   returnTo: string;
   logError: string | null;
 }) {
-  const [outcome, setOutcome] = useState<string>("no-answer");
-  const [nextStep, setNextStep] = useState<string>("follow_up");
+  const [outcome, setOutcome] = useState<string>("");
+  const [nextStep, setNextStep] = useState<string>("");
   const firstFieldRef = useRef<HTMLSelectElement>(null);
   const panelRef = useRef<HTMLDivElement>(null);
   const navigate = useNavigate();
@@ -82,7 +80,7 @@ export function LogContactDrawer({
           <Link
             to={returnTo}
             aria-label="Close"
-            className="text-muted hover:text-text rounded focus:outline-none focus-visible:ring-2 focus-visible:ring-copper p-1"
+            className="text-muted hover:text-text rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-copper p-1"
           >
             <span aria-hidden="true" className="text-lg leading-none">×</span>
           </Link>
@@ -93,6 +91,18 @@ export function LogContactDrawer({
           <span className="mx-1.5 text-border">·</span>
           {selected.invoiceCount} open invoice(s)
         </p>
+        {(() => {
+          const inv = repInvoiceId
+            ? selected.invoices.find((i) => i.invoiceId === repInvoiceId)
+            : null;
+          return inv ? (
+            <p className="px-5 pt-1 text-xs font-mono text-muted">
+              {inv.docNumber ?? inv.invoiceId}
+              <span className="mx-1 text-border">·</span>
+              {formatUSD(inv.balance)}
+            </p>
+          ) : null;
+        })()}
 
         {logError && ERROR_MESSAGE[logError] && (
           <p role="alert" className="mx-5 mt-3 rounded-md bg-hot/10 border border-hot/30 px-3 py-2 text-sm text-hot font-sans">
@@ -112,7 +122,7 @@ export function LogContactDrawer({
               ref={firstFieldRef}
               name="method"
               defaultValue="call"
-              className="rounded-md border border-border bg-panel px-3 py-2 text-sm font-sans text-text focus:outline-none focus-visible:ring-2 focus-visible:ring-copper"
+              className="rounded-md border border-border bg-panel px-3 py-2 text-sm font-sans text-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-copper"
             >
               {CONTACT_METHODS.map((m) => (
                 <option key={m} value={m}>{METHOD_LABEL[m]}</option>
@@ -126,8 +136,9 @@ export function LogContactDrawer({
               name="outcome"
               value={outcome}
               onChange={(e) => setOutcome(e.target.value)}
-              className="rounded-md border border-border bg-panel px-3 py-2 text-sm font-sans text-text focus:outline-none focus-visible:ring-2 focus-visible:ring-copper"
+              className="rounded-md border border-border bg-panel px-3 py-2 text-sm font-sans text-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-copper"
             >
+              <option value="" disabled>Select outcome…</option>
               {CONTACT_OUTCOMES.map((o) => (
                 <option key={o} value={o}>{OUTCOME_LABELS[o]}</option>
               ))}
@@ -145,7 +156,7 @@ export function LogContactDrawer({
                   step="0.01"
                   inputMode="decimal"
                   placeholder="0.00"
-                  className="rounded-md border border-border bg-surface px-3 py-2 text-sm font-mono text-text focus:outline-none focus-visible:ring-2 focus-visible:ring-copper"
+                  className="rounded-md border border-border bg-surface px-3 py-2 text-sm font-mono text-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-copper"
                 />
               </label>
               <label className="flex flex-col gap-1">
@@ -153,7 +164,7 @@ export function LogContactDrawer({
                 <input
                   name="promisedDate"
                   type="date"
-                  className="rounded-md border border-border bg-surface px-3 py-2 text-sm font-sans text-text focus:outline-none focus-visible:ring-2 focus-visible:ring-copper"
+                  className="rounded-md border border-border bg-surface px-3 py-2 text-sm font-sans text-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-copper"
                 />
               </label>
             </div>
@@ -165,7 +176,7 @@ export function LogContactDrawer({
               name="notes"
               rows={3}
               placeholder="Who you spoke with, what they said…"
-              className="rounded-md border border-border bg-panel px-3 py-2 text-sm font-sans text-text focus:outline-none focus-visible:ring-2 focus-visible:ring-copper resize-y"
+              className="rounded-md border border-border bg-panel px-3 py-2 text-sm font-sans text-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-copper resize-y"
             />
           </label>
 
@@ -175,8 +186,9 @@ export function LogContactDrawer({
               name="nextStep"
               value={nextStep}
               onChange={(e) => setNextStep(e.target.value)}
-              className="rounded-md border border-border bg-panel px-3 py-2 text-sm font-sans text-text focus:outline-none focus-visible:ring-2 focus-visible:ring-copper"
+              className="rounded-md border border-border bg-panel px-3 py-2 text-sm font-sans text-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-copper"
             >
+              <option value="" disabled>Select next step…</option>
               {["follow_up", "promise", "waiting", "exception"].map((s) => (
                 <option key={s} value={s}>{NEXT_STEP_LABEL[s]}</option>
               ))}
@@ -187,7 +199,7 @@ export function LogContactDrawer({
             <label className="flex flex-col gap-1">
               <span className="text-xs font-sans font-medium uppercase tracking-wider text-muted">Follow up on</span>
               <input name="followUpAt" type="date" required
-                className="rounded-md border border-border bg-panel px-3 py-2 text-sm font-sans text-text focus:outline-none focus-visible:ring-2 focus-visible:ring-copper" />
+                className="rounded-md border border-border bg-panel px-3 py-2 text-sm font-sans text-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-copper" />
             </label>
           )}
 
@@ -195,7 +207,7 @@ export function LogContactDrawer({
             <label className="flex flex-col gap-1">
               <span className="text-xs font-sans font-medium uppercase tracking-wider text-muted">Revisit on</span>
               <input name="reviewAt" type="date" required
-                className="rounded-md border border-border bg-panel px-3 py-2 text-sm font-sans text-text focus:outline-none focus-visible:ring-2 focus-visible:ring-copper" />
+                className="rounded-md border border-border bg-panel px-3 py-2 text-sm font-sans text-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-copper" />
             </label>
           )}
 
@@ -204,7 +216,7 @@ export function LogContactDrawer({
               <label className="flex flex-col gap-1">
                 <span className="text-xs font-sans font-medium uppercase tracking-wider text-muted">Reason</span>
                 <select name="exceptionReason" defaultValue="disputed"
-                  className="rounded-md border border-border bg-surface px-3 py-2 text-sm font-sans text-text focus:outline-none focus-visible:ring-2 focus-visible:ring-copper">
+                  className="rounded-md border border-border bg-surface px-3 py-2 text-sm font-sans text-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-copper">
                   {["disputed", "payment_plan", "do_not_contact", "other"].map((r) => (
                     <option key={r} value={r}>{EXCEPTION_REASON_LABEL[r]}</option>
                   ))}
@@ -213,12 +225,12 @@ export function LogContactDrawer({
               <label className="flex flex-col gap-1">
                 <span className="text-xs font-sans font-medium uppercase tracking-wider text-muted">Note (optional)</span>
                 <input name="exceptionNote" type="text"
-                  className="rounded-md border border-border bg-surface px-3 py-2 text-sm font-sans text-text focus:outline-none focus-visible:ring-2 focus-visible:ring-copper" />
+                  className="rounded-md border border-border bg-surface px-3 py-2 text-sm font-sans text-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-copper" />
               </label>
               <label className="flex flex-col gap-1">
                 <span className="text-xs font-sans font-medium uppercase tracking-wider text-muted">Revisit on</span>
                 <input name="reviewAt" type="date" required
-                  className="rounded-md border border-border bg-surface px-3 py-2 text-sm font-sans text-text focus:outline-none focus-visible:ring-2 focus-visible:ring-copper" />
+                  className="rounded-md border border-border bg-surface px-3 py-2 text-sm font-sans text-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-copper" />
               </label>
             </div>
           )}
@@ -226,13 +238,13 @@ export function LogContactDrawer({
           <div className="flex items-center justify-end gap-2 pt-2">
             <Link
               to={returnTo}
-              className="rounded-md border border-border bg-panel px-4 py-2 text-sm font-sans text-muted hover:text-text focus:outline-none focus-visible:ring-2 focus-visible:ring-copper"
+              className="rounded-md border border-border bg-panel px-4 py-2 text-sm font-sans text-muted hover:text-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-copper"
             >
               Cancel
             </Link>
             <button
               type="submit"
-              className="rounded-md bg-copper px-4 py-2 text-sm font-sans font-semibold text-ink hover:bg-copper/90 focus:outline-none focus-visible:ring-2 focus-visible:ring-copper focus-visible:ring-offset-2"
+              className="rounded-md bg-copper px-4 py-2 text-sm font-sans font-semibold text-surface hover:bg-copper/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-copper focus-visible:ring-offset-2"
             >
               Save contact
             </button>

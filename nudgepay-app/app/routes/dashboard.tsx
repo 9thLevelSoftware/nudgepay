@@ -233,6 +233,7 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
   const log = sp.get("log") === "1";
   const logError = sp.get("logError");
   const promiseError = sp.get("promiseError");
+  const saved = sp.get("saved") === "1";
 
   const today = new Date().toISOString().slice(0, 10);
 
@@ -450,6 +451,7 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
       selectedPromiseId,
       sms,
       promiseError,
+      saved,
       roster,
       currentUserId: user.id,
       ...dashboardData,
@@ -483,6 +485,7 @@ export default function Dashboard() {
     selectedPhone,
     selectedPromiseId,
     sms,
+    saved,
     roster,
     items,
     metrics,
@@ -529,6 +532,12 @@ export default function Dashboard() {
         ) : null
       }
     >
+      {saved ? (
+        <div className="px-6 py-2 bg-cool/10 border-b border-cool/30 text-sm font-sans font-medium text-cool" role="status">
+          Contact logged successfully.
+        </div>
+      ) : null}
+
       {connected ? (
         <div className="flex flex-col h-full">
           {/* Metrics strip */}
@@ -553,7 +562,7 @@ export default function Dashboard() {
 
             {/* Detail panel — slide-in right pane, mounted only when a case is selected */}
             {selected ? (
-              <div className="w-80 xl:w-96 shrink-0 overflow-hidden border-l border-border shadow-panel">
+              <div className="w-96 xl:w-[28rem] shrink-0 overflow-hidden border-l border-border shadow-panel">
                 <DetailPanel
                   selected={selected ?? null}
                   repInvoiceId={repInvoiceId ?? null}

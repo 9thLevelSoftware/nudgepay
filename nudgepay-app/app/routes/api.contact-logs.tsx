@@ -64,5 +64,6 @@ export async function action({ request, context }: ActionFunctionArgs) {
     if (!res.ok) return redirect(withError(returnTo, "save-failed"), { headers });
   }
 
-  return redirect(returnTo, { headers });
+  const sep = returnTo.includes("?") ? "&" : "?";
+  return redirect(`${returnTo}${sep}saved=1`, { headers });
 }

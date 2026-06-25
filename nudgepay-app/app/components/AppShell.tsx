@@ -120,20 +120,23 @@ export function AppShell({
           {/* Settings */}
           <button
             type="button"
-            className="flex items-center justify-center w-8 h-8 rounded text-surface/60 hover:text-surface focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-copper"
+            className="flex items-center justify-center w-8 h-8 rounded text-surface/40 cursor-default focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-copper"
             aria-label="Settings"
+            disabled
+            title="Settings coming soon"
           >
             <Icon name="settings" size={16} />
           </button>
 
-          {/* User avatar */}
-          <div
-            className="flex items-center justify-center w-7 h-7 rounded-full bg-copper/20 border border-copper/40 text-copper font-sans text-[11px] font-semibold uppercase leading-none select-none"
-            aria-label={`Signed in — ${userInitials}`}
-            role="img"
+          {/* User avatar → sign out */}
+          <Link
+            to="/logout"
+            className="flex items-center justify-center w-7 h-7 rounded-full bg-copper/20 border border-copper/40 text-copper font-sans text-[11px] font-semibold uppercase leading-none select-none hover:bg-copper/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-copper"
+            aria-label={`Sign out (${userInitials})`}
+            title="Sign out"
           >
             {userInitials}
-          </div>
+          </Link>
         </div>
       </header>
 
@@ -194,7 +197,7 @@ export function AppShell({
                     className="flex flex-col items-center justify-center w-full py-3 gap-1 text-surface/40 cursor-default focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-copper focus-visible:ring-inset"
                     aria-disabled="true"
                     aria-label={`${item.label} (coming soon)`}
-                    tabIndex={0}
+                    tabIndex={-1}
                     onClick={(e) => e.preventDefault()}
                   >
                     <Icon name={item.icon} size={18} />
