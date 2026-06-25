@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { Form, Link, useNavigation } from "react-router";
 import type { ViewId, SortId } from "../lib/worklist";
 import type { CaseItem } from "../lib/cases";
+import type { Collision } from "../lib/collision";
 import { formatDate } from "../lib/dates";
 import { STATUS_LABEL, formatUSD } from "../lib/format";
 import { partitionEligibility, clampBatch, MAX_BATCH } from "../lib/bulk";
@@ -23,6 +24,28 @@ const LEVEL_BADGE: Record<string, string> = {
   Low: "bg-cool/10 text-cool",
 };
 
+
+// ---------------------------------------------------------------------------
+// Collision marker — shown when another agent is viewing or recently contacted
+// ---------------------------------------------------------------------------
+
+function CollisionMarker({ collision }: { collision?: Collision }) {
+  if (!collision || collision.level === "none") return null;
+  const text =
+    collision.level === "live"
+      ? `${collision.byUser ?? "A teammate"} viewing now`
+      : `Contacted by ${collision.byUser ?? "a teammate"} recently`;
+  return (
+    <span
+      className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[10px] font-sans font-medium text-amber-200 bg-amber-400/10 border border-amber-400/30"
+      title={text}
+      aria-label={text}
+    >
+      <span aria-hidden="true">⚠</span>
+      {collision.level === "live" ? "Viewing" : "Recent"}
+    </span>
+  );
+}
 
 // ---------------------------------------------------------------------------
 // Saved-view tab definitions
@@ -60,6 +83,7 @@ interface WorkQueueProps {
   viewCounts: Record<ViewId, number>;
   roster: { userId: string; label: string }[];
   returnTo: string;
+  collisions: Record<string, Collision>;
 }
 
 // ---------------------------------------------------------------------------
@@ -75,6 +99,7 @@ function QueueRow({
   checked,
   onToggle,
   disabled,
+  collision,
 }: {
   item: CaseItem;
   selected: boolean;
@@ -84,6 +109,7 @@ function QueueRow({
   checked: boolean;
   onToggle: (id: string) => void;
   disabled: boolean;
+  collision?: Collision;
 }) {
   const params = new URLSearchParams({ case: item.caseId, view, sort, ...(search ? { q: search } : {}) });
   const href = `?${params.toString()}`;
@@ -155,6 +181,7 @@ function QueueRow({
           ) : (
             <span className="text-muted text-xs">Never contacted</span>
           )}
+          <CollisionMarker collision={collision} />
         </span>
 
         {/* Status + next action date */}
@@ -179,10 +206,10 @@ function QueueRow({
 // ---------------------------------------------------------------------------
 
 function MobileCard({
-  item, selected, view, sort, search, checked, onToggle, disabled,
+  item, selected, view, sort, search, checked, onToggle, disabled, collision,
 }: {
   item: CaseItem; selected: boolean; view: ViewId; sort: SortId; search: string;
-  checked: boolean; onToggle: (id: string) => void; disabled: boolean;
+  checked: boolean; onToggle: (id: string) => void; disabled: boolean; collision?: Collision;
 }) {
   const params = new URLSearchParams({ case: item.caseId, view, sort, ...(search ? { q: search } : {}) });
   const href = `?${params.toString()}`;
@@ -223,6 +250,7 @@ function MobileCard({
           ) : (
             <span className="text-muted">Never contacted</span>
           )}
+          <CollisionMarker collision={collision} />
         </div>
       </Link>
     </div>
@@ -250,6 +278,7 @@ export function WorkQueue({
   viewCounts,
   roster,
   returnTo,
+  collisions,
 }: WorkQueueProps) {
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [smsOpen, setSmsOpen] = useState(false);
@@ -475,6 +504,7 @@ export function WorkQueue({
                       checked={selected.has(item.caseId)}
                       onToggle={toggle}
                       disabled={!selected.has(item.caseId) && capReached}
+                      collision={collisions[item.caseId]}
                     />
                   </div>
                 ))}
@@ -494,6 +524,7 @@ export function WorkQueue({
                   checked={selected.has(item.caseId)}
                   onToggle={toggle}
                   disabled={!selected.has(item.caseId) && capReached}
+                  collision={collisions[item.caseId]}
                 />
               ))}
             </div>
