@@ -4,6 +4,7 @@ import { createSupabaseServiceClient } from "../lib/supabase.server";
 import { requireUser, resolveOrg } from "../lib/session.server";
 import { qboApiBaseUrl } from "../lib/qbo-api.server";
 import { syncOverdueInvoices, type SyncDeps } from "../lib/qbo-sync.server";
+import { recordSyncError, resolveSyncErrors } from "../lib/sync-errors.server";
 
 export async function action({ request, context }: ActionFunctionArgs) {
   const env = getEnv(context as any);
@@ -22,8 +23,13 @@ export async function action({ request, context }: ActionFunctionArgs) {
   };
   try {
     await syncOverdueInvoices(deps, org.org_id);
+    await resolveSyncErrors(service, { orgId: org.org_id }); // full sync heals all prior errors
     return redirect("/dashboard?sync=ok", { headers });
-  } catch {
+  } catch (err) {
+    await recordSyncError(service, {
+      orgId: org.org_id, source: "manual", scope: "full",
+      message: err instanceof Error ? err.message : String(err),
+    }).catch(() => {}); // best-effort: never mask the original failure
     // e.g. QBO not connected, or a transient API error.
     return redirect("/dashboard?sync=error", { headers });
   }

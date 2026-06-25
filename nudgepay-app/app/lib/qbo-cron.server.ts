@@ -5,6 +5,7 @@ import { getEnv, getQboEnv } from "./env.server";
 import { createSupabaseServiceClient } from "./supabase.server";
 import { qboApiBaseUrl } from "./qbo-api.server";
 import { runCdcCatchup, type SyncDeps } from "./qbo-sync.server";
+import { recordSyncError, resolveSyncErrors } from "./sync-errors.server";
 
 export async function runScheduledCdc(
   cfEnv: Record<string, string>,
@@ -27,11 +28,17 @@ export async function runScheduledCdc(
   };
 
   for (const c of conns ?? []) {
+    const orgId = c.org_id as string;
     try {
-      await runCdcCatchup(deps, c.org_id as string);
+      await runCdcCatchup(deps, orgId);
+      await resolveSyncErrors(service, { orgId }); // CDC catch-up heals all prior errors
     } catch (err) {
-      // Isolate per-org failures so one bad connection doesn't abort the batch.
-      console.error(`CDC catch-up failed for org ${c.org_id}`);
+      // Isolate per-org failures so one bad connection doesn't abort the batch,
+      // and record it so the org's dashboard surfaces the failed sync.
+      await recordSyncError(service, {
+        orgId, source: "cron", scope: "cdc",
+        message: err instanceof Error ? err.message : String(err),
+      }).catch(() => {});
     }
   }
   return { orgs: (conns ?? []).length };
