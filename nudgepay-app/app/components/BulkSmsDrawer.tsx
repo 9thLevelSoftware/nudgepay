@@ -32,7 +32,12 @@ export function BulkSmsDrawer({
   const [confirming, setConfirming] = useState(false);
 
   useEffect(() => {
-    if (!open) setConfirming(false);
+    if (!open) {
+      setConfirming(false);
+      const defaultTemplate = SMS_TEMPLATES[0];
+      setTemplateId(defaultTemplate?.id ?? "");
+      setBody(defaultTemplate?.body ?? "");
+    }
   }, [open]);
 
   if (!open) return null;

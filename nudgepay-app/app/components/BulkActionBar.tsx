@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { Form, useNavigation } from "react-router";
 import { MAX_BATCH } from "../lib/bulk";
 
@@ -22,6 +23,7 @@ export function BulkActionBar({
   const nav = useNavigation();
   const busy = nav.state !== "idle";
   const n = selectedCaseIds.length;
+  const [ownerChoice, setOwnerChoice] = useState("");
 
   return (
     <div className="sticky bottom-0 z-30 flex flex-wrap items-center gap-3 border-t border-border bg-surface px-6 py-3 shadow-panel">
@@ -38,15 +40,17 @@ export function BulkActionBar({
         <select
           id="bulk-owner"
           name="ownerId"
-          defaultValue=""
+          value={ownerChoice}
+          onChange={(e) => setOwnerChoice(e.target.value)}
           className="rounded-md border border-border bg-panel px-2.5 h-9 text-sm text-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-copper"
         >
-          <option value="">Unassigned</option>
+          <option value="" disabled>Change owner…</option>
           {roster.map((m) => <option key={m.userId} value={m.userId}>{m.label}</option>)}
+          <option value="__unassign__">Unassign</option>
         </select>
         <button
           type="submit"
-          disabled={busy}
+          disabled={busy || ownerChoice === ""}
           className="rounded-md border border-border bg-panel px-3 h-9 text-xs font-sans text-text hover:border-copper disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-copper"
         >
           Assign

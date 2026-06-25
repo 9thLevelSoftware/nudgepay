@@ -4,7 +4,7 @@ import type { ViewId, SortId } from "../lib/worklist";
 import type { CaseItem } from "../lib/cases";
 import { formatDate } from "../lib/dates";
 import { STATUS_LABEL, formatUSD } from "../lib/format";
-import { partitionEligibility, clampBatch } from "../lib/bulk";
+import { partitionEligibility, clampBatch, MAX_BATCH } from "../lib/bulk";
 import { BulkActionBar } from "./BulkActionBar";
 import { BulkSmsDrawer } from "./BulkSmsDrawer";
 import { ThermalBand } from "./ThermalBand";
@@ -74,6 +74,7 @@ function QueueRow({
   search,
   checked,
   onToggle,
+  disabled,
 }: {
   item: CaseItem;
   selected: boolean;
@@ -82,6 +83,7 @@ function QueueRow({
   search: string;
   checked: boolean;
   onToggle: (id: string) => void;
+  disabled: boolean;
 }) {
   const params = new URLSearchParams({ case: item.caseId, view, sort, ...(search ? { q: search } : {}) });
   const href = `?${params.toString()}`;
@@ -99,6 +101,7 @@ function QueueRow({
           type="checkbox"
           checked={checked}
           onChange={() => onToggle(item.caseId)}
+          disabled={disabled}
           className="h-4 w-4 rounded border-border text-copper focus-visible:ring-2 focus-visible:ring-copper"
         />
       </label>
@@ -176,10 +179,10 @@ function QueueRow({
 // ---------------------------------------------------------------------------
 
 function MobileCard({
-  item, selected, view, sort, search, checked, onToggle,
+  item, selected, view, sort, search, checked, onToggle, disabled,
 }: {
   item: CaseItem; selected: boolean; view: ViewId; sort: SortId; search: string;
-  checked: boolean; onToggle: (id: string) => void;
+  checked: boolean; onToggle: (id: string) => void; disabled: boolean;
 }) {
   const params = new URLSearchParams({ case: item.caseId, view, sort, ...(search ? { q: search } : {}) });
   const href = `?${params.toString()}`;
@@ -187,7 +190,7 @@ function MobileCard({
     <div className={["flex gap-2 items-start bg-surface border rounded-lg p-3 mb-2", selected ? "border-copper ring-2 ring-copper bg-copper/5" : "border-border"].join(" ")}>
       <label className="pt-1 cursor-pointer" onClick={(e) => e.stopPropagation()}>
         <span className="sr-only">Select {item.customerName}</span>
-        <input type="checkbox" checked={checked} onChange={() => onToggle(item.caseId)} className="h-4 w-4 rounded border-border text-copper focus-visible:ring-2 focus-visible:ring-copper" />
+        <input type="checkbox" checked={checked} onChange={() => onToggle(item.caseId)} disabled={disabled} className="h-4 w-4 rounded border-border text-copper focus-visible:ring-2 focus-visible:ring-copper" />
       </label>
       <Link to={href} aria-label={`Open ${item.customerName}`} aria-current={selected ? "true" : undefined} className="flex-1 min-w-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-copper rounded">
         <div className="flex items-start justify-between gap-3 mb-2">
@@ -261,7 +264,8 @@ export function WorkQueue({
   const toggle = (id: string) =>
     setSelected((prev) => {
       const next = new Set(prev);
-      if (next.has(id)) next.delete(id); else next.add(id);
+      if (next.has(id)) next.delete(id);
+      else if (next.size < MAX_BATCH) next.add(id);
       return next;
     });
 
@@ -277,6 +281,7 @@ export function WorkQueue({
     }
   }, [allSelected, allVisibleIds, selected]);
 
+  const capReached = selected.size >= MAX_BATCH;
   const selectedCases = items.filter((i) => selected.has(i.caseId));
   const eligibleCount = partitionEligibility(selectedCases).eligible.length;
 
@@ -435,6 +440,7 @@ export function WorkQueue({
                       search={search}
                       checked={selected.has(item.caseId)}
                       onToggle={toggle}
+                      disabled={!selected.has(item.caseId) && capReached}
                     />
                   </div>
                 ))}
@@ -453,6 +459,7 @@ export function WorkQueue({
                   search={search}
                   checked={selected.has(item.caseId)}
                   onToggle={toggle}
+                  disabled={!selected.has(item.caseId) && capReached}
                 />
               ))}
             </div>

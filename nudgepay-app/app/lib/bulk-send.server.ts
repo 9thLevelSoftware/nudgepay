@@ -5,6 +5,9 @@ export type BulkSmsResult = { sent: number; failed: number; skipped: number };
 
 type CaseForSend = TextableCase & RenderableCase & { representativeInvoiceId: string | null };
 
+type CustomerRow = { id: string; name: string | null; phone: string | null; sms_consent: boolean | null };
+type InvoiceRow = { id: string; qbo_doc_number: string | null; due_date: string | null; balance: number | string | null; customer_id: string };
+
 // Load selected open cases (org-scoped), build per-case totals + oldest-invoice,
 // partition eligibility, and send sequentially via sendInvoiceText (each send
 // records its own text_messages row, so a mid-loop failure keeps prior sends).
@@ -26,14 +29,14 @@ export async function runBulkSms(
   const { data: custRows, error: custErr } = await svc.from("customers")
     .select("id, name, phone, sms_consent").eq("org_id", args.orgId).in("id", customerIds);
   if (custErr) throw custErr;
-  const custById = new Map(((custRows as any[]) ?? []).map((c) => [c.id as string, c]));
+  const custById = new Map(((custRows as CustomerRow[]) ?? []).map((c) => [c.id, c]));
 
   const { data: invRows, error: invErr } = await svc.from("invoices")
     .select("id, qbo_doc_number, due_date, balance, customer_id")
     .eq("org_id", args.orgId).in("customer_id", customerIds).gt("balance", 0).lt("due_date", args.today);
   if (invErr) throw invErr;
   const invByCustomer = new Map<string, { id: string; doc: string | null; due: string | null; bal: number }[]>();
-  for (const r of ((invRows as any[]) ?? [])) {
+  for (const r of ((invRows as InvoiceRow[]) ?? [])) {
     const list = invByCustomer.get(r.customer_id) ?? [];
     list.push({ id: r.id, doc: r.qbo_doc_number, due: r.due_date, bal: Number(r.balance) || 0 });
     invByCustomer.set(r.customer_id, list);
@@ -49,8 +52,8 @@ export async function runBulkSms(
     const totalOverdue = invs.reduce((s, i) => s + i.bal, 0);
     built.push({
       caseId: c.id,
-      customerName: (cust.name as string) ?? "(unknown customer)",
-      phone: (cust.phone as string) ?? null,
+      customerName: cust.name ?? "(unknown customer)",
+      phone: cust.phone ?? null,
       smsConsent: Boolean(cust.sms_consent),
       totalOverdue,
       invoices: invs.map((i) => ({ invoiceId: i.id, docNumber: i.doc, dueDate: i.due })),

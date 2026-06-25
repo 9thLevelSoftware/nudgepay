@@ -26,8 +26,10 @@ export async function action({ request, context }: ActionFunctionArgs) {
   const returnTo = safeReturnTo(form.get("returnTo"));
   const caseIds = clampBatch(parseIds(form));
   const ownerRaw = form.get("ownerId");
-  const ownerId = typeof ownerRaw === "string" && ownerRaw.length > 0 ? ownerRaw : null;
-  if (caseIds.length === 0) return redirect(returnTo, { headers });
+  const choice = typeof ownerRaw === "string" ? ownerRaw : "";
+  // "" = placeholder (no selection) → no-op; "__unassign__" = explicit unassign → null; else a member id.
+  if (caseIds.length === 0 || choice === "") return redirect(returnTo, { headers });
+  const ownerId = choice === "__unassign__" ? null : choice;
 
   // Membership guard: never assign to a user outside the caller's org.
   if (ownerId) {
