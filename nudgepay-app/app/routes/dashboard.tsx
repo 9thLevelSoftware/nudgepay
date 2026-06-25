@@ -307,18 +307,9 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
       priorityOverrideAt: r.priority_override_at,
     }));
 
-    // Per-case last contact: contact_logs are keyed by case_id (set at log time),
-    // so a prior closed case's logs are already excluded by the caseIds filter.
-    // Outbound texts carry no reliable case_id (sendInvoiceText never stamps it),
-    // so they're keyed by CUSTOMER and mapped to the current open case — but ONLY
-    // texts sent at/after that case's opened_at, so a re-opened case doesn't inherit
-    // the previous cycle's SMS as contact/attempts. One open case per customer.
+    // Per-case last contact: contact_logs and outbound texts are both keyed by
+    // case_id, so we can read both by case_id directly — no customer mapping needed.
     const caseIds = cases.map((c) => c.id);
-    const openCaseByCustomer = new Map<string, { caseId: string; openedAt: string }>();
-    for (const r of (caseRows as CaseRowRaw[]) ?? []) {
-      openCaseByCustomer.set(r.customer_id, { caseId: r.id, openedAt: r.opened_at });
-    }
-    const customerIds = [...openCaseByCustomer.keys()];
     const lastContactsInput: CaseLastContactInput[] = [];
     if (caseIds.length > 0) {
       const { data: logRows } = await supabase
@@ -330,18 +321,15 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
       for (const r of (logRows as any[]) ?? []) {
         if (r.case_id) lastContactsInput.push({ caseId: r.case_id, date: r.created_at, channel: methodLabel[r.method] ?? "Note" });
       }
+      // Outbound texts now carry case_id (stamped at send time, 7c), so key on it
+      // directly — no customer mapping / opened_at window needed.
       const { data: msgRows } = await supabase
         .from("text_messages")
-        .select("customer_id, created_at")
-        .eq("org_id", org.org_id).in("customer_id", customerIds).eq("direction", "outbound")
+        .select("case_id, created_at")
+        .eq("org_id", org.org_id).in("case_id", caseIds).eq("direction", "outbound")
         .order("created_at", { ascending: false });
       for (const r of (msgRows as any[]) ?? []) {
-        const oc = openCaseByCustomer.get(r.customer_id);
-        // Only count texts within the current case window (created_at >= opened_at);
-        // ISO-8601 timestamptz strings from the same column compare chronologically.
-        if (oc && r.created_at >= oc.openedAt) {
-          lastContactsInput.push({ caseId: oc.caseId, date: r.created_at, channel: "Text" });
-        }
+        if (r.case_id) lastContactsInput.push({ caseId: r.case_id, date: r.created_at, channel: "Text" });
       }
     }
 

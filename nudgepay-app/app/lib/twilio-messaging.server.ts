@@ -25,6 +25,16 @@ export async function resolveSender(
   return defaultSender;
 }
 
+// The customer's currently-open collection case (one per customer, enforced by
+// the partial unique index in 0009). Returns null if none is open.
+export async function activeCaseId(
+  service: SupabaseClient, orgId: string, customerId: string,
+): Promise<string | null> {
+  const { data } = await service.from("collection_cases")
+    .select("id").eq("org_id", orgId).eq("customer_id", customerId).is("closed_at", null).maybeSingle();
+  return (data?.id as string) ?? null;
+}
+
 export async function sendInvoiceText(
   deps: MessagingDeps,
   args: { orgId: string; invoiceId: string; userId: string; body: string },
@@ -41,6 +51,7 @@ export async function sendInvoiceText(
   if (!cust.sms_consent) throw new Error("Customer has not consented to SMS");
 
   const sender = await resolveSender(deps.service, args.orgId, deps.defaultSender);
+  const caseId = await activeCaseId(deps.service, args.orgId, cust.id as string);
   const result = await sendSms(deps.fetchFn, deps.twilio, {
     to: cust.phone as string, body: args.body, sender, statusCallback: deps.statusCallback ?? null,
   });
@@ -49,6 +60,7 @@ export async function sendInvoiceText(
     org_id: args.orgId,
     invoice_id: args.invoiceId,
     customer_id: cust.id as string,
+    case_id: caseId,
     sent_by_user_id: args.userId,
     direction: "outbound",
     twilio_message_sid: result.sid,
@@ -95,9 +107,12 @@ export async function recordInboundMessage(
     .select("invoice_id").eq("customer_id", match.id as string).eq("direction", "outbound")
     .not("invoice_id", "is", null).order("created_at", { ascending: false }).limit(1).maybeSingle();
 
+  const caseId = await activeCaseId(service, match.org_id as string, match.id as string);
+
   const { error: insErr } = await service.from("text_messages").insert({
     org_id: match.org_id as string,
     customer_id: match.id as string,
+    case_id: caseId,
     invoice_id: (lastOut?.invoice_id as string) ?? null,
     direction: "inbound",
     twilio_message_sid: args.messageSid,
