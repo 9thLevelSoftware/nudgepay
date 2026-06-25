@@ -1,0 +1,73 @@
+import { beforeAll, expect, test, vi } from "vitest";
+import { serviceClient, makeUserClient } from "./helpers";
+import { runBulkSms } from "../app/lib/bulk-send.server";
+import type { MessagingDeps } from "../app/lib/twilio-messaging.server";
+
+let userId: string;
+beforeAll(async () => { ({ userId } = await makeUserClient("bulk-sms@example.com")); });
+
+const svc = serviceClient();
+const today = "2026-06-25";
+
+function jsonResponse(body: unknown, status = 201) {
+  return new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json" } });
+}
+function deps(fetchFn: any): MessagingDeps {
+  return { fetchFn, service: svc, twilio: { accountSid: "AC1", authToken: "tok" }, defaultSender: { from: "+15005550006" }, statusCallback: null };
+}
+async function seedCase(orgId: string, o: { name: string; phone: string | null; consent: boolean; doc: string; due: string; balance: number }) {
+  const { data: cust } = await svc.from("customers")
+    .insert({ org_id: orgId, qbo_id: `q-${o.name}`, name: o.name, phone: o.phone, sms_consent: o.consent }).select("id").single();
+  const { data: inv } = await svc.from("invoices")
+    .insert({ org_id: orgId, qbo_id: `i-${o.name}`, qbo_doc_number: o.doc, customer_id: cust!.id, balance: o.balance, due_date: o.due }).select("id").single();
+  const { data: cse } = await svc.from("collection_cases")
+    .insert({ org_id: orgId, customer_id: cust!.id, status: "working" }).select("id").single();
+  return { customerId: cust!.id as string, invoiceId: inv!.id as string, caseId: cse!.id as string };
+}
+
+test("runBulkSms sends to eligible cases, skips no-consent/no-phone, records one row each", async () => {
+  const { data: org } = await svc.from("organizations").insert({ name: "Bulk SMS Org" }).select("id").single();
+  const orgId = org!.id as string;
+  const yes = await seedCase(orgId, { name: "Yes Co", phone: "+12295550100", consent: true, doc: "1001", due: "2026-05-01", balance: 100 });
+  const noConsent = await seedCase(orgId, { name: "NoConsent Co", phone: "+12295550101", consent: false, doc: "1002", due: "2026-05-01", balance: 100 });
+  const noPhone = await seedCase(orgId, { name: "NoPhone Co", phone: null, consent: true, doc: "1003", due: "2026-05-01", balance: 100 });
+
+  const fetchFn = vi.fn(async () => jsonResponse({ sid: "SM-BULK", status: "queued" }));
+  const res = await runBulkSms(deps(fetchFn), {
+    orgId, userId, caseIds: [yes.caseId, noConsent.caseId, noPhone.caseId], today,
+    templateBody: "Hi {customer}, you owe {balance}.",
+  });
+
+  expect(res).toEqual({ sent: 1, failed: 0, skipped: 2 });
+  expect(fetchFn).toHaveBeenCalledOnce();
+  const { data: rows } = await svc.from("text_messages").select("case_id, invoice_id, body").eq("case_id", yes.caseId);
+  expect(rows).toHaveLength(1);
+  expect(rows![0].invoice_id).toBe(yes.invoiceId);
+  expect(rows![0].body).toBe("Hi Yes Co, you owe $100.00.");
+  const { data: skippedRows } = await svc.from("text_messages").select("id").in("case_id", [noConsent.caseId, noPhone.caseId]);
+  expect(skippedRows).toHaveLength(0);
+});
+
+test("runBulkSms tallies a failed send without aborting siblings", async () => {
+  const { data: org } = await svc.from("organizations").insert({ name: "Bulk SMS Fail Org" }).select("id").single();
+  const orgId = org!.id as string;
+  const a = await seedCase(orgId, { name: "A Co", phone: "+12295550110", consent: true, doc: "2001", due: "2026-05-01", balance: 100 });
+  const b = await seedCase(orgId, { name: "B Co", phone: "+12295550111", consent: true, doc: "2002", due: "2026-05-01", balance: 100 });
+  let n = 0;
+  const fetchFn = vi.fn(async () => { n++; if (n === 1) throw new Error("twilio down"); return jsonResponse({ sid: "SM-OK", status: "queued" }); });
+  const res = await runBulkSms(deps(fetchFn), { orgId, userId, caseIds: [a.caseId, b.caseId], today, templateBody: "Hi {customer}" });
+  expect(res.sent).toBe(1);
+  expect(res.failed).toBe(1);
+  expect(res.skipped).toBe(0);
+});
+
+test("runBulkSms ignores a foreign-org case id (org-scoped reads drop it)", async () => {
+  const { data: orgA } = await svc.from("organizations").insert({ name: "Bulk Scope A" }).select("id").single();
+  const { data: orgB } = await svc.from("organizations").insert({ name: "Bulk Scope B" }).select("id").single();
+  const inB = await seedCase(orgB!.id as string, { name: "B Only", phone: "+12295550120", consent: true, doc: "3001", due: "2026-05-01", balance: 100 });
+  const fetchFn = vi.fn(async () => jsonResponse({ sid: "SM-X", status: "queued" }));
+  // Caller resolved to org A but passes org B's case id.
+  const res = await runBulkSms(deps(fetchFn), { orgId: orgA!.id as string, userId, caseIds: [inB.caseId], today, templateBody: "Hi {customer}" });
+  expect(res).toEqual({ sent: 0, failed: 0, skipped: 0 });
+  expect(fetchFn).not.toHaveBeenCalled();
+});
