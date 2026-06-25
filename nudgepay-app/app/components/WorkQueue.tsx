@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Form, Link } from "react-router";
 import type { ViewId, SortId } from "../lib/worklist";
 import type { CaseItem } from "../lib/cases";
@@ -270,6 +270,13 @@ export function WorkQueue({
   const toggleAll = () =>
     setSelected((prev) => (allSelected ? new Set() : new Set(allVisibleIds)));
 
+  const headerRef = useRef<HTMLInputElement>(null);
+  useEffect(() => {
+    if (headerRef.current) {
+      headerRef.current.indeterminate = !allSelected && allVisibleIds.some((id) => selected.has(id));
+    }
+  }, [allSelected, allVisibleIds, selected]);
+
   const selectedCases = items.filter((i) => selected.has(i.caseId));
   const eligibleCount = partitionEligibility(selectedCases).eligible.length;
 
@@ -395,9 +402,10 @@ export function WorkQueue({
                 className="flex items-center px-4 py-2 border-b border-border bg-panel"
                 aria-hidden="false"
               >
-                <label className="flex items-center pr-1 cursor-pointer">
+                <label className="flex items-center pl-4 pr-1 cursor-pointer">
                   <span className="sr-only">Select all matching</span>
                   <input
+                    ref={headerRef}
                     type="checkbox"
                     checked={allSelected}
                     onChange={toggleAll}
