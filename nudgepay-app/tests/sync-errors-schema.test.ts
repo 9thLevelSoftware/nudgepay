@@ -31,4 +31,5 @@ test("the source check constraint rejects an invalid source", async () => {
   const { error } = await svc.from("sync_errors")
     .insert({ org_id: org!.id, source: "bogus", scope: "x", message: "y" });
   expect(error).not.toBeNull(); // check constraint violation
+  expect(error!.code).toBe("23514");
 });

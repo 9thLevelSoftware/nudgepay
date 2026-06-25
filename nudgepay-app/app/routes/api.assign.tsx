@@ -16,7 +16,8 @@ export async function action({ request, context }: ActionFunctionArgs) {
   const ownerId = typeof ownerRaw === "string" && ownerRaw.length > 0 ? ownerRaw : null;
   if (!customerId) return redirect(returnTo, { headers });
 
-  // Cross-org guard: the RLS user client only sees own-org customers.
+  // Explicit org-scope guard: bind to the resolved dashboard org — RLS alone permits every org
+  // the caller is a member of, so a multi-org user could otherwise touch another org's customer.
   const { data: cust } = await supabase
     .from("customers").select("id").eq("org_id", org.org_id).eq("id", customerId).maybeSingle();
   if (!cust) return redirect(returnTo, { headers });

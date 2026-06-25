@@ -28,9 +28,13 @@ create policy sync_errors_member_update on sync_errors
 -- text since 0009 has case_id = null. Re-backfill stragglers to the customer's
 -- currently-open case (one open case per customer, enforced by the partial
 -- unique index in 0009). Going-forward stamping is Task 6.
+-- Window bound: only backfill texts sent at/after the case's opened_at to
+-- prevent cross-cycle bleed (texts from a prior closed case cycle must not be
+-- stamped onto the customer's current open case).
 update text_messages tm
   set case_id = c.id
   from collection_cases c
   where c.customer_id = tm.customer_id
     and c.closed_at is null
-    and tm.case_id is null;
+    and tm.case_id is null
+    and tm.created_at >= c.opened_at;

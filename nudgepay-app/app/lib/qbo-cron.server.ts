@@ -35,6 +35,7 @@ export async function runScheduledCdc(
     } catch (err) {
       // Isolate per-org failures so one bad connection doesn't abort the batch,
       // and record it so the org's dashboard surfaces the failed sync.
+      console.error(`[cron] CDC catch-up failed for org ${orgId}:`, err);
       await recordSyncError(service, {
         orgId, source: "cron", scope: "cdc",
         message: err instanceof Error ? err.message : String(err),

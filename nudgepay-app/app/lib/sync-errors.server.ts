@@ -23,7 +23,7 @@ export async function resolveSyncErrors(
   let q = service.from("sync_errors")
     .update({ resolved_at: new Date().toISOString(), resolved_by: args.resolvedBy ?? null })
     .eq("org_id", args.orgId).is("resolved_at", null);
-  if (args.scope) q = q.eq("scope", args.scope);
+  if (args.scope !== undefined) q = q.eq("scope", args.scope);
   const { error } = await q;
   if (error) throw error;
 }
