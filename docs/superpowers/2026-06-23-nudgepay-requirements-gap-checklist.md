@@ -40,7 +40,7 @@
 
 ## C. P1 — throughput & consistency
 
-- [ ] **C1 — Collision / recent-contact warnings & presence.** Warn when a teammate recently contacted or is actively working the same customer.
+- [x] **C1 — Collision / recent-contact warnings & presence.** ✅ **8b.** Recent-contact attribution (`contact_logs.user_id` + `text_messages.sent_by_user_id` → roster label) + poll-based live presence (`case_presence` table, migration `0014`; 20s heartbeat, 45s freshness). Pure `collision.ts` derivation (self-excluded; live > recent > none). Surfaced as a queue-row marker, a DetailPanel banner, a 20s `useRevalidator` poll, and a confirm-gate on SMS send + log-contact. Presence read degrades gracefully (documented RLS deviation).
 - [ ] **C2 — Exception / dispute workflow.** Promote `dispute` from an outcome string to a case **state** (disputed, incorrect-amount, work-incomplete, documentation-requested, wrong-contact, payment-plan, legal/agency, do-not-contact) that suppresses generic reminders. *Minimal slice shipped in 6c: `on_hold` state + `exception_reason` enum (disputed/payment_plan/do_not_contact/other) + note + review-date suppression. Phase 8 expands the taxonomy + workflow.*
 - [ ] **C3 — Email & click-to-call channels.** Add click-to-call; add an email composer (or clearly mark email as log-only so the UI doesn't imply capture we lack). SMS two-way is done.
 - [ ] **C4 — Suggested follow-up dates.** Suggest a cadence-based next date instead of manual-only `follow_up_at`.
