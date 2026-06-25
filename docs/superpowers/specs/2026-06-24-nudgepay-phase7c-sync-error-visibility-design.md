@@ -46,8 +46,8 @@ create table sync_errors (
   id uuid primary key default gen_random_uuid(),
   org_id uuid not null references organizations(id) on delete cascade,
   source text not null check (source in ('manual','webhook','cron')),
-  scope text not null,                 -- 'full' | 'cdc' | 'invoice:<qboId>' | 'customer:<qboId>'
-                                        -- | 'payment:<qboId>' | 'credit_memo:<qboId>' | 'payments_eval'
+  scope text not null,                 -- 'full' | 'cdc' | '<entity>:<qboId>' where entity is the
+                                        -- lowercased QBO entity name (invoice|customer|payment|creditmemo)
   message text not null,               -- caller truncates to <= 500 chars before insert
   occurred_at timestamptz not null default now(),
   resolved_at timestamptz,             -- null = unresolved (counts toward the badge)
@@ -114,9 +114,10 @@ export async function resolveSyncErrors(
 | `api.qbo.refresh` (manual) | `catch` → `recordSyncError(source:'manual', scope:'full', message)` | `resolveSyncErrors(orgId)` — **all** |
 | `qbo-cron` `runScheduledCdc` (per org) | per-org `catch` → `recordSyncError(source:'cron', scope:'cdc', message)` | `resolveSyncErrors(orgId)` — **all** |
 | `webhooks.qbo` per event | per-event `catch` → `recordSyncError(source:'webhook', scope:'<entity>:<id>', message)` | `resolveSyncErrors(orgId, scope:'<entity>:<id>')` per applied event |
-| payments/eval inside `syncOverdueInvoices` | inner `catch` → `recordSyncError(source:'manual', scope:'payments_eval', message)` | cleared by the enclosing full-sync success (`resolveSyncErrors(orgId)`) |
 
-**Resolution semantics.** A **full sync** (manual refresh or cron CDC catch-up) re-pulls the org's data, so on success it resolves *all* unresolved errors for the org — including any prior `payments_eval` or webhook-scoped failures, which are now moot. A **webhook apply** is narrow: it resolves only its own `<entity>:<id>` scope.
+The **payments/eval sub-step** inside `syncOverdueInvoices`/`runCdcCatchup` is intentionally NOT a recorded scope: both functions already `catch` it internally and return success, so recording it would be instantly auto-resolved by the enclosing full-sync success (a contradiction). It keeps its existing `console.error` and self-heals on the next sync ("cron will re-converge"). Recording it correctly would require threading a partial-failure flag through both functions and both call sites — deferred as YAGNI.
+
+**Resolution semantics.** A **full sync** (manual refresh or cron CDC catch-up) re-pulls the org's data, so on success it resolves *all* unresolved errors for the org — including any prior webhook-scoped failures, which are now moot. A **webhook apply** is narrow: it resolves only its own `<entity>:<id>` scope.
 
 **Webhook loop change.** `webhooks.qbo` moves from abort-on-first-error to **per-event isolation**:
 - Wrap each event's apply in its own `try/catch`.
@@ -209,6 +210,7 @@ Mirrors 7b commit `3ff959b` (org-scope) + `c157ad6` (error capture).
 ## 8. Decisions made during design (reversible)
 
 - `truncated` stays a separate flag, excluded from `sync_errors`.
+- `payments_eval` is NOT a recorded scope (resolve-order conflict; self-heals). 3 recording points: manual `full`, cron `cdc`, webhook `<entity>:<id>`.
 - Webhook moves to per-event isolation (was abort-on-first-error).
 - `case_id` re-backfill of stragglers ships in the same `0013` migration.
 - Resolution model: full sync resolves all org errors; webhook resolves its scope; user can also manually dismiss.
