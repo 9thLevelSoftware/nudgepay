@@ -2,6 +2,7 @@ import { beforeAll, expect, test, vi } from "vitest";
 import { serviceClient, makeUserClient } from "./helpers";
 import { runBulkSms } from "../app/lib/bulk-send.server";
 import type { MessagingDeps } from "../app/lib/twilio-messaging.server";
+import { MAX_BATCH } from "../app/lib/bulk";
 
 let userId: string;
 beforeAll(async () => { ({ userId } = await makeUserClient("bulk-sms@example.com")); });
@@ -70,4 +71,27 @@ test("runBulkSms ignores a foreign-org case id (org-scoped reads drop it)", asyn
   const res = await runBulkSms(deps(fetchFn), { orgId: orgA!.id as string, userId, caseIds: [inB.caseId], today, templateBody: "Hi {customer}" });
   expect(res).toEqual({ sent: 0, failed: 0, skipped: 0 });
   expect(fetchFn).not.toHaveBeenCalled();
+});
+
+test("runBulkSms clamps to MAX_BATCH (50) when given 51 eligible cases", async () => {
+  const { data: org } = await svc.from("organizations").insert({ name: "Bulk Cap Org" }).select("id").single();
+  const orgId = org!.id as string;
+  const caseIds: string[] = [];
+  for (let i = 0; i < 51; i++) {
+    const idx = String(i).padStart(3, "0");
+    const { caseId } = await seedCase(orgId, {
+      name: `CapCo ${idx}`,
+      phone: `+1229555${idx.padStart(4, "0")}`,
+      consent: true,
+      doc: `cap-${idx}`,
+      due: "2026-05-01",
+      balance: 100,
+    });
+    caseIds.push(caseId);
+  }
+  const fetchFn = vi.fn(async () => jsonResponse({ sid: "SM-CAP", status: "queued" }));
+  const res = await runBulkSms(deps(fetchFn), { orgId, userId, caseIds, today, templateBody: "Hi {customer}" });
+  expect(res.sent).toBe(MAX_BATCH);
+  expect(res.sent + res.failed + res.skipped).toBe(MAX_BATCH);
+  expect(fetchFn).toHaveBeenCalledTimes(MAX_BATCH);
 });

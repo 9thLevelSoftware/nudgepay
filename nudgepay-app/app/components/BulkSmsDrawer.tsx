@@ -109,7 +109,7 @@ export function BulkSmsDrawer({
             <input type="hidden" name="body" value={body} />
             <input type="hidden" name="returnTo" value={returnTo} />
             <p id="bulk-sms-confirm-desc" className="text-sm font-sans text-text mb-3">
-              Send this message to {eligible.length} customer(s)? This cannot be undone.
+              Send this message to {eligible.length} customer(s)? This cannot be undone. Eligibility is re-checked when you send, so the final count may be lower.
             </p>
             <div className="flex justify-end gap-2">
               <button type="button" onClick={() => setConfirming(false)} className="rounded-md border border-border bg-panel px-3 h-9 text-xs text-muted hover:text-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-copper">
