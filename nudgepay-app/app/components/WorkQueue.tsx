@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { Form, Link } from "react-router";
+import { Form, Link, useNavigation } from "react-router";
 import type { ViewId, SortId } from "../lib/worklist";
 import type { CaseItem } from "../lib/cases";
 import { formatDate } from "../lib/dates";
@@ -253,6 +253,7 @@ export function WorkQueue({
 }: WorkQueueProps) {
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [smsOpen, setSmsOpen] = useState(false);
+  const nav = useNavigation();
 
   // Selection is per-view: clear it whenever the filter/sort/search changes
   // (the queue re-renders with a different item set on navigation).
@@ -274,6 +275,25 @@ export function WorkQueue({
       return next.size === prev.size ? prev : next; // subset-only: equal size ⇒ nothing pruned ⇒ no re-render
     });
   }, [items]);
+
+  // A bulk assign/SMS submits via <Form> (a navigation). When that navigation
+  // settles back to idle, the action has completed + the loader revalidated, so
+  // clear the selection and close the drawer. Without this, a redirect back to
+  // the same view (only result params added) leaves the drawer open on its
+  // confirm step with the Send button re-enabling on the same caseIds/body —
+  // a one-click accidental re-send of an irreversible batch.
+  const bulkSubmitInFlight = useRef(false);
+  useEffect(() => {
+    const action = nav.formAction ?? "";
+    const isBulk = action.includes("/api/bulk-sms") || action.includes("/api/bulk-assign");
+    if (nav.state !== "idle" && isBulk) {
+      bulkSubmitInFlight.current = true;
+    } else if (nav.state === "idle" && bulkSubmitInFlight.current) {
+      bulkSubmitInFlight.current = false;
+      setSelected(new Set());
+      setSmsOpen(false);
+    }
+  }, [nav.state, nav.formAction]);
 
   const toggle = (id: string) =>
     setSelected((prev) => {
