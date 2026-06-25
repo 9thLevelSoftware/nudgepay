@@ -110,7 +110,7 @@ export function BulkSmsDrawer({
           </>
         ) : (
           <Form method="post" action="/api/bulk-sms" aria-describedby="bulk-sms-confirm-desc">
-            <input type="hidden" name="caseIds" value={eligible.map((c) => c.caseId).join(",")} />
+            <input type="hidden" name="caseIds" value={cases.map((c) => c.caseId).join(",")} />
             <input type="hidden" name="body" value={body} />
             <input type="hidden" name="returnTo" value={returnTo} />
             <p id="bulk-sms-confirm-desc" className="text-sm font-sans text-text mb-3">

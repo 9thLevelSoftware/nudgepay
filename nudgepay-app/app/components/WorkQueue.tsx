@@ -261,6 +261,20 @@ export function WorkQueue({
     setSmsOpen(false);
   }, [view, sort, search]);
 
+  // After a bulk action the loader revalidates without remounting (same filter
+  // params), so items can change while `selected` keeps IDs that left the view.
+  // Prune selection to currently-visible cases. (View/sort/search changes are
+  // handled by the full-clear effect above.)
+  useEffect(() => {
+    setSelected((prev) => {
+      if (prev.size === 0) return prev;
+      const visible = new Set(items.map((i) => i.caseId));
+      const next = new Set<string>();
+      for (const id of prev) if (visible.has(id)) next.add(id);
+      return next.size === prev.size ? prev : next; // subset-only: equal size ⇒ nothing pruned ⇒ no re-render
+    });
+  }, [items]);
+
   const toggle = (id: string) =>
     setSelected((prev) => {
       const next = new Set(prev);
