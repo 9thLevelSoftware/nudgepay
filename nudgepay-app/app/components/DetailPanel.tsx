@@ -1,5 +1,6 @@
-import { useState } from "react";
-import { Link } from "react-router";
+import { useEffect, useState } from "react";
+import { Link, useRevalidator } from "react-router";
+import { HEARTBEAT_INTERVAL_MS, type Collision } from "~/lib/collision";
 import { type CaseItem } from "~/lib/cases";
 import { Icon } from "~/components/Icons";
 import { SMS_TEMPLATES, applyTemplate, type TemplateVars } from "~/lib/sms-templates";
@@ -58,7 +59,7 @@ const PROMISE_ERROR_TEXT: Record<string, string> = {
 };
 
 function MessagesTab({
-  selected, repInvoiceId, messages, consent, phone, sms, view, sort, q,
+  selected, repInvoiceId, messages, consent, phone, sms, view, sort, q, collision,
 }: {
   selected: CaseItem;
   repInvoiceId: string | null;
@@ -69,6 +70,7 @@ function MessagesTab({
   view: string;
   sort: string;
   q: string;
+  collision: Collision | null;
 }) {
   const returnTo = `/dashboard?${new URLSearchParams({
     case: selected.caseId, tab: "messages", view, sort, ...(q ? { q } : {}),
@@ -86,8 +88,15 @@ function MessagesTab({
   };
 
   const [body, setBody] = useState("");
+  const [confirmSend, setConfirmSend] = useState(false);
+  const needsConfirm = !!collision && collision.level !== "none";
   const banner = sms ? SMS_BANNER[sms] : null;
   const noInvoice = repInvoiceId === null;
+
+  // Reset confirmSend when the case changes
+  useEffect(() => {
+    setConfirmSend(false);
+  }, [selected.caseId]);
 
   return (
     <section
@@ -166,7 +175,17 @@ function MessagesTab({
             </button>
           ))}
         </div>
-        <form method="post" action="/api/text/send" className="flex flex-col gap-2">
+        <form
+          method="post"
+          action="/api/text/send"
+          className="flex flex-col gap-2"
+          onSubmit={(e) => {
+            if (needsConfirm && !confirmSend) {
+              e.preventDefault();
+              setConfirmSend(true);
+            }
+          }}
+        >
           <input type="hidden" name="invoiceId" value={repInvoiceId ?? ""} />
           <input type="hidden" name="returnTo" value={returnTo} />
           <textarea
@@ -178,6 +197,13 @@ function MessagesTab({
             required
             className="w-full resize-none rounded-md border border-border bg-panel px-3 py-2 text-sm font-sans text-text placeholder:text-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-copper"
           />
+          {confirmSend ? (
+            <p className="text-xs font-sans text-amber-200" role="alert">
+              {collision?.level === "live"
+                ? `${collision.byUser} is viewing this customer now. Send anyway?`
+                : `${collision?.byUser} contacted this customer recently. Send anyway?`}
+            </p>
+          ) : null}
           <div className="flex items-center justify-between gap-2">
             {noInvoice ? (
               <span className="text-xs text-muted">No invoice to reference.</span>
@@ -238,6 +264,7 @@ export function DetailPanel({
   sort,
   q,
   selectedPromiseId,
+  collision,
 }: {
   selected: CaseItem | null;
   repInvoiceId: string | null;
@@ -253,7 +280,28 @@ export function DetailPanel({
   sort: string;
   q: string;
   selectedPromiseId: string | null;
+  collision: Collision | null;
 }) {
+  // ── Hooks (must be unconditional, before any early return) ─────────────────
+  const revalidator = useRevalidator();
+  const customerId = selected?.customerId ?? null;
+  useEffect(() => {
+    if (!customerId) return;
+    let cancelled = false;
+    const beat = () => {
+      const body = new FormData();
+      body.set("customerId", customerId);
+      fetch("/api/presence/heartbeat", { method: "POST", body }).catch(() => {});
+    };
+    beat(); // immediate
+    const id = setInterval(() => {
+      if (cancelled) return;
+      beat();
+      revalidator.revalidate();
+    }, HEARTBEAT_INTERVAL_MS);
+    return () => { cancelled = true; clearInterval(id); };
+  }, [customerId, revalidator]);
+
   // ── Empty state ────────────────────────────────────────────────────────────
   if (selected === null) {
     return (
@@ -417,6 +465,22 @@ export function DetailPanel({
           );
         })}
       </div>
+
+      {/* ── Collision banner ────────────────────────────────────────────────── */}
+      {collision && (collision.level !== "none" || collision.byUser) ? (
+        <div
+          role="status"
+          className={
+            collision.level === "live"
+              ? "mx-5 mt-3 rounded-md border border-amber-400/40 bg-amber-400/10 px-3 py-2 text-xs font-sans text-amber-200"
+              : "mx-5 mt-3 rounded-md border border-border bg-panel px-3 py-2 text-xs font-sans text-muted"
+          }
+        >
+          {collision.level === "live"
+            ? `⚠ ${collision.liveUsers.join(", ")} ${collision.liveUsers.length > 1 ? "are" : "is"} viewing this customer now`
+            : `Last contacted by ${collision.byUser}`}
+        </div>
+      ) : null}
 
       {/* ── Tab panels ──────────────────────────────────────────────────────── */}
 
@@ -682,6 +746,7 @@ export function DetailPanel({
           view={view}
           sort={sort}
           q={q}
+          collision={collision}
         />
       ) : null}
     </aside>
