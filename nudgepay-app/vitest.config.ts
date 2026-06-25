@@ -11,10 +11,11 @@ export default defineConfig({
     setupFiles: [],
     globalSetup: ["tests/global-setup.ts"],
     include: ["tests/**/*.test.ts"],
-    // Integration tests share a single local Supabase DB; run files serially so
-    // concurrent runScheduledCdc calls in qbo-cron.test.ts and
-    // sync-errors-wiring.test.ts don't cross-contaminate each other's
-    // sync_errors rows (both call the cron which sweeps ALL connected orgs).
-    sequence: { concurrent: false },
+    // Integration tests share ONE local Supabase DB. Run test files serially:
+    // qbo-cron.test.ts and sync-errors-wiring.test.ts both invoke runScheduledCdc,
+    // which sweeps ALL connected qbo_connections, so parallel files cross-contaminate
+    // each other's sync_errors rows. fileParallelism:false serializes files (the suite
+    // is small; the few-seconds cost buys deterministic shared-DB tests).
+    fileParallelism: false,
   },
 });
