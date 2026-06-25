@@ -16,14 +16,17 @@ async function freshOrg(): Promise<string> {
 
 test("storeConnection encrypts tokens at rest (no plaintext in DB)", async () => {
   const org = await freshOrg();
-  await storeConnection(svc, KEY, org, "realm-1", { accessToken: "AT", refreshToken: "RT", expiresIn: 3600 });
+  const accessToken = "ACCESS-TOKEN-PLAINTEXT-DO-NOT-LEAK";
+  const refreshToken = "REFRESH-TOKEN-PLAINTEXT-DO-NOT-LEAK";
+  await storeConnection(svc, KEY, org, "realm-1", { accessToken, refreshToken, expiresIn: 3600 });
   const { data } = await svc.from("qbo_connections")
     .select("status, realm_id, access_token_enc, refresh_token_enc").eq("org_id", org).single();
   expect(data!.status).toBe("connected");
   expect(data!.realm_id).toBe("realm-1");
-  expect(data!.refresh_token_enc).not.toContain("RT");
-  expect(await decryptSecret(data!.access_token_enc, KEY)).toBe("AT");
-  expect(await decryptSecret(data!.refresh_token_enc, KEY)).toBe("RT");
+  expect(data!.access_token_enc).not.toContain(accessToken);
+  expect(data!.refresh_token_enc).not.toContain(refreshToken);
+  expect(await decryptSecret(data!.access_token_enc, KEY)).toBe(accessToken);
+  expect(await decryptSecret(data!.refresh_token_enc, KEY)).toBe(refreshToken);
 });
 
 test("getValidAccessToken refreshes + persists rotated refresh token when expired", async () => {

@@ -4,6 +4,7 @@ import { createSupabaseServiceClient } from "../lib/supabase.server";
 import { requireUser, resolveOrg } from "../lib/session.server";
 import { qboApiBaseUrl } from "../lib/qbo-api.server";
 import { syncOverdueInvoices, type SyncDeps } from "../lib/qbo-sync.server";
+import { recordSyncError, resolveSyncErrors } from "../lib/sync-errors.server";
 
 export async function action({ request, context }: ActionFunctionArgs) {
   const env = getEnv(context as any);
@@ -22,8 +23,21 @@ export async function action({ request, context }: ActionFunctionArgs) {
   };
   try {
     await syncOverdueInvoices(deps, org.org_id);
+    // Resolve ONLY this path's own scope. A manual refresh pulls overdue invoices
+    // (Balance>0 AND DueDate<today) + their payments — it is NOT a full catch-up,
+    // so it must not clear webhook/cdc errors for entities it never re-fetched
+    // (e.g. a payment that zeroed an invoice). Those clear on the next cron CDC
+    // catch-up (a true re-pull) or a successful webhook retry.
+    await resolveSyncErrors(service, { orgId: org.org_id, scope: "full" });
     return redirect("/dashboard?sync=ok", { headers });
-  } catch {
+  } catch (err) {
+    // Log before recording (mirrors the cron + webhook paths) so a failure is
+    // visible to operators even if the DB record itself fails.
+    console.error("[refresh] sync failed for org", org.org_id, ":", err);
+    await recordSyncError(service, {
+      orgId: org.org_id, source: "manual", scope: "full",
+      message: err instanceof Error ? err.message : String(err),
+    }).catch(() => {}); // best-effort: never mask the original failure
     // e.g. QBO not connected, or a transient API error.
     return redirect("/dashboard?sync=error", { headers });
   }

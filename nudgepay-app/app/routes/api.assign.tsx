@@ -16,9 +16,10 @@ export async function action({ request, context }: ActionFunctionArgs) {
   const ownerId = typeof ownerRaw === "string" && ownerRaw.length > 0 ? ownerRaw : null;
   if (!customerId) return redirect(returnTo, { headers });
 
-  // Cross-org guard: the RLS user client only sees own-org customers.
+  // Explicit org-scope guard: bind to the resolved dashboard org — RLS alone permits every org
+  // the caller is a member of, so a multi-org user could otherwise touch another org's customer.
   const { data: cust } = await supabase
-    .from("customers").select("id").eq("id", customerId).maybeSingle();
+    .from("customers").select("id").eq("org_id", org.org_id).eq("id", customerId).maybeSingle();
   if (!cust) return redirect(returnTo, { headers });
 
   // Membership guard: never assign to a user outside the caller's org.
@@ -28,7 +29,11 @@ export async function action({ request, context }: ActionFunctionArgs) {
     if (!member) return redirect(returnTo, { headers });
   }
 
-  await supabase.from("customers").update({ owner: ownerId }).eq("id", customerId);
+  const { error } = await supabase.from("customers")
+    .update({ owner: ownerId }).eq("org_id", org.org_id).eq("id", customerId);
+  // Don't swallow a failed write — a silent redirect would imply the assignment
+  // saved when it didn't. Surface it to the error boundary.
+  if (error) throw new Error(`Failed to assign owner: ${error.message}`);
   return redirect(returnTo, { headers });
 }
 

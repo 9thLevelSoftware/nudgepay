@@ -19,6 +19,7 @@ import {
 import type { PriorityOverrideLevel } from "../lib/priority";
 import type { ExceptionReason } from "../lib/contact-log";
 import { AppShell } from "../components/AppShell";
+import { SyncIssues } from "../components/SyncIssues";
 import { MetricsStrip } from "../components/MetricsStrip";
 import { WorkQueue } from "../components/WorkQueue";
 import { DetailPanel } from "../components/DetailPanel";
@@ -189,6 +190,22 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
     }
   }
 
+  // Unresolved sync errors for this org (B6). USER client → RLS, but RLS permits
+  // EVERY org the user belongs to, so bind explicitly to the active dashboard org
+  // (matching the dismiss route's .eq("org_id")) — otherwise a multi-org user could
+  // see another org's error here that the dismiss route then cannot clear.
+  const { data: syncErrorRows } = await supabase
+    .from("sync_errors")
+    .select("id, source, scope, message, occurred_at")
+    .eq("org_id", org.org_id)
+    .is("resolved_at", null)
+    .order("occurred_at", { ascending: false })
+    .limit(20);
+  const syncIssues = ((syncErrorRows as any[]) ?? []).map((r) => ({
+    id: r.id as string, source: r.source as string, scope: r.scope as string,
+    message: r.message as string, occurredAt: r.occurred_at as string,
+  }));
+
   // Parse URL params
   const url = new URL(request.url);
   const sp = url.searchParams;
@@ -294,18 +311,9 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
       priorityOverrideAt: r.priority_override_at,
     }));
 
-    // Per-case last contact: contact_logs are keyed by case_id (set at log time),
-    // so a prior closed case's logs are already excluded by the caseIds filter.
-    // Outbound texts carry no reliable case_id (sendInvoiceText never stamps it),
-    // so they're keyed by CUSTOMER and mapped to the current open case — but ONLY
-    // texts sent at/after that case's opened_at, so a re-opened case doesn't inherit
-    // the previous cycle's SMS as contact/attempts. One open case per customer.
+    // Per-case last contact: contact_logs and outbound texts are both keyed by
+    // case_id, so we can read both by case_id directly — no customer mapping needed.
     const caseIds = cases.map((c) => c.id);
-    const openCaseByCustomer = new Map<string, { caseId: string; openedAt: string }>();
-    for (const r of (caseRows as CaseRowRaw[]) ?? []) {
-      openCaseByCustomer.set(r.customer_id, { caseId: r.id, openedAt: r.opened_at });
-    }
-    const customerIds = [...openCaseByCustomer.keys()];
     const lastContactsInput: CaseLastContactInput[] = [];
     if (caseIds.length > 0) {
       const { data: logRows } = await supabase
@@ -317,18 +325,15 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
       for (const r of (logRows as any[]) ?? []) {
         if (r.case_id) lastContactsInput.push({ caseId: r.case_id, date: r.created_at, channel: methodLabel[r.method] ?? "Note" });
       }
+      // Outbound texts now carry case_id (stamped at send time, 7c), so key on it
+      // directly — no customer mapping / opened_at window needed.
       const { data: msgRows } = await supabase
         .from("text_messages")
-        .select("customer_id, created_at")
-        .eq("org_id", org.org_id).in("customer_id", customerIds).eq("direction", "outbound")
+        .select("case_id, created_at")
+        .eq("org_id", org.org_id).in("case_id", caseIds).eq("direction", "outbound")
         .order("created_at", { ascending: false });
       for (const r of (msgRows as any[]) ?? []) {
-        const oc = openCaseByCustomer.get(r.customer_id);
-        // Only count texts within the current case window (created_at >= opened_at);
-        // ISO-8601 timestamptz strings from the same column compare chronologically.
-        if (oc && r.created_at >= oc.openedAt) {
-          lastContactsInput.push({ caseId: oc.caseId, date: r.created_at, channel: "Text" });
-        }
+        if (r.case_id) lastContactsInput.push({ caseId: r.case_id, date: r.created_at, channel: "Text" });
       }
     }
 
@@ -428,6 +433,7 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
       isOwner: org.role === "owner",
       connected,
       syncLabel,
+      syncIssues,
       view,
       sort,
       q,
@@ -463,6 +469,7 @@ export default function Dashboard() {
     isOwner,
     connected,
     syncLabel,
+    syncIssues,
     view,
     sort,
     q,
@@ -491,6 +498,12 @@ export default function Dashboard() {
       syncLabel={syncLabel}
       connected={connected}
       isOwner={isOwner}
+      syncIssues={
+        <SyncIssues
+          issues={syncIssues}
+          returnTo={`/dashboard?${new URLSearchParams({ view, sort, ...(q ? { q } : {}), ...(selected ? { case: selected.caseId } : {}), tab }).toString()}`}
+        />
+      }
       headerActions={
         connected ? (
           <div className="hidden sm:flex items-center gap-1.5">

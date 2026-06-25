@@ -68,3 +68,21 @@ test("sendInvoiceText refuses when the customer has no phone", async () => {
     .rejects.toThrow(/phone/i);
   expect(fetchFn).not.toHaveBeenCalled();
 });
+
+test("sendInvoiceText stamps case_id from the customer's active case", async () => {
+  const { orgId, customerId, invoiceId } = await seed(true, "+12295550111");
+  const { data: cse } = await svc.from("collection_cases")
+    .insert({ org_id: orgId, customer_id: customerId, status: "working" }).select("id").single();
+  const fetchFn = vi.fn(async () => jsonResponse({ sid: "SM-CASE", status: "queued" }));
+  await sendInvoiceText(deps(fetchFn), { orgId, invoiceId, userId, body: "Past due" });
+  const { data: msg } = await svc.from("text_messages").select("case_id").eq("twilio_message_sid", "SM-CASE").single();
+  expect(msg!.case_id).toBe(cse!.id);
+});
+
+test("sendInvoiceText leaves case_id null when the customer has no open case", async () => {
+  const { orgId, invoiceId } = await seed(true, "+12295550112");
+  const fetchFn = vi.fn(async () => jsonResponse({ sid: "SM-NOCASE", status: "queued" }));
+  await sendInvoiceText(deps(fetchFn), { orgId, invoiceId, userId, body: "Past due" });
+  const { data: msg } = await svc.from("text_messages").select("case_id").eq("twilio_message_sid", "SM-NOCASE").single();
+  expect(msg!.case_id).toBe(null);
+});

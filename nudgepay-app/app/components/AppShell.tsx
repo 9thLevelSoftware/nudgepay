@@ -11,6 +11,8 @@ interface AppShellProps {
   isOwner: boolean;
   /** Optional controls rendered in the topbar right-controls group. */
   headerActions?: React.ReactNode;
+  /** Optional sync-issues indicator rendered next to the sync chip. */
+  syncIssues?: React.ReactNode;
   children: React.ReactNode;
 }
 
@@ -55,6 +57,7 @@ export function AppShell({
   connected,
   isOwner: _isOwner,
   headerActions,
+  syncIssues,
   children,
 }: AppShellProps) {
   const [navOpen, setNavOpen] = useState(false);
@@ -109,6 +112,8 @@ export function AppShell({
               {syncLabel}
             </span>
           </div>
+
+          {syncIssues}
 
           {headerActions}
 

@@ -15,6 +15,7 @@ export default [
   route("api/sms-consent", "routes/api.sms-consent.tsx"),
   route("api/assign", "routes/api.assign.tsx"),
   route("api/priority-override", "routes/api.priority-override.tsx"),
+  route("api/sync-errors/dismiss", "routes/api.sync-errors.dismiss.tsx"),
   route("api/promises/cancel", "routes/api.promises.cancel.tsx"),
   route("api/qbo/connect", "routes/api.qbo.connect.tsx"),
   route("api/qbo/disconnect", "routes/api.qbo.disconnect.tsx"),

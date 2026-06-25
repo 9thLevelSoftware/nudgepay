@@ -64,3 +64,15 @@ test("updateMessageStatus updates status and error_code by sid", async () => {
   expect(data!.status).toBe("delivered");
   expect(data!.error_code).toBeNull();
 });
+
+test("recordInboundMessage stamps case_id from the customer's active case", async () => {
+  const { orgId, customerId } = await seedCustomerWithOutbound("+13105550206", "SMout-206");
+  const { data: cse } = await svc.from("collection_cases")
+    .insert({ org_id: orgId, customer_id: customerId, status: "working" }).select("id").single();
+  const caseId = cse!.id as string;
+  await recordInboundMessage(svc, { from: "+13105550206", to: "+15005550006", body: "hello", messageSid: "SM-IN-CASE" });
+  const { data } = await svc.from("text_messages").select("case_id, direction")
+    .eq("twilio_message_sid", "SM-IN-CASE").single();
+  expect(data!.direction).toBe("inbound");
+  expect(data!.case_id).toBe(caseId);
+});
