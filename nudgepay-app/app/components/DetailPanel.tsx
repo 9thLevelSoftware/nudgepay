@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Link, useRevalidator } from "react-router";
 import { HEARTBEAT_INTERVAL_MS, type Collision } from "~/lib/collision";
 import { type CaseItem } from "~/lib/cases";
@@ -283,7 +283,13 @@ export function DetailPanel({
   collision: Collision | null;
 }) {
   // ── Hooks (must be unconditional, before any early return) ─────────────────
-  const revalidator = useRevalidator();
+  // Keep the latest revalidate fn in a ref so the heartbeat effect depends ONLY
+  // on customerId. In RR7 the useRevalidator() object identity changes on every
+  // revalidation (idle→loading→idle); depending on it would tear the effect down
+  // and re-run it mid-cycle, firing extra heartbeats (~3 per cycle instead of 1).
+  const { revalidate } = useRevalidator();
+  const revalidateRef = useRef(revalidate);
+  useEffect(() => { revalidateRef.current = revalidate; }, [revalidate]);
   const customerId = selected?.customerId ?? null;
   useEffect(() => {
     if (!customerId) return;
@@ -297,10 +303,10 @@ export function DetailPanel({
     const id = setInterval(() => {
       if (cancelled) return;
       beat();
-      revalidator.revalidate();
+      revalidateRef.current();
     }, HEARTBEAT_INTERVAL_MS);
     return () => { cancelled = true; clearInterval(id); };
-  }, [customerId, revalidator]);
+  }, [customerId]);
 
   // ── Empty state ────────────────────────────────────────────────────────────
   if (selected === null) {
