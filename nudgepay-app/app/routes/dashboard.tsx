@@ -25,6 +25,8 @@ import { WorkQueue } from "../components/WorkQueue";
 import { DetailPanel } from "../components/DetailPanel";
 import { LogContactDrawer } from "../components/LogContactDrawer";
 import { buildTimeline, type TimelineEntry, type TimelineLogInput, type TimelineSmsInput } from "~/lib/timeline";
+import { collisionState, type Collision, type RecentContactInput } from "../lib/collision";
+import { readPresence } from "../lib/presence.server";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -251,6 +253,7 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
   let selectedRepInvoiceId: string | null = null;
   let selectedPromiseId: string | null = null;
   let roster: OrgMember[] = [];
+  let collisions: Record<string, Collision> = {};
   let dashboardData: DashboardData = {
     items: [],
     metrics: {
@@ -324,25 +327,37 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
     // case_id, so we can read both by case_id directly — no customer mapping needed.
     const caseIds = cases.map((c) => c.id);
     const lastContactsInput: CaseLastContactInput[] = [];
+    const recentByCase = new Map<string, RecentContactInput[]>();
+    const pushRecent = (caseId: string, userId: string | null, at: string) => {
+      const list = recentByCase.get(caseId) ?? [];
+      list.push({ userId, at });
+      recentByCase.set(caseId, list);
+    };
     if (caseIds.length > 0) {
       const { data: logRows } = await supabase
         .from("contact_logs")
-        .select("case_id, method, created_at")
+        .select("case_id, method, created_at, user_id")
         .eq("org_id", org.org_id).in("case_id", caseIds)
         .order("created_at", { ascending: false });
       const methodLabel: Record<string, string> = { call: "Call", email: "Email", text: "Text", note: "Note" };
       for (const r of (logRows as any[]) ?? []) {
-        if (r.case_id) lastContactsInput.push({ caseId: r.case_id, date: r.created_at, channel: methodLabel[r.method] ?? "Note" });
+        if (r.case_id) {
+          lastContactsInput.push({ caseId: r.case_id, date: r.created_at, channel: methodLabel[r.method] ?? "Note" });
+          pushRecent(r.case_id, r.user_id ?? null, r.created_at);
+        }
       }
       // Outbound texts now carry case_id (stamped at send time, 7c), so key on it
       // directly — no customer mapping / opened_at window needed.
       const { data: msgRows } = await supabase
         .from("text_messages")
-        .select("case_id, created_at")
+        .select("case_id, created_at, sent_by_user_id")
         .eq("org_id", org.org_id).in("case_id", caseIds).eq("direction", "outbound")
         .order("created_at", { ascending: false });
       for (const r of (msgRows as any[]) ?? []) {
-        if (r.case_id) lastContactsInput.push({ caseId: r.case_id, date: r.created_at, channel: "Text" });
+        if (r.case_id) {
+          lastContactsInput.push({ caseId: r.case_id, date: r.created_at, channel: "Text" });
+          pushRecent(r.case_id, r.sent_by_user_id ?? null, r.created_at);
+        }
       }
     }
 
@@ -370,6 +385,34 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
 
     roster = await listOrgMembers(service, org.org_id);
     const ownerLabels = new Map(roster.map((m) => [m.userId, m.label]));
+
+    // Presence (C1): advisory. Degrade to empty on error — never throw the loader.
+    const presenceCustomerIds = [...new Set(cases.map((c) => c.customerId))];
+    let presenceRows: { customer_id: string; user_id: string; last_seen_at: string }[] = [];
+    try {
+      presenceRows = await readPresence(supabase, { orgId: org.org_id, customerIds: presenceCustomerIds });
+    } catch (e) {
+      console.error("presence read failed (degrading to no presence):", e);
+      presenceRows = [];
+    }
+    const presenceByCustomer = new Map<string, { userId: string; lastSeenAt: string }[]>();
+    for (const r of presenceRows) {
+      const list = presenceByCustomer.get(r.customer_id) ?? [];
+      list.push({ userId: r.user_id, lastSeenAt: r.last_seen_at });
+      presenceByCustomer.set(r.customer_id, list);
+    }
+
+    // Per-case collision (self-excluded). Plain object so it serializes over the loader.
+    const nowMs = Date.now();
+    for (const cse of cases) {
+      collisions[cse.id] = collisionState({
+        contacts: recentByCase.get(cse.id) ?? [],
+        heartbeats: presenceByCustomer.get(cse.customerId) ?? [],
+        currentUserId: user.id,
+        nowMs,
+        label: (id) => ownerLabels.get(id) ?? "A teammate",
+      });
+    }
 
     dashboardData = buildCaseData(
       cases, invoicesInput, customersInput, lastContactsInput, promisesInput,
@@ -467,6 +510,7 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
       bulkFailed,
       bulkSkipped,
       roster,
+      collisions,
       currentUserId: user.id,
       ...dashboardData,
     },
@@ -507,6 +551,7 @@ export default function Dashboard() {
     bulkFailed,
     bulkSkipped,
     roster,
+    collisions,
     items,
     metrics,
     viewCounts,
@@ -589,6 +634,7 @@ export default function Dashboard() {
                 viewCounts={viewCounts}
                 roster={roster}
                 returnTo={`/dashboard?${new URLSearchParams({ view, sort, ...(q ? { q } : {}) }).toString()}`}
+                collisions={collisions}
               />
             </div>
 
@@ -610,6 +656,7 @@ export default function Dashboard() {
                   view={view}
                   sort={sort}
                   q={q}
+                  collision={selected ? (collisions[selected.caseId] ?? null) : null}
                 />
               </div>
             ) : null}
@@ -621,6 +668,7 @@ export default function Dashboard() {
               repInvoiceId={repInvoiceId ?? null}
               returnTo={`/dashboard?${new URLSearchParams({ case: selected.caseId, tab, view, sort, ...(q ? { q } : {}) }).toString()}`}
               logError={logError}
+              collision={collisions[selected.caseId] ?? null}
             />
           ) : null}
         </div>

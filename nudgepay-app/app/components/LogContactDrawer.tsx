@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Form, Link, useNavigate } from "react-router";
 import type { CaseItem } from "../lib/cases";
+import type { Collision } from "../lib/collision";
 import { CONTACT_METHODS, CONTACT_OUTCOMES } from "../lib/contact-log";
 import { EXCEPTION_REASON_LABEL, formatUSD } from "../lib/format";
 import { OUTCOME_LABELS } from "../lib/timeline";
@@ -26,15 +27,18 @@ const ERROR_MESSAGE: Record<string, string> = {
 };
 
 export function LogContactDrawer({
-  selected, repInvoiceId, returnTo, logError,
+  selected, repInvoiceId, returnTo, logError, collision,
 }: {
   selected: CaseItem;
   repInvoiceId: string | null;
   returnTo: string;
   logError: string | null;
+  collision: Collision | null;
 }) {
   const [outcome, setOutcome] = useState<string>("");
   const [nextStep, setNextStep] = useState<string>("");
+  const [confirmSave, setConfirmSave] = useState(false);
+  const needsConfirm = !!collision && collision.level !== "none";
   const firstFieldRef = useRef<HTMLSelectElement>(null);
   const panelRef = useRef<HTMLDivElement>(null);
   const navigate = useNavigate();
@@ -112,7 +116,17 @@ export function LogContactDrawer({
           </p>
         )}
 
-        <Form method="post" action="/api/contact-logs" className="flex flex-col gap-4 px-5 py-4">
+        <Form
+          method="post"
+          action="/api/contact-logs"
+          className="flex flex-col gap-4 px-5 py-4"
+          onSubmit={(e) => {
+            if (needsConfirm && !confirmSave) {
+              e.preventDefault();
+              setConfirmSave(true);
+            }
+          }}
+        >
           <input type="hidden" name="caseId" value={selected.caseId} />
           <input type="hidden" name="invoiceId" value={repInvoiceId ?? ""} />
           <input type="hidden" name="customerId" value={selected.customerId ?? ""} />
@@ -236,6 +250,14 @@ export function LogContactDrawer({
               </label>
             </div>
           )}
+
+          {confirmSave ? (
+            <p className="text-xs font-sans text-amber-200" role="alert">
+              {collision?.level === "live"
+                ? `${collision.byUser} is viewing this customer now. Log anyway?`
+                : `${collision?.byUser} contacted this customer recently. Log anyway?`}
+            </p>
+          ) : null}
 
           <div className="flex items-center justify-end gap-2 pt-2">
             <Link
