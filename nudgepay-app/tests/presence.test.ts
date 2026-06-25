@@ -98,3 +98,20 @@ test("loader collision compute: a teammate's recent contact yields a recent-leve
   expect(c.level).toBe("recent");
   expect(c.byUser).toBe("collide-jane");
 });
+
+test("composite FK rejects a presence row pairing an org with another org's customer (DB-level, even via service client)", async () => {
+  const svc = serviceClient();
+  const { data: orgA } = await svc.from("organizations").insert({ name: "Presence FK A" }).select("id").single();
+  const { data: orgB } = await svc.from("organizations").insert({ name: "Presence FK B" }).select("id").single();
+  const u = await makeUserClient("presence-fk-a@example.com");
+  await svc.from("memberships").insert({ org_id: orgA!.id, user_id: u.userId, role: "owner" });
+  const { data: custB } = await svc.from("customers")
+    .insert({ org_id: orgB!.id, qbo_id: "pfk-b1", name: "B Co" }).select("id").single();
+
+  // Service client bypasses RLS, so this proves the guard is at the DB level (the
+  // composite FK), not just the membership policy: orgA + orgB's customer is invalid.
+  const { error } = await svc.from("case_presence").insert({
+    org_id: orgA!.id, customer_id: custB!.id, user_id: u.userId, last_seen_at: new Date().toISOString(),
+  });
+  expect(error).not.toBeNull();
+});
