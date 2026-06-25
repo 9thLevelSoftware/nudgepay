@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Form, useNavigation } from "react-router";
 import { SMS_TEMPLATES } from "../lib/sms-templates";
 import { partitionEligibility, renderCaseBody, type SkipReason, type TextableCase, type RenderableCase } from "../lib/bulk";
@@ -31,6 +31,10 @@ export function BulkSmsDrawer({
   const [body, setBody] = useState(SMS_TEMPLATES[0]?.body ?? "");
   const [confirming, setConfirming] = useState(false);
 
+  useEffect(() => {
+    if (!open) setConfirming(false);
+  }, [open]);
+
   if (!open) return null;
   const { eligible, skipped } = partitionEligibility(cases);
   const sample = eligible[0] ? renderCaseBody(body, eligible[0]) : "";
@@ -45,6 +49,7 @@ export function BulkSmsDrawer({
     <div
       role="dialog"
       aria-label="Send batch SMS"
+      aria-modal="true"
       className="fixed inset-0 z-40 flex items-end sm:items-center justify-center bg-ink/40 p-4"
       onClick={onClose}
     >
@@ -99,11 +104,11 @@ export function BulkSmsDrawer({
             </div>
           </>
         ) : (
-          <Form method="post" action="/api/bulk-sms">
+          <Form method="post" action="/api/bulk-sms" aria-describedby="bulk-sms-confirm-desc">
             <input type="hidden" name="caseIds" value={eligible.map((c) => c.caseId).join(",")} />
             <input type="hidden" name="body" value={body} />
             <input type="hidden" name="returnTo" value={returnTo} />
-            <p className="text-sm font-sans text-text mb-3">
+            <p id="bulk-sms-confirm-desc" className="text-sm font-sans text-text mb-3">
               Send this message to {eligible.length} customer(s)? This cannot be undone.
             </p>
             <div className="flex justify-end gap-2">
