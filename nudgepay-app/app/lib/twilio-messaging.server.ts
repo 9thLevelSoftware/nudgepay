@@ -1,5 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { sendSms, type TwilioConfig, type TwilioSender } from "./twilio-client.server";
+import { isContactBlocked, type ExceptionState } from "./exceptions";
 
 export type MessagingDeps = {
   fetchFn: typeof fetch;
@@ -38,6 +39,20 @@ export async function activeCaseId(
   return (data?.id as string) ?? null;
 }
 
+// Like activeCaseId but also returns the open case's exception state, for the
+// outbound contact-block guard. Errors are surfaced, not swallowed.
+export async function activeCaseForSend(
+  service: SupabaseClient, orgId: string, customerId: string,
+): Promise<{ id: string | null; exceptionReason: ExceptionState | null }> {
+  const { data, error } = await service.from("collection_cases")
+    .select("id, exception_reason").eq("org_id", orgId).eq("customer_id", customerId).is("closed_at", null).maybeSingle();
+  if (error) throw error;
+  return {
+    id: (data?.id as string) ?? null,
+    exceptionReason: (data?.exception_reason as ExceptionState | null) ?? null,
+  };
+}
+
 export async function sendInvoiceText(
   deps: MessagingDeps,
   args: { orgId: string; invoiceId: string; userId: string; body: string },
@@ -53,8 +68,15 @@ export async function sendInvoiceText(
   if (!cust?.phone) throw new Error("Customer has no phone number");
   if (!cust.sms_consent) throw new Error("Customer has not consented to SMS");
 
+  // Contact-block guard: a do_not_contact / legal_agency case blocks outbound
+  // messaging on any channel. Check before resolving the sender or calling Twilio.
+  const activeCase = await activeCaseForSend(deps.service, args.orgId, cust.id as string);
+  if (isContactBlocked(activeCase.exceptionReason)) {
+    throw new Error(`Contact blocked: ${activeCase.exceptionReason}`);
+  }
+
   const sender = await resolveSender(deps.service, args.orgId, deps.defaultSender);
-  const caseId = await activeCaseId(deps.service, args.orgId, cust.id as string);
+  const caseId = activeCase.id;
   const result = await sendSms(deps.fetchFn, deps.twilio, {
     to: cust.phone as string, body: args.body, sender, statusCallback: deps.statusCallback ?? null,
   });
