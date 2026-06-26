@@ -331,6 +331,7 @@ export function DetailPanel({
     }, HEARTBEAT_INTERVAL_MS);
     return () => { cancelled = true; clearInterval(id); };
   }, [customerId]);
+  const navigate = useNavigate();
 
   // ── Empty state ────────────────────────────────────────────────────────────
   if (selected === null) {
@@ -355,7 +356,6 @@ export function DetailPanel({
   const logHref = `?${new URLSearchParams({ case: selected.caseId, tab: "activity", view, sort, ...(q ? { q } : {}), log: "1" }).toString()}`;
   const overviewReturnTo = `/dashboard?${new URLSearchParams({ case: selected.caseId, tab: "overview", view, sort, ...(q ? { q } : {}) }).toString()}`;
 
-  const navigate = useNavigate();
   const callAction = resolveCallAction(prefs, selected.phone);
   const callLogHref = `?${new URLSearchParams({ case: selected.caseId, tab: "activity", view, sort, ...(q ? { q } : {}), log: "1", method: "call" }).toString()}`;
 
