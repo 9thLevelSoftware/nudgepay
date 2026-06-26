@@ -9,6 +9,7 @@ import { STATUS_LABEL, EXCEPTION_REASON_LABEL, formatUSD } from "~/lib/format";
 import { isContactBlocked, isTerminal, exceptionLabel } from "~/lib/exceptions";
 import type { MessageEntry, RosterMember } from "~/routes/dashboard";
 import type { TimelineEntry } from "~/lib/timeline";
+import { canSendSms, type CommPrefs } from "~/lib/comm-prefs";
 
 // Static tone-to-text-color map — heat.band → Tailwind class.
 // Must be literal strings so Tailwind can tree-shake them; no dynamic construction.
@@ -50,6 +51,7 @@ const BUBBLE: Record<string, { wrap: string; bubble: string }> = {
 const SMS_BANNER: Record<string, { text: string; tone: string }> = {
   sent: { text: "Text sent.", tone: "text-cool" },
   noconsent: { text: "Not sent — customer has not consented to SMS.", tone: "text-hot" },
+  optout: { text: "Not sent — customer opted out of texts.", tone: "text-hot" },
   error: { text: "Could not send the text.", tone: "text-hot" },
   blocked: { text: "Not sent — this case is marked do-not-contact / legal.", tone: "text-hot" },
 };
@@ -61,12 +63,13 @@ const PROMISE_ERROR_TEXT: Record<string, string> = {
 };
 
 function MessagesTab({
-  selected, repInvoiceId, messages, consent, phone, sms, view, sort, q, collision,
+  selected, repInvoiceId, messages, consent, prefs, phone, sms, view, sort, q, collision,
 }: {
   selected: CaseItem;
   repInvoiceId: string | null;
   messages: MessageEntry[];
   consent: boolean;
+  prefs: CommPrefs;
   phone: string | null;
   sms: string | null;
   view: string;
@@ -77,6 +80,7 @@ function MessagesTab({
   const returnTo = `/dashboard?${new URLSearchParams({
     case: selected.caseId, tab: "messages", view, sort, ...(q ? { q } : {}),
   }).toString()}`;
+  const prefsHref = `?${new URLSearchParams({ case: selected.caseId, tab: "messages", view, sort, ...(q ? { q } : {}), prefs: "1" }).toString()}`;
 
   const repInvoice = repInvoiceId
     ? selected.invoices.find((i) => i.invoiceId === repInvoiceId)
@@ -117,17 +121,25 @@ function MessagesTab({
           </span>
           {phone ? <span className="text-muted"> · {phone}</span> : null}
         </span>
-        <form method="post" action="/api/sms-consent">
-          <input type="hidden" name="invoiceId" value={repInvoiceId ?? ""} />
-          <input type="hidden" name="returnTo" value={returnTo} />
-          <input type="hidden" name="consent" value={consent ? "false" : "true"} />
-          <button
-            type="submit"
-            className="text-xs font-sans font-medium text-copper hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-copper rounded"
+        <div className="flex items-center gap-3">
+          <Link
+            to={prefsHref}
+            className="text-xs font-medium text-copper hover:underline"
           >
-            {consent ? "Revoke consent" : "Mark consented"}
-          </button>
-        </form>
+            Communication preferences
+          </Link>
+          <form method="post" action="/api/sms-consent">
+            <input type="hidden" name="invoiceId" value={repInvoiceId ?? ""} />
+            <input type="hidden" name="returnTo" value={returnTo} />
+            <input type="hidden" name="consent" value={consent ? "false" : "true"} />
+            <button
+              type="submit"
+              className="text-xs font-sans font-medium text-copper hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-copper rounded"
+            >
+              {consent ? "Revoke consent" : "Mark consented"}
+            </button>
+          </form>
+        </div>
       </div>
 
       {/* Banner */}
@@ -214,10 +226,12 @@ function MessagesTab({
               <span className="text-xs text-muted">No invoice to reference.</span>
             ) : !consent ? (
               <span className="text-xs text-muted">Mark consent to enable sending.</span>
-            ) : <span />}
+            ) : prefs.doNotText ? (
+              <span className="text-xs text-hot">Customer opted out of texts.</span>
+            ) : null}
             <button
               type="submit"
-              disabled={!consent || noInvoice || contactBlocked}
+              disabled={!canSendSms(prefs, consent) || noInvoice || contactBlocked}
               className="inline-flex items-center gap-1.5 rounded-md bg-copper px-3 py-1.5 text-xs font-sans font-semibold text-surface hover:bg-copper/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-copper disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
             >
               <Icon name="message" size={14} aria-hidden />
@@ -261,6 +275,7 @@ export function DetailPanel({
   timeline,
   messages,
   consent,
+  prefs,
   phone,
   sms,
   promiseError,
@@ -277,6 +292,7 @@ export function DetailPanel({
   timeline: TimelineEntry[];
   messages: MessageEntry[];
   consent: boolean;
+  prefs: CommPrefs;
   phone: string | null;
   sms: string | null;
   promiseError?: string | null;
@@ -761,6 +777,7 @@ export function DetailPanel({
           repInvoiceId={repInvoiceId}
           messages={messages}
           consent={consent}
+          prefs={prefs}
           phone={phone}
           sms={sms}
           view={view}

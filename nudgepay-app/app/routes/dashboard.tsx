@@ -24,6 +24,7 @@ import { MetricsStrip } from "../components/MetricsStrip";
 import { WorkQueue } from "../components/WorkQueue";
 import { DetailPanel } from "../components/DetailPanel";
 import { LogContactDrawer } from "../components/LogContactDrawer";
+import { CommPrefsDrawer } from "../components/CommPrefsDrawer";
 import { buildTimeline, type TimelineEntry, type TimelineLogInput, type TimelineSmsInput } from "~/lib/timeline";
 import { collisionState, type Collision, type RecentContactInput } from "../lib/collision";
 import { readPresence } from "../lib/presence.server";
@@ -240,6 +241,7 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
   const logError = sp.get("logError");
   const promiseError = sp.get("promiseError");
   const saved = sp.get("saved") === "1";
+  const prefsOpen = sp.get("prefs") === "1";
 
   const bulkAssign = sp.get("bulkAssign");
   const bulkAssignCount = sp.get("count");
@@ -518,6 +520,7 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
       sms,
       promiseError,
       saved,
+      prefsOpen,
       bulkAssign,
       bulkAssignCount,
       bulkSms,
@@ -556,9 +559,11 @@ export default function Dashboard() {
     selectedMessages,
     selectedConsent,
     selectedPhone,
+    selectedPrefs,
     selectedPromiseId,
     sms,
     saved,
+    prefsOpen,
     bulkAssign,
     bulkAssignCount,
     bulkSms,
@@ -573,6 +578,7 @@ export default function Dashboard() {
     selected,
     repInvoiceId,
   } = useLoaderData<typeof loader>();
+
 
   return (
     <AppShell
@@ -663,6 +669,7 @@ export default function Dashboard() {
                   timeline={selectedTimeline}
                   messages={selectedMessages}
                   consent={selectedConsent}
+                  prefs={selectedPrefs}
                   phone={selectedPhone}
                   selectedPromiseId={selectedPromiseId}
                   roster={roster}
@@ -685,6 +692,16 @@ export default function Dashboard() {
               returnTo={`/dashboard?${new URLSearchParams({ case: selected.caseId, tab, view, sort, ...(q ? { q } : {}) }).toString()}`}
               logError={logError}
               collision={collisions[selected.caseId] ?? null}
+            />
+          ) : null}
+          {prefsOpen && selected ? (
+            <CommPrefsDrawer
+              key={selected.caseId}
+              customerName={selected.customerName}
+              repInvoiceId={repInvoiceId ?? null}
+              prefs={selectedPrefs}
+              returnTo={`/dashboard?${new URLSearchParams({ case: selected.caseId, tab, view, sort, ...(q ? { q } : {}) }).toString()}`}
+              closeHref={`?${new URLSearchParams({ case: selected.caseId, tab, view, sort, ...(q ? { q } : {}) }).toString()}`}
             />
           ) : null}
         </div>
