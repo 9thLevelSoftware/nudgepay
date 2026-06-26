@@ -692,6 +692,7 @@ export default function Dashboard() {
               returnTo={`/dashboard?${new URLSearchParams({ case: selected.caseId, tab, view, sort, ...(q ? { q } : {}) }).toString()}`}
               logError={logError}
               collision={collisions[selected.caseId] ?? null}
+              method={sp.get("method")}
             />
           ) : null}
           {prefsOpen && selected ? (
