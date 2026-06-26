@@ -5,6 +5,7 @@ import type { CaseItem } from "../lib/cases";
 import type { Collision } from "../lib/collision";
 import { formatDate } from "../lib/dates";
 import { STATUS_LABEL, formatUSD } from "../lib/format";
+import { exceptionLabel } from "../lib/exceptions";
 import { partitionEligibility, clampBatch, MAX_BATCH } from "../lib/bulk";
 import { BulkActionBar } from "./BulkActionBar";
 import { BulkSmsDrawer } from "./BulkSmsDrawer";
@@ -187,6 +188,11 @@ function QueueRow({
         {/* Status + next action date */}
         <span data-label="Status" className="hidden lg:block min-w-0 text-xs font-sans font-medium whitespace-nowrap text-text">
           {STATUS_LABEL[item.status] ?? item.status}
+          {item.status === "on_hold" && item.exceptionReason ? (
+            <span className="ml-1.5 inline-flex items-center rounded-sm bg-amber-500/15 px-1.5 py-0.5 text-[11px] font-medium text-amber-200">
+              {exceptionLabel(item.exceptionReason)}
+            </span>
+          ) : null}
           {item.nextActionAt ? <span className="text-muted"> · {formatDate(item.nextActionAt)}</span> : null}
           {item.promiseStatus === "broken" ? <span className="text-hot"> · Promise broken</span> : null}
         </span>
@@ -240,6 +246,11 @@ function MobileCard({
           <span className="font-mono text-muted tabular-nums">{item.oldestAgeDays > 0 ? `${item.oldestAgeDays}d` : "Due"}</span>
           <span className="font-sans font-medium text-text">
             {STATUS_LABEL[item.status] ?? item.status}
+            {item.status === "on_hold" && item.exceptionReason ? (
+              <span className="ml-1.5 inline-flex items-center rounded-sm bg-amber-500/15 px-1.5 py-0.5 text-[11px] font-medium text-amber-200">
+                {exceptionLabel(item.exceptionReason)}
+              </span>
+            ) : null}
             {item.nextActionAt ? <span className="text-muted"> · {formatDate(item.nextActionAt)}</span> : null}
             {item.promiseStatus === "broken" ? <span className="text-hot"> · Promise broken</span> : null}
           </span>

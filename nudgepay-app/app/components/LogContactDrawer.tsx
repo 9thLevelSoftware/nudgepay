@@ -3,6 +3,7 @@ import { Form, Link, useNavigate } from "react-router";
 import type { CaseItem } from "../lib/cases";
 import type { Collision } from "../lib/collision";
 import { CONTACT_METHODS, CONTACT_OUTCOMES } from "../lib/contact-log";
+import { PRIMARY_EXCEPTION_STATES, requiresReviewDate, isContactBlocked, type ExceptionState } from "../lib/exceptions";
 import { EXCEPTION_REASON_LABEL, formatUSD } from "../lib/format";
 import { OUTCOME_LABELS } from "../lib/timeline";
 
@@ -37,6 +38,7 @@ export function LogContactDrawer({
 }) {
   const [outcome, setOutcome] = useState<string>("");
   const [nextStep, setNextStep] = useState<string>("");
+  const [exceptionReason, setExceptionReason] = useState<ExceptionState>("disputed");
   const [confirmSave, setConfirmSave] = useState(false);
   const needsConfirm = !!collision && collision.level !== "none";
   const firstFieldRef = useRef<HTMLSelectElement>(null);
@@ -231,9 +233,10 @@ export function LogContactDrawer({
             <div className="grid gap-3 rounded-md bg-panel/60 border border-border p-3">
               <label className="flex flex-col gap-1">
                 <span className="text-xs font-sans font-medium uppercase tracking-wider text-muted">Reason</span>
-                <select name="exceptionReason" defaultValue="disputed"
+                <select name="exceptionReason" value={exceptionReason}
+                  onChange={(e) => setExceptionReason(e.target.value as ExceptionState)}
                   className="rounded-md border border-border bg-surface px-3 py-2 text-sm font-sans text-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-copper">
-                  {["disputed", "payment_plan", "do_not_contact", "other"].map((r) => (
+                  {PRIMARY_EXCEPTION_STATES.map((r) => (
                     <option key={r} value={r}>{EXCEPTION_REASON_LABEL[r]}</option>
                   ))}
                 </select>
@@ -243,11 +246,17 @@ export function LogContactDrawer({
                 <input name="exceptionNote" type="text"
                   className="rounded-md border border-border bg-surface px-3 py-2 text-sm font-sans text-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-copper" />
               </label>
-              <label className="flex flex-col gap-1">
-                <span className="text-xs font-sans font-medium uppercase tracking-wider text-muted">Revisit on</span>
-                <input name="reviewAt" type="date" required
-                  className="rounded-md border border-border bg-surface px-3 py-2 text-sm font-sans text-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-copper" />
-              </label>
+              {requiresReviewDate(exceptionReason) ? (
+                <label className="flex flex-col gap-1">
+                  <span className="text-xs font-sans font-medium uppercase tracking-wider text-muted">Revisit on</span>
+                  <input name="reviewAt" type="date" required
+                    className="rounded-md border border-border bg-surface px-3 py-2 text-sm font-sans text-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-copper" />
+                </label>
+              ) : (
+                <p className="text-xs font-sans text-amber-200">
+                  Parks this case indefinitely{isContactBlocked(exceptionReason) ? " and blocks outbound messages" : ""}.
+                </p>
+              )}
             </div>
           )}
 

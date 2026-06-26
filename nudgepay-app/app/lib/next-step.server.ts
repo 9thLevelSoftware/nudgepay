@@ -1,4 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { requiresReviewDate } from "./exceptions";
+import type { ExceptionReason } from "./contact-log";
 
 // The forward-action fields parsed from a contact log (subset of ContactLogFields).
 export type NextStepInput = {
@@ -7,7 +9,7 @@ export type NextStepInput = {
   promisedAmount: number | null;
   promisedDate: string | null;
   reviewAt: string | null;
-  exceptionReason: "disputed" | "payment_plan" | "do_not_contact" | "other" | null;
+  exceptionReason: ExceptionReason | null;
   exceptionNote: string | null;
 };
 
@@ -32,8 +34,18 @@ export async function applyNextStep(
   } else if (f.nextStep === "waiting") {
     update = { status: "waiting", next_action_type: "waiting", next_action_at: f.reviewAt, exception_reason: null, exception_note: null };
   } else {
-    // exception
-    update = { status: "on_hold", next_action_type: "exception", next_action_at: f.reviewAt, exception_reason: f.exceptionReason, exception_note: f.exceptionNote };
+    // exception: terminal states (legal_agency, do_not_contact) leave
+    // next_action_at null so nothing auto-resurfaces them; review-dated
+    // states keep their review date.
+    const state = f.exceptionReason;
+    const keepReview = state != null && requiresReviewDate(state);
+    update = {
+      status: "on_hold",
+      next_action_type: "exception",
+      next_action_at: keepReview ? f.reviewAt : null,
+      exception_reason: state,
+      exception_note: f.exceptionNote,
+    };
   }
 
   const { error } = await client.from("collection_cases").update(update).eq("id", caseId);

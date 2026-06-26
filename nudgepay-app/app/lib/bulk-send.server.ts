@@ -1,5 +1,6 @@
 import { sendInvoiceText, type MessagingDeps } from "./twilio-messaging.server";
 import { partitionEligibility, renderCaseBody, clampBatch, type TextableCase, type RenderableCase } from "./bulk";
+import { isContactBlocked, type ExceptionState } from "./exceptions";
 
 export type BulkSmsResult = { sent: number; failed: number; skipped: number };
 
@@ -20,9 +21,9 @@ export async function runBulkSms(
   const svc = deps.service;
 
   const { data: caseRows, error: caseErr } = await svc.from("collection_cases")
-    .select("id, customer_id").eq("org_id", args.orgId).in("id", ids).is("closed_at", null);
+    .select("id, customer_id, exception_reason").eq("org_id", args.orgId).in("id", ids).is("closed_at", null);
   if (caseErr) throw caseErr;
-  const cases = ((caseRows as { id: string; customer_id: string }[]) ?? []);
+  const cases = ((caseRows as { id: string; customer_id: string; exception_reason: ExceptionState | null }[]) ?? []);
   const customerIds = [...new Set(cases.map((c) => c.customer_id).filter(Boolean))];
   if (customerIds.length === 0) return { sent: 0, failed: 0, skipped: 0 };
 
@@ -55,6 +56,7 @@ export async function runBulkSms(
       customerName: cust.name ?? "(unknown customer)",
       phone: cust.phone ?? null,
       smsConsent: Boolean(cust.sms_consent),
+      contactBlocked: isContactBlocked(c.exception_reason),
       totalOverdue,
       invoices: invs.map((i) => ({ invoiceId: i.id, docNumber: i.doc, dueDate: i.due })),
       representativeInvoiceId: invs[0]?.id ?? null,

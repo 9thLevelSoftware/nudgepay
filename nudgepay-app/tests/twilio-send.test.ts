@@ -86,3 +86,29 @@ test("sendInvoiceText leaves case_id null when the customer has no open case", a
   const { data: msg } = await svc.from("text_messages").select("case_id").eq("twilio_message_sid", "SM-NOCASE").single();
   expect(msg!.case_id).toBe(null);
 });
+
+test("sendInvoiceText refuses a do_not_contact case (no Twilio call, no row)", async () => {
+  const { orgId, customerId, invoiceId } = await seed(true, "+12295550133");
+  await svc.from("collection_cases").insert({
+    org_id: orgId, customer_id: customerId, status: "on_hold",
+    next_action_type: "exception", exception_reason: "do_not_contact",
+  });
+  const fetchFn = vi.fn();
+  await expect(sendInvoiceText(deps(fetchFn), { orgId, invoiceId, userId, body: "x" }))
+    .rejects.toThrow(/blocked/i);
+  expect(fetchFn).not.toHaveBeenCalled();
+  const { data: rows } = await svc.from("text_messages").select("id").eq("customer_id", customerId);
+  expect(rows ?? []).toHaveLength(0);
+});
+
+test("sendInvoiceText still sends for a non-blocking exception (disputed)", async () => {
+  const { orgId, customerId, invoiceId } = await seed(true, "+12295550134");
+  await svc.from("collection_cases").insert({
+    org_id: orgId, customer_id: customerId, status: "on_hold",
+    next_action_type: "exception", next_action_at: "2026-09-01", exception_reason: "disputed",
+  });
+  const fetchFn = vi.fn(async () => jsonResponse({ sid: "SM-DISP", status: "queued" }));
+  const res = await sendInvoiceText(deps(fetchFn), { orgId, invoiceId, userId, body: "Past due" });
+  expect(res.sid).toBe("SM-DISP");
+  expect(fetchFn).toHaveBeenCalledOnce();
+});

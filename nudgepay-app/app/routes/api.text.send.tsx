@@ -40,7 +40,8 @@ export async function action({ request, context }: ActionFunctionArgs) {
     await sendInvoiceText(deps, { orgId: org.org_id, invoiceId, userId: user.id, body });
     return redirect(withSms(returnTo, "sent"), { headers });
   } catch (err) {
-    const reason = err instanceof Error && /consent/i.test(err.message) ? "noconsent" : "error";
+    const msg = err instanceof Error ? err.message : "";
+    const reason = /blocked/i.test(msg) ? "blocked" : /consent/i.test(msg) ? "noconsent" : "error";
     return redirect(withSms(returnTo, reason), { headers });
   }
 }

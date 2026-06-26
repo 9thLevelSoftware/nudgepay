@@ -6,13 +6,14 @@ import { formatDate } from "./dates";
 
 export const MAX_BATCH = 50;
 
-export type SkipReason = "no-phone" | "no-consent";
+export type SkipReason = "no-phone" | "no-consent" | "do-not-contact";
 
 export type TextableCase = {
   caseId: string;
   customerName: string;
   phone: string | null;
   smsConsent: boolean;
+  contactBlocked?: boolean;
 };
 
 export type RepInvoice = { invoiceId: string; docNumber: string | null; dueDate: string | null };
@@ -28,13 +29,14 @@ export type EligibilitySplit<T extends TextableCase> = {
   skipped: { caseId: string; name: string; reason: SkipReason }[];
 };
 
-// Partition selected cases into textable vs skipped. Phone is checked first: a
-// case with neither phone nor consent is reported as "no-phone".
+// Partition selected cases into textable vs skipped. Contact-block is checked
+// first (do_not_contact / legal_agency), then phone, then consent.
 export function partitionEligibility<T extends TextableCase>(cases: T[]): EligibilitySplit<T> {
   const eligible: T[] = [];
   const skipped: { caseId: string; name: string; reason: SkipReason }[] = [];
   for (const c of cases) {
-    if (!c.phone) skipped.push({ caseId: c.caseId, name: c.customerName, reason: "no-phone" });
+    if (c.contactBlocked) skipped.push({ caseId: c.caseId, name: c.customerName, reason: "do-not-contact" });
+    else if (!c.phone) skipped.push({ caseId: c.caseId, name: c.customerName, reason: "no-phone" });
     else if (!c.smsConsent) skipped.push({ caseId: c.caseId, name: c.customerName, reason: "no-consent" });
     else eligible.push(c);
   }

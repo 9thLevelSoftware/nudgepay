@@ -32,7 +32,7 @@ export type WorkItem = {
 };
 
 export type Metric = { count: number; amount: number };
-export type Metrics = { thirtyPlus: Metric; highValue: Metric; neverContacted: Metric; allOpen: Metric; followUpsDue: Metric; brokenPromises: Metric };
+export type Metrics = { thirtyPlus: Metric; highValue: Metric; neverContacted: Metric; allOpen: Metric; followUpsDue: Metric; brokenPromises: Metric; onHold: Metric };
 export type ViewId = "all-open" | "30-plus" | "high-value" | "never-contacted" | "follow-ups-due" | "broken-promises" | "waiting" | "my-work";
 export type SortId = "recommended" | "most-overdue" | "highest-balance" | "customer";
 
@@ -181,5 +181,6 @@ export function computeMetrics(items: WorkItem[], today: string): Metrics {
     allOpen: bucket(() => true),
     followUpsDue: bucket((i) => isFollowUpDue(i, today)),
     brokenPromises: bucket((i) => isBrokenPromise(i, today)),
+    onHold: { count: 0, amount: 0 },
   };
 }
