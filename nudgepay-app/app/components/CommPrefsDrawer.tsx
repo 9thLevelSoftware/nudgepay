@@ -8,9 +8,10 @@ const CHANNEL_OPTIONS: { value: "" | Channel; label: string }[] = [
 ];
 
 export function CommPrefsDrawer({
-  customerName, repInvoiceId, prefs, returnTo, closeHref,
+  customerName, caseId, repInvoiceId, prefs, returnTo, closeHref,
 }: {
   customerName: string;
+  caseId: string;
   repInvoiceId: string | null;
   prefs: CommPrefs;
   returnTo: string;
@@ -28,6 +29,7 @@ export function CommPrefsDrawer({
         <p className="text-xs text-muted">{customerName}</p>
 
         <form method="post" action="/api/comm-prefs" className="flex flex-col gap-4">
+          <input type="hidden" name="caseId" value={caseId} />
           <input type="hidden" name="invoiceId" value={repInvoiceId ?? ""} />
           <input type="hidden" name="returnTo" value={returnTo} />
 

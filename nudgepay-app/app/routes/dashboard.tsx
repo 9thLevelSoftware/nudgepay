@@ -698,6 +698,7 @@ export default function Dashboard() {
             <CommPrefsDrawer
               key={selected.caseId}
               customerName={selected.customerName}
+              caseId={selected.caseId}
               repInvoiceId={repInvoiceId ?? null}
               prefs={selectedPrefs}
               returnTo={`/dashboard?${new URLSearchParams({ case: selected.caseId, tab, view, sort, ...(q ? { q } : {}) }).toString()}`}
