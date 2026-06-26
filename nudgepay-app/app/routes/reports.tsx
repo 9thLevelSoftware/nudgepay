@@ -7,7 +7,7 @@ import { listOrgMembers } from "../lib/orgs.server";
 import { addCalendarDays } from "../lib/business-days";
 import { AppShell } from "../components/AppShell";
 import {
-  buildTeamReport, REPORT_RANGES, type ReportRange, type TeamReport,
+  buildTeamReport, REPORT_RANGES, activeBrokenCaseIds, type ReportRange, type TeamReport,
   type ReportContactLog, type ReportPromise, type ReportOpenedCase, type ReportWorkloadCase,
 } from "../lib/reports";
 
@@ -96,11 +96,20 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
     overdueByCustomer.set(r.customer_id, (overdueByCustomer.get(r.customer_id) ?? 0) + (Number(r.balance) || 0));
   }
 
-  // Cases with a current broken promise
-  const brokenCaseIds = new Set<string>();
-  const { data: brokenRows } = await supabase
-    .from("promises").select("case_id").eq("org_id", org.org_id).eq("status", "broken");
-  for (const r of (brokenRows as any[]) ?? []) if (r.case_id) brokenCaseIds.add(r.case_id);
+  // Cases with a currently-active broken promise (mirrors Collections screen logic)
+  const openCaseIds = openCases.map((c) => c.id);
+  let brokenCaseIds = new Set<string>();
+  if (openCaseIds.length > 0) {
+    const { data: promForCases } = await supabase
+      .from("promises")
+      .select("case_id, status, created_at")
+      .eq("org_id", org.org_id)
+      .in("case_id", openCaseIds)
+      .neq("status", "cancelled");
+    brokenCaseIds = activeBrokenCaseIds(
+      ((promForCases as any[]) ?? []).map((r) => ({ caseId: r.case_id, status: r.status, createdAt: r.created_at })),
+    );
+  }
 
   const workloadCases: ReportWorkloadCase[] = openCases.map((c) => ({
     caseId: c.id,
@@ -114,7 +123,7 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
 
   const report = buildTeamReport({ range, roster, contactLogs, promises, openedCases, workloadCases, today });
 
-  let syncLabel = connected ? "Connected" : "Not connected";
+  const syncLabel = connected ? "Connected" : "Not connected";
 
   return Response.json(
     { report, orgName: (orgRow?.name as string) ?? "Workspace", initials, connected, syncLabel },
@@ -152,7 +161,7 @@ export default function Reports() {
               <Link
                 key={r}
                 to={`/reports?range=${r}`}
-                aria-current={report.range === r ? "true" : undefined}
+                aria-current={report.range === r ? "page" : undefined}
                 className={`rounded-md border px-3 py-1.5 text-sm font-sans focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-copper ${
                   report.range === r ? "border-copper bg-copper/10 text-copper" : "border-border bg-panel text-muted hover:text-text"
                 }`}

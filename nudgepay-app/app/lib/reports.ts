@@ -46,6 +46,29 @@ export type TeamReport = {
 
 const RESOLVED_STATUSES: ReadonlyArray<PromiseStatus> = ["kept", "partially_kept", "broken"];
 
+// Mirrors the dashboard's active-promise selection: among a case's non-cancelled
+// promises, the ACTIVE one is the pending row if any, else the most-recent. A case
+// is "broken" only when its active promise is broken — matching the Collections
+// broken-promises view, so the two owner-facing screens never disagree.
+export function activeBrokenCaseIds(
+  rows: { caseId: string; status: PromiseStatus; createdAt: string }[],
+): Set<string> {
+  const byRecent = rows
+    .filter((r) => r.status !== "cancelled")
+    .sort((a, b) => (a.createdAt < b.createdAt ? 1 : a.createdAt > b.createdAt ? -1 : 0));
+  const pendingFirst = byRecent.sort(
+    (a, b) => (a.status === "pending" ? 0 : 1) - (b.status === "pending" ? 0 : 1),
+  );
+  const seen = new Set<string>();
+  const broken = new Set<string>();
+  for (const r of pendingFirst) {
+    if (seen.has(r.caseId)) continue;
+    seen.add(r.caseId);
+    if (r.status === "broken") broken.add(r.caseId);
+  }
+  return broken;
+}
+
 export function buildTeamReport(input: {
   range: ReportRange;
   roster: ReportRosterMember[];

@@ -1,5 +1,5 @@
 import { expect, test } from "vitest";
-import { buildTeamReport } from "../app/lib/reports";
+import { buildTeamReport, activeBrokenCaseIds } from "../app/lib/reports";
 
 const ROSTER = [
   { userId: "u1", label: "alice" },
@@ -103,6 +103,67 @@ test("first-contact: even-count median averages the two middle values; all-null 
   expect(r2.firstContact.medianHours).toBeNull();
   expect(r2.firstContact.avgHours).toBeNull();
   expect(r2.firstContact.within24hPct).toBeNull();
+});
+
+// ── activeBrokenCaseIds ──────────────────────────────────────────────────────
+
+test("activeBrokenCaseIds: old broken + newer pending → active is pending → NOT broken", () => {
+  const rows = [
+    { caseId: "c1", status: "broken" as const, createdAt: "2026-06-10T00:00:00Z" },
+    { caseId: "c1", status: "pending" as const, createdAt: "2026-06-20T00:00:00Z" },
+  ];
+  const result = activeBrokenCaseIds(rows);
+  expect(result.has("c1")).toBe(false);
+  expect(result.size).toBe(0);
+});
+
+test("activeBrokenCaseIds: pending (older) + newer broken → pending preferred → NOT broken", () => {
+  const rows = [
+    { caseId: "c2", status: "pending" as const, createdAt: "2026-06-05T00:00:00Z" },
+    { caseId: "c2", status: "broken" as const, createdAt: "2026-06-25T00:00:00Z" },
+  ];
+  const result = activeBrokenCaseIds(rows);
+  expect(result.has("c2")).toBe(false);
+  expect(result.size).toBe(0);
+});
+
+test("activeBrokenCaseIds: only broken promise → case IS in the set", () => {
+  const rows = [
+    { caseId: "c3", status: "broken" as const, createdAt: "2026-06-15T00:00:00Z" },
+  ];
+  const result = activeBrokenCaseIds(rows);
+  expect(result.has("c3")).toBe(true);
+  expect(result.size).toBe(1);
+});
+
+test("activeBrokenCaseIds: broken then newer renegotiated → active is renegotiated → NOT broken", () => {
+  const rows = [
+    { caseId: "c4", status: "broken" as const, createdAt: "2026-06-10T00:00:00Z" },
+    { caseId: "c4", status: "renegotiated" as const, createdAt: "2026-06-18T00:00:00Z" },
+  ];
+  const result = activeBrokenCaseIds(rows);
+  expect(result.has("c4")).toBe(false);
+  expect(result.size).toBe(0);
+});
+
+test("activeBrokenCaseIds: cancelled row is ignored when determining active promise", () => {
+  // Only a cancelled row exists → treated as if no promises → not broken
+  const rows = [
+    { caseId: "c5", status: "cancelled" as const, createdAt: "2026-06-20T00:00:00Z" },
+  ];
+  const result = activeBrokenCaseIds(rows);
+  expect(result.has("c5")).toBe(false);
+  expect(result.size).toBe(0);
+});
+
+test("activeBrokenCaseIds: cancelled row beside a broken row → broken is active → IS broken", () => {
+  const rows = [
+    { caseId: "c6", status: "cancelled" as const, createdAt: "2026-06-25T00:00:00Z" },
+    { caseId: "c6", status: "broken" as const, createdAt: "2026-06-15T00:00:00Z" },
+  ];
+  const result = activeBrokenCaseIds(rows);
+  expect(result.has("c6")).toBe(true);
+  expect(result.size).toBe(1);
 });
 
 test("workload: groups by owner, excludes suppressed, surfaces unassigned + unknown owners, roster zeros", () => {
