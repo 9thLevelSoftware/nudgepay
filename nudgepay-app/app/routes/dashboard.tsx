@@ -665,6 +665,7 @@ export default function Dashboard() {
 
           {log && selected ? (
             <LogContactDrawer
+              key={selected.caseId}
               selected={selected}
               repInvoiceId={repInvoiceId ?? null}
               returnTo={`/dashboard?${new URLSearchParams({ case: selected.caseId, tab, view, sort, ...(q ? { q } : {}) }).toString()}`}
