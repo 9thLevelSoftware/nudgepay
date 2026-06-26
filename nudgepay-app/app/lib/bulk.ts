@@ -6,13 +6,14 @@ import { formatDate } from "./dates";
 
 export const MAX_BATCH = 50;
 
-export type SkipReason = "no-phone" | "no-consent" | "do-not-contact";
+export type SkipReason = "no-phone" | "no-consent" | "do-not-contact" | "do-not-text";
 
 export type TextableCase = {
   caseId: string;
   customerName: string;
   phone: string | null;
   smsConsent: boolean;
+  doNotText: boolean;
   contactBlocked?: boolean;
 };
 
@@ -38,6 +39,7 @@ export function partitionEligibility<T extends TextableCase>(cases: T[]): Eligib
     if (c.contactBlocked) skipped.push({ caseId: c.caseId, name: c.customerName, reason: "do-not-contact" });
     else if (!c.phone) skipped.push({ caseId: c.caseId, name: c.customerName, reason: "no-phone" });
     else if (!c.smsConsent) skipped.push({ caseId: c.caseId, name: c.customerName, reason: "no-consent" });
+    else if (c.doNotText) skipped.push({ caseId: c.caseId, name: c.customerName, reason: "do-not-text" });
     else eligible.push(c);
   }
   return { eligible, skipped };

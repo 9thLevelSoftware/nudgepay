@@ -6,7 +6,7 @@ export type BulkSmsResult = { sent: number; failed: number; skipped: number };
 
 type CaseForSend = TextableCase & RenderableCase & { representativeInvoiceId: string | null };
 
-type CustomerRow = { id: string; name: string | null; phone: string | null; sms_consent: boolean | null };
+type CustomerRow = { id: string; name: string | null; phone: string | null; sms_consent: boolean | null; do_not_text: boolean | null };
 type InvoiceRow = { id: string; qbo_doc_number: string | null; due_date: string | null; balance: number | string | null; customer_id: string };
 
 // Load selected open cases (org-scoped), build per-case totals + oldest-invoice,
@@ -28,7 +28,7 @@ export async function runBulkSms(
   if (customerIds.length === 0) return { sent: 0, failed: 0, skipped: 0 };
 
   const { data: custRows, error: custErr } = await svc.from("customers")
-    .select("id, name, phone, sms_consent").eq("org_id", args.orgId).in("id", customerIds);
+    .select("id, name, phone, sms_consent, do_not_text").eq("org_id", args.orgId).in("id", customerIds);
   if (custErr) throw custErr;
   const custById = new Map(((custRows as CustomerRow[]) ?? []).map((c) => [c.id, c]));
 
@@ -56,6 +56,7 @@ export async function runBulkSms(
       customerName: cust.name ?? "(unknown customer)",
       phone: cust.phone ?? null,
       smsConsent: Boolean(cust.sms_consent),
+      doNotText: Boolean(cust.do_not_text),
       contactBlocked: isContactBlocked(c.exception_reason),
       totalOverdue,
       invoices: invs.map((i) => ({ invoiceId: i.id, docNumber: i.doc, dueDate: i.due })),
