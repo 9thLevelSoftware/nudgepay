@@ -84,10 +84,11 @@ export function MetricsStrip({ metrics, view, sort = "recommended", search = "" 
     { label: "All open", viewId: "all-open", accent: "ink", m: metrics.allOpen },
     { label: "Follow-ups due", viewId: "follow-ups-due", accent: "warm", m: metrics.followUpsDue },
     { label: "Broken promises", viewId: "broken-promises", accent: "hot", m: metrics.brokenPromises },
+    { label: "On hold", viewId: "waiting", accent: "ink", m: metrics.onHold },
   ];
   return (
     <div
-      className="grid grid-cols-2 gap-3 sm:gap-6 sm:grid-cols-3 xl:grid-cols-6"
+      className="grid grid-cols-2 gap-3 sm:gap-6 sm:grid-cols-3 xl:grid-cols-7"
       aria-label="Collections summary metrics"
     >
       {tiles.map((t) => (
