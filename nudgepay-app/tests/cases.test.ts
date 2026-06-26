@@ -6,6 +6,7 @@ import {
   type CasePromiseInput, type CaseLastContactInput,
 } from "../app/lib/cases";
 import { suggestFollowUpDate } from "../app/lib/follow-up-cadence";
+import { DEFAULT_ORG_CONFIG } from "../app/lib/org-config";
 
 const TODAY = "2026-06-22";
 
@@ -50,7 +51,7 @@ const INVOICES = [
 const LABELS = new Map([["u1", "diskin"]]);
 
 test("buildCaseItems aggregates totalOverdue, invoiceCount, oldest age, and heat from the oldest", () => {
-  const items = buildCaseItems(CASES, INVOICES, CUSTOMERS, [], [], TODAY, LABELS);
+  const items = buildCaseItems(CASES, INVOICES, CUSTOMERS, [], [], TODAY, LABELS, DEFAULT_ORG_CONFIG);
   const acme = items.find((c) => c.customerId === "c1")!;
   expect(acme.totalOverdue).toBe(6300);
   expect(acme.invoiceCount).toBe(2);
@@ -63,18 +64,18 @@ test("buildCaseItems aggregates totalOverdue, invoiceCount, oldest age, and heat
 });
 
 test("buildCaseItems resolves owner Unassigned when null", () => {
-  const items = buildCaseItems(CASES, INVOICES, CUSTOMERS, [], [], TODAY, LABELS);
+  const items = buildCaseItems(CASES, INVOICES, CUSTOMERS, [], [], TODAY, LABELS, DEFAULT_ORG_CONFIG);
   expect(items.find((c) => c.customerId === "c2")!.owner).toBe("Unassigned");
 });
 
 test("buildCaseItems excludes invoices with a null customer_id", () => {
   const orphanInvoices = [...INVOICES, { id: "i9", qbo_doc_number: "9999", customer_id: null, balance: 100, due_date: "2026-01-01" }];
-  const items = buildCaseItems(CASES, orphanInvoices, CUSTOMERS, [], [], TODAY, LABELS);
+  const items = buildCaseItems(CASES, orphanInvoices, CUSTOMERS, [], [], TODAY, LABELS, DEFAULT_ORG_CONFIG);
   expect(items.flatMap((c) => c.invoices).some((i) => i.invoiceId === "i9")).toBe(false);
 });
 
 test("applyCaseView filters by case-level predicates", () => {
-  const items = buildCaseItems(CASES, INVOICES, CUSTOMERS, [], [], TODAY, LABELS);
+  const items = buildCaseItems(CASES, INVOICES, CUSTOMERS, [], [], TODAY, LABELS, DEFAULT_ORG_CONFIG);
   expect(applyCaseView(items, "30-plus", TODAY, null).map((c) => c.customerId)).toEqual(["c1", "c2"]);
   expect(applyCaseView(items, "high-value", TODAY, null).map((c) => c.customerId)).toEqual(["c1"]);
   expect(applyCaseView(items, "follow-ups-due", TODAY, null).map((c) => c.customerId)).toEqual(["c1"]); // nextActionAt 06-20 <= today
@@ -83,7 +84,7 @@ test("applyCaseView filters by case-level predicates", () => {
 });
 
 test("computeCaseMetrics counts cases and sums overdue", () => {
-  const items = buildCaseItems(CASES, INVOICES, CUSTOMERS, [], [], TODAY, LABELS);
+  const items = buildCaseItems(CASES, INVOICES, CUSTOMERS, [], [], TODAY, LABELS, DEFAULT_ORG_CONFIG);
   const m = computeCaseMetrics(items, TODAY);
   expect(m.allOpen.count).toBe(2);
   expect(m.allOpen.amount).toBe(7100);
@@ -101,6 +102,7 @@ test("buildCaseItems sets lastContact from the most-recent contact per case and 
     CASES, INVOICES, CUSTOMERS,
     lastContacts, [],
     TODAY, LABELS,
+    DEFAULT_ORG_CONFIG,
   );
   // Most-recent for case-1 is June 19 (Text), not June 17 (Email).
   expect(items.find((c) => c.caseId === "case-1")!.lastContact).toEqual({ date: "2026-06-19T00:00:00Z", channel: "Text" });
@@ -108,7 +110,7 @@ test("buildCaseItems sets lastContact from the most-recent contact per case and 
 });
 
 test("sortCaseItems recommended orders by priority rank then oldest age", () => {
-  const items = buildCaseItems(CASES, INVOICES, CUSTOMERS, [], [], TODAY, LABELS);
+  const items = buildCaseItems(CASES, INVOICES, CUSTOMERS, [], [], TODAY, LABELS, DEFAULT_ORG_CONFIG);
   expect(sortCaseItems(items, "recommended").map((c) => c.customerId)).toEqual(["c1", "c2"]);
 });
 
@@ -120,7 +122,7 @@ test("buildCaseItems populates promise, brokenPromise, promiseStatus and case-ke
   const promises: CasePromiseInput[] = [
     { caseId: "case-1", status: "broken", promisedAmount: 500, promisedDate: "2026-07-01", amountReceived: 0 },
   ];
-  const items = buildCaseItems(cases, invoices, customers, lastContacts, promises, "2026-07-10", new Map());
+  const items = buildCaseItems(cases, invoices, customers, lastContacts, promises, "2026-07-10", new Map(), DEFAULT_ORG_CONFIG);
   expect(items[0].promise).toEqual({ amount: 500, date: "2026-07-01" });
   expect(items[0].brokenPromise).toBe(true);
   expect(items[0].promiseStatus).toBe("broken");
@@ -135,7 +137,7 @@ const SCORE_TODAY = "2026-06-19";
 
 test("buildCaseItems scores via scorePriority and exposes score/factors/effectiveLevel", () => {
   // Acme: oldest 110d (2026-03-01 -> SCORE_TODAY 2026-06-19), total 6300, never contacted -> age45 + balance12 + silence15 = 72 -> High
-  const items = buildCaseItems(CASES, INVOICES, CUSTOMERS, [], [], SCORE_TODAY, LABELS);
+  const items = buildCaseItems(CASES, INVOICES, CUSTOMERS, [], [], SCORE_TODAY, LABELS, DEFAULT_ORG_CONFIG);
   const acme = items.find((c) => c.customerId === "c1")!;
   expect(acme.score).toBe(72);
   expect(acme.priority.level).toBe("High");
@@ -150,7 +152,7 @@ test("buildCaseItems derives priorAttempts from the per-case contact count", () 
     { caseId: "case-1", date: "2026-06-17T00:00:00Z", channel: "Email" },
     { caseId: "case-1", date: "2026-06-19T00:00:00Z", channel: "Text" },
   ];
-  const items = buildCaseItems(CASES, INVOICES, CUSTOMERS, lastContacts, [], SCORE_TODAY, LABELS);
+  const items = buildCaseItems(CASES, INVOICES, CUSTOMERS, lastContacts, [], SCORE_TODAY, LABELS, DEFAULT_ORG_CONFIG);
   expect(items.find((c) => c.caseId === "case-1")!.priorAttempts).toBe(3);
   expect(items.find((c) => c.caseId === "case-2")!.priorAttempts).toBe(0);
 });
@@ -162,7 +164,7 @@ test("an override pins the effective level while leaving the computed score inta
       priorityOverride: "critical", priorityOverrideReason: "CEO escalation",
       priorityOverrideBy: "u1", priorityOverrideAt: "2026-06-24T00:00:00Z" },
   ];
-  const items = buildCaseItems(cases, INVOICES, CUSTOMERS, [], [], SCORE_TODAY, LABELS);
+  const items = buildCaseItems(cases, INVOICES, CUSTOMERS, [], [], SCORE_TODAY, LABELS, DEFAULT_ORG_CONFIG);
   const c = items[0];
   expect(c.priority.level).toBe("High");     // computed unchanged
   expect(c.effectiveLevel).toBe("Critical"); // pinned up
@@ -176,7 +178,7 @@ test("sortCaseItems recommended orders by effective level, then score, then prio
     { id: "case-2", customerId: "c2", status: "new", nextActionType: "contact", nextActionAt: "2026-06-25", exceptionReason: null, exceptionNote: null,
       priorityOverride: "critical", priorityOverrideReason: null, priorityOverrideBy: null, priorityOverrideAt: null },
   ];
-  const items = buildCaseItems(cases, INVOICES, CUSTOMERS, [], [], SCORE_TODAY, LABELS);
+  const items = buildCaseItems(cases, INVOICES, CUSTOMERS, [], [], SCORE_TODAY, LABELS, DEFAULT_ORG_CONFIG);
   expect(sortCaseItems(items, "recommended").map((c) => c.customerId)).toEqual(["c2", "c1"]);
 });
 
@@ -196,7 +198,7 @@ test("waiting view selects waiting + on_hold cases; exception fields flow throug
     { id: "x2", name: "H", phone: null, email: null, owner: null },
     { id: "x3", name: "O", phone: null, email: null, owner: null },
   ];
-  const items = buildCaseItems(cases, invoices, customers, [], [], "2026-07-10", new Map());
+  const items = buildCaseItems(cases, invoices, customers, [], [], "2026-07-10", new Map(), DEFAULT_ORG_CONFIG);
   const hold = items.find((i) => i.caseId === "c-h")!;
   expect(hold.exceptionReason).toBe("disputed");
   expect(hold.exceptionNote).toBe("line 3");
@@ -223,7 +225,7 @@ test("buildCaseItems threads smsConsent from the customer (defaults false)", () 
     { id: "cust-1", name: "Yes Co", phone: "+12295550100", email: null, owner: null, smsConsent: true },
     { id: "cust-2", name: "No Co", phone: "+12295550101", email: null, owner: null }, // smsConsent omitted -> false
   ];
-  const items = buildCaseItems(cases, invoices, customers, [], [], today, new Map());
+  const items = buildCaseItems(cases, invoices, customers, [], [], today, new Map(), DEFAULT_ORG_CONFIG);
   const byId = Object.fromEntries(items.map((i) => [i.caseId, i]));
   expect(byId["case-1"].smsConsent).toBe(true);
   expect(byId["case-2"].smsConsent).toBe(false);
@@ -244,7 +246,7 @@ test("suppressed case with broken promise excluded from broken-promises view and
     { caseId: "parked-broken", status: "broken", promisedAmount: 200, promisedDate: "2026-06-01", amountReceived: 0 },
     { caseId: "active-broken", status: "broken", promisedAmount: 200, promisedDate: "2026-06-01", amountReceived: 0 },
   ];
-  const items = buildCaseItems(cases, invoices, customers, [], promises, today, new Map());
+  const items = buildCaseItems(cases, invoices, customers, [], promises, today, new Map(), DEFAULT_ORG_CONFIG);
 
   const byId = new Map(items.map((i) => [i.caseId, i]));
   // Sanity checks on the built items.
@@ -277,7 +279,7 @@ test("suppressed parked cases drop out of the default view and active metrics; o
   ];
   const invoices = cases.map((c) => ({ id: `i-${c.customerId}`, qbo_doc_number: "1", customer_id: c.customerId, balance: 100, due_date: "2026-01-01" }));
   const customers = cases.map((c) => ({ id: c.customerId, name: c.customerId, phone: null, email: null, owner: null, smsConsent: false }));
-  const items = buildCaseItems(cases, invoices, customers, [], [], today, new Map());
+  const items = buildCaseItems(cases, invoices, customers, [], [], today, new Map(), DEFAULT_ORG_CONFIG);
 
   const byId = new Map(items.map((i) => [i.caseId, i]));
   expect(byId.get("parked-future")!.suppressed).toBe(true);
@@ -310,7 +312,7 @@ test("terminal case with past next_action_at is excluded from follow-ups-due but
   ];
   const invoices = cases.map((c) => ({ id: `i-${c.customerId}`, qbo_doc_number: "1", customer_id: c.customerId, balance: 100, due_date: "2026-01-01" }));
   const customers = cases.map((c) => ({ id: c.customerId, name: c.customerId, phone: null, email: null, owner: null, smsConsent: false }));
-  const items = buildCaseItems(cases, invoices, customers, [], [], today, new Map());
+  const items = buildCaseItems(cases, invoices, customers, [], [], today, new Map(), DEFAULT_ORG_CONFIG);
 
   // The terminal case must be suppressed (not surface in follow-ups-due even if nextActionAt <= today).
   const fudView = applyCaseView(items, "follow-ups-due", today, null).map((i) => i.caseId);
@@ -333,7 +335,7 @@ test("onHold metric count equals on-hold view length over a mixed case set", () 
   ];
   const invoices = cases.map((c) => ({ id: `i-${c.customerId}`, qbo_doc_number: "1", customer_id: c.customerId, balance: 100, due_date: "2026-01-01" }));
   const customers = cases.map((c) => ({ id: c.customerId, name: c.customerId, phone: null, email: null, owner: null, smsConsent: false }));
-  const items = buildCaseItems(cases, invoices, customers, [], [], today, new Map());
+  const items = buildCaseItems(cases, invoices, customers, [], [], today, new Map(), DEFAULT_ORG_CONFIG);
 
   const m = computeCaseMetrics(items, today);
   const onHoldViewLength = applyCaseView(items, "on-hold", today, null).length;
@@ -349,7 +351,7 @@ test("buildCaseItems sets contactBlocked correctly per exceptionReason", () => {
   ];
   const invoices = cases.map((c) => ({ id: `i-${c.customerId}`, qbo_doc_number: "1", customer_id: c.customerId, balance: 100, due_date: "2026-01-01" }));
   const customers = cases.map((c) => ({ id: c.customerId, name: c.customerId, phone: "+12295550100", email: null, owner: null, smsConsent: true }));
-  const items = buildCaseItems(cases, invoices, customers, [], [], today, new Map());
+  const items = buildCaseItems(cases, invoices, customers, [], [], today, new Map(), DEFAULT_ORG_CONFIG);
   const byId = new Map(items.map((i) => [i.caseId, i]));
 
   expect(byId.get("case-dnc")!.contactBlocked).toBe(true);   // do_not_contact → terminal, blocksContact
@@ -359,7 +361,7 @@ test("buildCaseItems sets contactBlocked correctly per exceptionReason", () => {
 
 test("buildCaseItems sets suggestedFollowUpAt from effectiveLevel + today", () => {
   // Acme (c1) scores High at SCORE_TODAY with no override.
-  const items = buildCaseItems(CASES, INVOICES, CUSTOMERS, [], [], SCORE_TODAY, LABELS);
+  const items = buildCaseItems(CASES, INVOICES, CUSTOMERS, [], [], SCORE_TODAY, LABELS, DEFAULT_ORG_CONFIG);
   const acme = items.find((c) => c.customerId === "c1")!;
   expect(acme.effectiveLevel).toBe("High");
   expect(acme.suggestedFollowUpAt).toBe(
@@ -378,7 +380,7 @@ test("a priority override drives the suggested follow-up cadence", () => {
       priorityOverride: "critical", priorityOverrideReason: "CEO escalation",
       priorityOverrideBy: "u1", priorityOverrideAt: "2026-06-24T00:00:00Z" },
   ];
-  const items = buildCaseItems(cases, INVOICES, CUSTOMERS, [], [], today, LABELS);
+  const items = buildCaseItems(cases, INVOICES, CUSTOMERS, [], [], today, LABELS, DEFAULT_ORG_CONFIG);
   const c = items[0];
   expect(c.effectiveLevel).toBe("Critical");
   // Pinned Critical -> 2-day cadence: Mon 2026-06-22 + 2 = Wed 2026-06-24.
@@ -386,4 +388,16 @@ test("a priority override drives the suggested follow-up cadence", () => {
   expect(c.suggestedFollowUpAt).toBe("2026-06-24");
   // And it differs from the computed-High suggestion, proving the override drives it.
   expect(c.suggestedFollowUpAt).not.toBe(suggestFollowUpDate({ level: "High", today }).date);
+});
+
+test("buildCaseItems surfaces suggestedFollowUpIntervalDays driven by the org config cadence", () => {
+  const config = {
+    ...DEFAULT_ORG_CONFIG,
+    cadenceDays: { Critical: 1, High: 3, Medium: 7, Low: 14 },
+  };
+  const items = buildCaseItems(CASES, INVOICES, CUSTOMERS, [], [], SCORE_TODAY, LABELS, config);
+  const item = items[0]; // Acme, effectiveLevel "High" at SCORE_TODAY
+  // Interval comes from the config; date is computed from effectiveLevel.
+  expect(item.suggestedFollowUpIntervalDays).toBe(config.cadenceDays[item.effectiveLevel]);
+  expect(item.suggestedFollowUpAt).toBeTruthy();
 });

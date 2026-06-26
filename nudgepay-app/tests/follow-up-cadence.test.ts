@@ -6,31 +6,35 @@ test("CADENCE_DAYS maps each level to its interval and is frozen", () => {
   expect(Object.isFrozen(CADENCE_DAYS)).toBe(true);
 });
 
-test("suggestFollowUpDate returns the pre-roll interval for the level", () => {
-  // 2026-06-22 is a Monday, so none of these land on a weekend.
+test("suggestFollowUpDate uses default cadence + weekend roll when no config", () => {
+  // 2026-06-22 is a Monday.
   expect(suggestFollowUpDate({ level: "Critical", today: "2026-06-22" }))
-    .toEqual({ date: "2026-06-24", intervalDays: 2 }); // Mon + 2 = Wed
-  expect(suggestFollowUpDate({ level: "High", today: "2026-06-22" }))
-    .toEqual({ date: "2026-06-25", intervalDays: 3 }); // Mon + 3 = Thu
-  expect(suggestFollowUpDate({ level: "Medium", today: "2026-06-22" }))
-    .toEqual({ date: "2026-06-29", intervalDays: 7 }); // Mon + 7 = next Mon
+    .toEqual({ date: "2026-06-24", intervalDays: 2 });
   expect(suggestFollowUpDate({ level: "Low", today: "2026-06-22" }))
-    .toEqual({ date: "2026-07-06", intervalDays: 14 }); // Mon + 14 = Mon
-});
-
-test("suggestFollowUpDate rolls a weekend landing forward to Monday", () => {
-  // 2026-06-25 (Thu) + 2 = 2026-06-27 (Sat) -> Monday 2026-06-29.
-  expect(suggestFollowUpDate({ level: "Critical", today: "2026-06-25" }).date)
-    .toBe("2026-06-29");
-  // 2026-06-26 (Fri) + 2 = 2026-06-28 (Sun) -> Monday 2026-06-29.
+    .toEqual({ date: "2026-07-06", intervalDays: 14 });
+  // Weekend roll: Fri 2026-06-26 + 2 = Sun 28 -> Mon 29.
   expect(suggestFollowUpDate({ level: "Critical", today: "2026-06-26" }).date)
     .toBe("2026-06-29");
 });
 
-test("suggestFollowUpDate is a pure string transform (timezone-independent)", () => {
-  // Same input -> same output, no Date-locale dependence.
-  const a = suggestFollowUpDate({ level: "Medium", today: "2026-01-30" });
-  const b = suggestFollowUpDate({ level: "Medium", today: "2026-01-30" });
-  expect(a).toEqual(b);
-  expect(a.date).toBe("2026-02-06"); // Jan 30 (Fri) + 7 = Feb 6 (Fri)
+test("suggestFollowUpDate honors per-org cadence override", () => {
+  const config = {
+    cadenceDays: { Critical: 1, High: 3, Medium: 7, Low: 14 },
+    workingDays: new Set([1, 2, 3, 4, 5]),
+    holidays: new Set<string>(),
+  };
+  // Mon 2026-06-22 + 1 = Tue 2026-06-23; intervalDays reflects the org value.
+  expect(suggestFollowUpDate({ level: "Critical", today: "2026-06-22", config }))
+    .toEqual({ date: "2026-06-23", intervalDays: 1 });
+});
+
+test("suggestFollowUpDate rolls off a configured holiday", () => {
+  const config = {
+    cadenceDays: { Critical: 2, High: 3, Medium: 7, Low: 14 },
+    workingDays: new Set([1, 2, 3, 4, 5]),
+    holidays: new Set(["2026-06-24"]),
+  };
+  // Mon 2026-06-22 + 2 = Wed 2026-06-24 (holiday) -> Thu 2026-06-25.
+  expect(suggestFollowUpDate({ level: "Critical", today: "2026-06-22", config }).date)
+    .toBe("2026-06-25");
 });

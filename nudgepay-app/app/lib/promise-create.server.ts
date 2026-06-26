@@ -1,5 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { addBusinessDays, GRACE_BUSINESS_DAYS } from "./business-days";
+import { addBusinessDays } from "./business-days";
+import { loadOrgConfig } from "./org-config.server";
 
 export type CreatePromiseInput = {
   orgId: string;
@@ -29,7 +30,16 @@ export async function createPromiseForLog(
   if (iErr) return { ok: false };
   const linked = (invs ?? []).map((r) => ({ id: r.id as string, balance: Number(r.balance) || 0 }));
   const baseline = linked.reduce((s, r) => s + r.balance, 0);
-  const graceUntil = addBusinessDays(input.promisedDate, GRACE_BUSINESS_DAYS);
+  let config;
+  try {
+    config = await loadOrgConfig(client, input.orgId);
+  } catch {
+    return { ok: false };
+  }
+  const graceUntil = addBusinessDays(input.promisedDate, config.promiseGraceDays, {
+    workingDays: config.workingDays,
+    holidays: config.holidays,
+  });
 
   // Supersede any existing pending promise to free the partial-unique slot.
   const { data: priors, error: sErr } = await client
