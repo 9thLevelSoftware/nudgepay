@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { Link, useRevalidator } from "react-router";
+import { Link, useNavigate, useRevalidator } from "react-router";
 import { HEARTBEAT_INTERVAL_MS, type Collision } from "~/lib/collision";
 import { type CaseItem } from "~/lib/cases";
 import { Icon } from "~/components/Icons";
@@ -10,6 +10,7 @@ import { isContactBlocked, isTerminal, exceptionLabel } from "~/lib/exceptions";
 import type { MessageEntry, RosterMember } from "~/routes/dashboard";
 import type { TimelineEntry } from "~/lib/timeline";
 import { canSendSms, type CommPrefs } from "~/lib/comm-prefs";
+import { resolveCallAction } from "~/lib/channel-actions";
 
 // Static tone-to-text-color map — heat.band → Tailwind class.
 // Must be literal strings so Tailwind can tree-shake them; no dynamic construction.
@@ -330,6 +331,7 @@ export function DetailPanel({
     }, HEARTBEAT_INTERVAL_MS);
     return () => { cancelled = true; clearInterval(id); };
   }, [customerId]);
+  const navigate = useNavigate();
 
   // ── Empty state ────────────────────────────────────────────────────────────
   if (selected === null) {
@@ -353,6 +355,9 @@ export function DetailPanel({
   // ── Derived values ─────────────────────────────────────────────────────────
   const logHref = `?${new URLSearchParams({ case: selected.caseId, tab: "activity", view, sort, ...(q ? { q } : {}), log: "1" }).toString()}`;
   const overviewReturnTo = `/dashboard?${new URLSearchParams({ case: selected.caseId, tab: "overview", view, sort, ...(q ? { q } : {}) }).toString()}`;
+
+  const callAction = resolveCallAction(prefs, selected.phone, selected.contactBlocked);
+  const callLogHref = `?${new URLSearchParams({ case: selected.caseId, tab: "activity", view, sort, ...(q ? { q } : {}), log: "1", method: "call" }).toString()}`;
 
   return (
     <aside
@@ -424,15 +429,26 @@ export function DetailPanel({
           aria-label="Account actions"
           className="flex flex-wrap gap-2"
         >
-          {/* Call — omit if no phone */}
-          {selected.phone ? (
+          {/* Call — hidden if no phone; disabled-with-reason if do_not_call; else tel: + capture */}
+          {callAction.kind === "live" ? (
             <a
               href={`tel:${selected.phone}`}
+              onClick={() => navigate(callLogHref)}
               className="inline-flex items-center gap-1.5 text-xs font-sans font-medium text-copper border border-copper/40 rounded-md px-3 h-9 hover:bg-copper/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-copper transition-colors"
             >
               <Icon name="phone" size={14} aria-hidden />
               Call
             </a>
+          ) : callAction.kind === "blocked" ? (
+            <span
+              aria-disabled="true"
+              aria-label={`Call — ${callAction.reason}`}
+              title={callAction.reason}
+              className="inline-flex items-center gap-1.5 text-xs font-sans font-medium text-muted border border-border rounded-md px-3 h-9 opacity-50 cursor-not-allowed"
+            >
+              <Icon name="phone" size={14} aria-hidden />
+              Call
+            </span>
           ) : null}
 
           {/* Text → Messages tab */}
@@ -443,17 +459,6 @@ export function DetailPanel({
             <Icon name="message" size={14} aria-hidden />
             Text
           </Link>
-
-          {/* Email — omit if no email */}
-          {selected.email ? (
-            <a
-              href={`mailto:${selected.email}`}
-              className="inline-flex items-center gap-1.5 text-xs font-sans font-medium text-copper border border-copper/40 rounded-md px-3 h-9 hover:bg-copper/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-copper transition-colors"
-            >
-              <Icon name="mail" size={14} aria-hidden />
-              Email
-            </a>
-          ) : null}
 
           {/* Log — opens the log-contact drawer */}
           <Link

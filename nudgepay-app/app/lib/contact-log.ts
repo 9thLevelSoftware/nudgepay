@@ -4,7 +4,7 @@
 
 import { EXCEPTION_STATES, requiresReviewDate, type ExceptionState } from "./exceptions";
 
-export const CONTACT_METHODS = ["call", "email", "text", "note"] as const;
+export const CONTACT_METHODS = ["call", "text", "note"] as const;
 export const CONTACT_OUTCOMES = [
   "promise-to-pay", "dispute", "no-commitment", "left-voicemail", "no-answer", "other",
   "payment-already-sent", "requested-documentation", "escalation-required", "follow-up-requested",

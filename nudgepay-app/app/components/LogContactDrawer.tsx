@@ -8,7 +8,7 @@ import { EXCEPTION_REASON_LABEL, formatUSD } from "../lib/format";
 import { OUTCOME_LABELS } from "../lib/timeline";
 
 const METHOD_LABEL: Record<string, string> = {
-  call: "Call", email: "Email", text: "Text", note: "Note",
+  call: "Call", text: "Text", note: "Note",
 };
 const NEXT_STEP_LABEL: Record<string, string> = {
   follow_up: "Follow up", promise: "Promise to pay", waiting: "Waiting on customer", exception: "Exception (hold)",
@@ -28,14 +28,16 @@ const ERROR_MESSAGE: Record<string, string> = {
 };
 
 export function LogContactDrawer({
-  selected, repInvoiceId, returnTo, logError, collision,
+  selected, repInvoiceId, returnTo, logError, collision, method,
 }: {
   selected: CaseItem;
   repInvoiceId: string | null;
   returnTo: string;
   logError: string | null;
   collision: Collision | null;
+  method?: string | null;
 }) {
+  const defaultMethod = method && (CONTACT_METHODS as readonly string[]).includes(method) ? method : "call";
   const [outcome, setOutcome] = useState<string>("");
   const [nextStep, setNextStep] = useState<string>("");
   const [exceptionReason, setExceptionReason] = useState<ExceptionState>("disputed");
@@ -139,7 +141,7 @@ export function LogContactDrawer({
             <select
               ref={firstFieldRef}
               name="method"
-              defaultValue="call"
+              defaultValue={defaultMethod}
               className="rounded-md border border-border bg-panel px-3 py-2 text-sm font-sans text-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-copper"
             >
               {CONTACT_METHODS.map((m) => (
