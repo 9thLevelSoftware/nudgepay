@@ -27,6 +27,8 @@ import { LogContactDrawer } from "../components/LogContactDrawer";
 import { buildTimeline, type TimelineEntry, type TimelineLogInput, type TimelineSmsInput } from "~/lib/timeline";
 import { collisionState, type Collision, type RecentContactInput } from "../lib/collision";
 import { readPresence } from "../lib/presence.server";
+import { loadOrgConfig } from "../lib/org-config.server";
+import type { OrgConfig } from "../lib/org-config";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -64,9 +66,10 @@ export function buildCaseData(
   today: string,
   ownerLabels: Map<string, string>,
   currentUserId: string | null,
+  config: OrgConfig,
 ): DashboardData {
   const { view, sort, q, caseId } = params;
-  const allItems = buildCaseItems(cases, invoices, customers, lastContacts, promises, today, ownerLabels);
+  const allItems = buildCaseItems(cases, invoices, customers, lastContacts, promises, today, ownerLabels, config);
   const searched = q.trim() === "" ? allItems : allItems.filter((i) => i.searchText.includes(q.toLowerCase()));
   const metrics = computeCaseMetrics(searched, today);
   const viewCounts = Object.fromEntries(
@@ -415,9 +418,10 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
       });
     }
 
+    const orgConfig = await loadOrgConfig(supabase, org.org_id);
     dashboardData = buildCaseData(
       cases, invoicesInput, customersInput, lastContactsInput, promisesInput,
-      { view, sort, q, caseId, invoice, tab }, today, ownerLabels, user.id,
+      { view, sort, q, caseId, invoice, tab }, today, ownerLabels, user.id, orgConfig,
     );
 
     const sel = dashboardData.selected;

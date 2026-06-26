@@ -3,6 +3,7 @@ import { serviceClient, makeUserClient } from "./helpers";
 import { buildCaseData } from "../app/routes/dashboard";
 import type { CaseRow } from "../app/lib/cases";
 import type { CasePromiseInput, CaseLastContactInput } from "../app/lib/cases";
+import { DEFAULT_ORG_CONFIG } from "../app/lib/org-config";
 
 const TODAY = "2026-06-22";
 
@@ -17,7 +18,7 @@ test("buildCaseData composes case items, metrics, viewCounts, and selection", ()
   const customers = [{ id: "c1", name: "Acme", phone: null, email: null, owner: "u1" }];
   const data = buildCaseData(cases, invoices, customers, [], [],
     { view: "all-open", sort: "recommended", q: "", caseId: "case-1" }, "2026-06-22",
-    new Map([["u1", "diskin"]]), "u1");
+    new Map([["u1", "diskin"]]), "u1", DEFAULT_ORG_CONFIG);
 
   expect(data.metrics.allOpen.count).toBe(1);
   expect(data.viewCounts["my-work"]).toBe(1);
@@ -41,7 +42,7 @@ test("buildCaseData search filter returns only matching cases", () => {
   ];
   const result = buildCaseData(cases, invoices, customers, [], [],
     { view: "all-open", sort: "recommended", q: "globex", caseId: null }, TODAY,
-    new Map(), null);
+    new Map(), null, DEFAULT_ORG_CONFIG);
 
   expect(result.items.map((i) => i.caseId)).toEqual(["case-globex"]);
   expect(result.metrics.allOpen.count).toBe(1);
@@ -55,7 +56,7 @@ test("buildCaseData threads promises into items and metrics", () => {
   const promises: CasePromiseInput[] = [{ caseId: "case-1", status: "broken", promisedAmount: 500, promisedDate: "2026-07-01", amountReceived: 0 }];
   const data = buildCaseData(cases, invoices, customers, lastContacts, promises,
     { view: "broken-promises", sort: "recommended", q: "", caseId: "case-1" }, "2026-07-10",
-    new Map([["u1", "diskin"]]), "u1");
+    new Map([["u1", "diskin"]]), "u1", DEFAULT_ORG_CONFIG);
   expect(data.items.map((i) => i.caseId)).toEqual(["case-1"]);
   expect(data.metrics.brokenPromises.count).toBe(1);
   expect(data.selected?.promiseStatus).toBe("broken");
@@ -75,9 +76,24 @@ test("buildCaseData counts the waiting view", () => {
     { id: "c2", name: "O", phone: null, email: null, owner: null },
   ];
   const data = buildCaseData(cases, invoices, customers, [], [],
-    { view: "waiting", sort: "recommended", q: "", caseId: null }, "2026-07-10", new Map(), null);
+    { view: "waiting", sort: "recommended", q: "", caseId: null }, "2026-07-10", new Map(), null, DEFAULT_ORG_CONFIG);
   expect(data.viewCounts.waiting).toBe(1);
   expect(data.items.map((i) => i.caseId)).toEqual(["w1"]);
+});
+
+test("buildCaseData threads config cadence into selected item", () => {
+  const cases: CaseRow[] = [
+    { id: "case-1", customerId: "c1", status: "working", nextActionType: "follow_up", nextActionAt: "2026-06-20", exceptionReason: null, exceptionNote: null },
+  ];
+  const invoices = [
+    { id: "i1", qbo_doc_number: "1001", customer_id: "c1", balance: 6000, due_date: "2026-03-01" },
+  ];
+  const customers = [{ id: "c1", name: "Acme", phone: null, email: null, owner: "u1" }];
+  const config = { ...DEFAULT_ORG_CONFIG, cadenceDays: { Critical: 1, High: 1, Medium: 1, Low: 1 } };
+  const data = buildCaseData(cases, invoices, customers, [], [],
+    { view: "all-open", sort: "recommended", q: "", caseId: "case-1" }, "2026-06-22",
+    new Map([["u1", "diskin"]]), "u1", config);
+  expect(data.selected?.suggestedFollowUpIntervalDays).toBe(1);
 });
 
 // DB-backed: proves the RLS-scoped read shape the loader relies on.
