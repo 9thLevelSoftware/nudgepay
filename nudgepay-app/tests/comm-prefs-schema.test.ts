@@ -12,11 +12,10 @@ test("customers accepts a valid preferred_channel and the opt-out flags", async 
   const orgId = await newOrg("C6 schema ok");
   const { data, error } = await svc.from("customers")
     .insert({ org_id: orgId, name: "Acme", preferred_channel: "text", do_not_call: true })
-    .select("preferred_channel, do_not_call, do_not_email, do_not_text").single();
+    .select("preferred_channel, do_not_call, do_not_text").single();
   expect(error).toBeNull();
   expect(data!.preferred_channel).toBe("text");
   expect(data!.do_not_call).toBe(true);
-  expect(data!.do_not_email).toBe(false); // default
   expect(data!.do_not_text).toBe(false);  // default
 });
 
@@ -27,9 +26,10 @@ test("customers accepts a NULL preferred_channel (no preference)", async () => {
   expect(error).toBeNull();
 });
 
-test("customers rejects an out-of-set preferred_channel", async () => {
+test("customers rejects an out-of-set preferred_channel (including email)", async () => {
   const orgId = await newOrg("C6 schema bad");
-  const { error } = await svc.from("customers")
-    .insert({ org_id: orgId, name: "BadChan", preferred_channel: "fax" });
-  expect(error).not.toBeNull();
+  const fax = await svc.from("customers").insert({ org_id: orgId, name: "BadChan", preferred_channel: "fax" });
+  expect(fax.error).not.toBeNull();
+  const email = await svc.from("customers").insert({ org_id: orgId, name: "EmailChan", preferred_channel: "email" });
+  expect(email.error).not.toBeNull(); // email is no longer a valid channel
 });

@@ -10,8 +10,8 @@ function fd(entries: Record<string, string>): FormData {
 
 // --- pure parsing (the action's real logic) ---
 test("parseCommPrefsUpdate maps a valid channel and the checked opt-outs", () => {
-  expect(parseCommPrefsUpdate(fd({ preferred_channel: "email", do_not_call: "true", do_not_text: "true" })))
-    .toEqual({ preferred_channel: "email", do_not_call: true, do_not_email: false, do_not_text: true });
+  expect(parseCommPrefsUpdate(fd({ preferred_channel: "text", do_not_call: "true", do_not_text: "true" })))
+    .toEqual({ preferred_channel: "text", do_not_call: true, do_not_text: true });
 });
 
 test("parseCommPrefsUpdate coerces empty/unknown/missing channel to null", () => {
@@ -27,7 +27,6 @@ test("parseCommPrefsUpdate never includes sms_consent (legal record untouched)",
 test("a non-true checkbox value resolves to false", () => {
   const u = parseCommPrefsUpdate(fd({ do_not_call: "false" }));
   expect(u.do_not_call).toBe(false);
-  expect(u.do_not_email).toBe(false);
   expect(u.do_not_text).toBe(false);
 });
 
@@ -47,10 +46,10 @@ test("a member updates comm preferences on an own-org customer via RLS; sms_cons
   expect(seen?.customer_id).toBe(cust!.id);
 
   await user.client.from("customers")
-    .update({ preferred_channel: "email", do_not_call: true, do_not_text: true }).eq("id", cust!.id);
+    .update({ preferred_channel: "call", do_not_call: true, do_not_text: true }).eq("id", cust!.id);
   const { data: after } = await svc.from("customers")
     .select("preferred_channel, do_not_call, do_not_text, sms_consent").eq("id", cust!.id).single();
-  expect(after!.preferred_channel).toBe("email");
+  expect(after!.preferred_channel).toBe("call");
   expect(after!.do_not_call).toBe(true);
   expect(after!.do_not_text).toBe(true);
   expect(after!.sms_consent).toBe(true); // legal record unaffected

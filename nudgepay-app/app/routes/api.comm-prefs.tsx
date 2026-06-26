@@ -10,7 +10,6 @@ import { CHANNELS, type Channel } from "../lib/comm-prefs";
 export function parseCommPrefsUpdate(form: FormData): {
   preferred_channel: Channel | null;
   do_not_call: boolean;
-  do_not_email: boolean;
   do_not_text: boolean;
 } {
   const raw = form.get("preferred_channel");
@@ -18,7 +17,6 @@ export function parseCommPrefsUpdate(form: FormData): {
   return {
     preferred_channel: (CHANNELS as readonly string[]).includes(ch) ? (ch as Channel) : null,
     do_not_call: form.get("do_not_call") === "true",
-    do_not_email: form.get("do_not_email") === "true",
     do_not_text: form.get("do_not_text") === "true",
   };
 }

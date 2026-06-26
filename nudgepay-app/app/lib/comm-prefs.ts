@@ -2,34 +2,32 @@
 // preferences: a single preferred channel plus per-channel opt-outs. Single
 // source of truth for SMS eligibility (canSendSms) and badge state
 // (channelBlocked). These are PREFERENCES, distinct from the legal sms_consent
-// record (TCPA/A2P) which STOP/START governs exclusively.
+// record (TCPA/A2P) which STOP/START governs exclusively. Email is not a NudgePay
+// channel — call and text only.
 
-export const CHANNELS = ["call", "text", "email"] as const;
+export const CHANNELS = ["call", "text"] as const;
 export type Channel = (typeof CHANNELS)[number];
 
 export type CommPrefs = {
   preferredChannel: Channel | null;
   doNotCall: boolean;
-  doNotEmail: boolean;
   doNotText: boolean;
 };
 
 export const DEFAULT_COMM_PREFS: CommPrefs = {
   preferredChannel: null,
   doNotCall: false,
-  doNotEmail: false,
   doNotText: false,
 };
 
 export type CommPrefsRow = {
   preferred_channel?: string | null;
   do_not_call?: boolean | null;
-  do_not_email?: boolean | null;
   do_not_text?: boolean | null;
 };
 
 function isChannel(v: string | null | undefined): v is Channel {
-  return v === "call" || v === "text" || v === "email";
+  return v === "call" || v === "text";
 }
 
 // Map a (possibly partial/nullable) DB row to CommPrefs. Unknown
@@ -39,7 +37,6 @@ export function resolveCommPrefs(row: CommPrefsRow | null | undefined): CommPref
   return {
     preferredChannel: isChannel(row.preferred_channel) ? row.preferred_channel : null,
     doNotCall: Boolean(row.do_not_call),
-    doNotEmail: Boolean(row.do_not_email),
     doNotText: Boolean(row.do_not_text),
   };
 }
@@ -54,6 +51,5 @@ export function channelBlocked(prefs: CommPrefs, channel: Channel): boolean {
   switch (channel) {
     case "call": return prefs.doNotCall;
     case "text": return prefs.doNotText;
-    case "email": return prefs.doNotEmail;
   }
 }
