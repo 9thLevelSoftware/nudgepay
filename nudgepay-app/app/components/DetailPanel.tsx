@@ -6,6 +6,7 @@ import { Icon } from "~/components/Icons";
 import { SMS_TEMPLATES, applyTemplate, type TemplateVars } from "~/lib/sms-templates";
 import { formatDate } from "~/lib/dates";
 import { STATUS_LABEL, EXCEPTION_REASON_LABEL, formatUSD } from "~/lib/format";
+import { isContactBlocked, isTerminal, exceptionLabel } from "~/lib/exceptions";
 import type { MessageEntry, RosterMember } from "~/routes/dashboard";
 import type { TimelineEntry } from "~/lib/timeline";
 
@@ -50,6 +51,7 @@ const SMS_BANNER: Record<string, { text: string; tone: string }> = {
   sent: { text: "Text sent.", tone: "text-cool" },
   noconsent: { text: "Not sent — customer has not consented to SMS.", tone: "text-hot" },
   error: { text: "Could not send the text.", tone: "text-hot" },
+  blocked: { text: "Not sent — this case is marked do-not-contact / legal.", tone: "text-hot" },
 };
 
 // Static promise-error code → copy. Literal strings for Tailwind v4.
@@ -92,6 +94,7 @@ function MessagesTab({
   const needsConfirm = !!collision && collision.level !== "none";
   const banner = sms ? SMS_BANNER[sms] : null;
   const noInvoice = repInvoiceId === null;
+  const contactBlocked = isContactBlocked(selected.exceptionReason);
 
   // Reset confirmSend when the case changes
   useEffect(() => {
@@ -205,14 +208,16 @@ function MessagesTab({
             </p>
           ) : null}
           <div className="flex items-center justify-between gap-2">
-            {noInvoice ? (
+            {contactBlocked ? (
+              <span className="text-xs text-hot">Messaging blocked — {exceptionLabel(selected.exceptionReason)}.</span>
+            ) : noInvoice ? (
               <span className="text-xs text-muted">No invoice to reference.</span>
             ) : !consent ? (
               <span className="text-xs text-muted">Mark consent to enable sending.</span>
             ) : <span />}
             <button
               type="submit"
-              disabled={!consent || noInvoice}
+              disabled={!consent || noInvoice || contactBlocked}
               className="inline-flex items-center gap-1.5 rounded-md bg-copper px-3 py-1.5 text-xs font-sans font-semibold text-surface hover:bg-copper/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-copper disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
             >
               <Icon name="message" size={14} aria-hidden />
@@ -630,12 +635,21 @@ export function DetailPanel({
           {/* Exception panel */}
           {selected.status === "on_hold" && selected.exceptionReason ? (
             <div className="mt-4 rounded-card bg-panel p-4 shadow-tile">
-              <span className="text-sm font-sans font-semibold text-warm">
-                Exception · {EXCEPTION_REASON_LABEL[selected.exceptionReason] ?? selected.exceptionReason}
-              </span>
-              {selected.exceptionNote ? (
-                <p className="mt-1 text-xs text-muted">{selected.exceptionNote}</p>
-              ) : null}
+              <div className="rounded-md border border-border bg-panel/60 px-3 py-2">
+                <p className="text-xs font-sans font-semibold text-text">
+                  Exception · {EXCEPTION_REASON_LABEL[selected.exceptionReason] ?? selected.exceptionReason}
+                  <span className="ml-1 font-normal text-muted">
+                    {isTerminal(selected.exceptionReason)
+                      ? "· parked indefinitely"
+                      : selected.nextActionAt
+                        ? `· parked until ${formatDate(selected.nextActionAt)}`
+                        : ""}
+                  </span>
+                </p>
+                {selected.exceptionNote ? (
+                  <p className="mt-1 text-xs text-muted">{selected.exceptionNote}</p>
+                ) : null}
+              </div>
             </div>
           ) : null}
 
