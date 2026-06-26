@@ -63,10 +63,11 @@ export async function sendInvoiceText(
   if (!inv?.customer_id) throw new Error("Invoice has no linked customer");
 
   const { data: cust, error: custErr } = await deps.service.from("customers")
-    .select("id, phone, sms_consent").eq("id", inv.customer_id as string).maybeSingle();
+    .select("id, phone, sms_consent, do_not_text").eq("id", inv.customer_id as string).maybeSingle();
   if (custErr) throw custErr;
   if (!cust?.phone) throw new Error("Customer has no phone number");
   if (!cust.sms_consent) throw new Error("Customer has not consented to SMS");
+  if (cust.do_not_text) throw new Error("Customer has opted out of SMS");
 
   // Contact-block guard: a do_not_contact / legal_agency case blocks outbound
   // messaging on any channel. Check before resolving the sender or calling Twilio.
