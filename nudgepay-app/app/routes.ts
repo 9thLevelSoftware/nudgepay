@@ -9,6 +9,7 @@ export default [
   route("invite", "routes/invite.tsx"),
   route("accept/:token", "routes/accept.$token.tsx"),
   route("dashboard", "routes/dashboard.tsx"),
+  route("reports", "routes/reports.tsx"),
   route("privacy", "routes/privacy.tsx"),
   route("eula", "routes/eula.tsx"),
   route("api/contact-logs", "routes/api.contact-logs.tsx"),
