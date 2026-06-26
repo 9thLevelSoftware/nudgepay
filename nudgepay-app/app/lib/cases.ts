@@ -13,7 +13,7 @@ import {
 } from "./priority";
 import type { PromiseStatus } from "./promises";
 import type { ExceptionReason } from "./contact-log";
-import { isCaseSuppressed } from "./exceptions";
+import { isCaseSuppressed, isContactBlocked } from "./exceptions";
 
 export type CasePromiseInput = {
   caseId: string;
@@ -80,6 +80,7 @@ export type CaseItem = {
   exceptionReason: ExceptionReason | null;
   exceptionNote: string | null;
   suppressed: boolean;
+  contactBlocked: boolean;
   followUpDue: boolean;
   searchText: string;
   invoices: CaseInvoice[];
@@ -206,6 +207,7 @@ export function buildCaseItems(
       exceptionReason: cse.exceptionReason,
       exceptionNote: cse.exceptionNote,
       suppressed: isCaseSuppressed({ status: cse.status, exceptionReason: cse.exceptionReason, nextActionAt: cse.nextActionAt, today }),
+      contactBlocked: isContactBlocked(cse.exceptionReason),
       followUpDue,
       searchText: [name, ...invList.map((i) => i.docNumber ?? ""), cust?.phone ?? "", cust?.email ?? "", owner]
         .filter(Boolean).join(" ").toLowerCase(),
@@ -220,9 +222,10 @@ export function applyCaseView(
   if (view === "30-plus") return items.filter((i) => i.oldestAgeDays >= 30 && !i.suppressed);
   if (view === "high-value") return items.filter((i) => i.totalOverdue >= HIGH_VALUE_THRESHOLD && !i.suppressed);
   if (view === "never-contacted") return items.filter((i) => i.lastContact === null && !i.suppressed);
-  if (view === "follow-ups-due") return items.filter((i) => i.nextActionAt != null && i.nextActionAt <= today);
+  if (view === "follow-ups-due") return items.filter((i) => i.nextActionAt != null && i.nextActionAt <= today && !i.suppressed);
   if (view === "broken-promises") return items.filter((i) => i.brokenPromise && !i.suppressed);
   if (view === "waiting") return items.filter((i) => i.status === "waiting" || i.status === "on_hold");
+  if (view === "on-hold") return items.filter((i) => i.suppressed);
   if (view === "my-work") return items.filter((i) => i.ownerId != null && i.ownerId === currentUserId);
   return items.filter((i) => !i.suppressed);
 }

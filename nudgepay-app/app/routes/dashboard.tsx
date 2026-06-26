@@ -48,7 +48,7 @@ type DashboardData = {
   selected: CaseItem | null;
 };
 
-const ALL_VIEWS: ViewId[] = ["all-open", "30-plus", "high-value", "never-contacted", "follow-ups-due", "broken-promises", "waiting", "my-work"];
+const ALL_VIEWS: ViewId[] = ["all-open", "30-plus", "high-value", "never-contacted", "follow-ups-due", "broken-promises", "waiting", "on-hold", "my-work"];
 
 // ---------------------------------------------------------------------------
 // Pure helper — exported so tests can call it without I/O
@@ -212,7 +212,7 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
   const url = new URL(request.url);
   const sp = url.searchParams;
 
-  const VALID_VIEWS: ViewId[] = ["all-open", "30-plus", "high-value", "never-contacted", "follow-ups-due", "broken-promises", "waiting", "my-work"];
+  const VALID_VIEWS: ViewId[] = ["all-open", "30-plus", "high-value", "never-contacted", "follow-ups-due", "broken-promises", "waiting", "on-hold", "my-work"];
   const VALID_SORTS: SortId[] = ["recommended", "most-overdue", "highest-balance", "customer"];
   const VALID_TABS = ["overview", "activity", "messages"] as const;
 
@@ -267,7 +267,7 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
     },
     viewCounts: {
       "all-open": 0, "30-plus": 0, "high-value": 0,
-      "never-contacted": 0, "follow-ups-due": 0, "broken-promises": 0, "waiting": 0, "my-work": 0,
+      "never-contacted": 0, "follow-ups-due": 0, "broken-promises": 0, "waiting": 0, "on-hold": 0, "my-work": 0,
     },
     selected: null,
   };

@@ -60,6 +60,7 @@ const SAVED_VIEWS: { id: ViewId; label: string }[] = [
   { id: "follow-ups-due",   label: "Follow-ups due" },
   { id: "broken-promises",  label: "Broken promises" },
   { id: "waiting",          label: "Waiting" },
+  { id: "on-hold",          label: "On hold" },
   { id: "my-work",          label: "My work" },
 ];
 

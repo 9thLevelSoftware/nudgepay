@@ -10,3 +10,11 @@ alter table collection_cases
       'disputed', 'incorrect_amount', 'work_incomplete', 'documentation_requested',
       'wrong_contact', 'payment_plan', 'legal_agency', 'do_not_contact', 'other'
     ));
+
+-- Normalize legacy terminal holds: rows created under 0011 may carry a review
+-- date, but terminal states must have next_action_at = null so they never
+-- surface in follow-ups-due / viewCounts. Clear it for the two terminal reasons.
+update collection_cases
+  set next_action_at = null
+  where exception_reason in ('legal_agency', 'do_not_contact')
+    and next_action_at is not null;

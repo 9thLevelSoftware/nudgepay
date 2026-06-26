@@ -33,7 +33,7 @@ export type WorkItem = {
 
 export type Metric = { count: number; amount: number };
 export type Metrics = { thirtyPlus: Metric; highValue: Metric; neverContacted: Metric; allOpen: Metric; followUpsDue: Metric; brokenPromises: Metric; onHold: Metric };
-export type ViewId = "all-open" | "30-plus" | "high-value" | "never-contacted" | "follow-ups-due" | "broken-promises" | "waiting" | "my-work";
+export type ViewId = "all-open" | "30-plus" | "high-value" | "never-contacted" | "follow-ups-due" | "broken-promises" | "waiting" | "on-hold" | "my-work";
 export type SortId = "recommended" | "most-overdue" | "highest-balance" | "customer";
 
 export type InvoiceInput = { id: string; qbo_doc_number: string | null; customer_id: string | null; balance: number; due_date: string | null };

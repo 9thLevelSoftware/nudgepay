@@ -84,7 +84,7 @@ export function MetricsStrip({ metrics, view, sort = "recommended", search = "" 
     { label: "All open", viewId: "all-open", accent: "ink", m: metrics.allOpen },
     { label: "Follow-ups due", viewId: "follow-ups-due", accent: "warm", m: metrics.followUpsDue },
     { label: "Broken promises", viewId: "broken-promises", accent: "hot", m: metrics.brokenPromises },
-    { label: "On hold", viewId: "waiting", accent: "ink", m: metrics.onHold },
+    { label: "On hold", viewId: "on-hold", accent: "ink", m: metrics.onHold },
   ];
   return (
     <div

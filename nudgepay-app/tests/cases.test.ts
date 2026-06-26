@@ -297,3 +297,61 @@ test("suppressed parked cases drop out of the default view and active metrics; o
   expect(m.allOpen.count).toBe(2);     // active + resurfaced
   expect(m.onHold.count).toBe(2);      // parked-future + parked-terminal
 });
+
+// --- Phase 8c PR-review fix tests ---
+
+test("terminal case with past next_action_at is excluded from follow-ups-due but included in on-hold view", () => {
+  const today = "2026-06-25";
+  // Simulates a legacy un-normalized row: terminal exception but carries a past review date.
+  const cases: CaseRow[] = [
+    { id: "terminal-past", customerId: "c-tp", status: "on_hold", nextActionType: "exception", nextActionAt: "2026-06-01", exceptionReason: "do_not_contact", exceptionNote: null },
+    { id: "active-fud", customerId: "c-af", status: "working", nextActionType: "follow_up", nextActionAt: "2026-06-20", exceptionReason: null, exceptionNote: null },
+  ];
+  const invoices = cases.map((c) => ({ id: `i-${c.customerId}`, qbo_doc_number: "1", customer_id: c.customerId, balance: 100, due_date: "2026-01-01" }));
+  const customers = cases.map((c) => ({ id: c.customerId, name: c.customerId, phone: null, email: null, owner: null, smsConsent: false }));
+  const items = buildCaseItems(cases, invoices, customers, [], [], today, new Map());
+
+  // The terminal case must be suppressed (not surface in follow-ups-due even if nextActionAt <= today).
+  const fudView = applyCaseView(items, "follow-ups-due", today, null).map((i) => i.caseId);
+  expect(fudView).not.toContain("terminal-past");
+  expect(fudView).toContain("active-fud");
+
+  // It must appear in the on-hold view.
+  const onHoldView = applyCaseView(items, "on-hold", today, null).map((i) => i.caseId);
+  expect(onHoldView).toContain("terminal-past");
+  expect(onHoldView).not.toContain("active-fud");
+});
+
+test("onHold metric count equals on-hold view length over a mixed case set", () => {
+  const today = "2026-06-25";
+  const cases: CaseRow[] = [
+    { id: "active", customerId: "c-active", status: "working", nextActionType: "follow_up", nextActionAt: "2026-06-20", exceptionReason: null, exceptionNote: null },
+    { id: "parked-future", customerId: "c-fut", status: "on_hold", nextActionType: "exception", nextActionAt: "2026-07-10", exceptionReason: "disputed", exceptionNote: null },
+    { id: "parked-terminal", customerId: "c-term", status: "on_hold", nextActionType: "exception", nextActionAt: null, exceptionReason: "do_not_contact", exceptionNote: null },
+    { id: "resurfaced", customerId: "c-res", status: "on_hold", nextActionType: "exception", nextActionAt: "2026-06-24", exceptionReason: "disputed", exceptionNote: null },
+  ];
+  const invoices = cases.map((c) => ({ id: `i-${c.customerId}`, qbo_doc_number: "1", customer_id: c.customerId, balance: 100, due_date: "2026-01-01" }));
+  const customers = cases.map((c) => ({ id: c.customerId, name: c.customerId, phone: null, email: null, owner: null, smsConsent: false }));
+  const items = buildCaseItems(cases, invoices, customers, [], [], today, new Map());
+
+  const m = computeCaseMetrics(items, today);
+  const onHoldViewLength = applyCaseView(items, "on-hold", today, null).length;
+  expect(m.onHold.count).toBe(onHoldViewLength);
+});
+
+test("buildCaseItems sets contactBlocked correctly per exceptionReason", () => {
+  const today = "2026-06-25";
+  const cases: CaseRow[] = [
+    { id: "case-dnc", customerId: "c-dnc", status: "on_hold", nextActionType: "exception", nextActionAt: null, exceptionReason: "do_not_contact", exceptionNote: null },
+    { id: "case-disp", customerId: "c-disp", status: "on_hold", nextActionType: "exception", nextActionAt: "2026-07-10", exceptionReason: "disputed", exceptionNote: null },
+    { id: "case-none", customerId: "c-none", status: "working", nextActionType: "follow_up", nextActionAt: null, exceptionReason: null, exceptionNote: null },
+  ];
+  const invoices = cases.map((c) => ({ id: `i-${c.customerId}`, qbo_doc_number: "1", customer_id: c.customerId, balance: 100, due_date: "2026-01-01" }));
+  const customers = cases.map((c) => ({ id: c.customerId, name: c.customerId, phone: "+12295550100", email: null, owner: null, smsConsent: true }));
+  const items = buildCaseItems(cases, invoices, customers, [], [], today, new Map());
+  const byId = new Map(items.map((i) => [i.caseId, i]));
+
+  expect(byId.get("case-dnc")!.contactBlocked).toBe(true);   // do_not_contact → terminal, blocksContact
+  expect(byId.get("case-disp")!.contactBlocked).toBe(false);  // disputed → non-terminal, does not block
+  expect(byId.get("case-none")!.contactBlocked).toBe(false);  // null exceptionReason → not blocked
+});
