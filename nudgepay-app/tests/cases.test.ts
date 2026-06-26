@@ -227,3 +227,35 @@ test("buildCaseItems threads smsConsent from the customer (defaults false)", () 
   expect(byId["case-1"].smsConsent).toBe(true);
   expect(byId["case-2"].smsConsent).toBe(false);
 });
+
+test("suppressed parked cases drop out of the default view and active metrics; onHold counts them", () => {
+  const today = "2026-06-25";
+  const cases: CaseRow[] = [
+    { id: "active", customerId: "c-active", status: "working", nextActionType: "follow_up", nextActionAt: "2026-06-20", exceptionReason: null, exceptionNote: null },
+    { id: "parked-future", customerId: "c-fut", status: "on_hold", nextActionType: "exception", nextActionAt: "2026-07-10", exceptionReason: "disputed", exceptionNote: null },
+    { id: "parked-terminal", customerId: "c-term", status: "on_hold", nextActionType: "exception", nextActionAt: null, exceptionReason: "do_not_contact", exceptionNote: null },
+    { id: "resurfaced", customerId: "c-res", status: "on_hold", nextActionType: "exception", nextActionAt: "2026-06-24", exceptionReason: "disputed", exceptionNote: null },
+  ];
+  const invoices = cases.map((c) => ({ id: `i-${c.customerId}`, qbo_doc_number: "1", customer_id: c.customerId, balance: 100, due_date: "2026-01-01" }));
+  const customers = cases.map((c) => ({ id: c.customerId, name: c.customerId, phone: null, email: null, owner: null, smsConsent: false }));
+  const items = buildCaseItems(cases, invoices, customers, [], [], today, new Map());
+
+  const byId = new Map(items.map((i) => [i.caseId, i]));
+  expect(byId.get("parked-future")!.suppressed).toBe(true);
+  expect(byId.get("parked-terminal")!.suppressed).toBe(true);
+  expect(byId.get("resurfaced")!.suppressed).toBe(false);
+  expect(byId.get("active")!.suppressed).toBe(false);
+
+  // Default view excludes suppressed; resurfaced + active remain.
+  const def = applyCaseView(items, "all-open", today, null).map((i) => i.caseId).sort();
+  expect(def).toEqual(["active", "resurfaced"]);
+
+  // Exceptions/On-hold view ("waiting") includes ALL parked, including terminal.
+  const onHoldView = applyCaseView(items, "waiting", today, null).map((i) => i.caseId).sort();
+  expect(onHoldView).toEqual(["parked-future", "parked-terminal", "resurfaced"]);
+
+  // Metrics: allOpen excludes the two still-parked; onHold counts them.
+  const m = computeCaseMetrics(items, today);
+  expect(m.allOpen.count).toBe(2);     // active + resurfaced
+  expect(m.onHold.count).toBe(2);      // parked-future + parked-terminal
+});

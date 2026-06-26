@@ -13,6 +13,7 @@ import {
 } from "./priority";
 import type { PromiseStatus } from "./promises";
 import type { ExceptionReason } from "./contact-log";
+import { isCaseSuppressed } from "./exceptions";
 
 export type CasePromiseInput = {
   caseId: string;
@@ -78,6 +79,7 @@ export type CaseItem = {
   amountReceived: number | null;
   exceptionReason: ExceptionReason | null;
   exceptionNote: string | null;
+  suppressed: boolean;
   followUpDue: boolean;
   searchText: string;
   invoices: CaseInvoice[];
@@ -203,6 +205,7 @@ export function buildCaseItems(
       amountReceived: prom ? prom.amountReceived : null,
       exceptionReason: cse.exceptionReason,
       exceptionNote: cse.exceptionNote,
+      suppressed: isCaseSuppressed({ status: cse.status, exceptionReason: cse.exceptionReason, nextActionAt: cse.nextActionAt, today }),
       followUpDue,
       searchText: [name, ...invList.map((i) => i.docNumber ?? ""), cust?.phone ?? "", cust?.email ?? "", owner]
         .filter(Boolean).join(" ").toLowerCase(),
@@ -214,14 +217,14 @@ export function buildCaseItems(
 export function applyCaseView(
   items: CaseItem[], view: ViewId, today: string, currentUserId: string | null,
 ): CaseItem[] {
-  if (view === "30-plus") return items.filter((i) => i.oldestAgeDays >= 30);
-  if (view === "high-value") return items.filter((i) => i.totalOverdue >= HIGH_VALUE_THRESHOLD);
-  if (view === "never-contacted") return items.filter((i) => i.lastContact === null);
+  if (view === "30-plus") return items.filter((i) => i.oldestAgeDays >= 30 && !i.suppressed);
+  if (view === "high-value") return items.filter((i) => i.totalOverdue >= HIGH_VALUE_THRESHOLD && !i.suppressed);
+  if (view === "never-contacted") return items.filter((i) => i.lastContact === null && !i.suppressed);
   if (view === "follow-ups-due") return items.filter((i) => i.nextActionAt != null && i.nextActionAt <= today);
   if (view === "broken-promises") return items.filter((i) => i.brokenPromise);
   if (view === "waiting") return items.filter((i) => i.status === "waiting" || i.status === "on_hold");
   if (view === "my-work") return items.filter((i) => i.ownerId != null && i.ownerId === currentUserId);
-  return items;
+  return items.filter((i) => !i.suppressed);
 }
 
 export function sortCaseItems(items: CaseItem[], sort: SortId): CaseItem[] {
@@ -238,16 +241,18 @@ export function sortCaseItems(items: CaseItem[], sort: SortId): CaseItem[] {
 }
 
 export function computeCaseMetrics(items: CaseItem[], today: string): Metrics {
-  const bucket = (pred: (i: CaseItem) => boolean): Metric => {
-    const matched = items.filter(pred);
+  const active = items.filter((i) => !i.suppressed);
+  const bucket = (source: CaseItem[], pred: (i: CaseItem) => boolean): Metric => {
+    const matched = source.filter(pred);
     return { count: matched.length, amount: matched.reduce((s, i) => s + i.totalOverdue, 0) };
   };
   return {
-    thirtyPlus: bucket((i) => i.oldestAgeDays >= 30),
-    highValue: bucket((i) => i.totalOverdue >= HIGH_VALUE_THRESHOLD),
-    neverContacted: bucket((i) => i.lastContact === null),
-    allOpen: bucket(() => true),
-    followUpsDue: bucket((i) => i.nextActionAt != null && i.nextActionAt <= today),
-    brokenPromises: bucket((i) => i.brokenPromise),
+    thirtyPlus: bucket(active, (i) => i.oldestAgeDays >= 30),
+    highValue: bucket(active, (i) => i.totalOverdue >= HIGH_VALUE_THRESHOLD),
+    neverContacted: bucket(active, (i) => i.lastContact === null),
+    allOpen: bucket(active, () => true),
+    followUpsDue: bucket(active, (i) => i.nextActionAt != null && i.nextActionAt <= today),
+    brokenPromises: bucket(active, (i) => i.brokenPromise),
+    onHold: bucket(items, (i) => i.suppressed),
   };
 }

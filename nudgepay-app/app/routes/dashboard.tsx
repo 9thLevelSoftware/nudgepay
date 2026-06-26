@@ -263,6 +263,7 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
       allOpen: { count: 0, amount: 0 },
       followUpsDue: { count: 0, amount: 0 },
       brokenPromises: { count: 0, amount: 0 },
+      onHold: { count: 0, amount: 0 },
     },
     viewCounts: {
       "all-open": 0, "30-plus": 0, "high-value": 0,
