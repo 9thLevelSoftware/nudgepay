@@ -221,7 +221,7 @@ export function applyCaseView(
   if (view === "high-value") return items.filter((i) => i.totalOverdue >= HIGH_VALUE_THRESHOLD && !i.suppressed);
   if (view === "never-contacted") return items.filter((i) => i.lastContact === null && !i.suppressed);
   if (view === "follow-ups-due") return items.filter((i) => i.nextActionAt != null && i.nextActionAt <= today);
-  if (view === "broken-promises") return items.filter((i) => i.brokenPromise);
+  if (view === "broken-promises") return items.filter((i) => i.brokenPromise && !i.suppressed);
   if (view === "waiting") return items.filter((i) => i.status === "waiting" || i.status === "on_hold");
   if (view === "my-work") return items.filter((i) => i.ownerId != null && i.ownerId === currentUserId);
   return items.filter((i) => !i.suppressed);

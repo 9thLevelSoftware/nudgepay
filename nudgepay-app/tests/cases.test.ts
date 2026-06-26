@@ -228,6 +228,44 @@ test("buildCaseItems threads smsConsent from the customer (defaults false)", () 
   expect(byId["case-2"].smsConsent).toBe(false);
 });
 
+test("suppressed case with broken promise excluded from broken-promises view and metric but present in waiting view", () => {
+  const today = "2026-06-25";
+  // A case that was put on_hold (parked exception, future review date) BUT already had
+  // a broken promise before it was parked. applyNextStep cancels PENDING promises, not
+  // BROKEN ones — so this post-state is reachable.
+  const cases: CaseRow[] = [
+    { id: "parked-broken", customerId: "c-pb", status: "on_hold", nextActionType: "exception", nextActionAt: "2026-07-15", exceptionReason: "disputed", exceptionNote: null },
+    { id: "active-broken", customerId: "c-ab", status: "working", nextActionType: "follow_up", nextActionAt: "2026-06-20", exceptionReason: null, exceptionNote: null },
+  ];
+  const invoices = cases.map((c) => ({ id: `i-${c.customerId}`, qbo_doc_number: "1", customer_id: c.customerId, balance: 200, due_date: "2026-01-01" }));
+  const customers = cases.map((c) => ({ id: c.customerId, name: c.customerId, phone: null, email: null, owner: null, smsConsent: false }));
+  const promises: CasePromiseInput[] = [
+    { caseId: "parked-broken", status: "broken", promisedAmount: 200, promisedDate: "2026-06-01", amountReceived: 0 },
+    { caseId: "active-broken", status: "broken", promisedAmount: 200, promisedDate: "2026-06-01", amountReceived: 0 },
+  ];
+  const items = buildCaseItems(cases, invoices, customers, [], promises, today, new Map());
+
+  const byId = new Map(items.map((i) => [i.caseId, i]));
+  // Sanity checks on the built items.
+  expect(byId.get("parked-broken")!.suppressed).toBe(true);
+  expect(byId.get("parked-broken")!.brokenPromise).toBe(true);
+  expect(byId.get("active-broken")!.suppressed).toBe(false);
+  expect(byId.get("active-broken")!.brokenPromise).toBe(true);
+
+  // broken-promises view must exclude the suppressed case.
+  const bpView = applyCaseView(items, "broken-promises", today, null).map((i) => i.caseId);
+  expect(bpView).toEqual(["active-broken"]);
+  expect(bpView).not.toContain("parked-broken");
+
+  // metric must also exclude it (already bucketed from active[] only, but verify alignment).
+  const m = computeCaseMetrics(items, today);
+  expect(m.brokenPromises.count).toBe(1);
+
+  // waiting view still includes the suppressed parked case.
+  const waitingView = applyCaseView(items, "waiting", today, null).map((i) => i.caseId);
+  expect(waitingView).toContain("parked-broken");
+});
+
 test("suppressed parked cases drop out of the default view and active metrics; onHold counts them", () => {
   const today = "2026-06-25";
   const cases: CaseRow[] = [
