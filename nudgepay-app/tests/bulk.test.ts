@@ -51,3 +51,16 @@ test("clampBatch truncates to MAX_BATCH, leaves short lists alone", () => {
   expect(clampBatch(ids)).toHaveLength(MAX_BATCH);
   expect(clampBatch(["a", "b"])).toEqual(["a", "b"]);
 });
+
+test("partitionEligibility skips a contact-blocked case ahead of phone/consent", () => {
+  const { eligible, skipped } = partitionEligibility([
+    { caseId: "c1", customerName: "OK", phone: "+12295550100", smsConsent: true },
+    { caseId: "c2", customerName: "Blocked", phone: "+12295550101", smsConsent: true, contactBlocked: true },
+    { caseId: "c3", customerName: "BlockedNoPhone", phone: null, smsConsent: false, contactBlocked: true },
+  ]);
+  expect(eligible.map((c) => c.caseId)).toEqual(["c1"]);
+  expect(skipped).toEqual([
+    { caseId: "c2", name: "Blocked", reason: "do-not-contact" },
+    { caseId: "c3", name: "BlockedNoPhone", reason: "do-not-contact" },
+  ]);
+});
