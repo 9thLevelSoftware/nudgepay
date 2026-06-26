@@ -442,6 +442,7 @@ export function DetailPanel({
           ) : callAction.kind === "blocked" ? (
             <span
               aria-disabled="true"
+              aria-label={`Call — ${callAction.reason}`}
               title={callAction.reason}
               className="inline-flex items-center gap-1.5 text-xs font-sans font-medium text-muted border border-border rounded-md px-3 h-9 opacity-50 cursor-not-allowed"
             >
