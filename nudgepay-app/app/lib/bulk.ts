@@ -30,8 +30,8 @@ export type EligibilitySplit<T extends TextableCase> = {
   skipped: { caseId: string; name: string; reason: SkipReason }[];
 };
 
-// Partition selected cases into textable vs skipped. Contact-block is checked
-// first (do_not_contact / legal_agency), then phone, then consent.
+// Partition selected cases into textable vs skipped. Order: do-not-contact
+// → no-phone → no-consent → do-not-text.
 export function partitionEligibility<T extends TextableCase>(cases: T[]): EligibilitySplit<T> {
   const eligible: T[] = [];
   const skipped: { caseId: string; name: string; reason: SkipReason }[] = [];

@@ -228,10 +228,12 @@ function MessagesTab({
               <span className="text-xs text-muted">Mark consent to enable sending.</span>
             ) : prefs.doNotText ? (
               <span className="text-xs text-hot">Customer opted out of texts.</span>
-            ) : null}
+            ) : !phone ? (
+              <span className="text-xs text-muted">Customer has no phone number.</span>
+            ) : <span />}
             <button
               type="submit"
-              disabled={!canSendSms(prefs, consent) || noInvoice || contactBlocked}
+              disabled={!canSendSms(prefs, consent) || noInvoice || contactBlocked || !phone}
               className="inline-flex items-center gap-1.5 rounded-md bg-copper px-3 py-1.5 text-xs font-sans font-semibold text-surface hover:bg-copper/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-copper disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
             >
               <Icon name="message" size={14} aria-hidden />
