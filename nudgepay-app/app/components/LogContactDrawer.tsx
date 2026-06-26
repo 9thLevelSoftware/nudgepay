@@ -4,6 +4,7 @@ import type { CaseItem } from "../lib/cases";
 import type { Collision } from "../lib/collision";
 import { CONTACT_METHODS, CONTACT_OUTCOMES } from "../lib/contact-log";
 import { PRIMARY_EXCEPTION_STATES, requiresReviewDate, isContactBlocked, type ExceptionState } from "../lib/exceptions";
+import { CADENCE_DAYS } from "../lib/follow-up-cadence";
 import { EXCEPTION_REASON_LABEL, formatUSD } from "../lib/format";
 import { OUTCOME_LABELS } from "../lib/timeline";
 
@@ -216,8 +217,11 @@ export function LogContactDrawer({
           {nextStep === "follow_up" && (
             <label className="flex flex-col gap-1">
               <span className="text-xs font-sans font-medium uppercase tracking-wider text-muted">Follow up on</span>
-              <input name="followUpAt" type="date" required
+              <input name="followUpAt" type="date" required defaultValue={selected.suggestedFollowUpAt}
                 className="rounded-md border border-border bg-panel px-3 py-2 text-sm font-sans text-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-copper" />
+              <span className="text-xs font-sans text-muted">
+                Suggested from {selected.effectiveLevel} priority · {CADENCE_DAYS[selected.effectiveLevel]}-day cadence
+              </span>
             </label>
           )}
 
