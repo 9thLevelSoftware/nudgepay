@@ -76,6 +76,10 @@ export type CaseItem = {
   phone: string | null;
   smsConsent: boolean;
   commPrefs: CommPrefs;
+  // Top-level mirror of commPrefs.doNotText so a CaseItem satisfies the bulk
+  // TextableCase contract (partitionEligibility / BulkSmsDrawer) the same way
+  // smsConsent/contactBlocked are surfaced for eligibility.
+  doNotText: boolean;
   email: string | null;
   promise: { amount: number; date: string } | null;
   brokenPromise: boolean;
@@ -209,6 +213,7 @@ export function buildCaseItems(
       phone: cust?.phone ?? null,
       smsConsent: cust?.smsConsent ?? false,
       commPrefs: cust?.commPrefs ?? DEFAULT_COMM_PREFS,
+      doNotText: (cust?.commPrefs ?? DEFAULT_COMM_PREFS).doNotText,
       email: cust?.email ?? null,
       promise: prom ? { amount: prom.promisedAmount, date: prom.promisedDate } : null,
       brokenPromise: prom?.status === "broken",
