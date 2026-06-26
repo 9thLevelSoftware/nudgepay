@@ -15,3 +15,18 @@ test("phone + do_not_call → blocked with reason", () => {
 test("phone + not opted out → live", () => {
   expect(resolveCallAction(DEFAULT_COMM_PREFS, "555-0100")).toEqual({ kind: "live" });
 });
+
+test("contact-blocked case → blocked, even without do_not_call", () => {
+  expect(resolveCallAction(DEFAULT_COMM_PREFS, "555-0100", true))
+    .toEqual({ kind: "blocked", reason: "Case is marked do-not-contact / legal" });
+});
+
+test("contact-block takes precedence over do_not_call reason", () => {
+  const prefs = { ...DEFAULT_COMM_PREFS, doNotCall: true };
+  expect(resolveCallAction(prefs, "555-0100", true))
+    .toEqual({ kind: "blocked", reason: "Case is marked do-not-contact / legal" });
+});
+
+test("no phone → hidden even when contact-blocked", () => {
+  expect(resolveCallAction(DEFAULT_COMM_PREFS, null, true)).toEqual({ kind: "hidden" });
+});

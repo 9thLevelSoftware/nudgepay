@@ -356,7 +356,7 @@ export function DetailPanel({
   const logHref = `?${new URLSearchParams({ case: selected.caseId, tab: "activity", view, sort, ...(q ? { q } : {}), log: "1" }).toString()}`;
   const overviewReturnTo = `/dashboard?${new URLSearchParams({ case: selected.caseId, tab: "overview", view, sort, ...(q ? { q } : {}) }).toString()}`;
 
-  const callAction = resolveCallAction(prefs, selected.phone);
+  const callAction = resolveCallAction(prefs, selected.phone, selected.contactBlocked);
   const callLogHref = `?${new URLSearchParams({ case: selected.caseId, tab: "activity", view, sort, ...(q ? { q } : {}), log: "1", method: "call" }).toString()}`;
 
   return (
