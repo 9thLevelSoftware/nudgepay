@@ -28,7 +28,7 @@ import { buildTimeline, type TimelineEntry, type TimelineLogInput, type Timeline
 import { collisionState, type Collision, type RecentContactInput } from "../lib/collision";
 import { readPresence } from "../lib/presence.server";
 import { loadOrgConfig } from "../lib/org-config.server";
-import type { OrgConfig } from "../lib/org-config";
+import { DEFAULT_ORG_CONFIG, type OrgConfig } from "../lib/org-config";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -418,7 +418,12 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
       });
     }
 
-    const orgConfig = await loadOrgConfig(supabase, org.org_id);
+    let orgConfig;
+    try {
+      orgConfig = await loadOrgConfig(supabase, org.org_id);
+    } catch {
+      orgConfig = DEFAULT_ORG_CONFIG;
+    }
     dashboardData = buildCaseData(
       cases, invoicesInput, customersInput, lastContactsInput, promisesInput,
       { view, sort, q, caseId, invoice, tab }, today, ownerLabels, user.id, orgConfig,

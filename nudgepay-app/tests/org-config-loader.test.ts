@@ -14,6 +14,16 @@ test("loadOrgConfig returns defaults for an org with no settings/holiday rows", 
   expect(cfg.cadenceDays).toEqual({ Critical: 2, High: 3, Medium: 7, Low: 14 });
 });
 
+test("org_settings rejects an empty working_days array", async () => {
+  const { data: org } = await svc.from("organizations").insert({ name: "C7 empty-wd" }).select("id").single();
+  const orgId = org!.id as string;
+  const { error } = await svc.from("org_settings").insert({ org_id: orgId, working_days: [] });
+  expect(error).not.toBeNull();
+  // A valid non-empty array must still be accepted
+  const { error: okErr } = await svc.from("org_settings").insert({ org_id: orgId, working_days: [1, 2, 3] });
+  expect(okErr).toBeNull();
+});
+
 test("loadOrgConfig reflects stored settings and holidays", async () => {
   const { data: org } = await svc.from("organizations").insert({ name: "C7 custom" }).select("id").single();
   const orgId = org!.id as string;

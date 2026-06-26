@@ -30,7 +30,12 @@ export async function createPromiseForLog(
   if (iErr) return { ok: false };
   const linked = (invs ?? []).map((r) => ({ id: r.id as string, balance: Number(r.balance) || 0 }));
   const baseline = linked.reduce((s, r) => s + r.balance, 0);
-  const config = await loadOrgConfig(client, input.orgId);
+  let config;
+  try {
+    config = await loadOrgConfig(client, input.orgId);
+  } catch {
+    return { ok: false };
+  }
   const graceUntil = addBusinessDays(input.promisedDate, config.promiseGraceDays, {
     workingDays: config.workingDays,
     holidays: config.holidays,

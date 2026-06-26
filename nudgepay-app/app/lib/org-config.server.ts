@@ -13,7 +13,9 @@ export async function loadOrgConfig(client: SupabaseClient, orgId: string): Prom
       .maybeSingle(),
     client.from("org_holidays").select("holiday_date").eq("org_id", orgId),
   ]);
-  const settings = (settingsRes.data as OrgSettingsRow | null) ?? null;
+  if (settingsRes.error) throw settingsRes.error;
+  if (holidaysRes.error) throw holidaysRes.error;
+  const settings = settingsRes.data as OrgSettingsRow | null;
   const holidays = (holidaysRes.data ?? []) as { holiday_date: string }[];
   return resolveOrgConfig(settings, holidays);
 }
