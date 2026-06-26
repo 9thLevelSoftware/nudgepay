@@ -14,6 +14,7 @@ import {
 import type { PromiseStatus } from "./promises";
 import type { ExceptionReason } from "./contact-log";
 import { isCaseSuppressed, isContactBlocked } from "./exceptions";
+import { DEFAULT_COMM_PREFS, type CommPrefs } from "./comm-prefs";
 import { suggestFollowUpDate } from "./follow-up-cadence";
 import type { OrgConfig } from "./org-config";
 
@@ -74,6 +75,7 @@ export type CaseItem = {
   lastContact: LastContact;
   phone: string | null;
   smsConsent: boolean;
+  commPrefs: CommPrefs;
   email: string | null;
   promise: { amount: number; date: string } | null;
   brokenPromise: boolean;
@@ -206,6 +208,7 @@ export function buildCaseItems(
       lastContact: lc ? { date: lc.date, channel: lc.channel } : null,
       phone: cust?.phone ?? null,
       smsConsent: cust?.smsConsent ?? false,
+      commPrefs: cust?.commPrefs ?? DEFAULT_COMM_PREFS,
       email: cust?.email ?? null,
       promise: prom ? { amount: prom.promisedAmount, date: prom.promisedDate } : null,
       brokenPromise: prom?.status === "broken",

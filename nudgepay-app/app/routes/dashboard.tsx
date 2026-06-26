@@ -29,6 +29,7 @@ import { collisionState, type Collision, type RecentContactInput } from "../lib/
 import { readPresence } from "../lib/presence.server";
 import { loadOrgConfig } from "../lib/org-config.server";
 import { DEFAULT_ORG_CONFIG, type OrgConfig } from "../lib/org-config";
+import { resolveCommPrefs, DEFAULT_COMM_PREFS, type CommPrefs } from "../lib/comm-prefs";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -91,7 +92,7 @@ type InvoiceRow = {
   balance: number | string | null;
   due_date: string | null;
   customer_id: string | null;
-  customers: { name: string | null; phone: string | null; email: string | null; owner: string | null; sms_consent: boolean | null } | null;
+  customers: { name: string | null; phone: string | null; email: string | null; owner: string | null; sms_consent: boolean | null; preferred_channel: string | null; do_not_call: boolean | null; do_not_email: boolean | null; do_not_text: boolean | null } | null;
 };
 
 type TextMessageRow = {
@@ -253,6 +254,7 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
   let selectedMessages: MessageEntry[] = [];
   let selectedConsent = false;
   let selectedPhone: string | null = null;
+  let selectedPrefs: CommPrefs = DEFAULT_COMM_PREFS;
   let selectedRepInvoiceId: string | null = null;
   let selectedPromiseId: string | null = null;
   let roster: OrgMember[] = [];
@@ -279,7 +281,7 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
     // RLS-scoped invoice read (USER client)
     const { data: invRows } = await supabase
       .from("invoices")
-      .select("id, qbo_doc_number, balance, due_date, customer_id, customers(name, phone, email, owner, sms_consent)")
+      .select("id, qbo_doc_number, balance, due_date, customer_id, customers(name, phone, email, owner, sms_consent, preferred_channel, do_not_call, do_not_email, do_not_text)")
       .eq("org_id", org.org_id)
       .gt("balance", 0)
       .lt("due_date", today);
@@ -306,6 +308,7 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
           email: r.customers.email ?? null,
           owner: r.customers.owner ?? null,
           smsConsent: r.customers.sms_consent ?? false,
+          commPrefs: resolveCommPrefs(r.customers),
         });
       }
     }
@@ -476,9 +479,10 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
 
       // Consent + phone from the customer.
       const { data: custRow } = await supabase
-        .from("customers").select("phone, sms_consent").eq("id", customerId).maybeSingle();
+        .from("customers").select("phone, sms_consent, preferred_channel, do_not_call, do_not_email, do_not_text").eq("id", customerId).maybeSingle();
       selectedConsent = (custRow as any)?.sms_consent ?? false;
       selectedPhone = (custRow as any)?.phone ?? null;
+      selectedPrefs = resolveCommPrefs(custRow as any);
       selectedRepInvoiceId = repInvoiceId;
 
       // Active pending promise id for the cancel form
@@ -509,6 +513,7 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
       selectedMessages,
       selectedConsent,
       selectedPhone,
+      selectedPrefs,
       selectedPromiseId,
       sms,
       promiseError,
