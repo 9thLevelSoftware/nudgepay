@@ -16,3 +16,23 @@ export function addBusinessDays(dateISO: string, n: number): string {
   }
   return dt.toISOString().slice(0, 10);
 }
+
+// Add n calendar days (weekends included) to a YYYY-MM-DD string. UTC-component
+// math, consistent with addBusinessDays — no timezone drift.
+export function addCalendarDays(dateISO: string, n: number): string {
+  const [y, m, d] = dateISO.split("-").map(Number);
+  const dt = new Date(Date.UTC(y, m - 1, d));
+  dt.setUTCDate(dt.getUTCDate() + n);
+  return dt.toISOString().slice(0, 10);
+}
+
+// If dateISO falls on a weekend, roll forward to the following Monday
+// (Sat -> +2, Sun -> +1); weekdays are returned unchanged.
+export function rollToWeekday(dateISO: string): string {
+  const [y, m, d] = dateISO.split("-").map(Number);
+  const dt = new Date(Date.UTC(y, m - 1, d));
+  const day = dt.getUTCDay(); // 0 = Sun, 6 = Sat
+  if (day === 6) return addCalendarDays(dateISO, 2);
+  if (day === 0) return addCalendarDays(dateISO, 1);
+  return dateISO;
+}
