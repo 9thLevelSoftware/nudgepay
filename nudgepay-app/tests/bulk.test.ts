@@ -3,7 +3,7 @@ import { partitionEligibility, renderCaseBody, clampBatch, MAX_BATCH } from "../
 
 test("partitionEligibility keeps consented cases that have a phone", () => {
   const { eligible, skipped } = partitionEligibility([
-    { caseId: "c1", customerName: "Acme", phone: "+12295550100", smsConsent: true },
+    { caseId: "c1", customerName: "Acme", phone: "+12295550100", smsConsent: true, doNotText: false },
   ]);
   expect(eligible).toHaveLength(1);
   expect(skipped).toHaveLength(0);
@@ -11,10 +11,10 @@ test("partitionEligibility keeps consented cases that have a phone", () => {
 
 test("partitionEligibility skips no-phone (phone checked first) and no-consent", () => {
   const { eligible, skipped } = partitionEligibility([
-    { caseId: "c1", customerName: "A", phone: "+12295550100", smsConsent: true },
-    { caseId: "c2", customerName: "B", phone: null, smsConsent: true },
-    { caseId: "c3", customerName: "C", phone: "+12295550102", smsConsent: false },
-    { caseId: "c4", customerName: "D", phone: null, smsConsent: false },
+    { caseId: "c1", customerName: "A", phone: "+12295550100", smsConsent: true, doNotText: false },
+    { caseId: "c2", customerName: "B", phone: null, smsConsent: true, doNotText: false },
+    { caseId: "c3", customerName: "C", phone: "+12295550102", smsConsent: false, doNotText: false },
+    { caseId: "c4", customerName: "D", phone: null, smsConsent: false, doNotText: false },
   ]);
   expect(eligible.map((c) => c.caseId)).toEqual(["c1"]);
   expect(skipped).toEqual([
@@ -54,13 +54,36 @@ test("clampBatch truncates to MAX_BATCH, leaves short lists alone", () => {
 
 test("partitionEligibility skips a contact-blocked case ahead of phone/consent", () => {
   const { eligible, skipped } = partitionEligibility([
-    { caseId: "c1", customerName: "OK", phone: "+12295550100", smsConsent: true },
-    { caseId: "c2", customerName: "Blocked", phone: "+12295550101", smsConsent: true, contactBlocked: true },
-    { caseId: "c3", customerName: "BlockedNoPhone", phone: null, smsConsent: false, contactBlocked: true },
+    { caseId: "c1", customerName: "OK", phone: "+12295550100", smsConsent: true, doNotText: false },
+    { caseId: "c2", customerName: "Blocked", phone: "+12295550101", smsConsent: true, doNotText: false, contactBlocked: true },
+    { caseId: "c3", customerName: "BlockedNoPhone", phone: null, smsConsent: false, doNotText: false, contactBlocked: true },
   ]);
   expect(eligible.map((c) => c.caseId)).toEqual(["c1"]);
   expect(skipped).toEqual([
     { caseId: "c2", name: "Blocked", reason: "do-not-contact" },
     { caseId: "c3", name: "BlockedNoPhone", reason: "do-not-contact" },
   ]);
+});
+
+test("partitionEligibility skips a do-not-text customer with reason do-not-text", () => {
+  const { eligible, skipped } = partitionEligibility([
+    { caseId: "c1", customerName: "OptOut", phone: "+1", smsConsent: true, doNotText: true },
+  ]);
+  expect(eligible).toHaveLength(0);
+  expect(skipped).toEqual([{ caseId: "c1", name: "OptOut", reason: "do-not-text" }]);
+});
+
+test("partitionEligibility reports no-consent before do-not-text when both apply", () => {
+  const { skipped } = partitionEligibility([
+    { caseId: "c2", customerName: "Both", phone: "+1", smsConsent: false, doNotText: true },
+  ]);
+  expect(skipped[0].reason).toBe("no-consent");
+});
+
+test("partitionEligibility keeps a consented, non-opted-out customer eligible", () => {
+  const { eligible, skipped } = partitionEligibility([
+    { caseId: "c3", customerName: "Ok", phone: "+1", smsConsent: true, doNotText: false },
+  ]);
+  expect(eligible).toHaveLength(1);
+  expect(skipped).toHaveLength(0);
 });

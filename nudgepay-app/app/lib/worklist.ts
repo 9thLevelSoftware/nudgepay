@@ -2,6 +2,8 @@
 // typed from the prototype domain.js. Computed server-side; the browser only
 // renders the result.
 
+import type { CommPrefs } from "./comm-prefs";
+
 export type HeatBand = "cool" | "warm" | "hot";
 export type Heat = { band: HeatBand; label: "COOL" | "WARM" | "HOT"; days: number };
 export type Priority = { level: "Critical" | "High" | "Medium" | "Low"; tone: HeatBand; reason: string; rank: number };
@@ -37,7 +39,7 @@ export type ViewId = "all-open" | "30-plus" | "high-value" | "never-contacted" |
 export type SortId = "recommended" | "most-overdue" | "highest-balance" | "customer";
 
 export type InvoiceInput = { id: string; qbo_doc_number: string | null; customer_id: string | null; balance: number; due_date: string | null };
-export type CustomerInput = { id: string; name: string; phone: string | null; email: string | null; owner?: string | null; smsConsent?: boolean | null };
+export type CustomerInput = { id: string; name: string; phone: string | null; email: string | null; owner?: string | null; smsConsent?: boolean | null; commPrefs?: CommPrefs };
 export type LastContactInput = { invoiceId: string; date: string; channel: string };
 export type PromiseSignalInput = {
   invoiceId: string;

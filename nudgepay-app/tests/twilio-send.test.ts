@@ -101,6 +101,17 @@ test("sendInvoiceText refuses a do_not_contact case (no Twilio call, no row)", a
   expect(rows ?? []).toHaveLength(0);
 });
 
+test("sendInvoiceText refuses a do_not_text customer (no Twilio call, no row)", async () => {
+  const { orgId, customerId, invoiceId } = await seed(true, "+12295550144");
+  await svc.from("customers").update({ do_not_text: true }).eq("id", customerId);
+  const fetchFn = vi.fn();
+  await expect(sendInvoiceText(deps(fetchFn), { orgId, invoiceId, userId, body: "x" }))
+    .rejects.toThrow(/opted out/i);
+  expect(fetchFn).not.toHaveBeenCalled();
+  const { data: rows } = await svc.from("text_messages").select("id").eq("customer_id", customerId);
+  expect(rows ?? []).toHaveLength(0);
+});
+
 test("sendInvoiceText still sends for a non-blocking exception (disputed)", async () => {
   const { orgId, customerId, invoiceId } = await seed(true, "+12295550134");
   await svc.from("collection_cases").insert({

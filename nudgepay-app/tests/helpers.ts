@@ -18,14 +18,30 @@ export function serviceClient(): SupabaseClient {
   });
 }
 
+// Find an existing auth user by email, paging through results. GoTrue's
+// listUsers() defaults to 50 rows on the first page only; the full suite
+// accumulates far more auth users, so a single unpaged lookup misses anyone
+// past page 1 (manifested as a flaky "Cannot read properties of undefined" in
+// makeUserClient). Page until found or exhausted.
+async function findUserByEmail(admin: SupabaseClient, email: string) {
+  for (let page = 1; page <= 50; page++) {
+    const { data } = await admin.auth.admin.listUsers({ page, perPage: 200 });
+    const found = data.users.find((u) => u.email === email);
+    if (found) return found;
+    if (data.users.length === 0) return null;
+  }
+  return null;
+}
+
 export async function makeUserClient(email: string, password = "test-pass-123") {
   const admin = serviceClient();
-  // Create (idempotent) and confirm the user.
+  // createUser is not idempotent: a repeated email returns no user (an error),
+  // in which case fall back to a paged lookup of the existing user.
   const { data: created } = await admin.auth.admin.createUser({
     email, password, email_confirm: true,
   });
-  const user = created?.user
-    ?? (await admin.auth.admin.listUsers()).data.users.find((u) => u.email === email)!;
+  const user = created?.user ?? (await findUserByEmail(admin, email));
+  if (!user) throw new Error(`makeUserClient: could not create or find auth user ${email}`);
 
   const anon = createClient(env.SUPABASE_URL, env.SUPABASE_ANON_KEY);
   const { data: signedIn, error } = await anon.auth.signInWithPassword({ email, password });

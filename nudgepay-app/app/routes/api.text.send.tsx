@@ -41,7 +41,10 @@ export async function action({ request, context }: ActionFunctionArgs) {
     return redirect(withSms(returnTo, "sent"), { headers });
   } catch (err) {
     const msg = err instanceof Error ? err.message : "";
-    const reason = /blocked/i.test(msg) ? "blocked" : /consent/i.test(msg) ? "noconsent" : "error";
+    const reason = /blocked/i.test(msg) ? "blocked"
+      : /opted out/i.test(msg) ? "optout"
+      : /consent/i.test(msg) ? "noconsent"
+      : "error";
     return redirect(withSms(returnTo, reason), { headers });
   }
 }

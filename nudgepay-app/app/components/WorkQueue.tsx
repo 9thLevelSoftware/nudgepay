@@ -27,6 +27,29 @@ const LEVEL_BADGE: Record<string, string> = {
 
 
 // ---------------------------------------------------------------------------
+// Communication-preference badges — compact inline cluster on each row
+// ---------------------------------------------------------------------------
+
+const PREF_CHANNEL_LABEL: Record<string, string> = { call: "Prefers call", text: "Prefers text" };
+
+function CommPrefBadges({ prefs }: { prefs: { preferredChannel: string | null; doNotCall: boolean; doNotText: boolean } }) {
+  const badges: { key: string; label: string; cls: string }[] = [];
+  if (prefs.preferredChannel && PREF_CHANNEL_LABEL[prefs.preferredChannel]) {
+    badges.push({ key: "pref", label: PREF_CHANNEL_LABEL[prefs.preferredChannel], cls: "bg-cool/15 text-cool" });
+  }
+  if (prefs.doNotText) badges.push({ key: "nt", label: "No text", cls: "bg-hot/15 text-hot" });   // enforced
+  if (prefs.doNotCall) badges.push({ key: "nc", label: "No call", cls: "bg-amber-500/15 text-amber-200" }); // advisory
+  if (badges.length === 0) return null;
+  return (
+    <span className="flex flex-wrap items-center gap-1">
+      {badges.map((b) => (
+        <span key={b.key} className={`inline-flex items-center rounded px-1.5 py-0.5 text-[10px] font-sans font-semibold ${b.cls}`}>{b.label}</span>
+      ))}
+    </span>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Collision marker — shown when another agent is viewing or recently contacted
 // ---------------------------------------------------------------------------
 
@@ -161,6 +184,7 @@ function QueueRow({
               {item.effectiveLevel}
             </span>
           </span>
+          <CommPrefBadges prefs={item.commPrefs} />
         </span>
 
         {/* Total overdue */}
@@ -239,6 +263,7 @@ function MobileCard({
                   {item.effectiveLevel}
                 </span>
               </p>
+              <CommPrefBadges prefs={item.commPrefs} />
             </div>
           </div>
           <span className="font-mono text-text tabular-nums text-right shrink-0 text-sm">{formatUSD(item.totalOverdue)}</span>

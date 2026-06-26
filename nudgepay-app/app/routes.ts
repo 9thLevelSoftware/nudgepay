@@ -14,6 +14,7 @@ export default [
   route("eula", "routes/eula.tsx"),
   route("api/contact-logs", "routes/api.contact-logs.tsx"),
   route("api/sms-consent", "routes/api.sms-consent.tsx"),
+  route("api/comm-prefs", "routes/api.comm-prefs.tsx"),
   route("api/assign", "routes/api.assign.tsx"),
   route("api/bulk-assign", "routes/api.bulk-assign.tsx"),
   route("api/priority-override", "routes/api.priority-override.tsx"),
