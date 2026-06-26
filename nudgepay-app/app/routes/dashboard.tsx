@@ -238,6 +238,7 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
 
   const sms = sp.get("sms");
   const log = sp.get("log") === "1";
+  const logMethod = sp.get("method");
   const logError = sp.get("logError");
   const promiseError = sp.get("promiseError");
   const saved = sp.get("saved") === "1";
@@ -510,6 +511,7 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
       repInvoiceId: selectedRepInvoiceId,
       tab,
       log,
+      logMethod,
       logError,
       selectedTimeline,
       selectedMessages,
@@ -553,6 +555,7 @@ export default function Dashboard() {
     q,
     tab,
     log,
+    logMethod,
     logError,
     promiseError,
     selectedTimeline,
@@ -692,7 +695,7 @@ export default function Dashboard() {
               returnTo={`/dashboard?${new URLSearchParams({ case: selected.caseId, tab, view, sort, ...(q ? { q } : {}) }).toString()}`}
               logError={logError}
               collision={collisions[selected.caseId] ?? null}
-              method={sp.get("method")}
+              method={logMethod}
             />
           ) : null}
           {prefsOpen && selected ? (
