@@ -93,7 +93,7 @@ type InvoiceRow = {
   balance: number | string | null;
   due_date: string | null;
   customer_id: string | null;
-  customers: { name: string | null; phone: string | null; email: string | null; owner: string | null; sms_consent: boolean | null; preferred_channel: string | null; do_not_call: boolean | null; do_not_email: boolean | null; do_not_text: boolean | null } | null;
+  customers: { name: string | null; phone: string | null; email: string | null; owner: string | null; sms_consent: boolean | null; preferred_channel: string | null; do_not_call: boolean | null; do_not_text: boolean | null } | null;
 };
 
 type TextMessageRow = {
@@ -283,7 +283,7 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
     // RLS-scoped invoice read (USER client)
     const { data: invRows } = await supabase
       .from("invoices")
-      .select("id, qbo_doc_number, balance, due_date, customer_id, customers(name, phone, email, owner, sms_consent, preferred_channel, do_not_call, do_not_email, do_not_text)")
+      .select("id, qbo_doc_number, balance, due_date, customer_id, customers(name, phone, email, owner, sms_consent, preferred_channel, do_not_call, do_not_text)")
       .eq("org_id", org.org_id)
       .gt("balance", 0)
       .lt("due_date", today);
@@ -481,7 +481,7 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
 
       // Consent + phone from the customer.
       const { data: custRow } = await supabase
-        .from("customers").select("phone, sms_consent, preferred_channel, do_not_call, do_not_email, do_not_text").eq("id", customerId).maybeSingle();
+        .from("customers").select("phone, sms_consent, preferred_channel, do_not_call, do_not_text").eq("id", customerId).maybeSingle();
       selectedConsent = (custRow as any)?.sms_consent ?? false;
       selectedPhone = (custRow as any)?.phone ?? null;
       selectedPrefs = resolveCommPrefs(custRow as any);

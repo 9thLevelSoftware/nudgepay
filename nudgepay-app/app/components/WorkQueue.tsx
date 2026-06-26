@@ -30,16 +30,15 @@ const LEVEL_BADGE: Record<string, string> = {
 // Communication-preference badges — compact inline cluster on each row
 // ---------------------------------------------------------------------------
 
-const PREF_CHANNEL_LABEL: Record<string, string> = { call: "Prefers call", text: "Prefers text", email: "Prefers email" };
+const PREF_CHANNEL_LABEL: Record<string, string> = { call: "Prefers call", text: "Prefers text" };
 
-function CommPrefBadges({ prefs }: { prefs: { preferredChannel: string | null; doNotCall: boolean; doNotEmail: boolean; doNotText: boolean } }) {
+function CommPrefBadges({ prefs }: { prefs: { preferredChannel: string | null; doNotCall: boolean; doNotText: boolean } }) {
   const badges: { key: string; label: string; cls: string }[] = [];
   if (prefs.preferredChannel && PREF_CHANNEL_LABEL[prefs.preferredChannel]) {
     badges.push({ key: "pref", label: PREF_CHANNEL_LABEL[prefs.preferredChannel], cls: "bg-cool/15 text-cool" });
   }
   if (prefs.doNotText) badges.push({ key: "nt", label: "No text", cls: "bg-hot/15 text-hot" });   // enforced
   if (prefs.doNotCall) badges.push({ key: "nc", label: "No call", cls: "bg-amber-500/15 text-amber-200" }); // advisory
-  if (prefs.doNotEmail) badges.push({ key: "ne", label: "No email", cls: "bg-amber-500/15 text-amber-200" }); // advisory
   if (badges.length === 0) return null;
   return (
     <span className="flex flex-wrap items-center gap-1">

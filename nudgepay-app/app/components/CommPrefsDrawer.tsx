@@ -5,7 +5,6 @@ const CHANNEL_OPTIONS: { value: "" | Channel; label: string }[] = [
   { value: "", label: "No preference" },
   { value: "call", label: "Call" },
   { value: "text", label: "Text" },
-  { value: "email", label: "Email" },
 ];
 
 export function CommPrefsDrawer({
@@ -48,10 +47,6 @@ export function CommPrefsDrawer({
             <label className="flex items-center gap-2 text-sm text-text">
               <input type="checkbox" name="do_not_call" value="true" defaultChecked={prefs.doNotCall} className="h-4 w-4 rounded border-border text-copper" />
               Do not call
-            </label>
-            <label className="flex items-center gap-2 text-sm text-text">
-              <input type="checkbox" name="do_not_email" value="true" defaultChecked={prefs.doNotEmail} className="h-4 w-4 rounded border-border text-copper" />
-              Do not email
             </label>
             <label className="flex items-center gap-2 text-sm text-text">
               <input type="checkbox" name="do_not_text" value="true" defaultChecked={prefs.doNotText} className="h-4 w-4 rounded border-border text-copper" />
