@@ -14,6 +14,7 @@ import {
 import type { PromiseStatus } from "./promises";
 import type { ExceptionReason } from "./contact-log";
 import { isCaseSuppressed, isContactBlocked } from "./exceptions";
+import { suggestFollowUpDate } from "./follow-up-cadence";
 
 export type CasePromiseInput = {
   caseId: string;
@@ -81,6 +82,7 @@ export type CaseItem = {
   exceptionNote: string | null;
   suppressed: boolean;
   contactBlocked: boolean;
+  suggestedFollowUpAt: string;
   followUpDue: boolean;
   searchText: string;
   invoices: CaseInvoice[];
@@ -173,6 +175,7 @@ export function buildCaseItems(
       followUpDue,
     });
     const overrideLevel = overrideToLevel(cse.priorityOverride ?? null);
+    const effectiveLevel = overrideLevel ?? scored.level;
     const priorAttempts = attemptsByCase.get(cse.id) ?? 0;
 
     return {
@@ -191,7 +194,7 @@ export function buildCaseItems(
       priority: { level: scored.level, tone: scored.tone, reason: scored.reason, rank: scored.rank },
       score: scored.score,
       factors: scored.factors,
-      effectiveLevel: overrideLevel ?? scored.level,
+      effectiveLevel,
       priorAttempts,
       override: overrideLevel
         ? { level: overrideLevel, reason: cse.priorityOverrideReason ?? null, by: cse.priorityOverrideBy ?? null, at: cse.priorityOverrideAt ?? null }
@@ -208,6 +211,7 @@ export function buildCaseItems(
       exceptionNote: cse.exceptionNote,
       suppressed: isCaseSuppressed({ status: cse.status, exceptionReason: cse.exceptionReason, nextActionAt: cse.nextActionAt, today }),
       contactBlocked: isContactBlocked(cse.exceptionReason),
+      suggestedFollowUpAt: suggestFollowUpDate({ level: effectiveLevel, today }).date,
       followUpDue,
       searchText: [name, ...invList.map((i) => i.docNumber ?? ""), cust?.phone ?? "", cust?.email ?? "", owner]
         .filter(Boolean).join(" ").toLowerCase(),
