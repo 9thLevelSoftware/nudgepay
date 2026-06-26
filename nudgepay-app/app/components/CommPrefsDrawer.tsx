@@ -37,7 +37,7 @@ export function CommPrefsDrawer({
             <span className="text-xs font-sans font-medium uppercase tracking-wider text-muted">Preferred channel</span>
             <select name="preferred_channel" defaultValue={prefs.preferredChannel ?? ""}
               className="rounded-md border border-border bg-surface px-2 py-1.5 text-sm text-text">
-              {CHANNEL_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+              {CHANNEL_OPTIONS.map((o) => <option key={o.value || "none"} value={o.value}>{o.label}</option>)}
             </select>
           </label>
 

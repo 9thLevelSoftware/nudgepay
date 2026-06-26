@@ -112,6 +112,24 @@ test("sendInvoiceText refuses a do_not_text customer (no Twilio call, no row)", 
   expect(rows ?? []).toHaveLength(0);
 });
 
+test("contact-block takes precedence over do_not_text in the block reason", async () => {
+  // A customer who is BOTH do_not_text AND on a legal/do-not-contact case must
+  // surface the case-level legal hold, not the per-customer opt-out — mirroring
+  // resolveCallAction's call-path precedence. Both still block; the reason differs.
+  const { orgId, customerId, invoiceId } = await seed(true, "+12295550155");
+  await svc.from("customers").update({ do_not_text: true }).eq("id", customerId);
+  await svc.from("collection_cases").insert({
+    org_id: orgId, customer_id: customerId, status: "on_hold",
+    next_action_type: "exception", exception_reason: "legal_agency",
+  });
+  const fetchFn = vi.fn();
+  await expect(sendInvoiceText(deps(fetchFn), { orgId, invoiceId, userId, body: "x" }))
+    .rejects.toThrow(/blocked/i);
+  expect(fetchFn).not.toHaveBeenCalled();
+  const { data: rows } = await svc.from("text_messages").select("id").eq("customer_id", customerId);
+  expect(rows ?? []).toHaveLength(0);
+});
+
 test("sendInvoiceText still sends for a non-blocking exception (disputed)", async () => {
   const { orgId, customerId, invoiceId } = await seed(true, "+12295550134");
   await svc.from("collection_cases").insert({
