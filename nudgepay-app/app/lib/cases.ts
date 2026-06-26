@@ -15,6 +15,7 @@ import type { PromiseStatus } from "./promises";
 import type { ExceptionReason } from "./contact-log";
 import { isCaseSuppressed, isContactBlocked } from "./exceptions";
 import { suggestFollowUpDate } from "./follow-up-cadence";
+import type { OrgConfig } from "./org-config";
 
 export type CasePromiseInput = {
   caseId: string;
@@ -83,6 +84,7 @@ export type CaseItem = {
   suppressed: boolean;
   contactBlocked: boolean;
   suggestedFollowUpAt: string;
+  suggestedFollowUpIntervalDays: number;
   followUpDue: boolean;
   searchText: string;
   invoices: CaseInvoice[];
@@ -119,6 +121,7 @@ export function buildCaseItems(
   promises: CasePromiseInput[],
   today: string,
   ownerLabels: Map<string, string>,
+  config: OrgConfig,
 ): CaseItem[] {
   const customerById = new Map(customers.map((c) => [c.id, c]));
 
@@ -176,6 +179,7 @@ export function buildCaseItems(
     });
     const overrideLevel = overrideToLevel(cse.priorityOverride ?? null);
     const effectiveLevel = overrideLevel ?? scored.level;
+    const followUp = suggestFollowUpDate({ level: effectiveLevel, today, config });
     const priorAttempts = attemptsByCase.get(cse.id) ?? 0;
 
     return {
@@ -211,7 +215,8 @@ export function buildCaseItems(
       exceptionNote: cse.exceptionNote,
       suppressed: isCaseSuppressed({ status: cse.status, exceptionReason: cse.exceptionReason, nextActionAt: cse.nextActionAt, today }),
       contactBlocked: isContactBlocked(cse.exceptionReason),
-      suggestedFollowUpAt: suggestFollowUpDate({ level: effectiveLevel, today }).date,
+      suggestedFollowUpAt: followUp.date,
+      suggestedFollowUpIntervalDays: followUp.intervalDays,
       followUpDue,
       searchText: [name, ...invList.map((i) => i.docNumber ?? ""), cust?.phone ?? "", cust?.email ?? "", owner]
         .filter(Boolean).join(" ").toLowerCase(),
