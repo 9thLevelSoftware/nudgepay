@@ -5,6 +5,7 @@ import {
   type CaseRow,
   type CasePromiseInput, type CaseLastContactInput,
 } from "../app/lib/cases";
+import { suggestFollowUpDate } from "../app/lib/follow-up-cadence";
 
 const TODAY = "2026-06-22";
 
@@ -354,4 +355,35 @@ test("buildCaseItems sets contactBlocked correctly per exceptionReason", () => {
   expect(byId.get("case-dnc")!.contactBlocked).toBe(true);   // do_not_contact → terminal, blocksContact
   expect(byId.get("case-disp")!.contactBlocked).toBe(false);  // disputed → non-terminal, does not block
   expect(byId.get("case-none")!.contactBlocked).toBe(false);  // null exceptionReason → not blocked
+});
+
+test("buildCaseItems sets suggestedFollowUpAt from effectiveLevel + today", () => {
+  // Acme (c1) scores High at SCORE_TODAY with no override.
+  const items = buildCaseItems(CASES, INVOICES, CUSTOMERS, [], [], SCORE_TODAY, LABELS);
+  const acme = items.find((c) => c.customerId === "c1")!;
+  expect(acme.effectiveLevel).toBe("High");
+  expect(acme.suggestedFollowUpAt).toBe(
+    suggestFollowUpDate({ level: "High", today: SCORE_TODAY }).date,
+  );
+  // Sanity: High = 3-day cadence; SCORE_TODAY 2026-06-19 (Fri) + 3 = Mon 2026-06-22.
+  expect(acme.suggestedFollowUpAt).toBe("2026-06-22");
+});
+
+test("a priority override drives the suggested follow-up cadence", () => {
+  // today = Monday 2026-06-22 so Critical (2d) and High (3d) yield distinct dates.
+  const today = "2026-06-22";
+  const cases: CaseRow[] = [
+    { id: "case-1", customerId: "c1", status: "working", nextActionType: "follow_up", nextActionAt: "2026-06-20",
+      exceptionReason: null, exceptionNote: null,
+      priorityOverride: "critical", priorityOverrideReason: "CEO escalation",
+      priorityOverrideBy: "u1", priorityOverrideAt: "2026-06-24T00:00:00Z" },
+  ];
+  const items = buildCaseItems(cases, INVOICES, CUSTOMERS, [], [], today, LABELS);
+  const c = items[0];
+  expect(c.effectiveLevel).toBe("Critical");
+  // Pinned Critical -> 2-day cadence: Mon 2026-06-22 + 2 = Wed 2026-06-24.
+  expect(c.suggestedFollowUpAt).toBe(suggestFollowUpDate({ level: "Critical", today }).date);
+  expect(c.suggestedFollowUpAt).toBe("2026-06-24");
+  // And it differs from the computed-High suggestion, proving the override drives it.
+  expect(c.suggestedFollowUpAt).not.toBe(suggestFollowUpDate({ level: "High", today }).date);
 });
