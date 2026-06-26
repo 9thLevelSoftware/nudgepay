@@ -24,6 +24,20 @@ test("org_settings rejects an empty working_days array", async () => {
   expect(okErr).toBeNull();
 });
 
+test("org_settings rejects working_days values outside 0..6", async () => {
+  const { data: org } = await svc.from("organizations").insert({ name: "C7 oob-wd" }).select("id").single();
+  const orgId = org!.id as string;
+  // 7 is out of range (Date.getUTCDay() only returns 0..6) — must be rejected.
+  const { error: hiErr } = await svc.from("org_settings").insert({ org_id: orgId, working_days: [1, 2, 7] });
+  expect(hiErr).not.toBeNull();
+  // A negative weekday is also rejected.
+  const { error: negErr } = await svc.from("org_settings").insert({ org_id: orgId, working_days: [-1, 3] });
+  expect(negErr).not.toBeNull();
+  // The full valid range (Sun..Sat) is accepted.
+  const { error: okErr } = await svc.from("org_settings").insert({ org_id: orgId, working_days: [0, 1, 2, 3, 4, 5, 6] });
+  expect(okErr).toBeNull();
+});
+
 test("loadOrgConfig reflects stored settings and holidays", async () => {
   const { data: org } = await svc.from("organizations").insert({ name: "C7 custom" }).select("id").single();
   const orgId = org!.id as string;

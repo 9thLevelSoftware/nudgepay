@@ -19,7 +19,8 @@ $$;
 create table org_settings (
   org_id uuid primary key references organizations(id) on delete cascade,
   promise_grace_days int not null default 2 check (promise_grace_days >= 0),
-  working_days int[] not null default '{1,2,3,4,5}' check (cardinality(working_days) >= 1),
+  working_days int[] not null default '{1,2,3,4,5}'
+    check (cardinality(working_days) >= 1 and working_days <@ array[0,1,2,3,4,5,6]),
   cadence_critical int not null default 2 check (cadence_critical > 0),
   cadence_high int not null default 3 check (cadence_high > 0),
   cadence_medium int not null default 7 check (cadence_medium > 0),
