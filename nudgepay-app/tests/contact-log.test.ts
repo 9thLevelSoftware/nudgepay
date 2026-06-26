@@ -78,3 +78,33 @@ test("parse: rejects an unknown outcome", () => {
   expect(parseContactLogForm(fd({ caseId: "c1", method: "call", outcome: "totally-made-up", nextStep: "follow_up", followUpAt: "2026-07-01" })))
     .toEqual({ ok: false, error: "bad-outcome" });
 });
+
+test("exception with a review-dated reason requires reviewAt", () => {
+  const r = parseContactLogForm(fd({ caseId: "c1", method: "call", outcome: "dispute", nextStep: "exception", exceptionReason: "disputed" }));
+  expect(r.ok).toBe(false);
+  if (!r.ok) expect(r.error).toBe("next-step-date");
+});
+
+test("exception with a review-dated reason accepts a valid reviewAt", () => {
+  const r = parseContactLogForm(fd({ caseId: "c1", method: "call", outcome: "dispute", nextStep: "exception", exceptionReason: "incorrect_amount", reviewAt: "2026-08-01" }));
+  expect(r.ok).toBe(true);
+  if (r.ok) {
+    expect(r.fields.exceptionReason).toBe("incorrect_amount");
+    expect(r.fields.reviewAt).toBe("2026-08-01");
+  }
+});
+
+test("exception with a terminal reason does NOT require reviewAt", () => {
+  const r = parseContactLogForm(fd({ caseId: "c1", method: "call", outcome: "no-commitment", nextStep: "exception", exceptionReason: "do_not_contact" }));
+  expect(r.ok).toBe(true);
+  if (r.ok) {
+    expect(r.fields.exceptionReason).toBe("do_not_contact");
+    expect(r.fields.reviewAt).toBeNull();
+  }
+});
+
+test("exception rejects an unknown reason", () => {
+  const r = parseContactLogForm(fd({ caseId: "c1", method: "call", outcome: "dispute", nextStep: "exception", exceptionReason: "bogus", reviewAt: "2026-08-01" }));
+  expect(r.ok).toBe(false);
+  if (!r.ok) expect(r.error).toBe("bad-exception");
+});

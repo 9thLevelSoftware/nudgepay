@@ -2,6 +2,8 @@
 // (it is imported by both the action route and tests). The action layer performs
 // auth/org/RLS; this only shapes and validates the submitted fields.
 
+import { EXCEPTION_STATES, requiresReviewDate, type ExceptionState } from "./exceptions";
+
 export const CONTACT_METHODS = ["call", "email", "text", "note"] as const;
 export const CONTACT_OUTCOMES = [
   "promise-to-pay", "dispute", "no-commitment", "left-voicemail", "no-answer", "other",
@@ -13,8 +15,8 @@ export type ContactOutcome = (typeof CONTACT_OUTCOMES)[number];
 
 export const NEXT_STEPS = ["follow_up", "promise", "waiting", "exception"] as const;
 export type NextStep = (typeof NEXT_STEPS)[number];
-export const EXCEPTION_REASONS = ["disputed", "payment_plan", "do_not_contact", "other"] as const;
-export type ExceptionReason = (typeof EXCEPTION_REASONS)[number];
+export const EXCEPTION_REASONS = EXCEPTION_STATES;
+export type ExceptionReason = ExceptionState;
 
 export type ContactLogFields = {
   caseId: string;
@@ -97,10 +99,17 @@ export function parseContactLogForm(form: FormData): ParseResult {
   } else if (nextStep === "exception") {
     const r = str(form, "exceptionReason");
     if (!r || !EXCEPTION_REASONS.includes(r as ExceptionReason)) return { ok: false, error: "bad-exception" };
+    const state = r as ExceptionReason;
     const d = str(form, "reviewAt");
-    if (!d || !validDate(d)) return { ok: false, error: "next-step-date" };
-    exceptionReason = r as ExceptionReason;
-    reviewAt = d;
+    if (requiresReviewDate(state)) {
+      if (!d || !validDate(d)) return { ok: false, error: "next-step-date" };
+      reviewAt = d;
+    } else if (d != null) {
+      // Terminal states do not require a review date, but if one is supplied it must be valid.
+      if (!validDate(d)) return { ok: false, error: "next-step-date" };
+      reviewAt = d;
+    }
+    exceptionReason = state;
     exceptionNote = str(form, "exceptionNote");
   }
 
