@@ -108,3 +108,16 @@ test("exception rejects an unknown reason", () => {
   expect(r.ok).toBe(false);
   if (!r.ok) expect(r.error).toBe("bad-exception");
 });
+
+test("parseContactLogForm rejects email as a method (email is not a NudgePay channel)", () => {
+  const r = parseContactLogForm(fd({ caseId: "c1", method: "email", outcome: "no-answer", nextStep: "follow_up", followUpAt: "2026-07-01" }));
+  expect(r.ok).toBe(false);
+  if (!r.ok) expect(r.error).toBe("bad-method");
+});
+
+test("parseContactLogForm still accepts call/text/note", () => {
+  for (const method of ["call", "text", "note"]) {
+    const r = parseContactLogForm(fd({ caseId: "c1", method, outcome: "other", nextStep: "follow_up", followUpAt: "2026-07-01" }));
+    expect(r.ok).toBe(true);
+  }
+});
