@@ -63,16 +63,16 @@
 ## E. P2 — correctly deferred (no action)
 - [ ] Automated outreach sequences · predictive payment scoring · AI summaries/message generation · sentiment · voice/transcription · advanced segmentation · benchmarking/forecasting. *Follow the reliable core per the document.*
 
-## F. High-risk scenarios currently untestable (unblock as B1–B3, C2, C7 land)
-- [ ] Five invoices / one payment
-- [ ] Promise < total balance
-- [ ] Promise date on weekend/holiday
-- [ ] Partial payment before promise date
-- [ ] Payment after a follow-up was created
-- [ ] Void/credit in QBO (see B3-bug)
-- [ ] Dispute of one of several invoices
-- [ ] SMS undeliverable / opt-out mid-thread (opt-out handled; mid-thread state not surfaced)
-- [ ] Two employees open the same customer simultaneously (maps to C1)
+## F. High-risk scenarios — now covered (B1–B3, C2, C7 landed; tests added 2026-06-27)
+- [x] **Five invoices / one payment** — `promise-evaluation-rls.test.ts` ("five invoices / one payment"): a promise links 5 invoices; `applyPromiseEvaluation` derives receipt from the SUM of linked balances (baseline 5000 − Σ current) → kept once 2 invoices clear, while 3 stay open.
+- [x] **Promise < total balance** — `promises.test.ts` ("kept when received >= promised"): promised 500 against baseline 1200; kept at received 500 while 700 remains.
+- [x] **Promise date on weekend/holiday** — `promise-create-grace.test.ts` ("grace_until skips a configured holiday") + `business-days.test.ts` (weekend roll / holiday skip in `addBusinessDays`/`nextWorkingDay`).
+- [x] **Partial payment before promise date** — `promises.test.ts` ("stays pending before grace when not fully received"): received 200 < 500, today ≤ grace → pending.
+- [x] **Payment after a follow-up was created** — `qbo-sync-payments.test.ts` ("payment after a follow-up resolves the case"): a `working`/`follow_up` case with a future review date auto-resolves when the payment zeroes the invoice (re-pull → reconciliation); the follow-up is cleared.
+- [x] **Void/credit in QBO** — `qbo-sync-payments.test.ts` ("a QBO credit memo that zeroes the balance resolves the case"): the `type:"credit_memo"` apply path zeroes the balance and resolves the case (B3-bug path).
+- [x] **Dispute of one of several invoices** — `dashboard-worklist.test.ts` ("a disputed case spanning several invoices is parked as a whole"). **Model note:** disputes are CASE-level (`collection_cases.exception_reason`), not per-invoice — contesting one invoice parks the whole case and pauses collection on the still-collectible siblings. No per-invoice dispute granularity exists; if partial-collection-during-dispute is required, that's a new feature (Phase 9+).
+- [x] **SMS undeliverable / opt-out mid-thread** — `twilio-inbound.test.ts`: STOP flips `sms_consent` off, START re-enables, `updateMessageStatus` records delivery status + error_code. *(Surfacing mid-thread undeliverable state in the UI remains a deliberate non-feature, per the original note.)*
+- [x] **Two employees open the same customer simultaneously** — `collision.test.ts` (`collisionState` live>recent>none, `summarizeRecentContact`, `liveViewers`) + `presence.test.ts` + `api-presence-heartbeat.test.ts` (C1).
 
 ---
 

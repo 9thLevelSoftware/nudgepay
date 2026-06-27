@@ -96,6 +96,40 @@ test("buildCaseData threads config cadence into selected item", () => {
   expect(data.selected?.suggestedFollowUpIntervalDays).toBe(1);
 });
 
+// F-scenario: dispute of one of several invoices. NudgePay models disputes at
+// the CASE (customer) level — collection_cases.exception_reason — not per
+// invoice. So contesting a single invoice parks the whole case: it drops out of
+// the active queue while ALL of the customer's invoices (the disputed one and
+// the still-collectible siblings) stay on the case. This test documents that
+// case-level granularity; see the note in the report about the limitation.
+test("F: a disputed case spanning several invoices is parked as a whole", () => {
+  const cases: CaseRow[] = [
+    { id: "case-disp", customerId: "c1", status: "on_hold", nextActionType: "exception", nextActionAt: "2026-08-01", exceptionReason: "disputed", exceptionNote: "Customer contests invoice 1002 only." },
+  ];
+  const invoices = [
+    { id: "i1", qbo_doc_number: "1001", customer_id: "c1", balance: 4000, due_date: "2026-03-01" },
+    { id: "i2", qbo_doc_number: "1002", customer_id: "c1", balance: 1500, due_date: "2026-03-01" }, // the contested one
+    { id: "i3", qbo_doc_number: "1003", customer_id: "c1", balance: 600, due_date: "2026-03-01" },
+  ];
+  const customers = [{ id: "c1", name: "Disputed Co", phone: null, email: null, owner: null }];
+
+  // today (2026-06-22) is before the 2026-08-01 review date → parked.
+  const active = buildCaseData(cases, invoices, customers, [], [],
+    { view: "all-open", sort: "recommended", q: "", caseId: null }, TODAY,
+    new Map(), null, DEFAULT_ORG_CONFIG);
+  expect(active.items.map((i) => i.caseId)).toEqual([]); // suppressed from the active queue
+
+  // The on-hold view surfaces it; the total reflects ALL three invoices, not
+  // just the contested one — collection on the siblings is paused with the case.
+  const parked = buildCaseData(cases, invoices, customers, [], [],
+    { view: "on-hold", sort: "recommended", q: "", caseId: "case-disp" }, TODAY,
+    new Map(), null, DEFAULT_ORG_CONFIG);
+  expect(parked.items.map((i) => i.caseId)).toEqual(["case-disp"]);
+  expect(parked.selected?.totalOverdue).toBe(6100); // 4000 + 1500 + 600
+  expect(parked.selected?.suppressed).toBe(true);
+  expect(parked.selected?.exceptionReason).toBe("disputed");
+});
+
 // DB-backed: proves the RLS-scoped read shape the loader relies on.
 let user: Awaited<ReturnType<typeof makeUserClient>>;
 let orgId: string;
