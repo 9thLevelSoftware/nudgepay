@@ -1,4 +1,6 @@
-import { redirect, data, type LoaderFunctionArgs } from "react-router";
+import { useLoaderData, redirect, data, type LoaderFunctionArgs } from "react-router";
+import { AppShell } from "../components/AppShell";
+import { AccountProfile } from "../components/AccountProfile";
 import { getEnv } from "../lib/env.server";
 import { requireUser, resolveOrg } from "../lib/session.server";
 import { getConnectionStatus } from "../lib/qbo-connection.server";
@@ -302,9 +304,41 @@ export async function loader({ request, params, context }: LoaderFunctionArgs) {
 }
 
 // ---------------------------------------------------------------------------
-// Page component (stub — implemented in Task 11)
+// Page component
 // ---------------------------------------------------------------------------
 
 export default function AccountProfilePage() {
-  return null; // implemented in Task 11
+  const d = useLoaderData<typeof loader>();
+  return (
+    <AppShell
+      orgName={d.orgName}
+      userInitials={d.initials}
+      syncLabel={d.syncLabel}
+      connected={d.connected}
+      isOwner={d.isOwner}
+      activeNav="accounts"
+    >
+      <AccountProfile
+        customerId={d.account.id}
+        name={d.account.name}
+        standing={d.account.standing}
+        owner={d.account.ownerLabel}
+        ownerId={d.account.ownerId}
+        email={d.account.email}
+        phone={d.account.phone}
+        smsConsent={d.account.smsConsent}
+        commPrefs={d.account.commPrefs}
+        notes={d.account.notes}
+        openBalance={d.account.openBalance}
+        openInvoiceCount={d.account.openInvoiceCount}
+        oldestOverdueDays={d.account.oldestOverdueDays}
+        lifetimeInvoiced={d.account.lifetimeInvoiced}
+        invoices={d.invoices}
+        timeline={d.timeline}
+        roster={d.roster}
+        activeCaseId={d.activeCaseId}
+        returnTo={d.returnTo}
+      />
+    </AppShell>
+  );
 }
