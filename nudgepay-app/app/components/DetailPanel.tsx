@@ -253,7 +253,7 @@ function MessagesTab({
             className="w-full resize-none rounded-md border border-border bg-panel px-3 py-2 text-sm font-sans text-text placeholder:text-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-copper"
           />
           {confirmSend ? (
-            <p className="text-xs font-sans text-amber-200" role="alert">
+            <p className="text-xs font-sans text-amber-700" role="alert">
               {collision?.level === "live"
                 ? `${collision.byUser} is viewing this customer now. Send anyway?`
                 : `${collision?.byUser} contacted this customer recently. Send anyway?`}
@@ -544,7 +544,7 @@ export function DetailPanel({
           role="status"
           className={
             collision.level === "live"
-              ? "mx-5 mt-3 rounded-md border border-amber-400/40 bg-amber-400/10 px-3 py-2 text-xs font-sans text-amber-200"
+              ? "mx-5 mt-3 rounded-md border border-amber-400/40 bg-amber-400/10 px-3 py-2 text-xs font-sans text-amber-700"
               : "mx-5 mt-3 rounded-md border border-border bg-panel px-3 py-2 text-xs font-sans text-muted"
           }
         >
