@@ -83,7 +83,7 @@
 - **Tenant connection** — fully in-UI, credential-free for stakeholders.
 
 - [x] **G1 — In-UI "Connect QuickBooks" CTA + connection management.** ✅ **Phase 9 (`/settings`).** Connection management (Connect / disconnect / reconnect) relocated to the Settings page; reuses existing `api.qbo.*` OAuth routes. *Stakeholder types nothing — OAuth only.*
-- [x] **G2 — SMS sender / A2P status surface.** ✅ **Phase 9 (`/settings`).** Read-only SMS sender + A2P + consent status panel shipped on the Settings page. **Twilio model = platform-owned + provisioned (decided):** NudgePay owns the Twilio account; each tenant gets a provisioned number. No tenant credential entry.
+- [x] **G2 — SMS sender / A2P status surface.** ✅ **Phase 9 (`/settings`).** Read-only text-messaging panel: the sending number + a set-up/not-provisioned indicator derived from `messaging_config` + a note that carrier registration is managed by NudgePay. No A2P-status or per-tenant credential surface (platform-managed; "show what we know" — no schema change).
 - [x] **G3 — Sync status & error visibility in Settings.** ✅ **Phase 9 (`/settings`).** Sync health panel (last-sync, unresolved error count, per-error Dismiss) relocated from the dashboard to Settings; reuses `/api/sync-errors/dismiss`. (Overlaps B6.)
 - Maps to the document's onboarding requirement: "connect QuickBooks and reach a populated work queue without building workflows."
 
