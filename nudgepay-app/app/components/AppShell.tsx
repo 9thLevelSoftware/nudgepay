@@ -10,7 +10,7 @@ interface AppShellProps {
   /** Reserved for future owner-gated header actions (Task 6+). */
   isOwner: boolean;
   /** Which primary section is active (drives the nav rail + topbar title). */
-  activeNav?: "collections" | "accounts";
+  activeNav?: "collections" | "accounts" | "promises";
   /** Optional controls rendered in the topbar right-controls group. */
   headerActions?: React.ReactNode;
   /** Optional sync-issues indicator rendered next to the sync chip. */
@@ -64,8 +64,13 @@ export function AppShell({
 }: AppShellProps) {
   const [navOpen, setNavOpen] = useState(false);
 
-  const sectionTitle = activeNav === "accounts" ? "Accounts" : "Collections";
-  const NAV_TARGETS: Record<string, string> = { collections: "/dashboard", accounts: "/accounts" };
+  const SECTION_TITLES: Record<string, string> = {
+    collections: "Collections", accounts: "Accounts", promises: "Promises",
+  };
+  const sectionTitle = SECTION_TITLES[activeNav] ?? "Collections";
+  const NAV_TARGETS: Record<string, string> = {
+    collections: "/dashboard", accounts: "/accounts", promises: "/promises",
+  };
 
   return (
     <div className="flex flex-col h-screen overflow-hidden font-sans">

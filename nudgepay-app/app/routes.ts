@@ -11,6 +11,7 @@ export default [
   route("dashboard", "routes/dashboard.tsx"),
   route("accounts", "routes/accounts.tsx"),
   route("accounts/:id", "routes/accounts.$id.tsx"),
+  route("promises", "routes/promises.tsx"),
   route("reports", "routes/reports.tsx"),
   route("settings", "routes/settings.tsx"),
   route("privacy", "routes/privacy.tsx"),
