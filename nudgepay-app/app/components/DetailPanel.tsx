@@ -11,6 +11,7 @@ import type { MessageEntry, RosterMember } from "~/routes/dashboard";
 import type { TimelineEntry } from "~/lib/timeline";
 import { canSendSms, type CommPrefs } from "~/lib/comm-prefs";
 import { resolveCallAction } from "~/lib/channel-actions";
+import { statusChipTone, type ChipTone } from "~/lib/status-style";
 
 // Static tone-to-text-color map — heat.band → Tailwind class.
 // Must be literal strings so Tailwind can tree-shake them; no dynamic construction.
@@ -19,6 +20,23 @@ const TONE_CLASS: Record<string, string> = {
   warm: "text-warm",
   cool: "text-cool",
   neutral: "text-muted",
+};
+
+const CHIP_TEXT: Record<ChipTone, string> = {
+  cool: "text-cool",
+  copper: "text-copper",
+  neutral: "text-muted",
+};
+const CHIP_DOT: Record<ChipTone, string> = {
+  cool: "bg-cool",
+  copper: "bg-copper",
+  neutral: "bg-muted",
+};
+// Heat → text token on the dark header (legible on ink).
+const HEAT_TEXT: Record<string, string> = {
+  cool: "text-cool",
+  warm: "text-warm",
+  hot: "text-hot",
 };
 
 // Static effective-level → text tone (keeps the "Why this priority" header consistent
@@ -37,6 +55,27 @@ const PROMISE_STATUS: Record<string, { label: string; tone: string }> = {
   cancelled:      { label: "Cancelled",        tone: "text-muted" },
 };
 
+// Footer/status accent cards — literal classes for the scanner.
+const ACCENT_CARD: Record<string, string> = {
+  cool: "bg-cool/5 border-cool/30 border-l-cool",
+  hot: "bg-hot/5 border-hot/30 border-l-hot",
+  warm: "bg-warm/5 border-warm/30 border-l-warm",
+  neutral: "bg-panel border-border border-l-muted",
+};
+const ACCENT_TITLE: Record<string, string> = {
+  cool: "text-cool", hot: "text-hot", warm: "text-warm", neutral: "text-muted",
+};
+
+// Timeline node tone by log method / sms direction. Literal classes for the scanner.
+const TL_NODE: Record<string, { bg: string; color: string }> = {
+  call:     { bg: "bg-copper/10", color: "text-copper" },
+  email:    { bg: "bg-copper/10", color: "text-copper" },
+  text:     { bg: "bg-muted/10",  color: "text-muted" },
+  note:     { bg: "bg-muted/10",  color: "text-muted" },
+  inbound:  { bg: "bg-cool/10",   color: "text-cool" },
+  outbound: { bg: "bg-muted/10",  color: "text-muted" },
+};
+
 const METHOD_ICON: Record<string, "phone" | "mail" | "message" | "note"> = {
   call: "phone", email: "mail", text: "message", note: "note",
 };
@@ -46,21 +85,21 @@ function todayISO(): string {
 
 // Static direction → bubble alignment/color. Literal strings for Tailwind.
 const BUBBLE: Record<string, { wrap: string; bubble: string }> = {
-  outbound: { wrap: "items-end", bubble: "bg-copper/10 text-text border border-copper/30" },
-  inbound: { wrap: "items-start", bubble: "bg-panel text-text border border-border" },
+  outbound: { wrap: "items-end",   bubble: "bg-ink text-surface border border-ink" },
+  inbound:  { wrap: "items-start", bubble: "bg-paper text-text border border-border" },
 };
 const SMS_BANNER: Record<string, { text: string; tone: string }> = {
-  sent: { text: "Text sent.", tone: "text-cool" },
-  noconsent: { text: "Not sent — customer has not consented to SMS.", tone: "text-hot" },
-  optout: { text: "Not sent — customer opted out of texts.", tone: "text-hot" },
-  error: { text: "Could not send the text.", tone: "text-hot" },
-  blocked: { text: "Not sent — this case is marked do-not-contact / legal.", tone: "text-hot" },
+  sent:      { text: "Text sent.",                                                    tone: "text-cool" },
+  noconsent: { text: "Not sent — customer has not consented to SMS.",                 tone: "text-hot" },
+  optout:    { text: "Not sent — customer opted out of texts.",                       tone: "text-hot" },
+  error:     { text: "Could not send the text.",                                      tone: "text-hot" },
+  blocked:   { text: "Not sent — this case is marked do-not-contact / legal.",        tone: "text-hot" },
 };
 
 // Static promise-error code → copy. Literal strings for Tailwind v4.
 const PROMISE_ERROR_TEXT: Record<string, string> = {
   "missing-promise": "Could not find that promise.",
-  "cancel-failed": "Could not cancel the promise.",
+  "cancel-failed":   "Could not cancel the promise.",
 };
 
 function MessagesTab({
@@ -89,9 +128,9 @@ function MessagesTab({
 
   const vars: TemplateVars = {
     customer: selected.customerName,
-    invoice: repInvoice?.docNumber ?? selected.customerName,
-    balance: formatUSD(selected.totalOverdue),
-    dueDate: formatDate(repInvoice?.dueDate ?? null),
+    invoice:  repInvoice?.docNumber ?? selected.customerName,
+    balance:  formatUSD(selected.totalOverdue),
+    dueDate:  formatDate(repInvoice?.dueDate ?? null),
   };
 
   const [body, setBody] = useState("");
@@ -375,107 +414,106 @@ export function DetailPanel({
         </Link>
       </div>
 
-      {/* ── Header ──────────────────────────────────────────────────────────── */}
-      <div className="px-5 pt-4 pb-3 border-b border-border">
-        {/* Kicker + close */}
-        <div className="flex items-center justify-between mb-1">
-          <p className="text-xs font-sans font-medium uppercase tracking-wider text-muted">
+      {/* ── Header — dark ink block ──────────────────────────────────────────── */}
+      <div className="px-5 pt-4 pb-4 bg-ink text-surface">
+        <div className="flex items-center justify-between">
+          <p className="font-mono text-[10px] font-semibold uppercase tracking-wide text-surface/50">
             Selected account
           </p>
           <Link
             to={`?${new URLSearchParams({ view, sort, ...(q ? { q } : {}) }).toString()}`}
             aria-label="Close detail panel"
-            className="hidden md:flex items-center justify-center w-6 h-6 rounded text-muted hover:text-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-copper"
+            className="hidden md:flex items-center justify-center w-6 h-6 rounded text-surface/60 hover:text-surface focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-copper"
           >
             <span aria-hidden="true" className="text-base leading-none">×</span>
           </Link>
         </div>
-
-        {/* Customer name */}
-        <h2 className="font-display text-xl font-semibold text-text leading-tight mb-1">
+        <h2 className="mt-1.5 font-display text-xl font-semibold leading-tight text-surface">
           {selected.customerName}
         </h2>
-
-        {/* Invoice count · age */}
-        <p className="text-sm text-muted font-sans mb-3">
+        <p className="mt-1 text-xs text-surface/60">
           {selected.invoiceCount} open invoice(s)
-          <span className="mx-1.5 text-border select-none">·</span>
-          oldest <span className="font-mono text-text">{selected.oldestAgeDays}</span>d overdue
+          <span className="mx-1.5 text-surface/30 select-none">·</span>
+          oldest{" "}
+          <span className={`font-mono font-semibold ${HEAT_TEXT[selected.heat.band] ?? "text-surface"}`}>
+            {selected.oldestAgeDays}d
+          </span>{" "}
+          overdue
         </p>
+      </div>
 
-        {/* Balance card + Status chip */}
-        <div className="grid grid-cols-2 gap-3 mb-4">
-          <div className="flex flex-col gap-0.5 bg-panel rounded-card p-4 shadow-tile">
-            <span className="text-xs font-sans text-muted uppercase tracking-wider font-medium">
-              Total overdue
-            </span>
-            <span className="font-mono text-base font-semibold text-text tabular-nums">
-              {formatUSD(selected.totalOverdue)}
-            </span>
-          </div>
-          <div className="flex flex-col gap-0.5 bg-panel rounded-card p-4 shadow-tile">
-            <span className="text-xs font-sans text-muted uppercase tracking-wider font-medium">
-              Status
-            </span>
-            <span className={`text-sm font-sans font-semibold ${TONE_CLASS[selected.heat.band] ?? "text-text"}`}>
-              {STATUS_LABEL[selected.status] ?? selected.status}
-            </span>
-          </div>
+      {/* ── Stat tiles band ─────────────────────────────────────────────────── */}
+      <div className="grid grid-cols-2 gap-2.5 px-4 py-3 bg-paper border-b border-border">
+        <div className="flex flex-col gap-1 bg-surface rounded-card p-3 border border-border">
+          <span className="font-mono text-[9.5px] font-semibold uppercase tracking-wide text-muted">
+            Total overdue
+          </span>
+          <span className="font-display text-xl font-bold tracking-tight tabular-nums text-text">
+            {formatUSD(selected.totalOverdue)}
+          </span>
         </div>
-
-        {/* Action row */}
-        <div
-          role="group"
-          aria-label="Account actions"
-          className="flex flex-wrap gap-2"
-        >
-          {/* Call — hidden if no phone; disabled-with-reason if do_not_call; else tel: + capture */}
-          {callAction.kind === "live" ? (
-            <a
-              href={`tel:${selected.phone}`}
-              onClick={() => navigate(callLogHref)}
-              className="inline-flex items-center gap-1.5 text-xs font-sans font-medium text-copper border border-copper/40 rounded-md px-3 h-9 hover:bg-copper/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-copper transition-colors"
-            >
-              <Icon name="phone" size={14} aria-hidden />
-              Call
-            </a>
-          ) : callAction.kind === "blocked" ? (
+        <div className="flex flex-col gap-1 bg-surface rounded-card p-3 border border-border">
+          <span className="font-mono text-[9.5px] font-semibold uppercase tracking-wide text-muted">
+            Status
+          </span>
+          <span className={`inline-flex items-center gap-1.5 font-display text-base font-semibold ${CHIP_TEXT[statusChipTone(selected.status)]}`}>
             <span
-              aria-disabled="true"
-              aria-label={`Call — ${callAction.reason}`}
-              title={callAction.reason}
-              className="inline-flex items-center gap-1.5 text-xs font-sans font-medium text-muted border border-border rounded-md px-3 h-9 opacity-50 cursor-not-allowed"
-            >
-              <Icon name="phone" size={14} aria-hidden />
-              Call
-            </span>
-          ) : null}
-
-          {/* Text → Messages tab */}
-          <Link
-            to={`?${new URLSearchParams({ case: selected.caseId, tab: "messages", view, sort, ...(q ? { q } : {}) }).toString()}`}
-            className="inline-flex items-center gap-1.5 text-xs font-sans font-medium text-copper border border-copper/40 rounded-md px-3 h-9 hover:bg-copper/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-copper transition-colors"
-          >
-            <Icon name="message" size={14} aria-hidden />
-            Text
-          </Link>
-
-          {/* Log — opens the log-contact drawer */}
-          <Link
-            to={logHref}
-            className="inline-flex items-center gap-1.5 text-xs font-sans font-medium text-copper border border-copper/40 rounded-md px-3 h-9 hover:bg-copper/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-copper transition-colors"
-          >
-            <Icon name="note" size={14} aria-hidden />
-            Log
-          </Link>
+              aria-hidden="true"
+              className={`w-1.5 h-1.5 rounded-full ${CHIP_DOT[statusChipTone(selected.status)]}`}
+            />
+            {STATUS_LABEL[selected.status] ?? selected.status}
+          </span>
         </div>
+      </div>
+
+      {/* ── Action tiles band ───────────────────────────────────────────────── */}
+      <div role="group" aria-label="Account actions" className="flex gap-2 px-4 py-3 border-b border-border bg-paper">
+        {/* Call — hidden if no phone; disabled-with-reason if do_not_call; else tel: + capture */}
+        {callAction.kind === "live" ? (
+          <a
+            href={`tel:${selected.phone}`}
+            onClick={() => navigate(callLogHref)}
+            className="flex-1 flex flex-col items-center gap-1.5 py-2.5 rounded-card bg-surface border border-border text-copper hover:border-copper focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-copper transition-colors"
+          >
+            <Icon name="phone" size={16} aria-hidden />
+            <span className="text-[11.5px] font-sans font-semibold text-text">Call</span>
+          </a>
+        ) : callAction.kind === "blocked" ? (
+          <span
+            aria-disabled="true"
+            aria-label={`Call — ${callAction.reason}`}
+            title={callAction.reason}
+            className="flex-1 flex flex-col items-center gap-1.5 py-2.5 rounded-card bg-surface border border-border text-muted opacity-50 cursor-not-allowed"
+          >
+            <Icon name="phone" size={16} aria-hidden />
+            <span className="text-[11.5px] font-sans font-semibold text-text">Call</span>
+          </span>
+        ) : null}
+
+        {/* Text → Messages tab */}
+        <Link
+          to={`?${new URLSearchParams({ case: selected.caseId, tab: "messages", view, sort, ...(q ? { q } : {}) }).toString()}`}
+          className="flex-1 flex flex-col items-center gap-1.5 py-2.5 rounded-card bg-surface border border-border text-copper hover:border-copper focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-copper transition-colors"
+        >
+          <Icon name="message" size={16} aria-hidden />
+          <span className="text-[11.5px] font-sans font-semibold text-text">Text</span>
+        </Link>
+
+        {/* Log — opens the log-contact drawer */}
+        <Link
+          to={logHref}
+          className="flex-1 flex flex-col items-center gap-1.5 py-2.5 rounded-card bg-surface border border-border text-copper hover:border-copper focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-copper transition-colors"
+        >
+          <Icon name="note" size={16} aria-hidden />
+          <span className="text-[11.5px] font-sans font-semibold text-text">Log</span>
+        </Link>
       </div>
 
       {/* ── Tab bar ─────────────────────────────────────────────────────────── */}
       <div
         role="tablist"
         aria-label="Selected account sections"
-        className="flex border-b border-border shrink-0"
+        className="flex border-b border-border shrink-0 bg-paper"
       >
         {TABS.map((tab) => {
           const isActive = activeTab === tab.id;
@@ -488,10 +526,10 @@ export function DetailPanel({
               aria-selected={isActive ? "true" : "false"}
               aria-controls={`${tab.id}-panel`}
               className={[
-                "px-4 py-2.5 text-xs font-sans font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-copper rounded-t transition-colors",
+                "px-4 py-3 text-[13px] font-sans focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-copper transition-colors",
                 isActive
-                  ? "border-b-2 border-copper text-copper -mb-px"
-                  : "text-muted hover:text-text",
+                  ? "border-b-2 border-copper text-text font-semibold -mb-px"
+                  : "border-b-2 border-transparent text-muted font-medium hover:text-text",
               ].join(" ")}
             >
               {tab.label}
@@ -645,7 +683,7 @@ export function DetailPanel({
             <span className="text-xs font-sans font-medium uppercase tracking-wider text-muted">Invoices</span>
             <ul className="mt-2 flex flex-col gap-1">
               {selected.invoices.map((inv) => (
-                <li key={inv.invoiceId} className="flex items-center justify-between gap-2 rounded-md bg-panel px-3 py-2">
+                <li key={inv.invoiceId} className="flex items-center justify-between gap-2 rounded-md bg-paper px-3 py-2">
                   <span className="font-mono text-xs text-text">{inv.docNumber ?? inv.invoiceId}</span>
                   <span className="font-mono text-xs text-muted tabular-nums">
                     {formatUSD(inv.balance)} · {inv.ageDays > 0 ? `${inv.ageDays}d` : "Due"}
@@ -655,60 +693,69 @@ export function DetailPanel({
             </ul>
           </div>
 
-          {/* Exception panel */}
+          {/* Exception panel — warm accent card */}
           {selected.status === "on_hold" && selected.exceptionReason ? (
-            <div className="mt-4 rounded-card bg-panel p-4 shadow-tile">
-              <div className="rounded-md border border-border bg-panel/60 px-3 py-2">
-                <p className="text-xs font-sans font-semibold text-text">
-                  Exception · {EXCEPTION_REASON_LABEL[selected.exceptionReason] ?? selected.exceptionReason}
-                  <span className="ml-1 font-normal text-muted">
-                    {isTerminal(selected.exceptionReason)
-                      ? "· parked indefinitely"
-                      : selected.nextActionAt
-                        ? `· parked until ${formatDate(selected.nextActionAt)}`
-                        : ""}
-                  </span>
-                </p>
-                {selected.exceptionNote ? (
-                  <p className="mt-1 text-xs text-muted">{selected.exceptionNote}</p>
-                ) : null}
-              </div>
+            <div className={`mt-4 rounded-card border border-l-[3px] p-4 ${ACCENT_CARD["warm"]}`}>
+              <p className={`text-xs font-sans font-semibold ${ACCENT_TITLE["warm"]}`}>
+                Exception · {EXCEPTION_REASON_LABEL[selected.exceptionReason] ?? selected.exceptionReason}
+                <span className="ml-1 font-normal text-muted">
+                  {isTerminal(selected.exceptionReason)
+                    ? "· parked indefinitely"
+                    : selected.nextActionAt
+                      ? `· parked until ${formatDate(selected.nextActionAt)}`
+                      : ""}
+                </span>
+              </p>
+              {selected.exceptionNote ? (
+                <p className="mt-1 text-xs text-muted">{selected.exceptionNote}</p>
+              ) : null}
             </div>
           ) : null}
 
-          {/* Promise card */}
-          {selected.promiseStatus ? (
-            <div className="mt-4 rounded-card bg-panel p-4 shadow-tile">
-              <div className="flex items-center justify-between">
-                <span className={`text-sm font-sans font-semibold ${PROMISE_STATUS[selected.promiseStatus]?.tone ?? "text-text"}`}>
-                  {PROMISE_STATUS[selected.promiseStatus]?.label ?? selected.promiseStatus}
-                </span>
+          {/* Promise card — accent by promise status */}
+          {selected.promiseStatus ? (() => {
+            const accent =
+              selected.promiseStatus === "broken"
+                ? "hot"
+                : selected.promiseStatus === "pending" || selected.promiseStatus === "kept"
+                  ? "cool"
+                  : "neutral";
+            return (
+              <div className={`mt-4 rounded-card border border-l-[3px] p-4 ${ACCENT_CARD[accent]}`}>
+                <div className="flex items-center justify-between">
+                  <span className={`text-sm font-sans font-semibold ${ACCENT_TITLE[accent]}`}>
+                    {PROMISE_STATUS[selected.promiseStatus]?.label ?? selected.promiseStatus}
+                  </span>
+                  {selected.promise ? (
+                    <span className="font-mono text-sm text-text">{formatUSD(selected.promise.amount)}</span>
+                  ) : null}
+                </div>
                 {selected.promise ? (
-                  <span className="font-mono text-sm text-text">{formatUSD(selected.promise.amount)}</span>
+                  <p className="mt-1 text-xs text-muted">
+                    Promised by {formatDate(selected.promise.date)}
+                    {selected.amountReceived != null ? ` · received ${formatUSD(selected.amountReceived)}` : ""}
+                  </p>
+                ) : null}
+                {promiseError ? (
+                  <p className="mt-1 text-xs font-sans font-medium text-hot">
+                    {PROMISE_ERROR_TEXT[promiseError] ?? "Could not cancel the promise."}
+                  </p>
+                ) : null}
+                {selected.promiseStatus === "pending" && selectedPromiseId ? (
+                  <form method="post" action="/api/promises/cancel" className="mt-2">
+                    <input type="hidden" name="promiseId" value={selectedPromiseId} />
+                    <input type="hidden" name="returnTo" value={overviewReturnTo} />
+                    <button
+                      type="submit"
+                      className="text-xs font-sans font-medium text-copper hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-copper rounded"
+                    >
+                      Cancel promise
+                    </button>
+                  </form>
                 ) : null}
               </div>
-              {selected.promise ? (
-                <p className="mt-1 text-xs text-muted">
-                  Promised by {formatDate(selected.promise.date)}
-                  {selected.amountReceived != null ? ` · received ${formatUSD(selected.amountReceived)}` : ""}
-                </p>
-              ) : null}
-              {promiseError ? (
-                <p className="mt-1 text-xs font-sans font-medium text-hot">
-                  {PROMISE_ERROR_TEXT[promiseError] ?? "Could not cancel the promise."}
-                </p>
-              ) : null}
-              {selected.promiseStatus === "pending" && selectedPromiseId ? (
-                <form method="post" action="/api/promises/cancel" className="mt-2">
-                  <input type="hidden" name="promiseId" value={selectedPromiseId} />
-                  <input type="hidden" name="returnTo" value={overviewReturnTo} />
-                  <button type="submit" className="text-xs font-sans font-medium text-copper hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-copper rounded">
-                    Cancel promise
-                  </button>
-                </form>
-              ) : null}
-            </div>
-          ) : null}
+            );
+          })() : null}
         </section>
       ) : null}
 
@@ -721,19 +768,22 @@ export function DetailPanel({
               <p className="text-xs text-muted max-w-xs">Logged contacts and texts will appear here.</p>
             </div>
           ) : (
-            <ol className="flex flex-col gap-3">
+            <ol className="flex flex-col">
               {(() => {
                 const today = todayISO();
                 return timeline.map((e) => {
                   if (e.kind === "sms") {
-                    const inbound = e.direction === "inbound";
+                    const node = TL_NODE[e.direction] ?? TL_NODE.outbound;
                     return (
-                      <li key={e.id} className="flex gap-3 border-b border-border pb-3 last:border-0">
-                        <span className="mt-0.5 text-muted shrink-0">
-                          <Icon name="message" size={15} aria-hidden />
-                        </span>
-                        <div className="min-w-0 flex flex-col gap-0.5">
-                          <span className={`text-sm font-sans font-semibold ${inbound ? "text-cool" : "text-text"}`}>
+                      <li key={e.id} className="flex gap-3 pb-4 last:pb-0">
+                        <div className="flex flex-col items-center shrink-0">
+                          <span className={`grid place-items-center w-7 h-7 rounded-lg ${node.bg} ${node.color}`}>
+                            <Icon name="message" size={14} aria-hidden />
+                          </span>
+                          <span aria-hidden="true" className="flex-1 w-0.5 bg-border mt-1.5" />
+                        </div>
+                        <div className="min-w-0 flex flex-col gap-0.5 pt-0.5">
+                          <span className={`text-sm font-sans font-semibold ${e.direction === "inbound" ? "text-cool" : "text-text"}`}>
                             {e.outcomeLabel}
                           </span>
                           <span className="font-mono text-xs text-muted">{formatDate(e.at)}</span>
@@ -748,12 +798,16 @@ export function DetailPanel({
                     );
                   }
                   const broken = e.promisedDate != null && e.promisedDate < today;
+                  const node = TL_NODE[e.method] ?? TL_NODE.note;
                   return (
-                    <li key={e.id} className="flex gap-3 border-b border-border pb-3 last:border-0">
-                      <span className="mt-0.5 text-muted shrink-0">
-                        <Icon name={METHOD_ICON[e.method] ?? "note"} size={15} aria-hidden />
-                      </span>
-                      <div className="min-w-0 flex flex-col gap-0.5">
+                    <li key={e.id} className="flex gap-3 pb-4 last:pb-0">
+                      <div className="flex flex-col items-center shrink-0">
+                        <span className={`grid place-items-center w-7 h-7 rounded-lg ${node.bg} ${node.color}`}>
+                          <Icon name={METHOD_ICON[e.method] ?? "note"} size={14} aria-hidden />
+                        </span>
+                        <span aria-hidden="true" className="flex-1 w-0.5 bg-border mt-1.5" />
+                      </div>
+                      <div className="min-w-0 flex flex-col gap-0.5 pt-0.5">
                         <span className="text-sm font-sans font-semibold text-text">
                           {e.outcomeLabel ?? "Logged"}
                         </span>
