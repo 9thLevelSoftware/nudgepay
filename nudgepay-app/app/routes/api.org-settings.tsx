@@ -41,10 +41,10 @@ export async function action({ request, context }: ActionFunctionArgs) {
 
   if (intent === "remove_holiday") {
     const date = parseHolidayDate(form.get("holiday_date"));
-    if (date) {
-      await supabase.from("org_holidays").delete()
-        .eq("org_id", org.org_id).eq("holiday_date", date);
-    }
+    if (!date) return redirect(flag(returnTo, "error", "holiday"), { headers });
+    const { error } = await supabase.from("org_holidays").delete()
+      .eq("org_id", org.org_id).eq("holiday_date", date);
+    if (error) return redirect(flag(returnTo, "error", "delete"), { headers });
     return redirect(flag(returnTo, "saved", "1"), { headers });
   }
 
