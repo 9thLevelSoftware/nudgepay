@@ -258,7 +258,7 @@ export function LogContactDrawer({
                     className="rounded-md border border-border bg-surface px-3 py-2 text-sm font-sans text-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-copper" />
                 </label>
               ) : (
-                <p className="text-xs font-sans text-amber-200">
+                <p className="text-xs font-sans text-amber-700">
                   Parks this case indefinitely{isContactBlocked(exceptionReason) ? " and blocks outbound messages" : ""}.
                 </p>
               )}
@@ -266,7 +266,7 @@ export function LogContactDrawer({
           )}
 
           {confirmSave ? (
-            <p className="text-xs font-sans text-amber-200" role="alert">
+            <p className="text-xs font-sans text-amber-700" role="alert">
               {collision?.level === "live"
                 ? `${collision.byUser} is viewing this customer now. Log anyway?`
                 : `${collision?.byUser} contacted this customer recently. Log anyway?`}
