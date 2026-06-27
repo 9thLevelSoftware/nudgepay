@@ -1,4 +1,4 @@
-import { Form, useLoaderData, redirect, data, type LoaderFunctionArgs } from "react-router";
+import { useLoaderData, redirect, data, type LoaderFunctionArgs } from "react-router";
 import { getEnv } from "../lib/env.server";
 import { requireUser, resolveOrg } from "../lib/session.server";
 import { getConnectionStatus } from "../lib/qbo-connection.server";
@@ -19,7 +19,6 @@ import {
 import type { PriorityOverrideLevel } from "../lib/priority";
 import type { ExceptionReason } from "../lib/contact-log";
 import { AppShell } from "../components/AppShell";
-import { SyncIssues } from "../components/SyncIssues";
 import { MetricsStrip } from "../components/MetricsStrip";
 import { WorkQueue } from "../components/WorkQueue";
 import { DetailPanel } from "../components/DetailPanel";
@@ -173,45 +172,28 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
   const service = createSupabaseServiceClient(env);
   const conn = await getConnectionStatus(service, org.org_id);
   const connected = conn?.status === "connected";
+  if (!connected) throw redirect("/settings", { headers });
 
-  // Sync label from last_sync_at
-  let syncLabel = "Not connected";
-  if (connected) {
-    const { data: connMeta } = await service
-      .from("qbo_connections")
-      .select("last_sync_at")
-      .eq("org_id", org.org_id)
-      .maybeSingle();
-    const lastSyncAt = (connMeta?.last_sync_at as string | null) ?? null;
-    if (lastSyncAt) {
-      const diffMs = Date.now() - new Date(lastSyncAt).getTime();
-      const diffMin = Math.floor(diffMs / 60_000);
-      const diffHr = Math.floor(diffMin / 60);
-      const diffDay = Math.floor(diffHr / 24);
-      if (diffMin < 2) syncLabel = "Synced just now";
-      else if (diffMin < 60) syncLabel = `Synced ${diffMin}m ago`;
-      else if (diffHr < 24) syncLabel = `Synced ${diffHr}h ago`;
-      else syncLabel = `Synced ${diffDay}d ago`;
-    } else {
-      syncLabel = "Connected";
-    }
-  }
-
-  // Unresolved sync errors for this org (B6). USER client → RLS, but RLS permits
-  // EVERY org the user belongs to, so bind explicitly to the active dashboard org
-  // (matching the dismiss route's .eq("org_id")) — otherwise a multi-org user could
-  // see another org's error here that the dismiss route then cannot clear.
-  const { data: syncErrorRows } = await supabase
-    .from("sync_errors")
-    .select("id, source, scope, message, occurred_at")
+  // Sync label from last_sync_at (connected is guaranteed true here — redirect above)
+  const { data: connMeta } = await service
+    .from("qbo_connections")
+    .select("last_sync_at")
     .eq("org_id", org.org_id)
-    .is("resolved_at", null)
-    .order("occurred_at", { ascending: false })
-    .limit(20);
-  const syncIssues = ((syncErrorRows as any[]) ?? []).map((r) => ({
-    id: r.id as string, source: r.source as string, scope: r.scope as string,
-    message: r.message as string, occurredAt: r.occurred_at as string,
-  }));
+    .maybeSingle();
+  const lastSyncAt = (connMeta?.last_sync_at as string | null) ?? null;
+  let syncLabel: string;
+  if (lastSyncAt) {
+    const diffMs = Date.now() - new Date(lastSyncAt).getTime();
+    const diffMin = Math.floor(diffMs / 60_000);
+    const diffHr = Math.floor(diffMin / 60);
+    const diffDay = Math.floor(diffHr / 24);
+    if (diffMin < 2) syncLabel = "Synced just now";
+    else if (diffMin < 60) syncLabel = `Synced ${diffMin}m ago`;
+    else if (diffHr < 24) syncLabel = `Synced ${diffHr}h ago`;
+    else syncLabel = `Synced ${diffDay}d ago`;
+  } else {
+    syncLabel = "Connected";
+  }
 
   // Parse URL params
   const url = new URL(request.url);
@@ -502,7 +484,6 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
       isOwner: org.role === "owner",
       connected,
       syncLabel,
-      syncIssues,
       view,
       sort,
       q,
@@ -549,7 +530,6 @@ export default function Dashboard() {
     isOwner,
     connected,
     syncLabel,
-    syncIssues,
     view,
     sort,
     q,
@@ -590,36 +570,6 @@ export default function Dashboard() {
       syncLabel={syncLabel}
       connected={connected}
       isOwner={isOwner}
-      syncIssues={
-        <SyncIssues
-          issues={syncIssues}
-          returnTo={`/dashboard?${new URLSearchParams({ view, sort, ...(q ? { q } : {}), ...(selected ? { case: selected.caseId } : {}), tab }).toString()}`}
-        />
-      }
-      headerActions={
-        connected ? (
-          <div className="hidden sm:flex items-center gap-1.5">
-            <Form method="post" action="/api/qbo/refresh">
-              <button
-                type="submit"
-                className="inline-flex items-center gap-1.5 rounded-md border border-surface/15 bg-surface/5 px-2.5 h-8 text-xs font-sans text-surface/70 hover:text-surface hover:border-copper transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-copper"
-              >
-                Refresh
-              </button>
-            </Form>
-            {isOwner && (
-              <Form method="post" action="/api/qbo/disconnect">
-                <button
-                  type="submit"
-                  className="inline-flex items-center gap-1.5 rounded-md border border-surface/15 bg-surface/5 px-2.5 h-8 text-xs font-sans text-surface/60 hover:text-surface hover:border-copper transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-copper"
-                >
-                  Disconnect
-                </button>
-              </Form>
-            )}
-          </div>
-        ) : null
-      }
     >
       {saved ? (
         <div className="px-6 py-2 bg-cool/10 border-b border-cool/30 text-sm font-sans font-medium text-cool" role="status">
@@ -637,8 +587,7 @@ export default function Dashboard() {
         </div>
       ) : null}
 
-      {connected ? (
-        <div className="flex flex-col h-full">
+      <div className="flex flex-col h-full">
           {/* Metrics strip */}
           <div className="px-6 py-3 border-b border-border bg-panel shrink-0">
             <MetricsStrip metrics={metrics} view={view} sort={sort} search={q} />
@@ -710,33 +659,6 @@ export default function Dashboard() {
             />
           ) : null}
         </div>
-      ) : (
-        /* Not connected */
-        <div className="flex flex-col items-center justify-center gap-6 h-full px-6 py-16 text-center">
-          <div className="max-w-sm">
-            <h2 className="font-display text-2xl font-semibold text-text mb-2">
-              Connect QuickBooks
-            </h2>
-            <p className="font-sans text-sm text-muted mb-6">
-              Sync your past-due invoices to start collecting on overdue accounts.
-            </p>
-            {isOwner ? (
-              <Form method="post" action="/api/qbo/connect">
-                <button
-                  type="submit"
-                  className="inline-flex items-center gap-2 rounded-lg bg-copper px-5 py-2.5 text-sm font-sans font-semibold text-ink hover:bg-copper/90 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-copper focus-visible:ring-offset-2"
-                >
-                  Connect QuickBooks
-                </button>
-              </Form>
-            ) : (
-              <p className="font-sans text-sm text-text font-medium">
-                Ask an owner to connect QuickBooks.
-              </p>
-            )}
-          </div>
-        </div>
-      )}
     </AppShell>
   );
 }

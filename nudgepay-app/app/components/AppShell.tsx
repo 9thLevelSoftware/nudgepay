@@ -99,9 +99,10 @@ export function AppShell({
 
         {/* Right-side controls */}
         <div className="ml-auto flex items-center gap-2">
-          {/* Sync chip */}
-          <div
-            className="hidden sm:flex items-center gap-1.5 px-2 py-1 rounded bg-surface/5 border border-surface/10"
+          {/* Sync chip → Settings */}
+          <Link
+            to="/settings"
+            className="hidden sm:flex items-center gap-1.5 px-2 py-1 rounded bg-surface/5 border border-surface/10 hover:border-copper transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-copper"
             aria-label={connected ? `Connected — ${syncLabel}` : `Disconnected — ${syncLabel}`}
           >
             <span
@@ -111,22 +112,21 @@ export function AppShell({
             <span className="text-[11px] font-sans text-surface/60 leading-none">
               {syncLabel}
             </span>
-          </div>
+          </Link>
 
           {syncIssues}
 
           {headerActions}
 
           {/* Settings */}
-          <button
-            type="button"
-            className="flex items-center justify-center w-8 h-8 rounded text-surface/40 cursor-default focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-copper"
+          <Link
+            to="/settings"
+            className="flex items-center justify-center w-8 h-8 rounded text-surface/60 hover:text-surface focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-copper"
             aria-label="Settings"
-            disabled
-            title="Settings coming soon"
+            title="Settings"
           >
             <Icon name="settings" size={16} />
-          </button>
+          </Link>
 
           {/* User avatar → sign out (POST so the action runs) */}
           <Form method="post" action="/logout" className="contents">
@@ -199,6 +199,21 @@ export function AppShell({
                   <li key={item.name} className="relative w-full">
                     <Link
                       to="/reports"
+                      className="flex flex-col items-center justify-center w-full py-3 gap-1 text-surface focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-copper focus-visible:ring-inset"
+                      aria-label={item.label}
+                      onClick={() => setNavOpen(false)}
+                    >
+                      <Icon name={item.icon} size={18} />
+                      <span className="text-[9px] font-sans font-medium uppercase tracking-wide leading-none">{item.label}</span>
+                    </Link>
+                  </li>
+                );
+              }
+              if (item.name === "settings") {
+                return (
+                  <li key={item.name} className="relative w-full">
+                    <Link
+                      to="/settings"
                       className="flex flex-col items-center justify-center w-full py-3 gap-1 text-surface focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-copper focus-visible:ring-inset"
                       aria-label={item.label}
                       onClick={() => setNavOpen(false)}

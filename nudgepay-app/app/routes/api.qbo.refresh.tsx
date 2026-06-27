@@ -5,6 +5,7 @@ import { requireUser, resolveOrg } from "../lib/session.server";
 import { qboApiBaseUrl } from "../lib/qbo-api.server";
 import { syncOverdueInvoices, type SyncDeps } from "../lib/qbo-sync.server";
 import { recordSyncError, resolveSyncErrors } from "../lib/sync-errors.server";
+import { safeReturnTo } from "../lib/return-to";
 
 export async function action({ request, context }: ActionFunctionArgs) {
   const env = getEnv(context as any);
@@ -12,6 +13,10 @@ export async function action({ request, context }: ActionFunctionArgs) {
   const { supabase, headers, user } = await requireUser(request, env);
   const org = await resolveOrg(supabase, user.id);
   if (!org) return redirect("/onboarding", { headers });
+
+  const form = await request.formData();
+  const returnTo = safeReturnTo(form.get("returnTo"));
+  const sep = returnTo.includes("?") ? "&" : "?";
 
   const service = createSupabaseServiceClient(env);
   const deps: SyncDeps = {
@@ -29,7 +34,7 @@ export async function action({ request, context }: ActionFunctionArgs) {
     // (e.g. a payment that zeroed an invoice). Those clear on the next cron CDC
     // catch-up (a true re-pull) or a successful webhook retry.
     await resolveSyncErrors(service, { orgId: org.org_id, scope: "full" });
-    return redirect("/dashboard?sync=ok", { headers });
+    return redirect(`${returnTo}${sep}sync=ok`, { headers });
   } catch (err) {
     // Log before recording (mirrors the cron + webhook paths) so a failure is
     // visible to operators even if the DB record itself fails.
@@ -39,7 +44,7 @@ export async function action({ request, context }: ActionFunctionArgs) {
       message: err instanceof Error ? err.message : String(err),
     }).catch(() => {}); // best-effort: never mask the original failure
     // e.g. QBO not connected, or a transient API error.
-    return redirect("/dashboard?sync=error", { headers });
+    return redirect(`${returnTo}${sep}sync=error`, { headers });
   }
 }
 
