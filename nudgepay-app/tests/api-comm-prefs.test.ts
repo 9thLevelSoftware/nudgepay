@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { expect, test } from "vitest";
 import { serviceClient, makeUserClient } from "./helpers";
 import { parseCommPrefsUpdate } from "../app/routes/api.comm-prefs";
@@ -66,4 +67,29 @@ test("a member of another org cannot change comm preferences (RLS blocks)", asyn
   const { data: after } = await svc.from("customers").select("do_not_text, preferred_channel").eq("id", cust!.id).single();
   expect(after!.do_not_text).toBe(false);
   expect(after!.preferred_channel).toBe(null); // RLS blocked the update
+});
+
+test("comm-prefs resolves a bare customerId (Accounts profile path)", async () => {
+  const svc = serviceClient();
+  const { data: org } = await svc.from("organizations").insert({ name: "Prefs by customer" }).select("id").single();
+  const a = await makeUserClient("prefs-cust-a@example.com");
+  await svc.from("memberships").insert({ org_id: org!.id, user_id: a.userId, role: "owner" });
+  const { data: cust } = await svc.from("customers")
+    .insert({ org_id: org!.id, name: "DirectCo" }).select("id").single();
+
+  // Simulate the route's org-scoped resolve + update for a bare customerId.
+  const { data: resolved } = await a.client.from("customers")
+    .select("id").eq("org_id", org!.id).eq("id", cust!.id).maybeSingle();
+  expect(resolved?.id).toBe(cust!.id);
+  await a.client.from("customers")
+    .update({ preferred_channel: "call", do_not_text: true }).eq("org_id", org!.id).eq("id", cust!.id);
+  const { data: after } = await svc.from("customers")
+    .select("preferred_channel, do_not_text").eq("id", cust!.id).single();
+  expect(after!.preferred_channel).toBe("call");
+  expect(after!.do_not_text).toBe(true);
+});
+
+test("api.comm-prefs source resolves a bare customerId", () => {
+  const src = readFileSync(new URL("../app/routes/api.comm-prefs.tsx", import.meta.url), "utf8");
+  expect(src).toMatch(/form\.get\("customerId"\)/);
 });

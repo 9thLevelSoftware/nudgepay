@@ -29,17 +29,24 @@ export async function action({ request, context }: ActionFunctionArgs) {
 
   const form = await request.formData();
   const returnTo = safeReturnTo(form.get("returnTo"));
+  const custRaw = form.get("customerId");
+  const directCustomerId = typeof custRaw === "string" ? custRaw : "";
   const caseRaw = form.get("caseId");
   const caseId = typeof caseRaw === "string" ? caseRaw : "";
   const invRaw = form.get("invoiceId");
   const invoiceId = typeof invRaw === "string" ? invRaw : "";
 
-  // Communication preferences are customer-level, so resolve the customer via
-  // the CASE first (every work-queue case has one; a case may have no invoice).
-  // Fall back to the invoice for callers that only carry an invoiceId. Both reads
-  // are RLS-scoped, so a foreign id resolves to nothing and updates nothing.
+  // Communication preferences are customer-level. Try a bare customerId first
+  // (Accounts profile path), then fall back to caseId, then invoiceId. All reads
+  // are explicit org-scoped (defense in depth on top of RLS), so a foreign id
+  // resolves to nothing and updates nothing.
   let customerId: string | null = null;
-  if (caseId) {
+  if (directCustomerId) {
+    const { data: cust } = await supabase
+      .from("customers").select("id").eq("org_id", org.org_id).eq("id", directCustomerId).maybeSingle();
+    customerId = (cust?.id as string | undefined) ?? null;
+  }
+  if (!customerId && caseId) {
     const { data: cse } = await supabase
       .from("collection_cases").select("customer_id").eq("id", caseId).maybeSingle();
     customerId = (cse?.customer_id as string | undefined) ?? null;
@@ -52,8 +59,10 @@ export async function action({ request, context }: ActionFunctionArgs) {
   if (!customerId) return redirect(returnTo, { headers });
 
   const { error } = await supabase.from("customers")
-    .update(parseCommPrefsUpdate(form)).eq("id", customerId);
-  if (error) return redirect(returnTo, { headers });
+    .update(parseCommPrefsUpdate(form)).eq("org_id", org.org_id).eq("id", customerId);
+  // Fail loud on a write error (matches api.assign / api.account-notes) — a silent
+  // redirect would imply the preferences saved when they didn't.
+  if (error) throw new Error(`Failed to save communication preferences: ${error.message}`);
 
   return redirect(returnTo, { headers });
 }
