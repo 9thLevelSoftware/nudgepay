@@ -67,14 +67,17 @@ export async function sendInvoiceText(
   if (custErr) throw custErr;
   if (!cust?.phone) throw new Error("Customer has no phone number");
   if (!cust.sms_consent) throw new Error("Customer has not consented to SMS");
-  if (cust.do_not_text) throw new Error("Customer has opted out of SMS");
 
-  // Contact-block guard: a do_not_contact / legal_agency case blocks outbound
-  // messaging on any channel. Check before resolving the sender or calling Twilio.
+  // Contact-block (a do_not_contact / legal_agency case hold) takes precedence over
+  // the per-customer SMS opt-out, mirroring resolveCallAction's call-path precedence
+  // so both channels surface the case-level legal hold as the dominant block reason.
+  // We therefore resolve the active case before the do_not_text short-circuit; the
+  // extra query on the single-send path (one user action) is negligible.
   const activeCase = await activeCaseForSend(deps.service, args.orgId, cust.id as string);
   if (isContactBlocked(activeCase.exceptionReason)) {
     throw new Error(`Contact blocked: ${activeCase.exceptionReason}`);
   }
+  if (cust.do_not_text) throw new Error("Customer has opted out of SMS");
 
   const sender = await resolveSender(deps.service, args.orgId, deps.defaultSender);
   const caseId = activeCase.id;
