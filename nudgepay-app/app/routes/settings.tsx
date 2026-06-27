@@ -1,0 +1,164 @@
+import { redirect, useLoaderData, Form, type LoaderFunctionArgs } from "react-router";
+
+type SettingsData = {
+  orgName: string;
+  initials: string;
+  isOwner: boolean;
+  connected: boolean;
+  lastSyncAt: string | null;
+  syncIssues: Array<{ id: string; source: string; scope: string; message: string; occurredAt: string }>;
+  messaging: { sender: string | null; configured: boolean };
+  rules: {
+    grace: number;
+    workingDays: number[];
+    cadence: { Critical: number; High: number; Medium: number; Low: number };
+    holidays: string[];
+  };
+};
+import { getEnv } from "../lib/env.server";
+import { requireUser, resolveOrg } from "../lib/session.server";
+import { getConnectionStatus } from "../lib/qbo-connection.server";
+import { loadOrgConfig } from "../lib/org-config.server";
+import { AppShell } from "../components/AppShell";
+import { CollectionsRulesForm } from "../components/CollectionsRulesForm";
+
+export async function loader({ request, context }: LoaderFunctionArgs) {
+  const env = getEnv(context as any);
+  const { supabase, headers, user } = await requireUser(request, env);
+  const org = await resolveOrg(supabase, user.id);
+  if (!org) throw redirect("/onboarding", { headers });
+  const isOwner = org.role === "owner";
+
+  const { data: orgRow } = await supabase.from("organizations").select("name").eq("id", org.org_id).single();
+  const emailParts = (user.email ?? "").split("@")[0].split(/[.\-_]/);
+  const initials = emailParts.slice(0, 2).map((p) => p[0]?.toUpperCase() ?? "").join("") || "?";
+
+  const conn = await getConnectionStatus(supabase, org.org_id);
+  const connected = conn?.status === "connected";
+
+  const { data: connMeta } = await supabase.from("qbo_connections").select("last_sync_at").eq("org_id", org.org_id).maybeSingle();
+  const lastSyncAt = (connMeta?.last_sync_at as string | null) ?? null;
+
+  const { data: syncErrorRows } = await supabase.from("sync_errors")
+    .select("id, source, scope, message, occurred_at").eq("org_id", org.org_id)
+    .is("resolved_at", null).order("occurred_at", { ascending: false });
+  const syncIssues = ((syncErrorRows as any[]) ?? []).map((r) => ({
+    id: r.id as string, source: r.source as string, scope: r.scope as string,
+    message: r.message as string, occurredAt: r.occurred_at as string,
+  }));
+
+  const { data: msg } = await supabase.from("messaging_config")
+    .select("sender, messaging_service_sid").eq("org_id", org.org_id).maybeSingle();
+  const sender = (msg?.sender as string | null) ?? null;
+  const messagingConfigured = Boolean(msg?.messaging_service_sid || msg?.sender);
+
+  const config = await loadOrgConfig(supabase, org.org_id);
+
+  return Response.json({
+    orgName: (orgRow?.name as string) ?? "Workspace",
+    initials, isOwner, connected, lastSyncAt, syncIssues,
+    messaging: { sender, configured: messagingConfigured },
+    rules: {
+      grace: config.promiseGraceDays,
+      workingDays: [...config.workingDays],
+      cadence: config.cadenceDays,
+      holidays: [...config.holidays].sort(),
+    },
+  }, { headers });
+}
+
+function relTime(iso: string | null): string {
+  if (!iso) return "never";
+  const min = Math.floor((Date.now() - new Date(iso).getTime()) / 60_000);
+  if (min < 2) return "just now";
+  if (min < 60) return `${min}m ago`;
+  const hr = Math.floor(min / 60);
+  return hr < 24 ? `${hr}h ago` : `${Math.floor(hr / 24)}d ago`;
+}
+
+export default function Settings() {
+  const d = useLoaderData() as SettingsData;
+  const syncLabel = d.connected ? `Synced ${relTime(d.lastSyncAt)}` : "Not connected";
+
+  return (
+    <AppShell orgName={d.orgName} userInitials={d.initials} syncLabel={syncLabel} connected={d.connected} isOwner={d.isOwner}>
+      <div className="h-full overflow-auto bg-panel p-6">
+        <div className="mx-auto flex max-w-3xl flex-col gap-5">
+          <h1 className="font-display text-xl font-semibold text-text">Settings</h1>
+
+          {/* QuickBooks connection (G1) */}
+          <section className="rounded-lg border border-border bg-surface p-5">
+            <div className="flex items-center justify-between">
+              <h2 className="font-display text-base font-semibold text-text">QuickBooks</h2>
+              <span className={`text-xs font-medium ${d.connected ? "text-cool" : "text-muted"}`}>
+                {d.connected ? `Connected · ${syncLabel}` : "Not connected"}
+              </span>
+            </div>
+            <div className="mt-3 flex flex-wrap gap-2">
+              {d.connected ? (
+                <>
+                  <Form method="post" action="/api/qbo/refresh">
+                    <input type="hidden" name="returnTo" value="/settings" />
+                    <button type="submit" className="rounded-md border border-border px-3 py-1.5 text-xs font-medium text-text hover:border-copper">Refresh</button>
+                  </Form>
+                  {d.isOwner ? (
+                    <>
+                      <Form method="post" action="/api/qbo/connect">
+                        <button type="submit" className="rounded-md border border-border px-3 py-1.5 text-xs font-medium text-text hover:border-copper">Reconnect</button>
+                      </Form>
+                      <Form method="post" action="/api/qbo/disconnect">
+                        <input type="hidden" name="returnTo" value="/settings" />
+                        <button type="submit" className="rounded-md border border-border px-3 py-1.5 text-xs font-medium text-hot hover:border-hot">Disconnect</button>
+                      </Form>
+                    </>
+                  ) : null}
+                </>
+              ) : d.isOwner ? (
+                <Form method="post" action="/api/qbo/connect">
+                  <button type="submit" className="rounded-md bg-copper px-3 py-1.5 text-xs font-semibold text-ink hover:bg-copper/90">Connect QuickBooks</button>
+                </Form>
+              ) : (
+                <p className="text-sm text-muted">Not connected — ask an owner to connect QuickBooks.</p>
+              )}
+            </div>
+          </section>
+
+          {/* Sync health (G3) */}
+          <section className="rounded-lg border border-border bg-surface p-5">
+            <h2 className="font-display text-base font-semibold text-text">Sync health</h2>
+            <p className="mt-0.5 text-xs text-muted">Last sync {relTime(d.lastSyncAt)} · {d.syncIssues.length} unresolved {d.syncIssues.length === 1 ? "error" : "errors"}.</p>
+            <ul className="mt-3 flex flex-col gap-2" role="list">
+              {d.syncIssues.map((it) => (
+                <li key={it.id} className="rounded-md border border-border p-2 text-xs">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="font-medium capitalize text-text">{it.source}</span>
+                    <span className="text-muted" suppressHydrationWarning>{relTime(it.occurredAt)}</span>
+                  </div>
+                  <p className="mt-0.5 break-words text-text/80">{it.message}</p>
+                  <Form method="post" action="/api/sync-errors/dismiss" className="mt-1.5">
+                    <input type="hidden" name="id" value={it.id} />
+                    <input type="hidden" name="returnTo" value="/settings" />
+                    <button type="submit" className="text-[11px] font-medium text-copper hover:underline">Dismiss</button>
+                  </Form>
+                </li>
+              ))}
+            </ul>
+          </section>
+
+          {/* Text messaging (G2, read-only) */}
+          <section className="rounded-lg border border-border bg-surface p-5">
+            <h2 className="font-display text-base font-semibold text-text">Text messaging</h2>
+            <dl className="mt-2 flex flex-col gap-1 text-sm">
+              <div className="flex gap-2"><dt className="text-muted w-28">From</dt><dd className="text-text tabular-nums">{d.messaging.sender ?? "Not provisioned"}</dd></div>
+              <div className="flex gap-2"><dt className="text-muted w-28">Status</dt><dd className={d.messaging.configured ? "text-cool" : "text-muted"}>{d.messaging.configured ? "Set up" : "Not provisioned"}</dd></div>
+            </dl>
+            <p className="mt-2 text-xs text-muted">Text-message carrier registration is managed by NudgePay.</p>
+          </section>
+
+          {/* Collections rules (C7) */}
+          <CollectionsRulesForm grace={d.rules.grace} workingDays={d.rules.workingDays} cadence={d.rules.cadence} holidays={d.rules.holidays} isOwner={d.isOwner} />
+        </div>
+      </div>
+    </AppShell>
+  );
+}
