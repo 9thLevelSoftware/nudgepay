@@ -10,7 +10,7 @@ interface AppShellProps {
   /** Reserved for future owner-gated header actions (Task 6+). */
   isOwner: boolean;
   /** Which primary section is active (drives the nav rail + topbar title). */
-  activeNav?: "collections" | "accounts" | "promises";
+  activeNav?: "collections" | "accounts" | "promises" | "messages";
   /** Optional controls rendered in the topbar right-controls group. */
   headerActions?: React.ReactNode;
   /** Optional sync-issues indicator rendered next to the sync chip. */
