@@ -95,6 +95,12 @@
 
 ---
 
+## I. Accounts tab — Phase 11 (customer directory + 360° profile)
+
+- [x] **I1 — Accounts tab built: directory + quick-view + 360° profile.** ✅ **Phase 11 (Tasks 1–11, 2026-06-27).** The previously-inert `accounts` side-nav item is now a working surface, complementing Collections (work queue) with a **customer directory** (ALL customers incl. paid-up/zero-balance), each opening a **360° profile**. Pure `app/lib/accounts.ts` (`buildAccountRows`/`deriveStanding`(current/overdue/in_collections/on_hold)/`applyAccountFilter`/`sortAccountRows`/`computeAccountMetrics`, 9 tests) feeds two RLS-scoped loaders: `/accounts` (directory list + quick-view panel, `?customerId=`) and `/accounts/:id` (full profile). Reuses the Phase 10 warm design system + `AppShell` (now route-derived `activeNav`), `MetricsStrip`/`WorkQueue`/`DetailPanel` visual language, `status-style`, `timeline`, `comm-prefs`, `format`. Informational/configurational — **no new action surfaces**: edit forms post only to existing routes (owner→`api.assign`, comm-prefs→`api.comm-prefs` which gained a bare-`customerId` branch) plus a new NudgePay-only **account notes** field (migration `0019_account_notes`, additive `customers.notes`/`notes_updated_at`/`notes_updated_by`; new `api.account-notes` route). QBO `name`/`email`/`phone` rendered read-only ("from QuickBooks"); `sms_consent` read-only; notes columns outside the QBO upsert set (sync-safe). Account-wide timeline via `buildTimeline`; "Open in Collections" deep-link when an active case exists. vitest 382/382 (72 files), tsc 0, build clean. Final whole-branch review (opus): READY TO MERGE, no Critical/Important. **Visual fidelity pass deferred to a manual local run** (seed `diskin@chancey.test`/`password123` + a connected/synced org via demo-seed) — `/accounts` mirrors `/dashboard`'s connect-gate (redirects to `/settings` when not connected).
+
+---
+
 ## Proposed phase grouping (for planning)
 1. **Phase 6 — operational loop (P0 core)** — decomposed into three sub-phases, built in order (decided 2026-06-23):
    - **6a — Case foundation:** ✅ **DONE (merged to main `1cb6c34`, 2026-06-23; 151/151 green, live-verified).** `collection_cases` table + RLS, auto open/close lifecycle (pure `reconcileCases` + applier on all 3 sync paths), worklist refactor to case-centric queue (`cases.ts`), `case_id` on contact_logs/text_messages, per-customer SMS thread, case-anchored contact logging with durable next-action write (New→Working). (A1-impl delivered; A2 schema scaffolded — hard-invariant forced UX is 6c.)
