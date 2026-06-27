@@ -13,7 +13,7 @@ export const PROMISE_STATUS_CHIP: Record<PromiseDbStatus, string> = {
   pending: "bg-copper/10 text-copper",
   kept: "bg-cool/10 text-cool",
   partially_kept: "bg-copper/10 text-copper",
-  broken: "bg-warm/10 text-warm",
+  broken: "bg-hot/10 text-hot",
   renegotiated: "bg-muted/10 text-muted",
   cancelled: "bg-muted/10 text-muted",
 };

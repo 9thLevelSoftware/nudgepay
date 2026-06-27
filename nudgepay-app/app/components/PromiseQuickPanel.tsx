@@ -42,6 +42,7 @@ export function PromiseQuickPanel({ promise, invoices, note }: Props) {
       <dl className="p-4 space-y-2 text-sm border-b border-border">
         <div className="flex justify-between"><dt className="text-muted">Promised date</dt><dd className="text-text">{formatDate(promise.promisedDate)}</dd></div>
         <div className="flex justify-between"><dt className="text-muted">Grace until</dt><dd className="text-text">{formatDate(promise.graceUntil)}</dd></div>
+        <div className="flex justify-between"><dt className="text-muted">Baseline balance</dt><dd className="text-text tabular-nums">{formatUSD(promise.baselineBalance)}</dd></div>
         <div className="flex justify-between"><dt className="text-muted">Outstanding</dt><dd className="text-text tabular-nums">{formatUSD(promise.outstanding)}</dd></div>
         <div className="flex justify-between"><dt className="text-muted">Owner</dt><dd className="text-text">{promise.owner}</dd></div>
       </dl>

@@ -3,12 +3,12 @@ import { Link } from "react-router";
 import type { PromiseMetrics } from "../lib/promise-ledger";
 import { formatUSD } from "../lib/format";
 
-type Accent = "ink" | "copper" | "warm" | "cool";
+type Accent = "ink" | "copper" | "hot" | "cool";
 const ACCENT_TEXT: Record<Accent, string> = {
-  ink: "text-text", copper: "text-copper", warm: "text-warm", cool: "text-cool",
+  ink: "text-text", copper: "text-copper", hot: "text-hot", cool: "text-cool",
 };
 const ACCENT_DOT: Record<Accent, string> = {
-  ink: "bg-ink", copper: "bg-copper", warm: "bg-warm", cool: "bg-cool",
+  ink: "bg-ink", copper: "bg-copper", hot: "bg-hot", cool: "bg-cool",
 };
 
 function Tile({ to, label, value, sub, accent }: { to: string; label: string; value: string; sub: string; accent: Accent }) {
@@ -34,7 +34,7 @@ export function PromisesMetrics({ metrics }: { metrics: PromiseMetrics }) {
     <div className="grid grid-cols-2 gap-3 sm:gap-6 sm:grid-cols-4" aria-label="Promises summary metrics">
       <Tile to="?tab=active"   label="Active"     value={String(metrics.activeCount)}   sub={`${formatUSD(metrics.activeAmount)} promised`}   accent="copper" />
       <Tile to="?tab=due-soon" label="Due soon"   value={String(metrics.dueSoonCount)}  sub={`${formatUSD(metrics.dueSoonAmount)} promised`}  accent="ink" />
-      <Tile to="?tab=broken"   label="Broken"     value={String(metrics.brokenCount)}   sub={`${formatUSD(metrics.brokenOutstanding)} outstanding`} accent="warm" />
+      <Tile to="?tab=broken"   label="Broken"     value={String(metrics.brokenCount)}   sub={`${formatUSD(metrics.brokenOutstanding)} outstanding`} accent="hot" />
       <Tile to="?tab=kept"     label="Kept rate"  value={keptRateLabel}                 sub="of resolved promises"                          accent="cool" />
     </div>
   );
