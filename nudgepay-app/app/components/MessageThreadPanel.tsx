@@ -34,7 +34,7 @@ export function MessageThreadPanel({ thread, messages, consent, phone, vars, sms
   if (!thread) {
     return (
       <aside className="hidden lg:flex flex-col items-center justify-center bg-surface border border-border rounded-card p-8 text-center text-muted">
-        <Icon name="message" size={28} className="mb-2 text-muted/60" />
+        <Icon name="message" size={28} className="mb-2 text-muted/60" aria-hidden />
         <p className="text-sm">Select a thread to preview it here.</p>
       </aside>
     );
