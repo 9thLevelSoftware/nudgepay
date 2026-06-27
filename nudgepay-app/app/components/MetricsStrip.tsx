@@ -2,6 +2,8 @@ import { Link } from "react-router";
 import type { Metrics, ViewId, SortId } from "../lib/worklist";
 import { formatUSD } from "../lib/format";
 
+type Accent = "copper" | "cool" | "hot" | "ink" | "neutral";
+
 interface TileProps {
   label: string;
   count: number;
@@ -9,15 +11,23 @@ interface TileProps {
   viewId: ViewId;
   active: boolean;
   href: string;
-  accent: "hot" | "warm" | "copper" | "ink";
+  accent: Accent;
 }
 
-// Accent → count-text token (static literals for the Tailwind scanner).
-const accentText: Record<TileProps["accent"], string> = {
-  hot: "text-hot",
-  warm: "text-warm",
+// Static literal maps for the Tailwind v4 scanner.
+const ACCENT_TEXT: Record<Accent, string> = {
   copper: "text-copper",
+  cool: "text-cool",
+  hot: "text-hot",
   ink: "text-text",
+  neutral: "text-muted",
+};
+const ACCENT_DOT: Record<Accent, string> = {
+  copper: "bg-copper",
+  cool: "bg-cool",
+  hot: "bg-hot",
+  ink: "bg-ink",
+  neutral: "bg-muted",
 };
 
 /**
@@ -35,16 +45,29 @@ function MetricTile({ label, count, amount, active, href, accent }: TileProps) {
       aria-label={`${label}: ${count} accounts, ${formatUSD(amount)}`}
       aria-current={active ? "true" : undefined}
       className={[
-        "flex flex-col gap-1 p-4 rounded-tile bg-surface shadow-tile min-w-0 transition-colors",
+        "relative flex flex-col text-left p-4 rounded-tile overflow-hidden min-w-0 transition-colors",
         "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-copper",
-        active ? "ring-2 ring-copper bg-copper/5" : "border border-border hover:border-copper/50",
+        active
+          ? "bg-copper/5 border border-copper shadow-tile"
+          : "bg-paper border border-border hover:border-copper/50",
       ].join(" ")}
     >
+      <span
+        aria-hidden="true"
+        className={`absolute top-0 inset-x-0 h-0.5 ${active ? "bg-copper" : "bg-transparent"}`}
+      />
+      <span className="flex items-center gap-1.5 mb-2">
+        <span aria-hidden="true" className={`w-2 h-2 rounded-full shrink-0 ${ACCENT_DOT[accent]}`} />
+        <span className="font-mono text-[10px] font-semibold uppercase tracking-wide text-muted truncate">
+          {label}
+        </span>
+      </span>
       <span className="font-display text-2xl font-semibold leading-none tracking-tight tabular-nums text-text">
         {formatUSD(amount)}
       </span>
-      <span className="font-sans text-xs text-muted uppercase tracking-wide leading-none mt-0.5">
-        <span className={`font-mono font-medium ${accentText[accent]}`}>{count}</span> · {label}
+      <span className="mt-1.5 text-xs text-muted">
+        <span className={`font-mono font-semibold ${ACCENT_TEXT[accent]}`}>{count}</span>{" "}
+        {count === 1 ? "account" : "accounts"}
       </span>
     </Link>
   );
@@ -75,16 +98,16 @@ export function MetricsStrip({ metrics, view, sort = "recommended", search = "" 
   const tiles: {
     label: string;
     viewId: ViewId;
-    accent: TileProps["accent"];
+    accent: Accent;
     m: { count: number; amount: number };
   }[] = [
-    { label: "30+ days past due", viewId: "30-plus", accent: "hot", m: metrics.thirtyPlus },
-    { label: "High value", viewId: "high-value", accent: "copper", m: metrics.highValue },
-    { label: "Never contacted", viewId: "never-contacted", accent: "warm", m: metrics.neverContacted },
-    { label: "All open", viewId: "all-open", accent: "ink", m: metrics.allOpen },
-    { label: "Follow-ups due", viewId: "follow-ups-due", accent: "warm", m: metrics.followUpsDue },
-    { label: "Broken promises", viewId: "broken-promises", accent: "hot", m: metrics.brokenPromises },
-    { label: "On hold", viewId: "on-hold", accent: "ink", m: metrics.onHold },
+    { label: "30+ days past due", viewId: "30-plus",         accent: "copper",  m: metrics.thirtyPlus },
+    { label: "High value",        viewId: "high-value",      accent: "cool",    m: metrics.highValue },
+    { label: "Never contacted",   viewId: "never-contacted", accent: "neutral", m: metrics.neverContacted },
+    { label: "All open",          viewId: "all-open",        accent: "ink",     m: metrics.allOpen },
+    { label: "Follow-ups due",    viewId: "follow-ups-due",  accent: "copper",  m: metrics.followUpsDue },
+    { label: "Broken promises",   viewId: "broken-promises", accent: "hot",     m: metrics.brokenPromises },
+    { label: "On hold",           viewId: "on-hold",         accent: "neutral", m: metrics.onHold },
   ];
   return (
     <div
