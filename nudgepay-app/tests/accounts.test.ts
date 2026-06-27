@@ -2,6 +2,7 @@
 import { expect, test } from "vitest";
 import {
   deriveStanding, buildAccountRows,
+  applyAccountFilter, sortAccountRows, computeAccountMetrics,
   type AccountCaseInput, type AccountLastContactInput,
 } from "../app/lib/accounts";
 import type { CustomerInput, InvoiceInput } from "../app/lib/worklist";
@@ -64,4 +65,30 @@ test("buildAccountRows aggregates balance, open count, oldest overdue, owner, la
 test("buildAccountRows includes every customer, even with no invoices", () => {
   const rows = buildAccountRows(CUSTOMERS, INVOICES, CASES, LCS, TODAY, LABELS);
   expect(rows.map((r) => r.customerId).sort()).toEqual(["c1", "c2", "c3"]);
+});
+
+test("applyAccountFilter: open-balance / paid-up / unassigned / on-hold", () => {
+  const rows = buildAccountRows(CUSTOMERS, INVOICES, CASES, LCS, TODAY, LABELS);
+  expect(applyAccountFilter(rows, "all").length).toBe(3);
+  expect(applyAccountFilter(rows, "open-balance").map((r) => r.customerId).sort()).toEqual(["c1", "c2"]);
+  expect(applyAccountFilter(rows, "paid-up").map((r) => r.customerId)).toEqual(["c3"]);
+  expect(applyAccountFilter(rows, "unassigned").map((r) => r.customerId)).toEqual(["c2"]);
+  expect(applyAccountFilter(rows, "on-hold").length).toBe(0);
+});
+
+test("sortAccountRows: name asc, balance desc, last-contact newest-first (nulls last)", () => {
+  const rows = buildAccountRows(CUSTOMERS, INVOICES, CASES, LCS, TODAY, LABELS);
+  expect(sortAccountRows(rows, "name").map((r) => r.name)).toEqual(["Acme", "Globex", "Initech"]);
+  expect(sortAccountRows(rows, "balance").map((r) => r.customerId)).toEqual(["c1", "c2", "c3"]);
+  expect(sortAccountRows(rows, "last-contact").map((r) => r.customerId)[0]).toBe("c1"); // only c1 has contact
+  expect(sortAccountRows(rows, "last-contact").map((r) => r.customerId).slice(1).sort()).toEqual(["c2", "c3"]);
+});
+
+test("computeAccountMetrics totals customers, open AR, unassigned, paid-up", () => {
+  const rows = buildAccountRows(CUSTOMERS, INVOICES, CASES, LCS, TODAY, LABELS);
+  const m = computeAccountMetrics(rows);
+  expect(m.totalCustomers).toBe(3);
+  expect(m.totalOpenAR).toBe(7100); // 6300 + 800
+  expect(m.unassignedCount).toBe(1);
+  expect(m.paidUpCount).toBe(1);
 });

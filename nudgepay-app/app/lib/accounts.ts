@@ -100,3 +100,50 @@ export function buildAccountRows(
     };
   });
 }
+
+// ---------------------------------------------------------------------------
+// Filter / Sort / Metrics (consumed by /accounts loader and directory component)
+// ---------------------------------------------------------------------------
+
+export type AccountFilter = "all" | "open-balance" | "paid-up" | "unassigned" | "on-hold";
+export type AccountSort = "name" | "balance" | "last-contact";
+export type AccountMetrics = {
+  totalCustomers: number;
+  totalOpenAR: number;
+  unassignedCount: number;
+  paidUpCount: number;
+};
+
+export const ACCOUNT_FILTERS: AccountFilter[] = ["all", "open-balance", "paid-up", "unassigned", "on-hold"];
+export const ACCOUNT_SORTS: AccountSort[] = ["name", "balance", "last-contact"];
+
+export function applyAccountFilter(rows: AccountRow[], filter: AccountFilter): AccountRow[] {
+  if (filter === "open-balance") return rows.filter((r) => r.openBalance > 0);
+  if (filter === "paid-up") return rows.filter((r) => r.standing === "current");
+  if (filter === "unassigned") return rows.filter((r) => r.ownerId == null);
+  if (filter === "on-hold") return rows.filter((r) => r.onHold);
+  return rows;
+}
+
+export function sortAccountRows(rows: AccountRow[], sort: AccountSort): AccountRow[] {
+  const copy = [...rows];
+  if (sort === "balance") return copy.sort((a, b) => b.openBalance - a.openBalance);
+  if (sort === "last-contact") {
+    return copy.sort((a, b) => {
+      const ad = a.lastContact?.date ?? "";
+      const bd = b.lastContact?.date ?? "";
+      if (ad === bd) return a.name.localeCompare(b.name);
+      return bd.localeCompare(ad); // newest first; "" (no contact) sorts last
+    });
+  }
+  return copy.sort((a, b) => a.name.localeCompare(b.name));
+}
+
+export function computeAccountMetrics(rows: AccountRow[]): AccountMetrics {
+  return {
+    totalCustomers: rows.length,
+    totalOpenAR: rows.reduce((s, r) => s + r.openBalance, 0),
+    unassignedCount: rows.filter((r) => r.ownerId == null).length,
+    paidUpCount: rows.filter((r) => r.standing === "current").length,
+  };
+}
