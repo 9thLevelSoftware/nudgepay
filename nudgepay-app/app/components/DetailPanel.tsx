@@ -3,6 +3,7 @@ import { Link, useNavigate, useRevalidator } from "react-router";
 import { HEARTBEAT_INTERVAL_MS, type Collision } from "~/lib/collision";
 import { type CaseItem } from "~/lib/cases";
 import { Icon } from "~/components/Icons";
+import { MessageBubbles } from "~/components/MessageBubbles";
 import { SMS_TEMPLATES, applyTemplate, type TemplateVars } from "~/lib/sms-templates";
 import { formatDate } from "~/lib/dates";
 import { STATUS_LABEL, EXCEPTION_REASON_LABEL, formatUSD } from "~/lib/format";
@@ -83,11 +84,6 @@ function todayISO(): string {
   return new Date().toISOString().slice(0, 10);
 }
 
-// Static direction → bubble alignment/color. Literal strings for Tailwind.
-const BUBBLE: Record<string, { wrap: string; bubble: string }> = {
-  outbound: { wrap: "items-end",   bubble: "bg-ink text-surface border border-ink" },
-  inbound:  { wrap: "items-start", bubble: "bg-paper text-text border border-border" },
-};
 const SMS_BANNER: Record<string, { text: string; tone: string }> = {
   sent:      { text: "Text sent.",                                                    tone: "text-cool" },
   noconsent: { text: "Not sent — customer has not consented to SMS.",                 tone: "text-hot" },
@@ -196,23 +192,7 @@ function MessagesTab({
             <p className="text-xs text-muted max-w-xs">Pick a template or write a message below.</p>
           </div>
         ) : (
-          <ol className="flex flex-col gap-3">
-            {messages.map((m) => {
-              const side = BUBBLE[m.direction] ?? BUBBLE.inbound;
-              return (
-                <li key={m.id} className={`flex flex-col gap-0.5 ${side.wrap}`}>
-                  <span className={`inline-block max-w-[85%] rounded-lg px-3 py-2 text-sm font-sans whitespace-pre-wrap ${side.bubble}`}>
-                    {m.body}
-                  </span>
-                  <span className="font-mono text-[11px] text-muted">
-                    {m.direction}
-                    {m.status ? ` · ${m.status}` : ""}
-                    {m.errorCode ? ` · ${m.errorCode}` : ""}
-                  </span>
-                </li>
-              );
-            })}
-          </ol>
+          <MessageBubbles messages={messages} />
         )}
       </div>
 
