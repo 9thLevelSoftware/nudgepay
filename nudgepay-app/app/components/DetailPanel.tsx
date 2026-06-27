@@ -528,7 +528,7 @@ export function DetailPanel({
               className={[
                 "px-4 py-3 text-[13px] font-sans focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-copper transition-colors",
                 isActive
-                  ? "border-b-2 border-copper text-text font-semibold -mb-px"
+                  ? "border-b-2 border-copper text-text font-semibold"
                   : "border-b-2 border-transparent text-muted font-medium hover:text-text",
               ].join(" ")}
             >
@@ -771,7 +771,8 @@ export function DetailPanel({
             <ol className="flex flex-col">
               {(() => {
                 const today = todayISO();
-                return timeline.map((e) => {
+                return timeline.map((e, index) => {
+                  const isLast = index === timeline.length - 1;
                   if (e.kind === "sms") {
                     const node = TL_NODE[e.direction] ?? TL_NODE.outbound;
                     return (
@@ -780,7 +781,7 @@ export function DetailPanel({
                           <span className={`grid place-items-center w-7 h-7 rounded-lg ${node.bg} ${node.color}`}>
                             <Icon name="message" size={14} aria-hidden />
                           </span>
-                          <span aria-hidden="true" className="flex-1 w-0.5 bg-border mt-1.5" />
+                          {!isLast ? <span aria-hidden="true" className="flex-1 w-0.5 bg-border mt-1.5" /> : null}
                         </div>
                         <div className="min-w-0 flex flex-col gap-0.5 pt-0.5">
                           <span className={`text-sm font-sans font-semibold ${e.direction === "inbound" ? "text-cool" : "text-text"}`}>
@@ -805,7 +806,7 @@ export function DetailPanel({
                         <span className={`grid place-items-center w-7 h-7 rounded-lg ${node.bg} ${node.color}`}>
                           <Icon name={METHOD_ICON[e.method] ?? "note"} size={14} aria-hidden />
                         </span>
-                        <span aria-hidden="true" className="flex-1 w-0.5 bg-border mt-1.5" />
+                        {!isLast ? <span aria-hidden="true" className="flex-1 w-0.5 bg-border mt-1.5" /> : null}
                       </div>
                       <div className="min-w-0 flex flex-col gap-0.5 pt-0.5">
                         <span className="text-sm font-sans font-semibold text-text">
