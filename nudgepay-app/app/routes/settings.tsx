@@ -1,20 +1,4 @@
-import { redirect, useLoaderData, Form, type LoaderFunctionArgs } from "react-router";
-
-type SettingsData = {
-  orgName: string;
-  initials: string;
-  isOwner: boolean;
-  connected: boolean;
-  lastSyncAt: string | null;
-  syncIssues: Array<{ id: string; source: string; scope: string; message: string; occurredAt: string }>;
-  messaging: { sender: string | null; configured: boolean };
-  rules: {
-    grace: number;
-    workingDays: number[];
-    cadence: { Critical: number; High: number; Medium: number; Low: number };
-    holidays: string[];
-  };
-};
+import { redirect, useLoaderData, Form, data, type LoaderFunctionArgs } from "react-router";
 import { getEnv } from "../lib/env.server";
 import { requireUser, resolveOrg } from "../lib/session.server";
 import { getConnectionStatus } from "../lib/qbo-connection.server";
@@ -41,7 +25,7 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
 
   const { data: syncErrorRows } = await supabase.from("sync_errors")
     .select("id, source, scope, message, occurred_at").eq("org_id", org.org_id)
-    .is("resolved_at", null).order("occurred_at", { ascending: false });
+    .is("resolved_at", null).order("occurred_at", { ascending: false }).limit(20);
   const syncIssues = ((syncErrorRows as any[]) ?? []).map((r) => ({
     id: r.id as string, source: r.source as string, scope: r.scope as string,
     message: r.message as string, occurredAt: r.occurred_at as string,
@@ -54,7 +38,7 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
 
   const config = await loadOrgConfig(supabase, org.org_id);
 
-  return Response.json({
+  return data({
     orgName: (orgRow?.name as string) ?? "Workspace",
     initials, isOwner, connected, lastSyncAt, syncIssues,
     messaging: { sender, configured: messagingConfigured },
@@ -77,7 +61,7 @@ function relTime(iso: string | null): string {
 }
 
 export default function Settings() {
-  const d = useLoaderData() as SettingsData;
+  const d = useLoaderData<typeof loader>();
   const syncLabel = d.connected ? `Synced ${relTime(d.lastSyncAt)}` : "Not connected";
 
   return (
@@ -90,7 +74,7 @@ export default function Settings() {
           <section className="rounded-lg border border-border bg-surface p-5">
             <div className="flex items-center justify-between">
               <h2 className="font-display text-base font-semibold text-text">QuickBooks</h2>
-              <span className={`text-xs font-medium ${d.connected ? "text-cool" : "text-muted"}`}>
+              <span className={`text-xs font-medium ${d.connected ? "text-cool" : "text-muted"}`} suppressHydrationWarning>
                 {d.connected ? `Connected · ${syncLabel}` : "Not connected"}
               </span>
             </div>
@@ -126,7 +110,7 @@ export default function Settings() {
           {/* Sync health (G3) */}
           <section className="rounded-lg border border-border bg-surface p-5">
             <h2 className="font-display text-base font-semibold text-text">Sync health</h2>
-            <p className="mt-0.5 text-xs text-muted">Last sync {relTime(d.lastSyncAt)} · {d.syncIssues.length} unresolved {d.syncIssues.length === 1 ? "error" : "errors"}.</p>
+            <p className="mt-0.5 text-xs text-muted">Last sync <span suppressHydrationWarning>{relTime(d.lastSyncAt)}</span> · {d.syncIssues.length} unresolved {d.syncIssues.length === 1 ? "error" : "errors"}.</p>
             <ul className="mt-3 flex flex-col gap-2" role="list">
               {d.syncIssues.map((it) => (
                 <li key={it.id} className="rounded-md border border-border p-2 text-xs">

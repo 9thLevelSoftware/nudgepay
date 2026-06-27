@@ -1,4 +1,4 @@
-import { Form, useLoaderData, redirect, data, type LoaderFunctionArgs } from "react-router";
+import { useLoaderData, redirect, data, type LoaderFunctionArgs } from "react-router";
 import { getEnv } from "../lib/env.server";
 import { requireUser, resolveOrg } from "../lib/session.server";
 import { getConnectionStatus } from "../lib/qbo-connection.server";
@@ -174,27 +174,25 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
   const connected = conn?.status === "connected";
   if (!connected) throw redirect("/settings", { headers });
 
-  // Sync label from last_sync_at
-  let syncLabel = "Not connected";
-  if (connected) {
-    const { data: connMeta } = await service
-      .from("qbo_connections")
-      .select("last_sync_at")
-      .eq("org_id", org.org_id)
-      .maybeSingle();
-    const lastSyncAt = (connMeta?.last_sync_at as string | null) ?? null;
-    if (lastSyncAt) {
-      const diffMs = Date.now() - new Date(lastSyncAt).getTime();
-      const diffMin = Math.floor(diffMs / 60_000);
-      const diffHr = Math.floor(diffMin / 60);
-      const diffDay = Math.floor(diffHr / 24);
-      if (diffMin < 2) syncLabel = "Synced just now";
-      else if (diffMin < 60) syncLabel = `Synced ${diffMin}m ago`;
-      else if (diffHr < 24) syncLabel = `Synced ${diffHr}h ago`;
-      else syncLabel = `Synced ${diffDay}d ago`;
-    } else {
-      syncLabel = "Connected";
-    }
+  // Sync label from last_sync_at (connected is guaranteed true here — redirect above)
+  const { data: connMeta } = await service
+    .from("qbo_connections")
+    .select("last_sync_at")
+    .eq("org_id", org.org_id)
+    .maybeSingle();
+  const lastSyncAt = (connMeta?.last_sync_at as string | null) ?? null;
+  let syncLabel: string;
+  if (lastSyncAt) {
+    const diffMs = Date.now() - new Date(lastSyncAt).getTime();
+    const diffMin = Math.floor(diffMs / 60_000);
+    const diffHr = Math.floor(diffMin / 60);
+    const diffDay = Math.floor(diffHr / 24);
+    if (diffMin < 2) syncLabel = "Synced just now";
+    else if (diffMin < 60) syncLabel = `Synced ${diffMin}m ago`;
+    else if (diffHr < 24) syncLabel = `Synced ${diffHr}h ago`;
+    else syncLabel = `Synced ${diffDay}d ago`;
+  } else {
+    syncLabel = "Connected";
   }
 
   // Parse URL params

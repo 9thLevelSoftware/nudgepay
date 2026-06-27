@@ -41,6 +41,11 @@ test("an owner writes org_settings + org_holidays via RLS; a member cannot", asy
   await member.client.from("org_settings").update({ promise_grace_days: 99 }).eq("org_id", orgId);
   const { data: after } = await svc.from("org_settings").select("promise_grace_days").eq("org_id", orgId).single();
   expect(after!.promise_grace_days).toBe(4); // unchanged
+
+  // Member cannot INSERT into org_holidays (RLS blocks non-owner writes).
+  await member.client.from("org_holidays").insert({ org_id: orgId, holiday_date: "2026-12-25" });
+  const { data: holidays } = await svc.from("org_holidays").select("holiday_date").eq("org_id", orgId).eq("holiday_date", "2026-12-25");
+  expect(holidays ?? []).toHaveLength(0); // RLS blocked the insert
 });
 
 test("an outsider can neither read nor write another org's settings", async () => {
