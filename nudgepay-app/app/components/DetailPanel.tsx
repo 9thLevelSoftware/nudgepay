@@ -45,14 +45,14 @@ const LEVEL_TONE: Record<string, string> = {
   Critical: "text-hot", High: "text-warm", Medium: "text-warm", Low: "text-cool",
 };
 
-// Static promise status → label + tone. Literal class strings for Tailwind v4.
-const PROMISE_STATUS: Record<string, { label: string; tone: string }> = {
-  pending:        { label: "Promise pending",  tone: "text-cool" },
-  kept:           { label: "Promise kept",     tone: "text-cool" },
-  partially_kept: { label: "Partially kept",   tone: "text-warm" },
-  broken:         { label: "Promise broken",   tone: "text-hot" },
-  renegotiated:   { label: "Renegotiated",     tone: "text-muted" },
-  cancelled:      { label: "Cancelled",        tone: "text-muted" },
+// Static promise status → label. Literal class strings for Tailwind v4.
+const PROMISE_STATUS: Record<string, { label: string }> = {
+  pending:        { label: "Promise pending" },
+  kept:           { label: "Promise kept" },
+  partially_kept: { label: "Partially kept" },
+  broken:         { label: "Promise broken" },
+  renegotiated:   { label: "Renegotiated" },
+  cancelled:      { label: "Cancelled" },
 };
 
 // Footer/status accent cards — literal classes for the scanner.
