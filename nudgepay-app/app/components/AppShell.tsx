@@ -38,10 +38,10 @@ const NAV_ITEMS: NavItem[] = [
  * Layout:
  *   - `ink` top bar: brand mark, workspace title "Collections", sync chip,
  *     settings icon, user avatar with initials.
- *   - `ink` left icon side-nav: Collections (active, copper left-edge
- *     indicator); Reports (link, owners only); Accounts/Promises/Messages
- *     (inert, aria-disabled, muted). Settings is reached from the top bar
- *     (gear icon + sync chip), not the side-nav.
+ *   - `ink` left icon side-nav: Collections / Accounts / Promises (live
+ *     links, copper left-edge indicator on the active section); Reports
+ *     (link, owners only); Messages (inert, aria-disabled, muted). Settings
+ *     is reached from the top bar (gear icon + sync chip), not the side-nav.
  *   - Main area: `bg-panel`, renders `children`.
  *
  * Responsive: side-nav hidden below `md`, toggled via the menu button in the

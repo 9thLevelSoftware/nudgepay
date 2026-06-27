@@ -101,6 +101,12 @@
 
 ---
 
+## J. Promises tab — Phase 12 (promise pipeline / ledger)
+
+- [x] **J1 — Promises tab built: cross-customer promise ledger + quick-view.** ✅ **Phase 12 (Tasks 1–4, 2026-06-27).** Activates the previously-inert `promises` side-nav item with a promise-centric lens over the existing Phase 6b data (no new backend mechanics). Pure `app/lib/promise-ledger.ts` (`buildPromiseRows`/`isDueSoon`/`applyPromiseTab`(active/due-soon/broken/kept/all)/`sortPromiseRows`/`computePromiseMetrics`; frozen `PROMISE_TABS`/`PROMISE_SORTS`; 7 tests) feeds one RLS-scoped loader `/promises` reusing the accounts prelude (connect-gate → `/settings`). Lifecycle status **pill tabs** (default **Due soon**) + heat-rail visual language; **KPI strip** (Active / Due soon / Broken counts + $, strict null-safe **kept rate**); **`?promiseId=` quick-view panel** (linked invoices via `promise_invoices`, originating contact note, deep-links "Open in Collections" `/dashboard?case=` + "View account" `/accounts/:id`). Read-only — **no new write routes, no migration**. The grace-lag subtlety (a `pending` promise past `grace_until` the evaluator hasn't yet flipped) is handled by a read-time display bucket + an `awaitingEvaluation` marker; **DB `status` is never mutated**. "Due soon" = 3 business days via `addBusinessDays` honoring per-org working-days/holidays (`loadOrgConfig`). Reuses the Phase 10 warm design system, `format`, `dates`, `Icons`. vitest 389/389 (73 files), tsc 0, build clean. Promise-table RLS already covered by `promise-evaluation-rls.test.ts` (same `promises_all` policy) — no redundant RLS test added (deliberate, surfaced in the plan self-review). **Visual fidelity pass deferred to a manual local run** (seed + a connected/synced org) — `/promises` mirrors `/accounts`/`/dashboard`'s connect-gate.
+
+---
+
 ## Proposed phase grouping (for planning)
 1. **Phase 6 — operational loop (P0 core)** — decomposed into three sub-phases, built in order (decided 2026-06-23):
    - **6a — Case foundation:** ✅ **DONE (merged to main `1cb6c34`, 2026-06-23; 151/151 green, live-verified).** `collection_cases` table + RLS, auto open/close lifecycle (pure `reconcileCases` + applier on all 3 sync paths), worklist refactor to case-centric queue (`cases.ts`), `case_id` on contact_logs/text_messages, per-customer SMS thread, case-anchored contact logging with durable next-action write (New→Working). (A1-impl delivered; A2 schema scaffolded — hard-invariant forced UX is 6c.)
