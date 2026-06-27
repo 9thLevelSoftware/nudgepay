@@ -6,23 +6,24 @@
 	--font-mono: "IBM Plex Mono", ui-monospace, SFMono-Regular, monospace;
 
 	--color-ink: #16202b;
-	--color-panel: #f5f6f4;
-	--color-surface: #ffffff;
-	--color-copper: #b7702d;
+	--color-panel: #e9e4db;
+	--color-surface: #fffdf9;
+	--color-paper: #fbf8f1;
+	--color-copper: #cf8136;
 	--color-cool: #2e7fb8;
-	--color-warm: #e08a1e;
+	--color-warm: #cf8136;
 	--color-hot: #d23b2e;
 	--color-text: #16202b;
-	--color-muted: #5b667a;
-	--color-border: #d7dee8;
+	--color-muted: #6b7689;
+	--color-border: #ddd6c9;
 
 	/* Radii → rounded-tile, rounded-card */
-	--radius-tile: 10px;
-	--radius-card: 12px;
+	--radius-tile: 12px;
+	--radius-card: 14px;
 
 	/* Elevation → shadow-tile, shadow-panel */
-	--shadow-tile: 0 1px 2px rgba(22, 32, 43, 0.06), 0 1px 1px rgba(22, 32, 43, 0.04);
-	--shadow-panel: -1px 0 3px rgba(22, 32, 43, 0.05);
+	--shadow-tile: 0 1px 2px rgba(22, 32, 43, 0.05);
+	--shadow-panel: 0 2px 8px rgba(22, 32, 43, 0.07);
 }
 
 @utility scrollbar-none {
