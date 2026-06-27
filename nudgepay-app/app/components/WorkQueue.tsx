@@ -11,6 +11,7 @@ import { BulkActionBar } from "./BulkActionBar";
 import { BulkSmsDrawer } from "./BulkSmsDrawer";
 import { ThermalBand } from "./ThermalBand";
 import { Icon } from "./Icons";
+import { statusChipTone, type ChipTone } from "../lib/status-style";
 
 // ---------------------------------------------------------------------------
 // Static maps — Tailwind v4 scanner requires literal class strings; no template
@@ -23,6 +24,24 @@ const LEVEL_BADGE: Record<string, string> = {
   High: "bg-warm/10 text-warm",
   Medium: "bg-warm/5 text-warm",
   Low: "bg-cool/10 text-cool",
+};
+
+// Status chip — literal class strings for the Tailwind v4 scanner.
+const CHIP: Record<ChipTone, string> = {
+  cool: "bg-cool/10 text-cool",
+  copper: "bg-copper/10 text-copper",
+  neutral: "bg-muted/10 text-muted",
+};
+const CHIP_DOT: Record<ChipTone, string> = {
+  cool: "bg-cool",
+  copper: "bg-copper",
+  neutral: "bg-muted",
+};
+// Heat → left-rail fill.
+const HEAT_BAR: Record<string, string> = {
+  cool: "bg-cool",
+  warm: "bg-warm",
+  hot: "bg-hot",
 };
 
 
@@ -142,10 +161,12 @@ function QueueRow({
   return (
     <div
       className={[
-        "flex items-center border-b border-border transition-colors duration-100 hover:bg-panel",
-        selected ? "border-l-2 border-l-copper bg-copper/5" : "border-l-2 border-l-transparent",
+        "relative flex items-center border-b border-border transition-colors duration-100 hover:bg-paper",
+        selected ? "bg-copper/5" : "",
       ].join(" ")}
     >
+      <span aria-hidden="true" className={`absolute left-0 inset-y-0 w-1 ${HEAT_BAR[item.heat.band] ?? "bg-muted"}`} />
+      {selected ? <span aria-hidden="true" className="absolute left-1 inset-y-0 w-0.5 bg-copper" /> : null}
       <label className="flex items-center pl-4 pr-1 cursor-pointer" onClick={(e) => e.stopPropagation()}>
         <span className="sr-only">Select {item.customerName}</span>
         <input
@@ -211,15 +232,22 @@ function QueueRow({
         </span>
 
         {/* Status + next action date */}
-        <span data-label="Status" className="hidden lg:block min-w-0 text-xs font-sans font-medium whitespace-nowrap text-text">
-          {STATUS_LABEL[item.status] ?? item.status}
-          {item.status === "on_hold" && item.exceptionReason ? (
-            <span className="ml-1.5 inline-flex items-center rounded-sm bg-amber-500/15 px-1.5 py-0.5 text-[11px] font-medium text-amber-200">
-              {exceptionLabel(item.exceptionReason)}
-            </span>
+        <span data-label="Status" className="hidden lg:flex flex-col items-start gap-0.5 min-w-0">
+          {(() => {
+            const tone = statusChipTone(item.status);
+            return (
+              <span className={`inline-flex items-center gap-1.5 rounded-md px-2 py-0.5 text-[11.5px] font-sans font-semibold ${CHIP[tone]}`}>
+                <span aria-hidden="true" className={`w-1.5 h-1.5 rounded-full ${CHIP_DOT[tone]}`} />
+                {STATUS_LABEL[item.status] ?? item.status}
+                {item.nextActionAt ? <span className="font-normal opacity-80"> · {formatDate(item.nextActionAt)}</span> : null}
+              </span>
+            );
+          })()}
+          {item.promiseStatus === "broken" ? (
+            <span className="text-[11px] text-hot pl-0.5">Promise broken</span>
+          ) : item.status === "on_hold" && item.exceptionReason ? (
+            <span className="text-[11px] text-muted pl-0.5">{exceptionLabel(item.exceptionReason)}</span>
           ) : null}
-          {item.nextActionAt ? <span className="text-muted"> · {formatDate(item.nextActionAt)}</span> : null}
-          {item.promiseStatus === "broken" ? <span className="text-hot"> · Promise broken</span> : null}
         </span>
 
         {/* Owner chip */}
@@ -388,7 +416,7 @@ export function WorkQueue({
   return (
     <section className="flex flex-col min-h-0" aria-labelledby="work-queue-title">
       {/* Header + toolbar (single band) */}
-      <div className="flex flex-wrap items-center gap-3 px-6 py-3 border-b border-border bg-surface">
+      <div className="flex flex-wrap items-center gap-3 px-6 py-3 border-b border-border bg-paper">
         <div className="min-w-0">
           <h2
             id="work-queue-title"
@@ -449,7 +477,7 @@ export function WorkQueue({
       <div
         role="tablist"
         aria-label="Saved queue views"
-        className="flex overflow-x-auto gap-0 border-b border-border bg-surface px-4 scrollbar-none"
+        className="flex gap-1 overflow-x-auto border-b border-border bg-paper px-3.5 py-2 scrollbar-none"
       >
         {SAVED_VIEWS.map((sv) => {
           const isActive = view === sv.id;
@@ -465,17 +493,17 @@ export function WorkQueue({
               role="tab"
               aria-selected={isActive ? "true" : "false"}
               className={[
-                "flex items-center gap-1.5 px-3 py-2.5 text-sm font-sans whitespace-nowrap border-b-2 -mb-px transition-colors",
-                "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-copper focus-visible:ring-inset",
+                "flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-[12.5px] whitespace-nowrap transition-colors",
+                "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-copper",
                 isActive
-                  ? "border-copper text-copper font-medium"
-                  : "border-transparent text-muted hover:text-text hover:border-border",
+                  ? "bg-ink border-ink text-surface font-semibold"
+                  : "bg-surface border-border text-muted font-medium hover:border-copper/50 hover:text-text",
               ].join(" ")}
             >
               {sv.label}
               <span
-                className={`font-mono text-xs rounded-full px-1.5 py-0.5 tabular-nums ${
-                  isActive ? "bg-copper/10 text-copper" : "bg-panel text-muted"
+                className={`inline-grid place-items-center min-w-[18px] h-[18px] px-1 rounded-full font-mono text-[10.5px] font-semibold ${
+                  isActive ? "bg-surface/20 text-surface" : "bg-panel text-muted"
                 }`}
               >
                 {viewCounts[sv.id] ?? 0}
@@ -490,7 +518,7 @@ export function WorkQueue({
         {items.length === 0 ? (
           /* Empty state */
           <div className="flex flex-col items-center justify-center gap-3 py-16 px-6 text-center">
-            <div className="w-10 h-10 rounded-full bg-panel flex items-center justify-center">
+            <div className="w-10 h-10 rounded-full bg-paper flex items-center justify-center">
               <Icon name="filter" size={20} className="text-muted" />
             </div>
             <p className="font-sans text-text font-medium">No accounts match this view.</p>
@@ -504,7 +532,7 @@ export function WorkQueue({
             <div className="hidden md:block" aria-label="Work queue table">
               {/* Column header */}
               <div
-                className="flex items-center px-4 py-2 border-b border-border bg-panel"
+                className="flex items-center px-4 py-2 border-b border-border bg-paper"
                 aria-hidden="false"
               >
                 <label className="flex items-center pl-4 pr-1 cursor-pointer">

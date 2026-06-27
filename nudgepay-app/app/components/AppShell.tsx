@@ -29,7 +29,6 @@ const NAV_ITEMS: NavItem[] = [
   { name: "promises", icon: "check", label: "Promises" },
   { name: "messages", icon: "message", label: "Messages" },
   { name: "reports", icon: "note", label: "Reports" },
-  { name: "settings", icon: "settings", label: "Settings" },
 ];
 
 /**
@@ -39,8 +38,9 @@ const NAV_ITEMS: NavItem[] = [
  *   - `ink` top bar: brand mark, workspace title "Collections", sync chip,
  *     settings icon, user avatar with initials.
  *   - `ink` left icon side-nav: Collections (active, copper left-edge
- *     indicator); Accounts/Promises/Messages/Reports/Settings (inert,
- *     aria-disabled, muted).
+ *     indicator); Reports (link, owners only); Accounts/Promises/Messages
+ *     (inert, aria-disabled, muted). Settings is reached from the top bar
+ *     (gear icon + sync chip), not the side-nav.
  *   - Main area: `bg-panel`, renders `children`.
  *
  * Responsive: side-nav hidden below `md`, toggled via the menu button in the
@@ -158,7 +158,7 @@ export function AppShell({
           className={[
             // Base: fixed on mobile (slide in/out), static on md+
             "fixed md:static inset-y-0 left-0 z-30 flex flex-col",
-            "w-14 bg-ink text-surface/60",
+            "w-[88px] bg-ink text-surface/60",
             "transition-transform duration-200 ease-in-out",
             // On mobile: shift nav below the 48px top bar
             "top-12 md:top-0",
@@ -199,21 +199,6 @@ export function AppShell({
                   <li key={item.name} className="relative w-full">
                     <Link
                       to="/reports"
-                      className="flex flex-col items-center justify-center w-full py-3 gap-1 text-surface focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-copper focus-visible:ring-inset"
-                      aria-label={item.label}
-                      onClick={() => setNavOpen(false)}
-                    >
-                      <Icon name={item.icon} size={18} />
-                      <span className="text-[9px] font-sans font-medium uppercase tracking-wide leading-none">{item.label}</span>
-                    </Link>
-                  </li>
-                );
-              }
-              if (item.name === "settings") {
-                return (
-                  <li key={item.name} className="relative w-full">
-                    <Link
-                      to="/settings"
                       className="flex flex-col items-center justify-center w-full py-3 gap-1 text-surface focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-copper focus-visible:ring-inset"
                       aria-label={item.label}
                       onClick={() => setNavOpen(false)}

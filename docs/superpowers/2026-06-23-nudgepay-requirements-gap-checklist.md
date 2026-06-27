@@ -89,6 +89,12 @@
 
 ---
 
+## H. Visual Design — Phase 10 (Collections UI re-skin)
+
+- [x] **H1 — Collections dashboard re-skinned to the approved Claude Design spec.** ✅ **Phase 10 (Tasks 1–6, 2026-06-27).** Warm parchment palette applied app-wide via shared `@theme` CSS custom-property tokens (`--color-surface`, `--color-panel`, `--color-ink`, `--color-copper`, `--color-muted`, etc.); copper retune to `#cf8136`; paper-band token introduced. KPI cards (Task 3), pill tabs / heat rail / status chips / warm queue rows (Task 4), DetailPanel dark header / stat tiles / action tiles / underline tabs / status footer cards / node timeline / warm message bubbles (Task 5) all re-skinned. All dashboard functionality preserved (override, why-this-priority, exception, consent, composer, cancel-promise, collision). AppShell ink chrome + copper active rail unchanged and token-correct; Phase 9 top bar (sync chip → `/settings`, Settings icon link; no Refresh/Disconnect) preserved. vitest 366/366, tsc 0, build clean.
+
+---
+
 ## Proposed phase grouping (for planning)
 1. **Phase 6 — operational loop (P0 core)** — decomposed into three sub-phases, built in order (decided 2026-06-23):
    - **6a — Case foundation:** ✅ **DONE (merged to main `1cb6c34`, 2026-06-23; 151/151 green, live-verified).** `collection_cases` table + RLS, auto open/close lifecycle (pure `reconcileCases` + applier on all 3 sync paths), worklist refactor to case-centric queue (`cases.ts`), `case_id` on contact_logs/text_messages, per-customer SMS thread, case-anchored contact logging with durable next-action write (New→Working). (A1-impl delivered; A2 schema scaffolded — hard-invariant forced UX is 6c.)
