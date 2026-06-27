@@ -83,3 +83,31 @@ test("computePromiseMetrics: kept rate is null when nothing is resolved", () => 
   const onlyPending = buildPromiseRows(PROMISES.filter((p) => p.status === "pending"), TODAY, LABELS);
   expect(computePromiseMetrics(onlyPending, TODAY).keptRate).toBeNull();
 });
+
+test("buildPromiseRows: pending received is derived live from linked balance; terminal stays persisted", () => {
+  // p1 pending baseline 500, current linked balance 300 → live received 200, outstanding 300.
+  // p4 broken baseline 800, persisted received 200 → NOT overridden (terminal), outstanding 600.
+  const live = new Map<string, number>([["p1", 300], ["p4", 0]]);
+  const rows = buildPromiseRows(PROMISES, TODAY, LABELS, { liveLinkedBalanceByPromiseId: live });
+  const byId = new Map(rows.map((r) => [r.promiseId, r]));
+  expect(byId.get("p1")!.amountReceived).toBe(200);  // 500 baseline - 300 current
+  expect(byId.get("p1")!.outstanding).toBe(300);     // 500 promised - 200 received
+  expect(byId.get("p4")!.amountReceived).toBe(200);  // broken: persisted value kept
+  expect(byId.get("p4")!.outstanding).toBe(600);
+});
+
+test("buildPromiseRows: pending with no live entry falls back to persisted received", () => {
+  const rows = buildPromiseRows(PROMISES, TODAY, LABELS, { liveLinkedBalanceByPromiseId: new Map() });
+  const p1 = rows.find((r) => r.promiseId === "p1")!;
+  expect(p1.amountReceived).toBe(0); // persisted default, no live balance supplied
+});
+
+test("buildPromiseRows: caseOpen reflects openCaseIds, defaults true when absent", () => {
+  const open = new Set<string>(["k1"]); // only p1's case is open
+  const rows = buildPromiseRows(PROMISES, TODAY, LABELS, { openCaseIds: open });
+  const byId = new Map(rows.map((r) => [r.promiseId, r]));
+  expect(byId.get("p1")!.caseOpen).toBe(true);
+  expect(byId.get("p5")!.caseOpen).toBe(false); // k5 not in open set
+  // absent openCaseIds → every case treated as open
+  expect(buildPromiseRows(PROMISES, TODAY, LABELS).every((r) => r.caseOpen)).toBe(true);
+});

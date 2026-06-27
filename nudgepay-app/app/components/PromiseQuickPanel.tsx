@@ -71,12 +71,18 @@ export function PromiseQuickPanel({ promise, invoices, note }: Props) {
       ) : null}
 
       <div className="p-4 flex flex-wrap gap-2">
-        <Link
-          to={`/dashboard?case=${promise.caseId}`}
-          className="inline-flex items-center gap-1.5 h-9 px-3 rounded bg-copper text-surface text-sm font-medium hover:bg-copper/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-copper"
-        >
-          Open in Collections <Icon name="chevronRight" size={16} />
-        </Link>
+        {promise.caseOpen ? (
+          <Link
+            to={`/dashboard?case=${promise.caseId}`}
+            className="inline-flex items-center gap-1.5 h-9 px-3 rounded bg-copper text-surface text-sm font-medium hover:bg-copper/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-copper"
+          >
+            Open in Collections <Icon name="chevronRight" size={16} />
+          </Link>
+        ) : (
+          <span className="inline-flex items-center h-9 px-3 rounded border border-border text-muted text-sm">
+            Case closed — history in account
+          </span>
+        )}
         <Link
           to={`/accounts/${promise.customerId}`}
           className="inline-flex items-center gap-1.5 h-9 px-3 rounded border border-border text-text text-sm font-medium hover:border-copper focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-copper"

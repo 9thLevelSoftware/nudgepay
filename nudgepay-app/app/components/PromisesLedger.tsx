@@ -50,6 +50,7 @@ export function PromisesLedger({ rows, tab, sort, counts, selectedId }: Props) {
         <span className="text-xs text-muted">{rows.length} matching</span>
         <Form method="get" className="ml-auto flex items-center gap-2">
           <input type="hidden" name="tab" value={tab} />
+          {selectedId ? <input type="hidden" name="promiseId" value={selectedId} /> : null}
           <label className="sr-only" htmlFor="promise-sort">Sort</label>
           <select
             id="promise-sort" name="sort" defaultValue={sort}

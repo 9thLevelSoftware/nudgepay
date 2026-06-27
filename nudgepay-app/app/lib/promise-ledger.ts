@@ -40,22 +40,46 @@ export type PromiseRow = PromiseInput & {
   outstanding: number;         // max(0, promised - received)
   superseded: boolean;         // renegotiated | cancelled
   awaitingEvaluation: boolean; // pending but today > graceUntil (sync lag)
+  caseOpen: boolean;           // case still open (closed cases can't be deep-linked into Collections)
 };
 
 type DayConfig = { workingDays?: ReadonlySet<number>; holidays?: ReadonlySet<string> };
+
+export type BuildPromiseRowsOpts = {
+  // Current summed balance of each pending promise's linked invoices. The
+  // `amount_received` column stays at its persisted value (0) until the
+  // evaluator resolves a promise, so for pending rows we derive received from
+  // the live linked balance (balance-delta, matching evaluatePromise). Absent
+  // entry → fall back to the persisted amountReceived.
+  liveLinkedBalanceByPromiseId?: ReadonlyMap<string, number>;
+  // case_ids whose case is still open (closed_at is null). Absent → treat every
+  // case as open (the no-info default, used by pure unit tests).
+  openCaseIds?: ReadonlySet<string>;
+};
 
 export function buildPromiseRows(
   promises: PromiseInput[],
   today: string,
   ownerLabels: Map<string, string>,
+  opts: BuildPromiseRowsOpts = {},
 ): PromiseRow[] {
-  return promises.map((p) => ({
-    ...p,
-    owner: p.ownerId ? (ownerLabels.get(p.ownerId) ?? "Unknown") : "Unassigned",
-    outstanding: Math.max(0, p.promisedAmount - p.amountReceived),
-    superseded: p.status === "renegotiated" || p.status === "cancelled",
-    awaitingEvaluation: p.status === "pending" && today > p.graceUntil,
-  }));
+  return promises.map((p) => {
+    // Live received for pending promises (the persisted column lags until the
+    // evaluator settles the promise); terminal statuses keep their authoritative value.
+    let amountReceived = p.amountReceived;
+    if (p.status === "pending" && opts.liveLinkedBalanceByPromiseId?.has(p.promiseId)) {
+      amountReceived = Math.max(0, p.baselineBalance - opts.liveLinkedBalanceByPromiseId.get(p.promiseId)!);
+    }
+    return {
+      ...p,
+      owner: p.ownerId ? (ownerLabels.get(p.ownerId) ?? "Unknown") : "Unassigned",
+      amountReceived,
+      outstanding: Math.max(0, p.promisedAmount - amountReceived),
+      superseded: p.status === "renegotiated" || p.status === "cancelled",
+      awaitingEvaluation: p.status === "pending" && today > p.graceUntil,
+      caseOpen: opts.openCaseIds ? opts.openCaseIds.has(p.caseId) : true,
+    };
+  });
 }
 
 // A pending promise is "due soon" when its promised date falls within

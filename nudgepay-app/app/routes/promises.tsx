@@ -82,9 +82,51 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
     .eq("org_id", org.org_id);
   const rawPromises = (promiseRows as any[]) ?? [];
 
-  const { data: custRows } = await supabase
-    .from("customers").select("id, name, owner").eq("org_id", org.org_id);
-  const custById = new Map(((custRows as any[]) ?? []).map((c) => [c.id, c]));
+  // Only the customers referenced by promises (not the whole directory).
+  const customerIds = Array.from(new Set(rawPromises.map((r) => r.customer_id as string)));
+  let custRows: any[] = [];
+  if (customerIds.length > 0) {
+    const { data } = await supabase
+      .from("customers").select("id, name, owner").eq("org_id", org.org_id).in("id", customerIds);
+    custRows = (data as any[]) ?? [];
+  }
+  const custById = new Map(custRows.map((c) => [c.id, c]));
+
+  // Open/closed state per referenced case — a closed case can't be selected by
+  // the Collections deep-link (dashboard loads only `closed_at is null`).
+  const caseIds = Array.from(new Set(rawPromises.map((r) => r.case_id as string)));
+  let openCaseIds = new Set<string>();
+  if (caseIds.length > 0) {
+    const { data: caseRows } = await supabase
+      .from("collection_cases").select("id, closed_at").eq("org_id", org.org_id).in("id", caseIds);
+    openCaseIds = new Set(
+      ((caseRows as any[]) ?? []).filter((c) => c.closed_at == null).map((c) => c.id as string),
+    );
+  }
+
+  // Live linked-invoice balance per PENDING promise → read-time received
+  // (the persisted amount_received lags until the evaluator settles the promise).
+  const pendingIds = rawPromises.filter((r) => r.status === "pending").map((r) => r.id as string);
+  const liveLinkedBalanceByPromiseId = new Map<string, number>();
+  if (pendingIds.length > 0) {
+    const { data: piRows } = await supabase
+      .from("promise_invoices").select("promise_id, invoice_id").eq("org_id", org.org_id).in("promise_id", pendingIds);
+    const links = (piRows as any[]) ?? [];
+    const linkInvIds = Array.from(new Set(links.map((l) => l.invoice_id as string)));
+    const balById = new Map<string, number>();
+    if (linkInvIds.length > 0) {
+      const { data: invRows } = await supabase
+        .from("invoices").select("id, balance").eq("org_id", org.org_id).in("id", linkInvIds);
+      for (const inv of (invRows as any[]) ?? []) balById.set(inv.id as string, Number(inv.balance) || 0);
+    }
+    for (const l of links) {
+      const bal = balById.get(l.invoice_id as string) ?? 0;
+      liveLinkedBalanceByPromiseId.set(
+        l.promise_id as string,
+        (liveLinkedBalanceByPromiseId.get(l.promise_id as string) ?? 0) + bal,
+      );
+    }
+  }
 
   const promisesInput: PromiseInput[] = rawPromises.map((r) => {
     const c = custById.get(r.customer_id);
@@ -107,7 +149,10 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
   const roster = await listOrgMembers(service, org.org_id);
   const ownerLabels = new Map(roster.map((m) => [m.userId, m.label]));
 
-  const allRows = buildPromiseRows(promisesInput, today, ownerLabels);
+  const allRows = buildPromiseRows(promisesInput, today, ownerLabels, {
+    liveLinkedBalanceByPromiseId,
+    openCaseIds,
+  });
   const metrics = computePromiseMetrics(allRows, today, config);
   const counts = Object.fromEntries(
     PROMISE_TABS.map((t) => [t, applyPromiseTab(allRows, t, today, config).length]),
