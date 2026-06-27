@@ -41,7 +41,7 @@ interface Props {
 
 export function AccountProfile(p: Props) {
   return (
-    <div className="max-w-5xl mx-auto p-4 sm:p-6 space-y-6">
+    <div key={p.customerId} className="max-w-5xl mx-auto p-4 sm:p-6 space-y-6">
       <Link to="/accounts" className="inline-flex items-center gap-1 text-sm text-muted hover:text-text">
         <Icon name="chevronRight" size={14} className="rotate-180" /> Back to accounts
       </Link>
@@ -200,7 +200,7 @@ export function AccountProfile(p: Props) {
                 <div>
                   <p className="text-sm text-text">
                     {e.kind === "log" ? (e.outcomeLabel ?? "Logged") : e.outcomeLabel}
-                    <span className="text-muted"> · {formatDate(e.at.slice(0, 10))}</span>
+                    <span className="text-muted"> · {formatDate(e.at)}</span>
                   </p>
                   {e.kind === "log" && e.notes ? <p className="text-sm text-muted">{e.notes}</p> : null}
                   {e.kind === "sms" && e.body ? <p className="text-sm text-muted">{e.body}</p> : null}

@@ -60,7 +60,9 @@ export async function action({ request, context }: ActionFunctionArgs) {
 
   const { error } = await supabase.from("customers")
     .update(parseCommPrefsUpdate(form)).eq("org_id", org.org_id).eq("id", customerId);
-  if (error) return redirect(returnTo, { headers });
+  // Fail loud on a write error (matches api.assign / api.account-notes) — a silent
+  // redirect would imply the preferences saved when they didn't.
+  if (error) throw new Error(`Failed to save communication preferences: ${error.message}`);
 
   return redirect(returnTo, { headers });
 }

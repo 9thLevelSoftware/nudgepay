@@ -228,13 +228,20 @@ export async function loader({ request, params, context }: LoaderFunctionArgs) {
   // Timeline SMS — case-scoped (all SMS across all of the customer's cases)
   // ---------------------------------------------------------------------------
 
+  // Account-wide SMS: text_messages carry customer_id on every send + inbound
+  // (since 0006), so scope by customer_id to include a paid-up/resolved customer's
+  // caseless replies (case_id null). Also union case-scoped rows so any legacy
+  // row predating customer_id still surfaces. org_id is ANDed with the OR group.
   let smsInputs: TimelineSmsInput[] = [];
-  if (caseIds.length > 0) {
-    const { data: smsData } = await supabase
+  {
+    let smsQuery = supabase
       .from("text_messages")
       .select("id, created_at, direction, body, status, error_code")
-      .eq("org_id", org.org_id)
-      .in("case_id", caseIds);
+      .eq("org_id", org.org_id);
+    smsQuery = caseIds.length > 0
+      ? smsQuery.or(`customer_id.eq.${params.id},case_id.in.(${caseIds.join(",")})`)
+      : smsQuery.eq("customer_id", params.id);
+    const { data: smsData } = await smsQuery;
 
     smsInputs = ((smsData as unknown as TextMessageRow[]) ?? []).map((r) => ({
       id: r.id,
