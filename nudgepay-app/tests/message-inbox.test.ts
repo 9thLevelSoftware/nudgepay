@@ -86,6 +86,14 @@ test("canReply truth table + replyDisabledReason precedence", () => {
   const r = buildThreadRows([noInv], msgs, LABELS)[0];
   expect(r.canReply).toBe(false);
   expect(r.replyDisabledReason).toBe("No invoice on file to attach");
+  // consent ok (smsConsent true) but customer opted out via doNotText
+  const optedOut: ThreadCustomerInput = { ...CUSTOMERS[0], customerId: "c10", smsConsent: true, commPrefs: prefs({ doNotText: true }) };
+  const optedOutMsgs: ThreadMessageInput[] = [
+    { customerId: "c10", direction: "inbound", body: "hi", status: null, errorCode: null, invoiceId: "i1", createdAt: "2026-06-22T10:00:00Z" },
+  ];
+  const ro = buildThreadRows([optedOut], optedOutMsgs, LABELS)[0];
+  expect(ro.canReply).toBe(false);
+  expect(ro.replyDisabledReason).toBe("Customer opted out of texts");
 });
 
 test("applyMessageTab partitions by tab", () => {
