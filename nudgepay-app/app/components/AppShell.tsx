@@ -10,7 +10,7 @@ interface AppShellProps {
   /** Reserved for future owner-gated header actions (Task 6+). */
   isOwner: boolean;
   /** Which primary section is active (drives the nav rail + topbar title). */
-  activeNav?: "collections" | "accounts";
+  activeNav?: "collections" | "accounts" | "promises";
   /** Optional controls rendered in the topbar right-controls group. */
   headerActions?: React.ReactNode;
   /** Optional sync-issues indicator rendered next to the sync chip. */
@@ -38,10 +38,10 @@ const NAV_ITEMS: NavItem[] = [
  * Layout:
  *   - `ink` top bar: brand mark, workspace title "Collections", sync chip,
  *     settings icon, user avatar with initials.
- *   - `ink` left icon side-nav: Collections (active, copper left-edge
- *     indicator); Reports (link, owners only); Accounts/Promises/Messages
- *     (inert, aria-disabled, muted). Settings is reached from the top bar
- *     (gear icon + sync chip), not the side-nav.
+ *   - `ink` left icon side-nav: Collections / Accounts / Promises (live
+ *     links, copper left-edge indicator on the active section); Reports
+ *     (link, owners only); Messages (inert, aria-disabled, muted). Settings
+ *     is reached from the top bar (gear icon + sync chip), not the side-nav.
  *   - Main area: `bg-panel`, renders `children`.
  *
  * Responsive: side-nav hidden below `md`, toggled via the menu button in the
@@ -64,8 +64,13 @@ export function AppShell({
 }: AppShellProps) {
   const [navOpen, setNavOpen] = useState(false);
 
-  const sectionTitle = activeNav === "accounts" ? "Accounts" : "Collections";
-  const NAV_TARGETS: Record<string, string> = { collections: "/dashboard", accounts: "/accounts" };
+  const SECTION_TITLES: Record<string, string> = {
+    collections: "Collections", accounts: "Accounts", promises: "Promises",
+  };
+  const sectionTitle = SECTION_TITLES[activeNav] ?? "Collections";
+  const NAV_TARGETS: Record<string, string> = {
+    collections: "/dashboard", accounts: "/accounts", promises: "/promises",
+  };
 
   return (
     <div className="flex flex-col h-screen overflow-hidden font-sans">
