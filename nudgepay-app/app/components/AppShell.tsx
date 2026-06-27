@@ -9,6 +9,8 @@ interface AppShellProps {
   connected: boolean;
   /** Reserved for future owner-gated header actions (Task 6+). */
   isOwner: boolean;
+  /** Which primary section is active (drives the nav rail + topbar title). */
+  activeNav?: "collections" | "accounts";
   /** Optional controls rendered in the topbar right-controls group. */
   headerActions?: React.ReactNode;
   /** Optional sync-issues indicator rendered next to the sync chip. */
@@ -20,11 +22,10 @@ interface NavItem {
   name: string;
   icon: "bookmark" | "user" | "check" | "message" | "note" | "settings";
   label: string;
-  active?: boolean;
 }
 
 const NAV_ITEMS: NavItem[] = [
-  { name: "collections", icon: "bookmark", label: "Collections", active: true },
+  { name: "collections", icon: "bookmark", label: "Collections" },
   { name: "accounts", icon: "user", label: "Accounts" },
   { name: "promises", icon: "check", label: "Promises" },
   { name: "messages", icon: "message", label: "Messages" },
@@ -56,11 +57,15 @@ export function AppShell({
   syncLabel,
   connected,
   isOwner,
+  activeNav = "collections",
   headerActions,
   syncIssues,
   children,
 }: AppShellProps) {
   const [navOpen, setNavOpen] = useState(false);
+
+  const sectionTitle = activeNav === "accounts" ? "Accounts" : "Collections";
+  const NAV_TARGETS: Record<string, string> = { collections: "/dashboard", accounts: "/accounts" };
 
   return (
     <div className="flex flex-col h-screen overflow-hidden font-sans">
@@ -94,7 +99,7 @@ export function AppShell({
           <span>/</span>
           <span className="text-surface/70 font-medium">{orgName}</span>
           <span>/</span>
-          <span className="text-surface/90 font-medium">Collections</span>
+          <span className="text-surface/90 font-medium">{sectionTitle}</span>
         </span>
 
         {/* Right-side controls */}
@@ -169,23 +174,21 @@ export function AppShell({
         >
           <ul className="flex flex-col items-center gap-1 pt-3" role="list">
             {NAV_ITEMS.map((item) => {
+              const isActive = item.name === activeNav;
+              const target = NAV_TARGETS[item.name];
               const isReportsForOwner = item.name === "reports" && isOwner;
-              if (item.active) {
+
+              if (isActive && target) {
                 return (
-                  /* Active: Collections — copper left-edge indicator */
                   <li key={item.name} className="relative w-full">
                     <Link
-                      to="/dashboard"
+                      to={target}
                       className="relative flex flex-col items-center justify-center w-full py-3 gap-1 text-surface focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-copper focus-visible:ring-inset"
                       aria-current="page"
                       aria-label={item.label}
                       onClick={() => setNavOpen(false)}
                     >
-                      {/* Copper active indicator */}
-                      <span
-                        className="absolute left-0 inset-y-0 w-0.5 bg-copper rounded-r"
-                        aria-hidden="true"
-                      />
+                      <span className="absolute left-0 inset-y-0 w-0.5 bg-copper rounded-r" aria-hidden="true" />
                       <Icon name={item.icon} size={18} className="text-copper" />
                       <span className="text-[9px] font-sans font-medium uppercase tracking-wide text-copper leading-none">
                         {item.label}
@@ -194,12 +197,14 @@ export function AppShell({
                   </li>
                 );
               }
-              if (isReportsForOwner) {
+
+              if (target || isReportsForOwner) {
+                const to = target ?? "/reports";
                 return (
                   <li key={item.name} className="relative w-full">
                     <Link
-                      to="/reports"
-                      className="flex flex-col items-center justify-center w-full py-3 gap-1 text-surface focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-copper focus-visible:ring-inset"
+                      to={to}
+                      className="flex flex-col items-center justify-center w-full py-3 gap-1 text-surface/70 hover:text-surface focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-copper focus-visible:ring-inset"
                       aria-label={item.label}
                       onClick={() => setNavOpen(false)}
                     >
@@ -209,8 +214,8 @@ export function AppShell({
                   </li>
                 );
               }
+
               return (
-                /* Inert future nav items */
                 <li key={item.name} className="relative w-full">
                   {/* eslint-disable-next-line jsx-a11y/anchor-is-valid */}
                   <a
@@ -222,9 +227,7 @@ export function AppShell({
                     onClick={(e) => e.preventDefault()}
                   >
                     <Icon name={item.icon} size={18} />
-                    <span className="text-[9px] font-sans font-medium uppercase tracking-wide leading-none">
-                      {item.label}
-                    </span>
+                    <span className="text-[9px] font-sans font-medium uppercase tracking-wide leading-none">{item.label}</span>
                   </a>
                 </li>
               );

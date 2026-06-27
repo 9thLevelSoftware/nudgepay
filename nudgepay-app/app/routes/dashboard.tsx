@@ -570,6 +570,7 @@ export default function Dashboard() {
       syncLabel={syncLabel}
       connected={connected}
       isOwner={isOwner}
+      activeNav="collections"
     >
       {saved ? (
         <div className="px-6 py-2 bg-cool/10 border-b border-cool/30 text-sm font-sans font-medium text-cool" role="status">
