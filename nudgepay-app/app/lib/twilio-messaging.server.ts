@@ -69,8 +69,11 @@ export async function sendInvoiceText(
 
   // Org-level SMS switch (Phase 14). Absent row => enabled (default). This single
   // gate also covers /api/bulk-sms, which sends via this function.
-  const { data: mc } = await deps.service.from("messaging_config")
+  const { data: mc, error: mcErr } = await deps.service.from("messaging_config")
     .select("sms_enabled").eq("org_id", args.orgId).maybeSingle();
+  // Don't swallow a DB error: a silent null would read as "enabled" and bypass the
+  // org switch on this critical send path. Surface it like the other reads above.
+  if (mcErr) throw mcErr;
   if (mc && mc.sms_enabled === false) throw new Error("SMS disabled for this workspace");
 
   if (!cust.sms_consent) throw new Error("Customer has not consented to SMS");

@@ -601,6 +601,11 @@ export default function Dashboard() {
           Bulk text not sent — text messaging is turned off for this workspace.
         </div>
       ) : null}
+      {bulkSms === "error" ? (
+        <div className="px-6 py-2 bg-hot/10 border-b border-hot/30 text-sm font-sans font-medium text-hot" role="status">
+          Could not send the bulk text — please try again.
+        </div>
+      ) : null}
 
       <div className="flex flex-col h-full">
           {/* Metrics strip */}

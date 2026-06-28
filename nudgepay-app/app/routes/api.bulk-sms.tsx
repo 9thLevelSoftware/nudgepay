@@ -41,8 +41,11 @@ export async function action({ request, context }: ActionFunctionArgs) {
 
   const service = createSupabaseServiceClient(env);
 
-  const { data: mc } = await service.from("messaging_config")
+  const { data: mc, error: mcErr } = await service.from("messaging_config")
     .select("sms_enabled").eq("org_id", org.org_id).maybeSingle();
+  if (mcErr) {
+    return redirect(withParams(returnTo, { bulkSms: "error" }), { headers });
+  }
   if (mc && mc.sms_enabled === false) {
     return redirect(withParams(returnTo, { bulkSms: "disabled" }), { headers });
   }
