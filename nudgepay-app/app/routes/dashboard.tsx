@@ -43,7 +43,7 @@ type DashboardParams = {
   q: string;
   caseId: string | null;
   invoice?: string | null;
-  tab?: "overview" | "activity" | "messages";
+  tab?: "overview" | "activity" | "messages" | "email";
 };
 
 type DashboardData = {
@@ -213,7 +213,7 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
 
   const VALID_VIEWS: ViewId[] = ["all-open", "30-plus", "high-value", "never-contacted", "follow-ups-due", "broken-promises", "waiting", "on-hold", "my-work"];
   const VALID_SORTS: SortId[] = ["recommended", "most-overdue", "highest-balance", "customer"];
-  const VALID_TABS = ["overview", "activity", "messages"] as const;
+  const VALID_TABS = ["overview", "activity", "messages", "email"] as const;
 
   const rawView = sp.get("view") ?? "";
   const rawSort = sp.get("sort") ?? "";
@@ -224,10 +224,10 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
   const q = sp.get("q") ?? "";
   const caseId = sp.get("case") ?? null;
   const invoice = sp.get("invoice") ?? null; // optional sub-selection for invoice-specific actions
-  const tab: "overview" | "activity" | "messages" = VALID_TABS.includes(
-    rawTab as "overview" | "activity" | "messages",
+  const tab: "overview" | "activity" | "messages" | "email" = VALID_TABS.includes(
+    rawTab as "overview" | "activity" | "messages" | "email",
   )
-    ? (rawTab as "overview" | "activity" | "messages")
+    ? (rawTab as "overview" | "activity" | "messages" | "email")
     : "overview";
 
   const sms = sp.get("sms");

@@ -1,16 +1,17 @@
 import { useEffect, useRef, useState } from "react";
-import { Link, useNavigate, useRevalidator } from "react-router";
+import { Link, useNavigate, useRevalidator, useSearchParams } from "react-router";
 import { HEARTBEAT_INTERVAL_MS, type Collision } from "~/lib/collision";
 import { type CaseItem } from "~/lib/cases";
 import { Icon } from "~/components/Icons";
 import { MessageBubbles } from "~/components/MessageBubbles";
 import { SMS_TEMPLATES, applyTemplate, type TemplateVars } from "~/lib/sms-templates";
+import { EMAIL_TEMPLATES, applyEmailTemplate } from "~/lib/email-templates";
 import { formatDate } from "~/lib/dates";
 import { STATUS_LABEL, EXCEPTION_REASON_LABEL, formatUSD } from "~/lib/format";
 import { isContactBlocked, isTerminal, exceptionLabel } from "~/lib/exceptions";
 import type { MessageEntry, EmailMessageEntry, RosterMember } from "~/routes/dashboard";
 import type { TimelineEntry } from "~/lib/timeline";
-import { canSendSms, type CommPrefs } from "~/lib/comm-prefs";
+import { canSendSms, canSendEmail, type CommPrefs } from "~/lib/comm-prefs";
 import { resolveCallAction } from "~/lib/channel-actions";
 import { statusChipTone, type ChipTone } from "~/lib/status-style";
 
@@ -91,6 +92,14 @@ const SMS_BANNER: Record<string, { text: string; tone: string }> = {
   error:     { text: "Could not send the text.",                                      tone: "text-hot" },
   blocked:   { text: "Not sent — this case is marked do-not-contact / legal.",        tone: "text-hot" },
   disabled:  { text: "Not sent — text messaging is turned off for this workspace.",   tone: "text-hot" },
+};
+
+const EMAIL_BANNER: Record<string, { text: string; tone: string }> = {
+  sent:     { text: "Email sent.",                                                  tone: "text-cool" },
+  disabled: { text: "Not sent — email is turned off for this workspace.",           tone: "text-hot" },
+  optout:   { text: "Not sent — customer opted out of email.",                      tone: "text-hot" },
+  blocked:  { text: "Not sent — this case is marked do-not-contact / legal.",       tone: "text-hot" },
+  error:    { text: "Could not send the email.",                                    tone: "text-hot" },
 };
 
 // Static promise-error code → copy. Literal strings for Tailwind v4.
@@ -270,6 +279,176 @@ function MessagesTab({
   );
 }
 
+function EmailTab({
+  selected, repInvoiceId, emailMessages, prefs, customerEmail, emailEnabled,
+  view, sort, q,
+}: {
+  selected: CaseItem;
+  repInvoiceId: string | null;
+  emailMessages: EmailMessageEntry[];
+  prefs: CommPrefs;
+  customerEmail: string | null;
+  emailEnabled: boolean;
+  view: string;
+  sort: string;
+  q: string;
+}) {
+  const [searchParams] = useSearchParams();
+  const emailResult = searchParams.get("email");
+  const banner = emailResult ? (EMAIL_BANNER[emailResult] ?? null) : null;
+
+  const returnTo = `/dashboard?${new URLSearchParams({
+    case: selected.caseId, tab: "email", view, sort, ...(q ? { q } : {}),
+  }).toString()}`;
+
+  const repInvoice = repInvoiceId
+    ? selected.invoices.find((i) => i.invoiceId === repInvoiceId)
+    : null;
+
+  const vars: TemplateVars = {
+    customer: selected.customerName,
+    invoice:  repInvoice?.docNumber ?? selected.customerName,
+    balance:  formatUSD(selected.totalOverdue),
+    dueDate:  formatDate(repInvoice?.dueDate ?? null),
+  };
+
+  const [subject, setSubject] = useState("");
+  const [body, setBody] = useState("");
+  const noInvoice = repInvoiceId === null;
+  const contactBlocked = isContactBlocked(selected.exceptionReason);
+
+  // Derive the first gate reason that applies. Order: workspace → blocked → no-email → opted-out.
+  const gateReason = !emailEnabled
+    ? "Email is turned off for this workspace."
+    : contactBlocked
+      ? `Messaging blocked — ${exceptionLabel(selected.exceptionReason)}.`
+      : !customerEmail
+        ? "Customer has no email address."
+        : !canSendEmail(prefs)
+          ? "Customer opted out of email."
+          : null;
+
+  const sendDisabled = gateReason !== null || noInvoice;
+
+  return (
+    <section
+      id="email-panel"
+      role="tabpanel"
+      aria-labelledby="email-tab"
+      className="flex flex-1 flex-col min-h-0"
+    >
+      {/* Customer email info row */}
+      <div className="flex items-center gap-2 px-5 py-3 border-b border-border">
+        <span className="text-xs font-sans text-muted">
+          Email:{" "}
+          <span className={customerEmail ? "font-semibold text-text" : "font-semibold text-muted"}>
+            {customerEmail ?? "—"}
+          </span>
+        </span>
+      </div>
+
+      {/* Result banner */}
+      {banner ? (
+        <p className={`px-5 py-2 text-xs font-sans font-medium ${banner.tone}`}>{banner.text}</p>
+      ) : null}
+
+      {/* Email thread */}
+      <div className="flex-1 min-h-0 overflow-y-auto px-5 py-4">
+        {emailMessages.length === 0 ? (
+          <div className="flex flex-col items-center justify-center gap-2 py-10 text-center">
+            <Icon name="mail" size={24} className="text-border" aria-hidden />
+            <p className="text-sm font-sans font-semibold text-text">No emails yet.</p>
+            <p className="text-xs text-muted max-w-xs">Pick a template or write an email below.</p>
+          </div>
+        ) : (
+          <ul className="flex flex-col gap-3">
+            {emailMessages.map((msg) => (
+              <li key={msg.id} className={`flex ${msg.direction === "inbound" ? "justify-start" : "justify-end"}`}>
+                <div
+                  className={`max-w-[85%] rounded-lg px-3 py-2 ${
+                    msg.direction === "inbound" ? "bg-cool/10 text-text" : "bg-copper/10 text-text"
+                  }`}
+                >
+                  {msg.subject ? (
+                    <p className="text-xs font-sans font-semibold text-muted mb-1">{msg.subject}</p>
+                  ) : null}
+                  <p className="text-xs font-sans whitespace-pre-wrap">{msg.body}</p>
+                  <p className="mt-1 text-[10px] text-muted">{formatDate(msg.createdAt)}</p>
+                  {msg.errorCode ? (
+                    <p className="text-xs font-sans text-hot">Error {msg.errorCode}</p>
+                  ) : null}
+                </div>
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+
+      {/* Template picker + composer */}
+      <div className="border-t border-border px-5 py-3 shrink-0">
+        {/* Template select — fills subject + body on change */}
+        <select
+          defaultValue=""
+          onChange={(e) => {
+            const tmpl = EMAIL_TEMPLATES.find((t) => t.id === e.target.value);
+            if (tmpl) {
+              setSubject(applyEmailTemplate(tmpl.subject, vars));
+              setBody(applyEmailTemplate(tmpl.body, vars));
+            }
+          }}
+          className="w-full mb-2 rounded-md border border-border bg-panel px-3 py-1.5 text-xs font-sans text-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-copper"
+          aria-label="Email template"
+        >
+          <option value="" disabled>Pick a template…</option>
+          {EMAIL_TEMPLATES.map((t) => (
+            <option key={t.id} value={t.id}>{t.label}</option>
+          ))}
+        </select>
+
+        <form method="post" action="/api/email/send" className="flex flex-col gap-2">
+          <input type="hidden" name="invoiceId" value={repInvoiceId ?? ""} />
+          <input type="hidden" name="returnTo" value={returnTo} />
+          <input
+            name="subject"
+            type="text"
+            value={subject}
+            onChange={(e) => setSubject(e.target.value)}
+            placeholder="Subject"
+            required
+            disabled={sendDisabled}
+            className="w-full rounded-md border border-border bg-panel px-3 py-2 text-sm font-sans text-text placeholder:text-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-copper disabled:opacity-40 disabled:cursor-not-allowed"
+          />
+          <textarea
+            name="body"
+            rows={4}
+            value={body}
+            onChange={(e) => setBody(e.target.value)}
+            placeholder="Type an email…"
+            required
+            disabled={sendDisabled}
+            className="w-full resize-none rounded-md border border-border bg-panel px-3 py-2 text-sm font-sans text-text placeholder:text-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-copper disabled:opacity-40 disabled:cursor-not-allowed"
+          />
+          <div className="flex items-center justify-between gap-2">
+            {gateReason ? (
+              <span className="text-xs text-hot">{gateReason}</span>
+            ) : noInvoice ? (
+              <span className="text-xs text-muted">No invoice to reference.</span>
+            ) : <span />}
+            <button
+              type="submit"
+              disabled={sendDisabled}
+              className="inline-flex items-center gap-1.5 rounded-md bg-copper px-3 py-1.5 text-xs font-sans font-semibold text-surface hover:bg-copper/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-copper disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+            >
+              <Icon name="mail" size={14} aria-hidden />
+              Send email
+            </button>
+          </div>
+        </form>
+      </div>
+    </section>
+  );
+}
+
 // ─── Sub-components ────────────────────────────────────────────────────────────
 
 function InfoRow({ label, value, tone }: { label: string; value: string; tone?: string }) {
@@ -290,6 +469,7 @@ const TABS = [
   { id: "overview" as const, label: "Overview" },
   { id: "activity" as const, label: "Timeline" },
   { id: "messages" as const, label: "Messages" },
+  { id: "email" as const, label: "Email" },
 ];
 
 // ─── Main export ───────────────────────────────────────────────────────────────
@@ -319,7 +499,7 @@ export function DetailPanel({
 }: {
   selected: CaseItem | null;
   repInvoiceId: string | null;
-  activeTab: "overview" | "activity" | "messages";
+  activeTab: "overview" | "activity" | "messages" | "email";
   timeline: TimelineEntry[];
   messages: MessageEntry[];
   consent: boolean;
@@ -841,6 +1021,20 @@ export function DetailPanel({
           sort={sort}
           q={q}
           collision={collision}
+        />
+      ) : null}
+
+      {activeTab === "email" ? (
+        <EmailTab
+          selected={selected}
+          repInvoiceId={repInvoiceId}
+          emailMessages={emailMessages ?? []}
+          prefs={prefs}
+          customerEmail={customerEmail ?? null}
+          emailEnabled={emailEnabled ?? false}
+          view={view}
+          sort={sort}
+          q={q}
         />
       ) : null}
     </aside>
