@@ -10,7 +10,7 @@ interface AppShellProps {
   /** Reserved for future owner-gated header actions (Task 6+). */
   isOwner: boolean;
   /** Which primary section is active (drives the nav rail + topbar title). */
-  activeNav?: "collections" | "accounts" | "promises";
+  activeNav?: "collections" | "accounts" | "promises" | "messages";
   /** Optional controls rendered in the topbar right-controls group. */
   headerActions?: React.ReactNode;
   /** Optional sync-issues indicator rendered next to the sync chip. */
@@ -38,17 +38,17 @@ const NAV_ITEMS: NavItem[] = [
  * Layout:
  *   - `ink` top bar: brand mark, workspace title "Collections", sync chip,
  *     settings icon, user avatar with initials.
- *   - `ink` left icon side-nav: Collections / Accounts / Promises (live
- *     links, copper left-edge indicator on the active section); Reports
- *     (link, owners only); Messages (inert, aria-disabled, muted). Settings
- *     is reached from the top bar (gear icon + sync chip), not the side-nav.
+ *   - `ink` left icon side-nav: Collections / Accounts / Promises / Messages
+ *     (live links, copper left-edge indicator on the active section);
+ *     Reports (link, owners only). Settings is reached from the top bar
+ *     (gear icon + sync chip), not the side-nav.
  *   - Main area: `bg-panel`, renders `children`.
  *
  * Responsive: side-nav hidden below `md`, toggled via the menu button in the
  * top bar. A backdrop overlay closes the drawer on mobile.
  *
  * Accessibility: copper focus rings on all interactive elements,
- * aria-disabled on future-nav links, aria-label on icon-only controls,
+ * aria-disabled on restricted nav items (Reports for non-owners), aria-label on icon-only controls,
  * aria-expanded on the menu toggle.
  */
 export function AppShell({
@@ -65,11 +65,11 @@ export function AppShell({
   const [navOpen, setNavOpen] = useState(false);
 
   const SECTION_TITLES: Record<string, string> = {
-    collections: "Collections", accounts: "Accounts", promises: "Promises",
+    collections: "Collections", accounts: "Accounts", promises: "Promises", messages: "Messages",
   };
   const sectionTitle = SECTION_TITLES[activeNav] ?? "Collections";
   const NAV_TARGETS: Record<string, string> = {
-    collections: "/dashboard", accounts: "/accounts", promises: "/promises",
+    collections: "/dashboard", accounts: "/accounts", promises: "/promises", messages: "/messages",
   };
 
   return (
