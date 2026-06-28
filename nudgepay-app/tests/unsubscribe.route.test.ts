@@ -14,6 +14,7 @@ function ctx() {
         ...TEST_ENV,
         RESEND_API_KEY: "test-resend-key",
         UNSUBSCRIBE_SECRET,
+        RESEND_WEBHOOK_SECRET: "whsec_dGVzdA==",
         APP_PUBLIC_BASE_URL: "https://app.example.com",
       },
     },

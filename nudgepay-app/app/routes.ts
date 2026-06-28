@@ -39,4 +39,5 @@ export default [
   route("api/bulk-sms", "routes/api.bulk-sms.tsx"),
   route("webhooks/twilio/inbound", "routes/webhooks.twilio.inbound.tsx"),
   route("webhooks/twilio/status", "routes/webhooks.twilio.status.tsx"),
+  route("webhooks/resend", "routes/webhooks.resend.tsx"),
 ] satisfies RouteConfig;
