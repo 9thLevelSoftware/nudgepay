@@ -70,6 +70,32 @@ describe("unsubscribe route", () => {
     expect(c!.do_not_email).toBe(true);
   });
 
+  it("renders without RESEND_API_KEY — the public opt-out is decoupled from the send key", async () => {
+    const { orgId, customerId } = await seedCustomer("nokey");
+    const token = await signUnsubscribeToken(UNSUBSCRIBE_SECRET, orgId, customerId);
+    // Context deliberately omits RESEND_API_KEY / RESEND_WEBHOOK_SECRET.
+    const noSendKeyCtx = {
+      cloudflare: { env: { ...TEST_ENV, UNSUBSCRIBE_SECRET } },
+    } as any;
+
+    const get = await loader({
+      request: new Request(`https://x/unsubscribe?token=${token}`),
+      context: noSendKeyCtx,
+      params: {},
+    } as any);
+    expect(((get as any).data as { valid: boolean }).valid).toBe(true);
+
+    const post = await action({
+      request: new Request("https://x/unsubscribe", { method: "POST", body: new URLSearchParams({ token }) }),
+      context: noSendKeyCtx,
+      params: {},
+    } as any);
+    expect(((post as any).data as { done: boolean }).done).toBe(true);
+
+    const { data: c } = await svc.from("customers").select("do_not_email").eq("id", customerId).single();
+    expect(c!.do_not_email).toBe(true);
+  });
+
   it("POST with an invalid token leaves do_not_email unchanged and does not throw", async () => {
     const { customerId } = await seedCustomer("bad");
     const result = await action({

@@ -65,6 +65,16 @@ export function getEmailEnv(context: { cloudflare: { env: Record<string, string>
   };
 }
 
+// The public CAN-SPAM unsubscribe page only verifies the HMAC token — it never
+// sends mail. Scope its env to UNSUBSCRIBE_SECRET alone so the legally-required
+// opt-out keeps working even if the Resend send key is absent or rotated out
+// (getEmailEnv would otherwise 500 the page on a missing RESEND_API_KEY).
+export function getUnsubscribeEnv(context: { cloudflare: { env: Record<string, string> } }): { UNSUBSCRIBE_SECRET: string } {
+  const e = context.cloudflare.env;
+  if (!e.UNSUBSCRIBE_SECRET) throw new Error("Missing required env var: UNSUBSCRIBE_SECRET");
+  return { UNSUBSCRIBE_SECRET: e.UNSUBSCRIBE_SECRET };
+}
+
 export type TwilioEnv = {
   TWILIO_ACCOUNT_SID: string;
   TWILIO_AUTH_TOKEN: string;

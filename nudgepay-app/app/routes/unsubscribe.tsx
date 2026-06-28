@@ -1,5 +1,5 @@
 import { useLoaderData, useActionData, Form, data, type LoaderFunctionArgs, type ActionFunctionArgs } from "react-router";
-import { getEnv, getEmailEnv } from "../lib/env.server";
+import { getEnv, getUnsubscribeEnv } from "../lib/env.server";
 import { createSupabaseServiceClient } from "../lib/supabase.server";
 import { verifyUnsubscribeToken } from "../lib/unsubscribe-token";
 
@@ -8,14 +8,14 @@ import { verifyUnsubscribeToken } from "../lib/unsubscribe-token";
 // issue GETs against links in delivered mail) from silently opting the recipient
 // out. The token is HMAC-signed and org/customer-scoped, so it is unforgeable.
 export async function loader({ request, context }: LoaderFunctionArgs) {
-  const emailEnv = getEmailEnv(context as any);
+  const emailEnv = getUnsubscribeEnv(context as any);
   const token = new URL(request.url).searchParams.get("token") ?? "";
   const parsed = await verifyUnsubscribeToken(emailEnv.UNSUBSCRIBE_SECRET, token);
   return data({ valid: !!parsed, token, done: false });
 }
 
 export async function action({ request, context }: ActionFunctionArgs) {
-  const emailEnv = getEmailEnv(context as any);
+  const emailEnv = getUnsubscribeEnv(context as any);
   const form = await request.formData();
   const token = typeof form.get("token") === "string" ? (form.get("token") as string) : "";
   const parsed = await verifyUnsubscribeToken(emailEnv.UNSUBSCRIBE_SECRET, token);

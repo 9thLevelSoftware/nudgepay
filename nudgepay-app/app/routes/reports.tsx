@@ -151,7 +151,7 @@ export default function Reports() {
   const teamKeptRate = teamResolved === 0 ? null : teamKept / teamResolved;
 
   return (
-    <AppShell orgName={orgName} userInitials={initials} syncLabel={syncLabel} connected={connected} isOwner={true} syncIssues={null}>
+    <AppShell orgName={orgName} userInitials={initials} syncLabel={syncLabel} connected={connected} isOwner={true} activeNav="reports" syncIssues={null}>
       <div className="px-6 py-5 flex flex-col gap-6">
         <div className="flex items-center justify-between">
           <h1 className="font-display text-xl font-semibold text-text">Team performance</h1>
