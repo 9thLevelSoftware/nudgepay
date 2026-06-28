@@ -32,6 +32,7 @@ export type ThreadCustomerInput = {
   ownerId: string | null;
   smsConsent: boolean;
   commPrefs: CommPrefs;
+  phone: string | null; // sending requires a phone (parallels the dashboard composer)
   hasOpenCase: boolean;
   openCaseId: string | null;
   latestInvoiceId: string | null; // most-recent invoice of ANY status — anchor fallback
@@ -111,10 +112,12 @@ export function buildThreadRows(
       ? "Customer has not consented to SMS"
       : c.commPrefs.doNotText
         ? "Customer opted out of texts"
-        : anchorInvoiceId == null
-          ? "No invoice on file to attach"
-          : null;
-    const canReply = consentOk && anchorInvoiceId != null;
+        : !c.phone
+          ? "Customer has no phone number"
+          : anchorInvoiceId == null
+            ? "No invoice on file to attach"
+            : null;
+    const canReply = consentOk && !!c.phone && anchorInvoiceId != null;
 
     const ownerLabel = c.ownerId ? (ownerLabels.get(c.ownerId) ?? "Unknown") : "Unassigned";
 
@@ -175,13 +178,13 @@ export function sortThreadRows(rows: ThreadRow[], sort: MessageSort): ThreadRow[
   );
 }
 
-export type MessageMetrics = { needsReply: number; needsAttention: number; active: number; total: number };
+export type MessageMetrics = { needsReply: number; needsAttention: number; active: number; unanswered: number };
 
 export function computeMessageMetrics(rows: ThreadRow[]): MessageMetrics {
   return {
     needsReply: rows.filter((r) => r.needsReply).length,
     needsAttention: rows.filter((r) => r.needsAttention).length,
     active: rows.filter((r) => r.active).length,
-    total: rows.length,
+    unanswered: rows.filter((r) => r.unansweredInbound > 0).length,
   };
 }

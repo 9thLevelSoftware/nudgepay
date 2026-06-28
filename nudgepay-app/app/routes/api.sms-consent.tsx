@@ -13,17 +13,26 @@ export async function action({ request, context }: ActionFunctionArgs) {
   const returnTo = safeReturnTo(form.get("returnTo"));
   const raw = form.get("invoiceId");
   const invoiceId = typeof raw === "string" ? raw : "";
+  const rawCustomer = form.get("customerId");
+  const customerIdForm = typeof rawCustomer === "string" ? rawCustomer : "";
   const consent = form.get("consent") === "true";
-  if (!invoiceId) return redirect(withSms(returnTo, "error"), { headers });
 
-  // RLS-scoped: a member can only read invoices in their org, so a foreign
-  // invoiceId resolves to nothing and updates nothing.
-  const { data: inv } = await supabase
-    .from("invoices").select("customer_id").eq("id", invoiceId).maybeSingle();
-  if (!inv?.customer_id) return redirect(withSms(returnTo, "error"), { headers });
+  // Resolve the target customer. Prefer the invoice (the dashboard/invoice path);
+  // fall back to a bare customerId so the Messages tab can toggle consent on
+  // invoice-less inbound-only threads (mirrors the api.comm-prefs bare-customerId
+  // branch). Both are RLS-scoped: a foreign id resolves to nothing / updates nothing.
+  let customerId: string | null = null;
+  if (invoiceId) {
+    const { data: inv } = await supabase
+      .from("invoices").select("customer_id").eq("id", invoiceId).maybeSingle();
+    customerId = (inv?.customer_id as string) ?? null;
+  } else if (customerIdForm) {
+    customerId = customerIdForm;
+  }
+  if (!customerId) return redirect(withSms(returnTo, "error"), { headers });
 
   const { error } = await supabase
-    .from("customers").update({ sms_consent: consent }).eq("id", inv.customer_id as string);
+    .from("customers").update({ sms_consent: consent }).eq("id", customerId);
   if (error) return redirect(withSms(returnTo, "error"), { headers });
 
   return redirect(returnTo, { headers });

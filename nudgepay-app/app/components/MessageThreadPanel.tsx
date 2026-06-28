@@ -70,6 +70,7 @@ export function MessageThreadPanel({ thread, messages, consent, phone, vars, sms
         </span>
         <Form method="post" action="/api/sms-consent">
           <input type="hidden" name="invoiceId" value={thread.anchorInvoiceId ?? ""} />
+          <input type="hidden" name="customerId" value={thread.customerId} />
           <input type="hidden" name="returnTo" value={returnTo} />
           <input type="hidden" name="consent" value={consent ? "false" : "true"} />
           <button type="submit" className="text-xs font-medium text-copper hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-copper rounded">

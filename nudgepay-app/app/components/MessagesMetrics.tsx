@@ -29,7 +29,7 @@ export function MessagesMetrics({ metrics }: { metrics: MessageMetrics }) {
       <Tile to="?tab=needs-reply"     label="Needs reply"     value={String(metrics.needsReply)}     sub="customer waiting on us" accent="copper" />
       <Tile to="?tab=needs-attention" label="Needs attention" value={String(metrics.needsAttention)} sub="delivery failed"        accent="hot" />
       <Tile to="?tab=active"          label="Active threads"  value={String(metrics.active)}         sub="open collection case"   accent="ink" />
-      <Tile to="?tab=all"             label="All threads"     value={String(metrics.total)}          sub="total conversations"    accent="cool" />
+      <Tile to="?tab=needs-reply"     label="Unanswered"      value={String(metrics.unanswered)}     sub="customer awaiting reply" accent="cool" />
     </div>
   );
 }

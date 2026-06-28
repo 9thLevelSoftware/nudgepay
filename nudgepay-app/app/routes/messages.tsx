@@ -131,6 +131,7 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
     ownerId: (c.owner as string | null) ?? null,
     smsConsent: Boolean(c.sms_consent),
     commPrefs: resolveCommPrefs(c),
+    phone: (c.phone as string | null) ?? null,
     hasOpenCase: openCaseByCustomer.has(c.id as string),
     openCaseId: openCaseByCustomer.get(c.id as string) ?? null,
     latestInvoiceId: latestInvoiceByCustomer.get(c.id as string)?.id ?? null,
@@ -140,7 +141,8 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
   const ownerLabels = new Map(roster.map((m) => [m.userId, m.label]));
 
   const allRows = buildThreadRows(customersInput, messagesInput, ownerLabels);
-  const searched = q.trim() === "" ? allRows : allRows.filter((r) => r.searchText.includes(q.toLowerCase()));
+  const query = q.trim().toLowerCase();
+  const searched = query === "" ? allRows : allRows.filter((r) => r.searchText.includes(query));
   const metrics = computeMessageMetrics(searched);
   const counts = Object.fromEntries(
     MESSAGE_TABS.map((t) => [t, applyMessageTab(searched, t).length]),
@@ -171,7 +173,7 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
     const anchor = selected.anchorInvoiceId ? invoiceById.get(selected.anchorInvoiceId) : null;
     selectedVars = {
       customer: selected.customerName,
-      invoice: anchor?.docNumber ?? "",
+      invoice: anchor?.docNumber ?? selected.customerName, // mirrors the dashboard composer fallback
       balance: formatUSD(anchor?.balance ?? 0),
       dueDate: formatDate(anchor?.dueDate ?? null),
     };

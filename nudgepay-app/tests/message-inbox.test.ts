@@ -12,12 +12,12 @@ const prefs = (over = {}) => ({ ...DEFAULT_COMM_PREFS, ...over });
 // c3 latest=outbound delivered, open case → active; c4 no open case → inactive;
 // c5 has NO messages → excluded entirely; c6 no consent → canReply false.
 const CUSTOMERS: ThreadCustomerInput[] = [
-  { customerId: "c1", name: "Acme",    ownerId: "u1",  smsConsent: true,  commPrefs: prefs(),                 hasOpenCase: true,  openCaseId: "k1", latestInvoiceId: "i1" },
-  { customerId: "c2", name: "Globex",  ownerId: null,  smsConsent: true,  commPrefs: prefs(),                 hasOpenCase: true,  openCaseId: "k2", latestInvoiceId: "i2" },
-  { customerId: "c3", name: "Initech", ownerId: "u1",  smsConsent: true,  commPrefs: prefs(),                 hasOpenCase: true,  openCaseId: "k3", latestInvoiceId: "i3" },
-  { customerId: "c4", name: "Umbrella",ownerId: "u1",  smsConsent: true,  commPrefs: prefs(),                 hasOpenCase: false, openCaseId: null, latestInvoiceId: "i4" },
-  { customerId: "c5", name: "Stark",   ownerId: "u1",  smsConsent: true,  commPrefs: prefs(),                 hasOpenCase: true,  openCaseId: "k5", latestInvoiceId: "i5" },
-  { customerId: "c6", name: "Wayne",   ownerId: "u1",  smsConsent: false, commPrefs: prefs({ doNotText: true }), hasOpenCase: true, openCaseId: "k6", latestInvoiceId: null },
+  { customerId: "c1", name: "Acme",    ownerId: "u1",  smsConsent: true,  commPrefs: prefs(),                 phone: "+13105550101", hasOpenCase: true,  openCaseId: "k1", latestInvoiceId: "i1" },
+  { customerId: "c2", name: "Globex",  ownerId: null,  smsConsent: true,  commPrefs: prefs(),                 phone: "+13105550102", hasOpenCase: true,  openCaseId: "k2", latestInvoiceId: "i2" },
+  { customerId: "c3", name: "Initech", ownerId: "u1",  smsConsent: true,  commPrefs: prefs(),                 phone: "+13105550103", hasOpenCase: true,  openCaseId: "k3", latestInvoiceId: "i3" },
+  { customerId: "c4", name: "Umbrella",ownerId: "u1",  smsConsent: true,  commPrefs: prefs(),                 phone: "+13105550104", hasOpenCase: false, openCaseId: null, latestInvoiceId: "i4" },
+  { customerId: "c5", name: "Stark",   ownerId: "u1",  smsConsent: true,  commPrefs: prefs(),                 phone: "+13105550105", hasOpenCase: true,  openCaseId: "k5", latestInvoiceId: "i5" },
+  { customerId: "c6", name: "Wayne",   ownerId: "u1",  smsConsent: false, commPrefs: prefs({ doNotText: true }), phone: "+13105550106", hasOpenCase: true, openCaseId: "k6", latestInvoiceId: null },
 ];
 
 const MESSAGES: ThreadMessageInput[] = [
@@ -94,6 +94,14 @@ test("canReply truth table + replyDisabledReason precedence", () => {
   const ro = buildThreadRows([optedOut], optedOutMsgs, LABELS)[0];
   expect(ro.canReply).toBe(false);
   expect(ro.replyDisabledReason).toBe("Customer opted out of texts");
+  // consent ok, not opted out, has an invoice — but no phone on file
+  const noPhone: ThreadCustomerInput = { ...CUSTOMERS[0], customerId: "c11", phone: null };
+  const noPhoneMsgs: ThreadMessageInput[] = [
+    { customerId: "c11", direction: "inbound", body: "hi", status: null, errorCode: null, invoiceId: "i1", createdAt: "2026-06-22T10:00:00Z" },
+  ];
+  const rp = buildThreadRows([noPhone], noPhoneMsgs, LABELS)[0];
+  expect(rp.canReply).toBe(false);
+  expect(rp.replyDisabledReason).toBe("Customer has no phone number");
 });
 
 test("applyMessageTab partitions by tab", () => {
@@ -119,5 +127,5 @@ test("computeMessageMetrics counts", () => {
   expect(m.needsReply).toBe(3);
   expect(m.needsAttention).toBe(1);
   expect(m.active).toBe(4);
-  expect(m.total).toBe(5);
+  expect(m.unanswered).toBe(3); // threads with the customer waiting on us (== needsReply for per-customer threads)
 });
