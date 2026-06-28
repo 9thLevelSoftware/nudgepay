@@ -1,7 +1,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { sendEmail, type EmailConfig } from "./email-client.server";
 import { signUnsubscribeToken } from "./unsubscribe-token";
-import { activeCaseForSend } from "./twilio-messaging.server";
+import { activeCaseForSend, activeCaseId } from "./twilio-messaging.server";
 import { isContactBlocked } from "./exceptions";
 
 export type EmailDeps = {
@@ -71,4 +71,80 @@ export async function sendInvoiceEmail(
   if (insErr) throw insErr;
 
   return { id: row!.id as string, providerMessageId: result.id };
+}
+
+// Extract a bare email address from a "Name <addr>" or bare string; lowercase+trim.
+export function normalizeEmail(s: string | null | undefined): string {
+  const raw = (s ?? "").trim();
+  const m = raw.match(/<([^>]+)>/);
+  return (m ? m[1] : raw).trim().toLowerCase();
+}
+
+export async function updateEmailStatus(
+  service: SupabaseClient,
+  args: { providerMessageId: string; status: string; errorCode: string | null; optOut: boolean },
+): Promise<void> {
+  if (!args.providerMessageId) return;
+  const { data: rows, error } = await service
+    .from("email_messages")
+    .update({ status: args.status, error_code: args.errorCode })
+    .eq("provider_message_id", args.providerMessageId)
+    .select("customer_id, org_id");
+  if (error) throw error;
+  if (!args.optOut) return;
+  for (const r of rows ?? []) {
+    if (!r.customer_id) continue;
+    const { error: upErr } = await service
+      .from("customers")
+      .update({ do_not_email: true })
+      .eq("id", r.customer_id as string);
+    if (upErr) throw upErr;
+  }
+}
+
+export async function recordInboundEmail(
+  service: SupabaseClient,
+  args: { from: string; to: string; subject: string; body: string; providerMessageId: string },
+): Promise<{ matched: boolean }> {
+  const fromNorm = normalizeEmail(args.from);
+  if (!fromNorm) return { matched: false };
+
+  const { data: candidates, error: candErr } = await service
+    .from("customers")
+    .select("id, org_id, email")
+    .not("email", "is", null);
+  if (candErr) throw candErr;
+  const match = (candidates ?? []).find(
+    (c) => normalizeEmail(c.email as string) === fromNorm,
+  );
+  if (!match) return { matched: false };
+
+  // Thread to the customer's most recent outbound invoice, if any.
+  const { data: lastOut } = await service
+    .from("email_messages")
+    .select("invoice_id")
+    .eq("customer_id", match.id as string)
+    .eq("direction", "outbound")
+    .not("invoice_id", "is", null)
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  const caseId = await activeCaseId(service, match.org_id as string, match.id as string);
+
+  const { error: insErr } = await service.from("email_messages").insert({
+    org_id: match.org_id as string,
+    customer_id: match.id as string,
+    case_id: caseId,
+    invoice_id: (lastOut?.invoice_id as string) ?? null,
+    direction: "inbound",
+    provider_message_id: args.providerMessageId,
+    from_address: args.from,
+    to_address: args.to,
+    subject: args.subject,
+    body: args.body,
+  });
+  if (insErr) throw insErr;
+
+  return { matched: true };
 }
