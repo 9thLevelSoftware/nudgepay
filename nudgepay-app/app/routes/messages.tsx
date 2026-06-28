@@ -283,6 +283,9 @@ export default function Messages() {
             search={d.q}
             counts={d.counts}
             selectedId={d.selected?.customerId ?? null}
+            selectedChannel={d.selected?.channel ?? null}
+            channel={d.channel}
+            channelCounts={d.channelCounts}
           />
           <MessageThreadPanel
             thread={d.selected}

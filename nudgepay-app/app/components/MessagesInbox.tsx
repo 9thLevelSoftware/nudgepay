@@ -1,6 +1,6 @@
 // app/components/MessagesInbox.tsx
 import { Form, Link } from "react-router";
-import type { ThreadRow, MessageTab, MessageSort } from "../lib/message-inbox";
+import type { ThreadRow, MessageTab, MessageSort, ChannelFilter } from "../lib/message-inbox";
 import { formatDate } from "../lib/dates";
 
 const TABS: { id: MessageTab; label: string }[] = [
@@ -15,6 +15,11 @@ const SORTS: { id: MessageSort; label: string }[] = [
   { id: "oldest-waiting", label: "Oldest waiting" },
   { id: "name", label: "Customer (A–Z)" },
 ];
+const CHANNELS: { id: ChannelFilter; label: string }[] = [
+  { id: "all", label: "All" },
+  { id: "sms", label: "SMS" },
+  { id: "email", label: "Email" },
+];
 
 interface Props {
   rows: ThreadRow[];
@@ -23,13 +28,18 @@ interface Props {
   search: string;
   counts: Record<MessageTab, number>;
   selectedId: string | null;
+  selectedChannel: string | null;
+  channel: ChannelFilter;
+  channelCounts: { all: number; sms: number; email: number };
 }
 
-export function MessagesInbox({ rows, tab, sort, search, counts, selectedId }: Props) {
+export function MessagesInbox({ rows, tab, sort, search, counts, selectedId, selectedChannel, channel, channelCounts }: Props) {
   const tabHref = (id: MessageTab) =>
-    `?${new URLSearchParams({ tab: id, sort, ...(search ? { q: search } : {}) }).toString()}`;
-  const rowHref = (customerId: string) =>
-    `?${new URLSearchParams({ tab, sort, ...(search ? { q: search } : {}), customerId }).toString()}`;
+    `?${new URLSearchParams({ tab: id, sort, channel, ...(search ? { q: search } : {}) }).toString()}`;
+  const channelHref = (ch: ChannelFilter) =>
+    `?${new URLSearchParams({ tab, sort, channel: ch, ...(search ? { q: search } : {}) }).toString()}`;
+  const rowHref = (r: ThreadRow) =>
+    `?${new URLSearchParams({ tab, sort, channel: r.channel, ...(search ? { q: search } : {}), customerId: r.customerId }).toString()}`;
 
   return (
     <section className="flex flex-col bg-surface border border-border rounded-card overflow-hidden">
@@ -38,6 +48,7 @@ export function MessagesInbox({ rows, tab, sort, search, counts, selectedId }: P
         <span className="text-xs text-muted">{rows.length} matching</span>
         <Form method="get" className="ml-auto flex items-center gap-2">
           <input type="hidden" name="tab" value={tab} />
+          <input type="hidden" name="channel" value={channel} />
           {selectedId ? <input type="hidden" name="customerId" value={selectedId} /> : null}
           <label className="sr-only" htmlFor="msg-search">Search</label>
           <input
@@ -54,6 +65,25 @@ export function MessagesInbox({ rows, tab, sort, search, counts, selectedId }: P
           </select>
         </Form>
       </header>
+
+      <nav className="flex flex-wrap gap-2 px-4 py-2 border-b border-border" aria-label="Channel filter">
+        {CHANNELS.map((ch) => {
+          const active = ch.id === channel;
+          const count = channelCounts[ch.id];
+          return (
+            <Link
+              key={ch.id} to={channelHref(ch.id)} aria-current={active ? "page" : undefined}
+              className={[
+                "inline-flex items-center gap-1.5 h-7 px-3 rounded-full text-xs font-medium border",
+                active ? "bg-copper text-surface border-copper" : "bg-paper text-muted border-border hover:border-copper/50",
+              ].join(" ")}
+            >
+              {ch.label}
+              <span className={active ? "text-surface/70" : "text-muted/70"}>{count}</span>
+            </Link>
+          );
+        })}
+      </nav>
 
       <nav className="flex flex-wrap gap-2 px-4 py-2 border-b border-border" aria-label="Message thread filters">
         {TABS.map((t) => {
@@ -78,11 +108,11 @@ export function MessagesInbox({ rows, tab, sort, search, counts, selectedId }: P
       ) : (
         <ul role="list" className="divide-y divide-border">
           {rows.map((r) => {
-            const selected = r.customerId === selectedId;
+            const selected = r.customerId === selectedId && r.channel === selectedChannel;
             return (
-              <li key={r.customerId} className={selected ? "bg-copper/5" : ""}>
+              <li key={`${r.customerId}::${r.channel}`} className={selected ? "bg-copper/5" : ""}>
                 <Link
-                  to={rowHref(r.customerId)}
+                  to={rowHref(r)}
                   aria-current={selected ? "true" : undefined}
                   className={[
                     "relative flex flex-col gap-1 px-4 py-3",
@@ -93,6 +123,11 @@ export function MessagesInbox({ rows, tab, sort, search, counts, selectedId }: P
                   <div className="flex items-center gap-2">
                     {r.needsReply ? <span className="w-1.5 h-1.5 rounded-full bg-copper shrink-0" aria-label="Needs reply" /> : null}
                     <span className="font-medium text-text truncate">{r.customerName}</span>
+                    {r.channel === "sms" ? (
+                      <span className="inline-flex items-center px-1.5 py-0.5 rounded-full text-[10px] font-medium bg-copper/10 text-copper border border-copper/20">SMS</span>
+                    ) : (
+                      <span className="inline-flex items-center px-1.5 py-0.5 rounded-full text-[10px] font-medium bg-cool/10 text-cool border border-cool/20">Email</span>
+                    )}
                     {r.needsAttention ? (
                       <span className="inline-flex items-center px-1.5 py-0.5 rounded-full text-[10px] font-medium bg-hot/10 text-hot">Failed</span>
                     ) : null}
@@ -100,6 +135,9 @@ export function MessagesInbox({ rows, tab, sort, search, counts, selectedId }: P
                       <span className="ml-auto inline-flex items-center justify-center min-w-5 h-5 px-1.5 rounded-full text-[11px] font-semibold bg-copper/10 text-copper">{r.unansweredInbound}</span>
                     ) : null}
                   </div>
+                  {r.channel === "email" && r.subjectSnippet ? (
+                    <div className="text-xs text-text/70 font-medium truncate">{r.subjectSnippet}</div>
+                  ) : null}
                   <div className="flex items-center gap-2 text-xs text-muted">
                     <span className="truncate">
                       {r.lastMessage ? (
