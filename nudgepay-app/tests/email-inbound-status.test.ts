@@ -4,13 +4,27 @@ import { updateEmailStatus, recordInboundEmail } from "../app/lib/email-messagin
 
 const svc = serviceClient();
 
-async function seedWithOutbound(email: string, providerMessageId: string) {
+// Each org gets its own from_address so the recipient-scoping logic can
+// distinguish tenants.  The caller must pass a unique orgFromAddress per org so
+// tests don't collide when run in parallel within a single global-setup pass.
+async function seedWithOutbound(
+  email: string,
+  providerMessageId: string,
+  orgFromAddress = "billing@chancey.test",
+) {
   const { data: org } = await svc
     .from("organizations")
     .insert({ name: `InboundEmail Org ${Math.random()}` })
     .select("id")
     .single();
   const orgId = org!.id as string;
+
+  // Register the org's sending address so recordInboundEmail can scope the
+  // candidate lookup to this tenant via the inbound recipient address.
+  await svc
+    .from("email_config")
+    .insert({ org_id: orgId, email_enabled: true, from_address: orgFromAddress });
+
   const { data: cust } = await svc
     .from("customers")
     .insert({ org_id: orgId, name: "Acme", email })
@@ -30,12 +44,12 @@ async function seedWithOutbound(email: string, providerMessageId: string) {
     direction: "outbound",
     provider_message_id: providerMessageId,
     status: "sent",
-    from_address: "billing@chancey.test",
+    from_address: orgFromAddress,
     to_address: email,
     subject: "Invoice",
     body: "Please pay",
   });
-  return { orgId, customerId, invoiceId };
+  return { orgId, customerId, invoiceId, orgFromAddress };
 }
 
 describe("email inbound + status", () => {
@@ -84,10 +98,14 @@ describe("email inbound + status", () => {
   });
 
   it("recordInboundEmail matches by sender email + threads to outbound invoice", async () => {
-    const { customerId, invoiceId } = await seedWithOutbound("cust-inbound-3@x.com", "re_out_es3");
+    const { customerId, invoiceId, orgFromAddress } = await seedWithOutbound(
+      "cust-inbound-3@x.com",
+      "re_out_es3",
+      `billing-ib3-${Math.random()}@chancey.test`,
+    );
     const r = await recordInboundEmail(svc, {
       from: "Cust <cust-inbound-3@x.com>",
-      to: "billing@us.com",
+      to: orgFromAddress,
       subject: "Re",
       body: "ok",
       providerMessageId: "in_es3",
@@ -118,5 +136,76 @@ describe("email inbound + status", () => {
       .select("id")
       .eq("provider_message_id", "in_es_stranger");
     expect(rows ?? []).toHaveLength(0);
+  });
+
+  it("cross-tenant: inbound routes only to the org that owns the recipient address", async () => {
+    // Two orgs share a customer email address — a common scenario with billing
+    // contacts.  Inbound email addressed to Org A's sending domain must be
+    // attributed to Org A's customer only; Org B's copy of that email must never
+    // be matched, even though its customer row has the same email value.
+    const sharedEmail = `shared-ct-${Math.random()}@crosstest.example`;
+
+    const fromAddrA = `billing-ct-a-${Math.random()}@chancey.test`;
+    const { data: orgA } = await svc
+      .from("organizations")
+      .insert({ name: `CrossA ${Math.random()}` })
+      .select("id")
+      .single();
+    const orgAId = orgA!.id as string;
+    await svc
+      .from("email_config")
+      .insert({ org_id: orgAId, email_enabled: true, from_address: fromAddrA });
+    const { data: custA } = await svc
+      .from("customers")
+      .insert({ org_id: orgAId, name: "SharedA", email: sharedEmail })
+      .select("id")
+      .single();
+
+    const fromAddrB = `billing-ct-b-${Math.random()}@chancey.test`;
+    const { data: orgB } = await svc
+      .from("organizations")
+      .insert({ name: `CrossB ${Math.random()}` })
+      .select("id")
+      .single();
+    const orgBId = orgB!.id as string;
+    await svc
+      .from("email_config")
+      .insert({ org_id: orgBId, email_enabled: true, from_address: fromAddrB });
+    await svc
+      .from("customers")
+      .insert({ org_id: orgBId, name: "SharedB", email: sharedEmail });
+
+    const pid = `cross-ct-${Math.random()}`;
+    const r = await recordInboundEmail(svc, {
+      from: sharedEmail,
+      to: fromAddrA, // addressed to Org A's sending address
+      subject: "Re: Invoice",
+      body: "Payment enclosed.",
+      providerMessageId: pid,
+    });
+
+    expect(r.matched).toBe(true);
+
+    const { data: rows } = await svc
+      .from("email_messages")
+      .select("org_id, customer_id")
+      .eq("provider_message_id", pid);
+    expect(rows).toHaveLength(1);
+    // Must land in Org A, on Org A's customer — not Org B's.
+    expect(rows![0].org_id).toBe(orgAId);
+    expect(rows![0].customer_id).toBe(custA!.id as string);
+  });
+
+  it("cross-tenant: unknown recipient address returns matched:false (not a DB leak)", async () => {
+    // An inbound email whose To: address is not registered in any org's
+    // email_config must be silently dropped, never attributed to a random org.
+    const r = await recordInboundEmail(svc, {
+      from: "anyone@external.example",
+      to: "unknown-domain@nobody.example",
+      subject: "Spam",
+      body: "Hello",
+      providerMessageId: `ct-unknown-${Math.random()}`,
+    });
+    expect(r.matched).toBe(false);
   });
 });

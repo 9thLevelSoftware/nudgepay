@@ -109,9 +109,28 @@ export async function recordInboundEmail(
   const fromNorm = normalizeEmail(args.from);
   if (!fromNorm) return { matched: false };
 
+  const toNorm = normalizeEmail(args.to);
+  if (!toNorm) return { matched: false };
+
+  // Resolve the org that owns the recipient (args.to) address.  This is the
+  // org's configured outbound from_address and identifies the tenant uniquely.
+  // ilike performs a case-insensitive exact match (no wildcards) so mixed-case
+  // stored addresses are handled correctly.  Zero or multiple matches are treated
+  // as unmatched to prevent cross-tenant disclosure: if the same from_address is
+  // registered in two orgs the correct recipient is ambiguous, so we drop it.
+  const { data: configs, error: configErr } = await service
+    .from("email_config")
+    .select("org_id")
+    .ilike("from_address", toNorm);
+  if (configErr) throw configErr;
+  if (!configs || configs.length !== 1) return { matched: false };
+  const orgId = configs[0].org_id as string;
+
+  // Scope the sender lookup to the resolved org only — never query across tenants.
   const { data: candidates, error: candErr } = await service
     .from("customers")
     .select("id, org_id, email")
+    .eq("org_id", orgId)
     .not("email", "is", null);
   if (candErr) throw candErr;
   const match = (candidates ?? []).find(
