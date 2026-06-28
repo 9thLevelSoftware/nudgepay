@@ -6,7 +6,9 @@ import { createClient } from "@supabase/supabase-js";
 
 const env = Object.fromEntries(
   readFileSync(new URL("../.env.test", import.meta.url), "utf8")
-    .split("\n").filter(Boolean).map((l) => { const i = l.indexOf("="); return [l.slice(0, i).trim(), l.slice(i + 1).trim()]; })
+    .split("\n").map((l) => l.trim())
+    .filter((l) => l && !l.startsWith("#") && l.includes("="))
+    .map((l) => { const i = l.indexOf("="); return [l.slice(0, i).trim(), l.slice(i + 1).trim()]; })
 );
 const SECRET = "local-demo-unsubscribe-secret"; // mirrors .dev.vars
 

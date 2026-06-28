@@ -15,11 +15,13 @@
 //   BASE_URL=http://localhost:5173 node scripts/demo-record-full.mjs
 import { chromium } from "playwright";
 import { mkdirSync, readdirSync, renameSync } from "node:fs";
+import { fileURLToPath } from "node:url";
+import path from "node:path";
 
 const BASE = process.env.BASE_URL || "http://localhost:5173";
 const EMAIL = "diskin@chancey.test";
 const PASSWORD = "password123";
-const OUT_DIR = new URL("../demo-recording/", import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, "$1");
+const OUT_DIR = fileURLToPath(new URL("../demo-recording/", import.meta.url));
 
 mkdirSync(OUT_DIR, { recursive: true });
 
@@ -270,8 +272,8 @@ async function main() {
       const files = readdirSync(OUT_DIR).filter((f) => f.endsWith(".webm")).sort();
       if (files.length) {
         const newest = files[files.length - 1];
-        const dest = `${OUT_DIR}nudgepay-full-demo.webm`;
-        renameSync(`${OUT_DIR}${newest}`, dest);
+        const dest = path.join(OUT_DIR, "nudgepay-full-demo.webm");
+        renameSync(path.join(OUT_DIR, newest), dest);
         console.log("\nVIDEO: " + dest);
       } else {
         console.log("\nNo .webm produced in " + OUT_DIR);

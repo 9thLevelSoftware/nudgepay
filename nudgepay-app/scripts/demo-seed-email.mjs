@@ -14,9 +14,9 @@ import { createClient } from "@supabase/supabase-js";
 
 const env = Object.fromEntries(
   readFileSync(new URL("../.env.test", import.meta.url), "utf8")
-    .split("\n").filter(Boolean).map((l) => {
-      const i = l.indexOf("="); return [l.slice(0, i).trim(), l.slice(i + 1).trim()];
-    })
+    .split("\n").map((l) => l.trim())
+    .filter((l) => l && !l.startsWith("#") && l.includes("="))
+    .map((l) => { const i = l.indexOf("="); return [l.slice(0, i).trim(), l.slice(i + 1).trim()]; })
 );
 const svc = createClient(env.SUPABASE_URL, env.SUPABASE_SERVICE_KEY, {
   auth: { persistSession: false, autoRefreshToken: false },
@@ -59,14 +59,15 @@ const { error: ecErr } = await svc.from("email_config").upsert({
 }, { onConflict: "org_id" });
 if (ecErr) { console.error("email_config", ecErr); process.exit(1); }
 
-// --- Summit preferred channel = email so it leads the Email demo -------------
-await svc.from("customers").update({ preferred_channel: "email" })
-  .eq("id", byName["Summit Restaurant Group"].id);
+// NOTE: preferred_channel is constrained to ('call','text') by 0017 — email is
+// not yet a selectable *preferred* channel, only a real outbound channel. So we
+// don't set it here; Summit leads the Email demo via its email thread below.
 
 // --- Northgate: do_not_email too (already do_not_call) → full block demo -----
 if (byName["Northgate Property Mgmt"]) {
-  await svc.from("customers").update({ do_not_email: true })
+  const { error: ngErr } = await svc.from("customers").update({ do_not_email: true })
     .eq("id", byName["Northgate Property Mgmt"].id);
+  if (ngErr) { console.error("northgate do_not_email", ngErr); process.exit(1); }
 }
 
 // --- idempotency: clear any prior demo email rows in this org ----------------
