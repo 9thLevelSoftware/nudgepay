@@ -260,7 +260,6 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
   let emailEnabled = false;
   let selectedEmailMessages: EmailMessageEntry[] = [];
   let selectedCustomerEmail: string | null = null;
-  let selectedDoNotEmail = false;
   let dashboardData: DashboardData = {
     items: [],
     metrics: {
@@ -495,7 +494,6 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
       selectedPhone = (custRow as any)?.phone ?? null;
       selectedPrefs = resolveCommPrefs(custRow as any);
       selectedCustomerEmail = (custRow as any)?.email ?? null;
-      selectedDoNotEmail = Boolean((custRow as any)?.do_not_email);
       selectedRepInvoiceId = repInvoiceId;
 
       // Active pending promise id for the cancel form
@@ -550,7 +548,6 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
       emailEnabled,
       emailMessages: selectedEmailMessages,
       customerEmail: selectedCustomerEmail,
-      doNotEmail: selectedDoNotEmail,
       promiseError,
       saved,
       prefsOpen,
@@ -599,7 +596,6 @@ export default function Dashboard() {
     emailEnabled,
     emailMessages,
     customerEmail,
-    doNotEmail,
     saved,
     prefsOpen,
     bulkAssign,
@@ -697,7 +693,6 @@ export default function Dashboard() {
                   emailEnabled={emailEnabled}
                   emailMessages={emailMessages}
                   customerEmail={customerEmail}
-                  doNotEmail={doNotEmail}
                   promiseError={promiseError}
                   view={view}
                   sort={sort}

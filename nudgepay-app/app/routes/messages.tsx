@@ -197,14 +197,12 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
   let selectedConsent = false;
   let selectedPhone: string | null = null;
   let selectedEmail: string | null = null;
-  let selectedDoNotEmail = false;
   let selectedVars: TemplateVars = { customer: "", invoice: "", balance: "", dueDate: "" };
   if (selected) {
     const cust = custRows.find((c) => c.id === selected.customerId);
     selectedConsent = Boolean(cust?.sms_consent);
     selectedPhone = (cust?.phone as string | null) ?? null;
     selectedEmail = (cust?.email as string | null) ?? null;
-    selectedDoNotEmail = Boolean(cust?.do_not_email);
     if (selected.channel === "email") {
       selectedEmailMessages = rawEmails
         .filter((m) => m.customer_id === selected.customerId)
@@ -255,7 +253,7 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
       rows, metrics, counts, tab, sort, q,
       channel, channelCounts, emailEnabled,
       selected, selectedMessages, selectedEmailMessages,
-      selectedConsent, selectedPhone, selectedEmail, selectedDoNotEmail,
+      selectedConsent, selectedPhone, selectedEmail,
       selectedVars, sms, smsEnabled,
     },
     { headers },
@@ -298,7 +296,6 @@ export default function Messages() {
             smsEnabled={d.smsEnabled}
             emailEnabled={d.emailEnabled}
             selectedEmail={d.selectedEmail}
-            selectedDoNotEmail={d.selectedDoNotEmail}
             tab={d.tab}
             sort={d.sort}
             q={d.q}

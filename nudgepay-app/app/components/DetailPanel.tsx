@@ -389,6 +389,7 @@ function EmailTab({
         {/* Template select — fills subject + body on change */}
         <select
           defaultValue=""
+          disabled={sendDisabled}
           onChange={(e) => {
             const tmpl = EMAIL_TEMPLATES.find((t) => t.id === e.target.value);
             if (tmpl) {
@@ -488,7 +489,6 @@ export function DetailPanel({
   emailEnabled,
   emailMessages,
   customerEmail,
-  doNotEmail,
   promiseError,
   roster,
   view,
@@ -510,7 +510,6 @@ export function DetailPanel({
   emailEnabled?: boolean;
   emailMessages?: EmailMessageEntry[];
   customerEmail?: string | null;
-  doNotEmail?: boolean;
   promiseError?: string | null;
   roster: RosterMember[];
   view: string;

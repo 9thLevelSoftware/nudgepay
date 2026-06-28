@@ -37,7 +37,6 @@ interface Props {
   smsEnabled: boolean;
   emailEnabled: boolean;
   selectedEmail: string | null;
-  selectedDoNotEmail: boolean;
   tab: string;
   sort: string;
   q: string;
@@ -45,7 +44,7 @@ interface Props {
 
 export function MessageThreadPanel({
   thread, messages, emailMessages, consent, phone, vars, sms, smsEnabled,
-  emailEnabled, selectedEmail, selectedDoNotEmail, tab, sort, q,
+  emailEnabled, selectedEmail, tab, sort, q,
 }: Props) {
   const [body, setBody] = useState("");
   const [subject, setSubject] = useState("");
@@ -167,8 +166,9 @@ export function MessageThreadPanel({
       {isEmail ? (
         <div className="border-t border-border px-4 py-3">
           <select
-            key={`email-tmpl-${thread.customerId}`}
+            key={`email-tmpl-${thread.customerId}-${thread.channel}`}
             defaultValue=""
+            disabled={!emailEnabled || !thread.canReply}
             onChange={(e) => {
               const tmpl = EMAIL_TEMPLATES.find((t) => t.id === e.target.value);
               if (tmpl) {
