@@ -12,7 +12,7 @@ function fd(entries: Record<string, string>): FormData {
 // --- pure parsing (the action's real logic) ---
 test("parseCommPrefsUpdate maps a valid channel and the checked opt-outs", () => {
   expect(parseCommPrefsUpdate(fd({ preferred_channel: "text", do_not_call: "true", do_not_text: "true" })))
-    .toEqual({ preferred_channel: "text", do_not_call: true, do_not_text: true });
+    .toEqual({ preferred_channel: "text", do_not_call: true, do_not_text: true, do_not_email: false });
 });
 
 test("parseCommPrefsUpdate coerces empty/unknown/missing channel to null", () => {

@@ -4,6 +4,7 @@ import { requireUser, resolveOrg } from "../lib/session.server";
 import { safeReturnTo } from "../lib/return-to";
 import { parseOrgSettingsUpdate, parseHolidayDate } from "../lib/org-settings";
 import { parseChannelSettingsUpdate } from "../lib/channel-settings";
+import { parseEmailSettingsUpdate } from "../lib/email-settings";
 
 function flag(returnTo: string, key: string, val: string): string {
   return `${returnTo}${returnTo.includes("?") ? "&" : "?"}${key}=${val}`;
@@ -57,6 +58,17 @@ export async function action({ request, context }: ActionFunctionArgs) {
       .eq("org_id", org.org_id).eq("holiday_date", date);
     if (error) return redirect(flag(returnTo, "error", "delete"), { headers });
     return redirect(flag(returnTo, "saved", "1"), { headers });
+  }
+
+  if (intent === "save_email") {
+    const parsed = parseEmailSettingsUpdate(form);
+    if (!parsed.ok) return redirect(flag(returnTo, "error", "email"), { headers });
+    const { error } = await supabase.from("email_config")
+      .upsert({ org_id: org.org_id, ...parsed.value }, { onConflict: "org_id" });
+    if (error) return redirect(flag(returnTo, "error", "save"), { headers });
+    // Distinct success marker so the email panel's "Saved." banner does not light
+    // up after unrelated settings saves (save_channels/save_rules also use ?saved=1).
+    return redirect(flag(returnTo, "email_saved", "1"), { headers });
   }
 
   return redirect(returnTo, { headers });

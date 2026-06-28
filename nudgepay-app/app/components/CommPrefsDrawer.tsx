@@ -54,6 +54,10 @@ export function CommPrefsDrawer({
               <input type="checkbox" name="do_not_text" value="true" defaultChecked={prefs.doNotText} className="h-4 w-4 rounded border-border text-copper" />
               Do not text <span className="text-[10px] text-muted">(blocks SMS sending)</span>
             </label>
+            <label className="flex items-center gap-2 text-sm text-text">
+              <input type="checkbox" name="do_not_email" value="true" defaultChecked={prefs.doNotEmail} className="h-4 w-4 rounded border-border text-copper" />
+              Do not email <span className="text-[10px] text-muted">(blocks email sending)</span>
+            </label>
           </fieldset>
 
           <div className="flex justify-end gap-2">

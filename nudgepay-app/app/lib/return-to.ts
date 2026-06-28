@@ -17,3 +17,9 @@ export function withSms(returnTo: string, code: string): string {
   const sep = returnTo.includes("?") ? "&" : "?";
   return `${returnTo}${sep}sms=${code}`;
 }
+
+// Append an email-result code onto an already-validated return path.
+export function withEmail(returnTo: string, code: string): string {
+  const sep = returnTo.includes("?") ? "&" : "?";
+  return `${returnTo}${sep}email=${code}`;
+}

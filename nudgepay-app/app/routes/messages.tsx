@@ -6,12 +6,15 @@ import { createSupabaseServiceClient } from "../lib/supabase.server";
 import { listOrgMembers } from "../lib/orgs.server";
 import { resolveCommPrefs } from "../lib/comm-prefs";
 import { resolveChannelSettings } from "../lib/channel-settings";
+import { resolveEmailSettings } from "../lib/email-settings";
 import {
   buildThreadRows, applyMessageTab, sortThreadRows, computeMessageMetrics,
-  MESSAGE_TABS, MESSAGE_SORTS,
-  type MessageTab, type MessageSort, type ThreadCustomerInput, type ThreadMessageInput,
+  applyChannelFilter,
+  MESSAGE_TABS, MESSAGE_SORTS, CHANNEL_FILTERS,
+  type MessageTab, type MessageSort, type ChannelFilter,
+  type ThreadCustomerInput, type ThreadMessageInput,
 } from "../lib/message-inbox";
-import type { MessageEntry } from "./dashboard";
+import type { MessageEntry, EmailMessageEntry } from "./dashboard";
 import type { TemplateVars } from "../lib/sms-templates";
 import { formatUSD } from "../lib/format";
 import { formatDate } from "../lib/dates";
@@ -19,6 +22,18 @@ import { AppShell } from "../components/AppShell";
 import { MessagesMetrics } from "../components/MessagesMetrics";
 import { MessagesInbox } from "../components/MessagesInbox";
 import { MessageThreadPanel } from "../components/MessageThreadPanel";
+
+function mapSms(r: any): Omit<ThreadMessageInput, "channel" | "subject"> {
+  return {
+    customerId: r.customer_id as string,
+    direction: r.direction as "inbound" | "outbound",
+    body: (r.body as string | null) ?? null,
+    status: (r.status as string | null) ?? null,
+    errorCode: (r.error_code as string | null) ?? null,
+    invoiceId: (r.invoice_id as string | null) ?? null,
+    createdAt: r.created_at as string,
+  };
+}
 
 export async function loader({ request, context }: LoaderFunctionArgs) {
   // --- Prelude: mirrors promises.tsx / accounts.tsx exactly ---
@@ -66,6 +81,8 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
   const q = sp.get("q") ?? "";
   const customerId = sp.get("customerId");
   const sms = sp.get("sms");
+  const channel: ChannelFilter = (CHANNEL_FILTERS as string[]).includes(sp.get("channel") ?? "")
+    ? (sp.get("channel") as ChannelFilter) : "all";
 
   // --- Reads (USER client, explicit org_id) ---
   const { data: msgRows } = await supabase
@@ -75,23 +92,35 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
     .not("customer_id", "is", null);
   const rawMessages = (msgRows as any[]) ?? [];
 
-  const messagesInput: ThreadMessageInput[] = rawMessages.map((r) => ({
-    customerId: r.customer_id as string,
-    direction: (r.direction as "inbound" | "outbound"),
-    body: (r.body as string | null) ?? null,
-    status: (r.status as string | null) ?? null,
-    errorCode: (r.error_code as string | null) ?? null,
-    invoiceId: (r.invoice_id as string | null) ?? null,
-    createdAt: r.created_at as string,
-  }));
+  const { data: emailRows } = await supabase
+    .from("email_messages")
+    .select("customer_id, direction, body, subject, status, error_code, invoice_id, created_at")
+    .eq("org_id", org.org_id)
+    .not("customer_id", "is", null);
+  const rawEmails = (emailRows as any[]) ?? [];
 
-  // Only customers referenced by a message.
+  const messagesInput: ThreadMessageInput[] = [
+    ...rawMessages.map((r) => ({ ...mapSms(r), channel: "sms" as const, subject: null })),
+    ...rawEmails.map((r) => ({
+      customerId: r.customer_id as string,
+      channel: "email" as const,
+      direction: r.direction as "inbound" | "outbound",
+      body: (r.body as string | null) ?? null,
+      subject: (r.subject as string | null) ?? null,
+      status: (r.status as string | null) ?? null,
+      errorCode: (r.error_code as string | null) ?? null,
+      invoiceId: (r.invoice_id as string | null) ?? null,
+      createdAt: r.created_at as string,
+    })),
+  ];
+
+  // Only customers referenced by a message (either channel).
   const customerIds = Array.from(new Set(messagesInput.map((m) => m.customerId)));
   let custRows: any[] = [];
   if (customerIds.length > 0) {
     const { data } = await supabase
       .from("customers")
-      .select("id, name, phone, owner, sms_consent, preferred_channel, do_not_call, do_not_text")
+      .select("id, name, phone, email, owner, sms_consent, preferred_channel, do_not_call, do_not_text, do_not_email")
       .eq("org_id", org.org_id).in("id", customerIds);
     custRows = (data as any[]) ?? [];
   }
@@ -133,6 +162,7 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
     smsConsent: Boolean(c.sms_consent),
     commPrefs: resolveCommPrefs(c),
     phone: (c.phone as string | null) ?? null,
+    email: (c.email as string | null) ?? null,
     hasOpenCase: openCaseByCustomer.has(c.id as string),
     openCaseId: openCaseByCustomer.get(c.id as string) ?? null,
     latestInvoiceId: latestInvoiceByCustomer.get(c.id as string)?.id ?? null,
@@ -144,33 +174,61 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
   const allRows = buildThreadRows(customersInput, messagesInput, ownerLabels);
   const query = q.trim().toLowerCase();
   const searched = query === "" ? allRows : allRows.filter((r) => r.searchText.includes(query));
-  const metrics = computeMessageMetrics(searched);
+
+  const channelFiltered = applyChannelFilter(searched, channel);
+  const metrics = computeMessageMetrics(channelFiltered);
   const counts = Object.fromEntries(
-    MESSAGE_TABS.map((t) => [t, applyMessageTab(searched, t).length]),
+    MESSAGE_TABS.map((t) => [t, applyMessageTab(channelFiltered, t).length]),
   ) as Record<MessageTab, number>;
-  const rows = sortThreadRows(applyMessageTab(searched, tab), sort);
+  const rows = sortThreadRows(applyMessageTab(channelFiltered, tab), sort);
+  const channelCounts = {
+    all: searched.length,
+    sms: searched.filter((r) => r.channel === "sms").length,
+    email: searched.filter((r) => r.channel === "email").length,
+  };
 
   // --- Selected thread ---
-  const selected = customerId ? (allRows.find((r) => r.customerId === customerId) ?? null) : null;
+  const selChannel = sp.get("channel") === "email" ? "email" : sp.get("channel") === "sms" ? "sms" : null;
+  const selected = customerId
+    ? (allRows.find((r) => r.customerId === customerId && (selChannel == null || r.channel === selChannel)) ?? null)
+    : null;
   let selectedMessages: MessageEntry[] = [];
+  let selectedEmailMessages: EmailMessageEntry[] = [];
   let selectedConsent = false;
   let selectedPhone: string | null = null;
+  let selectedEmail: string | null = null;
   let selectedVars: TemplateVars = { customer: "", invoice: "", balance: "", dueDate: "" };
   if (selected) {
     const cust = custRows.find((c) => c.id === selected.customerId);
     selectedConsent = Boolean(cust?.sms_consent);
     selectedPhone = (cust?.phone as string | null) ?? null;
-    selectedMessages = rawMessages
-      .filter((m) => m.customer_id === selected.customerId)
-      .sort((a, b) => (a.created_at as string).localeCompare(b.created_at as string))
-      .map((m, i) => ({
-        id: `${m.customer_id}-${i}-${m.created_at}`,
-        direction: m.direction as string,
-        body: (m.body as string | null) ?? null,
-        status: (m.status as string | null) ?? null,
-        errorCode: (m.error_code as string | null) ?? null,
-        createdAt: m.created_at as string,
-      }));
+    selectedEmail = (cust?.email as string | null) ?? null;
+    if (selected.channel === "email") {
+      selectedEmailMessages = rawEmails
+        .filter((m) => m.customer_id === selected.customerId)
+        .sort((a: any, b: any) => (a.created_at as string).localeCompare(b.created_at as string))
+        .map((m: any, i: number) => ({
+          id: `${m.customer_id}-email-${i}-${m.created_at}`,
+          direction: m.direction as string,
+          subject: (m.subject as string | null) ?? null,
+          body: (m.body as string | null) ?? null,
+          status: (m.status as string | null) ?? null,
+          errorCode: (m.error_code as string | null) ?? null,
+          createdAt: m.created_at as string,
+        }));
+    } else {
+      selectedMessages = rawMessages
+        .filter((m: any) => m.customer_id === selected.customerId)
+        .sort((a: any, b: any) => (a.created_at as string).localeCompare(b.created_at as string))
+        .map((m: any, i: number) => ({
+          id: `${m.customer_id}-${i}-${m.created_at}`,
+          direction: m.direction as string,
+          body: (m.body as string | null) ?? null,
+          status: (m.status as string | null) ?? null,
+          errorCode: (m.error_code as string | null) ?? null,
+          createdAt: m.created_at as string,
+        }));
+    }
     const anchor = selected.anchorInvoiceId ? invoiceById.get(selected.anchorInvoiceId) : null;
     selectedVars = {
       customer: selected.customerName,
@@ -184,12 +242,19 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
     .select("sms_enabled").eq("org_id", org.org_id).maybeSingle();
   const smsEnabled = resolveChannelSettings(mcfg as { sms_enabled?: boolean | null } | null).smsEnabled;
 
+  const { data: ecfg } = await supabase.from("email_config")
+    .select("email_enabled, from_address, from_name").eq("org_id", org.org_id).maybeSingle();
+  const emailEnabled = resolveEmailSettings(ecfg as any).emailEnabled;
+
   return data(
     {
       orgName: orgRow?.name ?? "(unknown)",
       initials, syncLabel, connected, isOwner,
       rows, metrics, counts, tab, sort, q,
-      selected, selectedMessages, selectedConsent, selectedPhone, selectedVars, sms, smsEnabled,
+      channel, channelCounts, emailEnabled,
+      selected, selectedMessages, selectedEmailMessages,
+      selectedConsent, selectedPhone, selectedEmail,
+      selectedVars, sms, smsEnabled,
     },
     { headers },
   );
@@ -216,15 +281,21 @@ export default function Messages() {
             search={d.q}
             counts={d.counts}
             selectedId={d.selected?.customerId ?? null}
+            selectedChannel={d.selected?.channel ?? null}
+            channel={d.channel}
+            channelCounts={d.channelCounts}
           />
           <MessageThreadPanel
             thread={d.selected}
             messages={d.selectedMessages}
+            emailMessages={d.selectedEmailMessages}
             consent={d.selectedConsent}
             phone={d.selectedPhone}
             vars={d.selectedVars}
             sms={d.sms}
             smsEnabled={d.smsEnabled}
+            emailEnabled={d.emailEnabled}
+            selectedEmail={d.selectedEmail}
             tab={d.tab}
             sort={d.sort}
             q={d.q}
