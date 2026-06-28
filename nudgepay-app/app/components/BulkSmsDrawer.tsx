@@ -21,11 +21,13 @@ export function BulkSmsDrawer({
   onClose,
   cases,
   returnTo,
+  smsEnabled,
 }: {
   open: boolean;
   onClose: () => void;
   cases: DrawerCase[];
   returnTo: string;
+  smsEnabled: boolean;
 }) {
   const nav = useNavigation();
   const busy = nav.state !== "idle";
@@ -71,6 +73,9 @@ export function BulkSmsDrawer({
           {eligible.length} of {cases.length} eligible
           {skipped.length ? ` · ${skipped.length} skipped (${skippedSummary(skipped)})` : ""}
         </p>
+        {!smsEnabled ? (
+          <p className="text-xs font-sans font-medium text-hot mb-3">Text messaging is turned off for this workspace.</p>
+        ) : null}
 
         {!confirming ? (
           <>
@@ -103,7 +108,7 @@ export function BulkSmsDrawer({
               <button
                 type="button"
                 onClick={() => setConfirming(true)}
-                disabled={eligible.length === 0 || body.trim() === ""}
+                disabled={!smsEnabled || eligible.length === 0 || body.trim() === ""}
                 className="rounded-md bg-copper px-3 h-9 text-xs font-semibold text-ink hover:bg-copper/90 disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-copper"
               >
                 Review
@@ -124,7 +129,7 @@ export function BulkSmsDrawer({
               </button>
               <button
                 type="submit"
-                disabled={busy}
+                disabled={busy || !smsEnabled}
                 className="rounded-md bg-copper px-3 h-9 text-xs font-semibold text-ink hover:bg-copper/90 disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-copper"
               >
                 {busy ? "Sending…" : `Send ${eligible.length}`}

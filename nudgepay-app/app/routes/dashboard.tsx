@@ -596,6 +596,11 @@ export default function Dashboard() {
           Sent {bulkSent ?? "0"} · Failed {bulkFailed ?? "0"} · Skipped {bulkSkipped ?? "0"}.
         </div>
       ) : null}
+      {bulkSms === "disabled" ? (
+        <div className="px-6 py-2 bg-hot/10 border-b border-hot/30 text-sm font-sans font-medium text-hot" role="status">
+          Bulk text not sent — text messaging is turned off for this workspace.
+        </div>
+      ) : null}
 
       <div className="flex flex-col h-full">
           {/* Metrics strip */}
@@ -618,6 +623,7 @@ export default function Dashboard() {
                 roster={roster}
                 returnTo={`/dashboard?${new URLSearchParams({ view, sort, ...(q ? { q } : {}) }).toString()}`}
                 collisions={collisions}
+                smsEnabled={smsEnabled}
               />
             </div>
 

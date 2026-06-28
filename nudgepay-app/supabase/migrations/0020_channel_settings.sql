@@ -22,7 +22,7 @@ create table email_config (
   from_name text,
   provider text,
   created_at timestamptz not null default now(),
-  updated_at timestamptz not null default now()
+  updated_at timestamptz not null default now() -- not auto-updated; #3 adds a set_updated_at trigger if needed
 );
 alter table email_config enable row level security;
 create policy email_config_member_read on email_config
