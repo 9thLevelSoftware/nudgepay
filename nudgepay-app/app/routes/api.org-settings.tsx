@@ -66,7 +66,9 @@ export async function action({ request, context }: ActionFunctionArgs) {
     const { error } = await supabase.from("email_config")
       .upsert({ org_id: org.org_id, ...parsed.value }, { onConflict: "org_id" });
     if (error) return redirect(flag(returnTo, "error", "save"), { headers });
-    return redirect(flag(returnTo, "saved", "1"), { headers });
+    // Distinct success marker so the email panel's "Saved." banner does not light
+    // up after unrelated settings saves (save_channels/save_rules also use ?saved=1).
+    return redirect(flag(returnTo, "email_saved", "1"), { headers });
   }
 
   return redirect(returnTo, { headers });

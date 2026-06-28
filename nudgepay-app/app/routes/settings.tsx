@@ -71,7 +71,7 @@ function relTime(iso: string | null): string {
 export default function Settings() {
   const d = useLoaderData<typeof loader>();
   const [sp] = useSearchParams();
-  const saved = sp.get("saved") === "1";
+  const saved = sp.get("email_saved") === "1";
   const errorCode = sp.get("error");
   const syncLabel = d.connected ? `Synced ${relTime(d.lastSyncAt)}` : "Not connected";
 

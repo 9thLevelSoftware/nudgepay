@@ -94,7 +94,7 @@ describe("save_email", () => {
     expect(row!.from_name).toBe("Chancey");
   });
 
-  it("valid save_email persists email_config and redirects ?saved=1", async () => {
+  it("valid save_email persists email_config and redirects ?email_saved=1", async () => {
     const svc = serviceClient();
     const { data: org } = await svc.from("organizations")
       .insert({ name: `SE-rt ${Math.random()}` }).select("id").single();
@@ -119,7 +119,7 @@ describe("save_email", () => {
 
     expect(res.status).toBe(302);
     const location = res.headers.get("Location") ?? "";
-    expect(location).toContain("saved=1");
+    expect(location).toContain("email_saved=1");
 
     // Confirm the DB write landed under the correct org.
     const { data: row } = await svc.from("email_config")
