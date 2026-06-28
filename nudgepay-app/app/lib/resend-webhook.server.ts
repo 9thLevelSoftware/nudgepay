@@ -32,9 +32,9 @@ export async function verifyResendSignature(
   if (Math.abs(nowMs - tsSec * 1000) > FIVE_MIN_MS) return false;
 
   const secretB64 = secret.startsWith("whsec_") ? secret.slice("whsec_".length) : secret;
-  let keyBytes: Uint8Array;
+  let keyBytes: Uint8Array<ArrayBuffer>;
   try {
-    keyBytes = Uint8Array.from(atob(secretB64), (c) => c.charCodeAt(0));
+    keyBytes = new Uint8Array(Array.from(atob(secretB64), c => c.charCodeAt(0)));
   } catch {
     return false;
   }
