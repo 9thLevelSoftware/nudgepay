@@ -1,4 +1,4 @@
-import { redirect, useLoaderData, Form, data, type LoaderFunctionArgs } from "react-router";
+import { redirect, useLoaderData, useSearchParams, Form, data, type LoaderFunctionArgs } from "react-router";
 import { getEnv } from "../lib/env.server";
 import { requireUser, resolveOrg } from "../lib/session.server";
 import { getConnectionStatus } from "../lib/qbo-connection.server";
@@ -6,6 +6,7 @@ import { loadOrgConfig } from "../lib/org-config.server";
 import { AppShell } from "../components/AppShell";
 import { CollectionsRulesForm } from "../components/CollectionsRulesForm";
 import { resolveChannelSettings } from "../lib/channel-settings";
+import { resolveEmailSettings } from "../lib/email-settings";
 
 export async function loader({ request, context }: LoaderFunctionArgs) {
   const env = getEnv(context as any);
@@ -38,12 +39,17 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
   const messagingConfigured = Boolean(msg?.messaging_service_sid || msg?.sender);
   const smsEnabled = resolveChannelSettings(msg as { sms_enabled?: boolean | null } | null).smsEnabled;
 
+  const { data: emailConfigRow } = await supabase.from("email_config")
+    .select("email_enabled, from_address, from_name").eq("org_id", org.org_id).maybeSingle();
+  const emailSettings = resolveEmailSettings(emailConfigRow as any);
+
   const config = await loadOrgConfig(supabase, org.org_id);
 
   return data({
     orgName: (orgRow?.name as string) ?? "Workspace",
     initials, isOwner, connected, lastSyncAt, syncIssues,
     messaging: { sender, configured: messagingConfigured, smsEnabled },
+    emailSettings,
     rules: {
       grace: config.promiseGraceDays,
       workingDays: [...config.workingDays],
@@ -64,6 +70,9 @@ function relTime(iso: string | null): string {
 
 export default function Settings() {
   const d = useLoaderData<typeof loader>();
+  const [sp] = useSearchParams();
+  const saved = sp.get("saved") === "1";
+  const errorCode = sp.get("error");
   const syncLabel = d.connected ? `Synced ${relTime(d.lastSyncAt)}` : "Not connected";
 
   return (
@@ -163,6 +172,66 @@ export default function Settings() {
             {!d.messaging.smsEnabled ? (
               <p className="mt-1 text-xs text-hot">Outbound texts are turned off — composers are disabled and sends are blocked.</p>
             ) : null}
+          </section>
+
+          {/* Email (Phase 15) */}
+          <section className="rounded-lg border border-border bg-surface p-5">
+            <div className="flex items-center justify-between">
+              <h2 className="font-display text-base font-semibold text-text">Email</h2>
+              <span className={`text-xs font-medium ${d.emailSettings.emailEnabled ? "text-cool" : "text-muted"}`}>
+                {d.emailSettings.emailEnabled ? "On" : "Off"}
+              </span>
+            </div>
+            {d.isOwner ? (
+              <Form method="post" action="/api/org-settings" className="mt-3 flex flex-col gap-3">
+                <input type="hidden" name="intent" value="save_email" />
+                <input type="hidden" name="returnTo" value="/settings" />
+                <label className="flex items-center gap-2 text-sm text-text">
+                  <input
+                    type="checkbox"
+                    name="email_enabled"
+                    value="true"
+                    defaultChecked={d.emailSettings.emailEnabled}
+                    className="h-4 w-4 rounded border-border accent-copper"
+                  />
+                  Enable email
+                </label>
+                <div className="flex flex-col gap-1">
+                  <label htmlFor="from-address" className="text-xs font-medium text-muted">From address</label>
+                  <input
+                    id="from-address"
+                    type="email"
+                    name="from_address"
+                    defaultValue={d.emailSettings.fromAddress}
+                    placeholder="billing@yourdomain.com"
+                    className="h-8 rounded-md border border-border bg-panel px-2 text-sm text-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-copper"
+                  />
+                  <p className="text-xs text-muted">Must be on a domain you've verified with Resend (SPF/DKIM)</p>
+                  {errorCode === "email" ? (
+                    <p className="text-xs text-hot" role="alert">Enter a valid from address</p>
+                  ) : null}
+                </div>
+                <div className="flex flex-col gap-1">
+                  <label htmlFor="from-name" className="text-xs font-medium text-muted">From name</label>
+                  <input
+                    id="from-name"
+                    name="from_name"
+                    defaultValue={d.emailSettings.fromName}
+                    placeholder="Your business name"
+                    className="h-8 rounded-md border border-border bg-panel px-2 text-sm text-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-copper"
+                  />
+                </div>
+                <div className="flex items-center gap-3">
+                  <button type="submit" className="rounded-md bg-copper px-3 py-1.5 text-xs font-semibold text-ink hover:bg-copper/90">Save</button>
+                  {saved ? <span className="text-xs text-cool">Saved.</span> : null}
+                </div>
+              </Form>
+            ) : (
+              <dl className="mt-2 flex flex-col gap-1 text-sm">
+                <div className="flex gap-2"><dt className="text-muted w-28">Status</dt><dd className={d.emailSettings.emailEnabled ? "text-cool" : "text-muted"}>{d.emailSettings.emailEnabled ? "On" : "Off"}</dd></div>
+                <div className="flex gap-2"><dt className="text-muted w-28">From</dt><dd className="text-text">{d.emailSettings.fromAddress || "Not configured"}</dd></div>
+              </dl>
+            )}
           </section>
 
           {/* Collections rules (C7) */}
