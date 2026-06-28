@@ -3,6 +3,7 @@ import { getEnv } from "../lib/env.server";
 import { requireUser, resolveOrg } from "../lib/session.server";
 import { safeReturnTo } from "../lib/return-to";
 import { parseOrgSettingsUpdate, parseHolidayDate } from "../lib/org-settings";
+import { parseChannelSettingsUpdate } from "../lib/channel-settings";
 
 function flag(returnTo: string, key: string, val: string): string {
   return `${returnTo}${returnTo.includes("?") ? "&" : "?"}${key}=${val}`;
@@ -20,6 +21,16 @@ export async function action({ request, context }: ActionFunctionArgs) {
   if (org.role !== "owner") return redirect(returnTo, { headers });
 
   const intent = form.get("intent");
+
+  if (intent === "save_channels") {
+    const { sms_enabled } = parseChannelSettingsUpdate(form);
+    // Upsert only org_id + sms_enabled; an existing row's sender / messaging_service_sid
+    // are left untouched (upsert updates just the provided columns on conflict).
+    const { error } = await supabase.from("messaging_config")
+      .upsert({ org_id: org.org_id, sms_enabled }, { onConflict: "org_id" });
+    if (error) return redirect(flag(returnTo, "error", "save"), { headers });
+    return redirect(flag(returnTo, "saved", "1"), { headers });
+  }
 
   if (intent === "save_rules") {
     const parsed = parseOrgSettingsUpdate(form);

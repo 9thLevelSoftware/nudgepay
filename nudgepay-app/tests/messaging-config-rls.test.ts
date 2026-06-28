@@ -35,6 +35,24 @@ test("messaging_config: sms_enabled defaults true; owner writes, member reads on
   expect(after!.sms_enabled).toBe(false); // unchanged
 });
 
+test("save_channels upsert toggles sms_enabled and preserves an existing sender", async () => {
+  const svc = serviceClient();
+  const { data: org } = await svc.from("organizations").insert({ name: `MC-up ${Math.random()}` }).select("id").single();
+  const orgId = org!.id as string;
+  const owner = await makeUserClient(`mc-up-owner-${Math.random()}@example.com`);
+  await svc.from("memberships").insert({ org_id: orgId, user_id: owner.userId, role: "owner" });
+
+  // Seed a sender (simulating operator provisioning).
+  await svc.from("messaging_config").insert({ org_id: orgId, sender: "+15005550009", sms_enabled: true });
+
+  // Mirror the route's upsert: only org_id + sms_enabled.
+  await owner.client.from("messaging_config").upsert({ org_id: orgId, sms_enabled: false }, { onConflict: "org_id" });
+
+  const { data: row } = await svc.from("messaging_config").select("sms_enabled, sender").eq("org_id", orgId).single();
+  expect(row!.sms_enabled).toBe(false);
+  expect(row!.sender).toBe("+15005550009"); // preserved
+});
+
 test("email_config: created disabled by default; owner writes, member reads only", async () => {
   const svc = serviceClient();
   const { data: org } = await svc.from("organizations").insert({ name: `EC-rls ${Math.random()}` }).select("id").single();

@@ -5,6 +5,7 @@ import { getConnectionStatus } from "../lib/qbo-connection.server";
 import { loadOrgConfig } from "../lib/org-config.server";
 import { AppShell } from "../components/AppShell";
 import { CollectionsRulesForm } from "../components/CollectionsRulesForm";
+import { resolveChannelSettings } from "../lib/channel-settings";
 
 export async function loader({ request, context }: LoaderFunctionArgs) {
   const env = getEnv(context as any);
@@ -32,16 +33,17 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
   }));
 
   const { data: msg } = await supabase.from("messaging_config")
-    .select("sender, messaging_service_sid").eq("org_id", org.org_id).maybeSingle();
+    .select("sender, messaging_service_sid, sms_enabled").eq("org_id", org.org_id).maybeSingle();
   const sender = (msg?.sender as string | null) ?? null;
   const messagingConfigured = Boolean(msg?.messaging_service_sid || msg?.sender);
+  const smsEnabled = resolveChannelSettings(msg as { sms_enabled?: boolean | null } | null).smsEnabled;
 
   const config = await loadOrgConfig(supabase, org.org_id);
 
   return data({
     orgName: (orgRow?.name as string) ?? "Workspace",
     initials, isOwner, connected, lastSyncAt, syncIssues,
-    messaging: { sender, configured: messagingConfigured },
+    messaging: { sender, configured: messagingConfigured, smsEnabled },
     rules: {
       grace: config.promiseGraceDays,
       workingDays: [...config.workingDays],
@@ -129,14 +131,38 @@ export default function Settings() {
             </ul>
           </section>
 
-          {/* Text messaging (G2, read-only) */}
+          {/* Text messaging (G2 sender read-only; Phase 14 SMS toggle) */}
           <section className="rounded-lg border border-border bg-surface p-5">
-            <h2 className="font-display text-base font-semibold text-text">Text messaging</h2>
+            <div className="flex items-center justify-between">
+              <h2 className="font-display text-base font-semibold text-text">Text messaging</h2>
+              {d.isOwner ? (
+                <Form method="post" action="/api/org-settings">
+                  <input type="hidden" name="intent" value="save_channels" />
+                  <input type="hidden" name="returnTo" value="/settings" />
+                  <label className="sr-only" htmlFor="sms-enabled">SMS enabled</label>
+                  <select
+                    id="sms-enabled" name="sms_enabled" defaultValue={d.messaging.smsEnabled ? "true" : "false"}
+                    onChange={(e) => e.currentTarget.form?.requestSubmit()}
+                    className="h-8 rounded-md border border-border bg-panel px-2 text-sm text-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-copper"
+                  >
+                    <option value="true">On</option>
+                    <option value="false">Off</option>
+                  </select>
+                </Form>
+              ) : (
+                <span className={`text-xs font-medium ${d.messaging.smsEnabled ? "text-cool" : "text-muted"}`}>
+                  {d.messaging.smsEnabled ? "On" : "Off"}
+                </span>
+              )}
+            </div>
             <dl className="mt-2 flex flex-col gap-1 text-sm">
               <div className="flex gap-2"><dt className="text-muted w-28">From</dt><dd className="text-text tabular-nums">{d.messaging.sender ?? "Not provisioned"}</dd></div>
               <div className="flex gap-2"><dt className="text-muted w-28">Status</dt><dd className={d.messaging.configured ? "text-cool" : "text-muted"}>{d.messaging.configured ? "Set up" : "Not provisioned"}</dd></div>
             </dl>
             <p className="mt-2 text-xs text-muted">Text-message carrier registration is managed by NudgePay.</p>
+            {!d.messaging.smsEnabled ? (
+              <p className="mt-1 text-xs text-hot">Outbound texts are turned off — composers are disabled and sends are blocked.</p>
+            ) : null}
           </section>
 
           {/* Collections rules (C7) */}
