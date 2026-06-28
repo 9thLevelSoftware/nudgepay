@@ -7,7 +7,9 @@
 
 import { canSendSms, canSendEmail, type CommPrefs } from "./comm-prefs";
 
-export type Channel = "sms" | "email";
+// Named MessageChannel (not Channel) to avoid colliding with comm-prefs.ts's
+// Channel ("call" | "text" | "email"), which is a different concept.
+export type MessageChannel = "sms" | "email";
 
 export type MessageTab = "needs-reply" | "needs-attention" | "active" | "inactive" | "all";
 export const MESSAGE_TABS: MessageTab[] = ["needs-reply", "needs-attention", "active", "inactive", "all"];
@@ -24,7 +26,7 @@ const FAILED_STATUSES = new Set(["failed", "undelivered", "bounced", "complained
 
 export type ThreadMessageInput = {
   customerId: string;
-  channel: Channel;
+  channel: MessageChannel;
   direction: "inbound" | "outbound";
   body: string | null;
   subject: string | null; // null for sms
@@ -48,7 +50,7 @@ export type ThreadCustomerInput = {
 };
 
 export type ThreadRow = {
-  channel: Channel;
+  channel: MessageChannel;
   customerId: string;
   customerName: string;
   ownerLabel: string;
@@ -121,7 +123,7 @@ export function buildThreadRows(
     if (msgs.length === 0) continue;
     const sep = key.lastIndexOf("::");
     const customerId = key.slice(0, sep);
-    const channel = key.slice(sep + 2) as Channel;
+    const channel = key.slice(sep + 2) as MessageChannel;
     const c = custById.get(customerId);
     if (!c) continue; // message without a loaded customer (shouldn't happen)
 
