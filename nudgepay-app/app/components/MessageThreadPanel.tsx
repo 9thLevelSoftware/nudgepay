@@ -13,6 +13,7 @@ const SMS_BANNER: Record<string, { text: string; tone: string }> = {
   optout: { text: "Not sent — customer opted out of texts.", tone: "text-hot" },
   error: { text: "Could not send the text.", tone: "text-hot" },
   blocked: { text: "Not sent — this case is marked do-not-contact / legal.", tone: "text-hot" },
+  disabled: { text: "Not sent — text messaging is turned off for this workspace.", tone: "text-hot" },
 };
 
 interface Props {
@@ -22,12 +23,13 @@ interface Props {
   phone: string | null;
   vars: TemplateVars;
   sms: string | null;
+  smsEnabled: boolean;
   tab: string;
   sort: string;
   q: string;
 }
 
-export function MessageThreadPanel({ thread, messages, consent, phone, vars, sms, tab, sort, q }: Props) {
+export function MessageThreadPanel({ thread, messages, consent, phone, vars, sms, smsEnabled, tab, sort, q }: Props) {
   const [body, setBody] = useState("");
   useEffect(() => { setBody(""); }, [thread?.customerId]);
 
@@ -114,9 +116,11 @@ export function MessageThreadPanel({ thread, messages, consent, phone, vars, sms
             className="w-full resize-none rounded-md border border-border bg-panel px-3 py-2 text-sm text-text placeholder:text-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-copper"
           />
           <div className="flex items-center justify-between gap-2">
-            {thread.canReply ? <span /> : <span className="text-xs text-muted">{thread.replyDisabledReason}</span>}
+            {!smsEnabled ? (
+              <span className="text-xs text-hot">Text messaging is turned off for this workspace.</span>
+            ) : thread.canReply ? <span /> : <span className="text-xs text-muted">{thread.replyDisabledReason}</span>}
             <button
-              type="submit" disabled={!thread.canReply}
+              type="submit" disabled={!smsEnabled || !thread.canReply}
               className="inline-flex items-center gap-1.5 rounded-md bg-copper px-3 py-1.5 text-xs font-semibold text-surface hover:bg-copper/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-copper disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
             >
               <Icon name="message" size={14} aria-hidden /> Send text

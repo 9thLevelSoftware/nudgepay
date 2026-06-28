@@ -90,6 +90,7 @@ const SMS_BANNER: Record<string, { text: string; tone: string }> = {
   optout:    { text: "Not sent — customer opted out of texts.",                       tone: "text-hot" },
   error:     { text: "Could not send the text.",                                      tone: "text-hot" },
   blocked:   { text: "Not sent — this case is marked do-not-contact / legal.",        tone: "text-hot" },
+  disabled:  { text: "Not sent — text messaging is turned off for this workspace.",   tone: "text-hot" },
 };
 
 // Static promise-error code → copy. Literal strings for Tailwind v4.
@@ -99,7 +100,7 @@ const PROMISE_ERROR_TEXT: Record<string, string> = {
 };
 
 function MessagesTab({
-  selected, repInvoiceId, messages, consent, prefs, phone, sms, view, sort, q, collision,
+  selected, repInvoiceId, messages, consent, prefs, phone, sms, smsEnabled, view, sort, q, collision,
 }: {
   selected: CaseItem;
   repInvoiceId: string | null;
@@ -108,6 +109,7 @@ function MessagesTab({
   prefs: CommPrefs;
   phone: string | null;
   sms: string | null;
+  smsEnabled: boolean;
   view: string;
   sort: string;
   q: string;
@@ -240,7 +242,9 @@ function MessagesTab({
             </p>
           ) : null}
           <div className="flex items-center justify-between gap-2">
-            {contactBlocked ? (
+            {!smsEnabled ? (
+              <span className="text-xs text-hot">Text messaging is turned off for this workspace.</span>
+            ) : contactBlocked ? (
               <span className="text-xs text-hot">Messaging blocked — {exceptionLabel(selected.exceptionReason)}.</span>
             ) : noInvoice ? (
               <span className="text-xs text-muted">No invoice to reference.</span>
@@ -253,7 +257,7 @@ function MessagesTab({
             ) : <span />}
             <button
               type="submit"
-              disabled={!canSendSms(prefs, consent) || noInvoice || contactBlocked || !phone}
+              disabled={!smsEnabled || !canSendSms(prefs, consent) || noInvoice || contactBlocked || !phone}
               className="inline-flex items-center gap-1.5 rounded-md bg-copper px-3 py-1.5 text-xs font-sans font-semibold text-surface hover:bg-copper/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-copper disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
             >
               <Icon name="message" size={14} aria-hidden />
@@ -300,6 +304,7 @@ export function DetailPanel({
   prefs,
   phone,
   sms,
+  smsEnabled,
   promiseError,
   roster,
   view,
@@ -317,6 +322,7 @@ export function DetailPanel({
   prefs: CommPrefs;
   phone: string | null;
   sms: string | null;
+  smsEnabled: boolean;
   promiseError?: string | null;
   roster: RosterMember[];
   view: string;
@@ -822,6 +828,7 @@ export function DetailPanel({
           prefs={prefs}
           phone={phone}
           sms={sms}
+          smsEnabled={smsEnabled}
           view={view}
           sort={sort}
           q={q}

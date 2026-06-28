@@ -30,6 +30,7 @@ import { readPresence } from "../lib/presence.server";
 import { loadOrgConfig } from "../lib/org-config.server";
 import { DEFAULT_ORG_CONFIG, type OrgConfig } from "../lib/org-config";
 import { resolveCommPrefs, DEFAULT_COMM_PREFS, type CommPrefs } from "../lib/comm-prefs";
+import { resolveChannelSettings } from "../lib/channel-settings";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -244,6 +245,7 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
   let selectedPromiseId: string | null = null;
   let roster: OrgMember[] = [];
   let collisions: Record<string, Collision> = {};
+  let smsEnabled = true;
   let dashboardData: DashboardData = {
     items: [],
     metrics: {
@@ -412,6 +414,11 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
     } catch {
       orgConfig = DEFAULT_ORG_CONFIG;
     }
+
+    const { data: mcfg } = await supabase.from("messaging_config")
+      .select("sms_enabled").eq("org_id", org.org_id).maybeSingle();
+    smsEnabled = resolveChannelSettings(mcfg as { sms_enabled?: boolean | null } | null).smsEnabled;
+
     dashboardData = buildCaseData(
       cases, invoicesInput, customersInput, lastContactsInput, promisesInput,
       { view, sort, q, caseId, invoice, tab }, today, ownerLabels, user.id, orgConfig,
@@ -501,6 +508,7 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
       selectedPrefs,
       selectedPromiseId,
       sms,
+      smsEnabled,
       promiseError,
       saved,
       prefsOpen,
@@ -545,6 +553,7 @@ export default function Dashboard() {
     selectedPrefs,
     selectedPromiseId,
     sms,
+    smsEnabled,
     saved,
     prefsOpen,
     bulkAssign,
@@ -627,6 +636,7 @@ export default function Dashboard() {
                   selectedPromiseId={selectedPromiseId}
                   roster={roster}
                   sms={sms}
+                  smsEnabled={smsEnabled}
                   promiseError={promiseError}
                   view={view}
                   sort={sort}
