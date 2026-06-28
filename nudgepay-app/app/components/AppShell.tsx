@@ -10,7 +10,7 @@ interface AppShellProps {
   /** Reserved for future owner-gated header actions (Task 6+). */
   isOwner: boolean;
   /** Which primary section is active (drives the nav rail + topbar title). */
-  activeNav?: "collections" | "accounts" | "promises" | "messages";
+  activeNav?: "collections" | "accounts" | "promises" | "messages" | "reports";
   /** Optional controls rendered in the topbar right-controls group. */
   headerActions?: React.ReactNode;
   /** Optional sync-issues indicator rendered next to the sync chip. */
@@ -65,7 +65,7 @@ export function AppShell({
   const [navOpen, setNavOpen] = useState(false);
 
   const SECTION_TITLES: Record<string, string> = {
-    collections: "Collections", accounts: "Accounts", promises: "Promises", messages: "Messages",
+    collections: "Collections", accounts: "Accounts", promises: "Promises", messages: "Messages", reports: "Reports",
   };
   const sectionTitle = SECTION_TITLES[activeNav] ?? "Collections";
   const NAV_TARGETS: Record<string, string> = {
@@ -180,8 +180,11 @@ export function AppShell({
           <ul className="flex flex-col items-center gap-1 pt-3" role="list">
             {NAV_ITEMS.map((item) => {
               const isActive = item.name === activeNav;
-              const target = NAV_TARGETS[item.name];
               const isReportsForOwner = item.name === "reports" && isOwner;
+              // Reports is owner-only and absent from NAV_TARGETS; give it a
+              // target for owners so it can show the copper active state, while
+              // non-owners still fall through to the disabled item below.
+              const target = NAV_TARGETS[item.name] ?? (isReportsForOwner ? "/reports" : undefined);
 
               if (isActive && target) {
                 return (
