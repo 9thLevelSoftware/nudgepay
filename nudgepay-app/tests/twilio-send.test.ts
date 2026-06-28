@@ -141,3 +141,23 @@ test("sendInvoiceText still sends for a non-blocking exception (disputed)", asyn
   expect(res.sid).toBe("SM-DISP");
   expect(fetchFn).toHaveBeenCalledOnce();
 });
+
+test("sendInvoiceText refuses when the org has SMS disabled (no Twilio call, no row)", async () => {
+  const { orgId, customerId, invoiceId } = await seed(true, "+12295550166");
+  await svc.from("messaging_config").insert({ org_id: orgId, sms_enabled: false });
+  const fetchFn = vi.fn();
+  await expect(sendInvoiceText(deps(fetchFn), { orgId, invoiceId, userId, body: "x" }))
+    .rejects.toThrow(/disabled/i);
+  expect(fetchFn).not.toHaveBeenCalled();
+  const { data: rows } = await svc.from("text_messages").select("id").eq("customer_id", customerId);
+  expect(rows ?? []).toHaveLength(0);
+});
+
+test("sendInvoiceText sends when sms_enabled is true", async () => {
+  const { orgId, invoiceId } = await seed(true, "+12295550177");
+  await svc.from("messaging_config").insert({ org_id: orgId, sms_enabled: true });
+  const fetchFn = vi.fn(async () => jsonResponse({ sid: "SM-ON", status: "queued" }));
+  const res = await sendInvoiceText(deps(fetchFn), { orgId, invoiceId, userId, body: "ok" });
+  expect(res.sid).toBe("SM-ON");
+  expect(fetchFn).toHaveBeenCalledOnce();
+});

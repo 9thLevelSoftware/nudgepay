@@ -66,6 +66,13 @@ export async function sendInvoiceText(
     .select("id, phone, sms_consent, do_not_text").eq("id", inv.customer_id as string).maybeSingle();
   if (custErr) throw custErr;
   if (!cust?.phone) throw new Error("Customer has no phone number");
+
+  // Org-level SMS switch (Phase 14). Absent row => enabled (default). This single
+  // gate also covers /api/bulk-sms, which sends via this function.
+  const { data: mc } = await deps.service.from("messaging_config")
+    .select("sms_enabled").eq("org_id", args.orgId).maybeSingle();
+  if (mc && mc.sms_enabled === false) throw new Error("SMS disabled for this workspace");
+
   if (!cust.sms_consent) throw new Error("Customer has not consented to SMS");
 
   // Contact-block (a do_not_contact / legal_agency case hold) takes precedence over

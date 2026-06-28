@@ -40,6 +40,13 @@ export async function action({ request, context }: ActionFunctionArgs) {
   if (caseIds.length === 0 || templateBody === "") return redirect(returnTo, { headers });
 
   const service = createSupabaseServiceClient(env);
+
+  const { data: mc } = await service.from("messaging_config")
+    .select("sms_enabled").eq("org_id", org.org_id).maybeSingle();
+  if (mc && mc.sms_enabled === false) {
+    return redirect(withParams(returnTo, { bulkSms: "disabled" }), { headers });
+  }
+
   const statusCallback = twilio.TWILIO_PUBLIC_BASE_URL
     ? `${twilio.TWILIO_PUBLIC_BASE_URL}/webhooks/twilio/status` : null;
   const deps: MessagingDeps = {
