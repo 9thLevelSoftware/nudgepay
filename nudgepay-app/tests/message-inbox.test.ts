@@ -1,10 +1,10 @@
-import { expect, test } from "vitest";
+import { describe, expect, it, test } from "vitest";
 import {
-  buildThreadRows, applyMessageTab, sortThreadRows, computeMessageMetrics,
+  buildThreadRows, applyMessageTab, applyChannelFilter, sortThreadRows, computeMessageMetrics,
   MESSAGE_TABS, MESSAGE_SORTS,
   type ThreadCustomerInput, type ThreadMessageInput,
 } from "../app/lib/message-inbox";
-import { DEFAULT_COMM_PREFS } from "../app/lib/comm-prefs";
+import { DEFAULT_COMM_PREFS, resolveCommPrefs } from "../app/lib/comm-prefs";
 
 const prefs = (over = {}) => ({ ...DEFAULT_COMM_PREFS, ...over });
 
@@ -12,21 +12,21 @@ const prefs = (over = {}) => ({ ...DEFAULT_COMM_PREFS, ...over });
 // c3 latest=outbound delivered, open case → active; c4 no open case → inactive;
 // c5 has NO messages → excluded entirely; c6 no consent → canReply false.
 const CUSTOMERS: ThreadCustomerInput[] = [
-  { customerId: "c1", name: "Acme",    ownerId: "u1",  smsConsent: true,  commPrefs: prefs(),                 phone: "+13105550101", hasOpenCase: true,  openCaseId: "k1", latestInvoiceId: "i1" },
-  { customerId: "c2", name: "Globex",  ownerId: null,  smsConsent: true,  commPrefs: prefs(),                 phone: "+13105550102", hasOpenCase: true,  openCaseId: "k2", latestInvoiceId: "i2" },
-  { customerId: "c3", name: "Initech", ownerId: "u1",  smsConsent: true,  commPrefs: prefs(),                 phone: "+13105550103", hasOpenCase: true,  openCaseId: "k3", latestInvoiceId: "i3" },
-  { customerId: "c4", name: "Umbrella",ownerId: "u1",  smsConsent: true,  commPrefs: prefs(),                 phone: "+13105550104", hasOpenCase: false, openCaseId: null, latestInvoiceId: "i4" },
-  { customerId: "c5", name: "Stark",   ownerId: "u1",  smsConsent: true,  commPrefs: prefs(),                 phone: "+13105550105", hasOpenCase: true,  openCaseId: "k5", latestInvoiceId: "i5" },
-  { customerId: "c6", name: "Wayne",   ownerId: "u1",  smsConsent: false, commPrefs: prefs({ doNotText: true }), phone: "+13105550106", hasOpenCase: true, openCaseId: "k6", latestInvoiceId: null },
+  { customerId: "c1", name: "Acme",    ownerId: "u1",  smsConsent: true,  commPrefs: prefs(),                    email: "acme@example.com",     phone: "+13105550101", hasOpenCase: true,  openCaseId: "k1", latestInvoiceId: "i1" },
+  { customerId: "c2", name: "Globex",  ownerId: null,  smsConsent: true,  commPrefs: prefs(),                    email: "globex@example.com",   phone: "+13105550102", hasOpenCase: true,  openCaseId: "k2", latestInvoiceId: "i2" },
+  { customerId: "c3", name: "Initech", ownerId: "u1",  smsConsent: true,  commPrefs: prefs(),                    email: "initech@example.com",  phone: "+13105550103", hasOpenCase: true,  openCaseId: "k3", latestInvoiceId: "i3" },
+  { customerId: "c4", name: "Umbrella",ownerId: "u1",  smsConsent: true,  commPrefs: prefs(),                    email: "umbrella@example.com", phone: "+13105550104", hasOpenCase: false, openCaseId: null, latestInvoiceId: "i4" },
+  { customerId: "c5", name: "Stark",   ownerId: "u1",  smsConsent: true,  commPrefs: prefs(),                    email: "stark@example.com",    phone: "+13105550105", hasOpenCase: true,  openCaseId: "k5", latestInvoiceId: "i5" },
+  { customerId: "c6", name: "Wayne",   ownerId: "u1",  smsConsent: false, commPrefs: prefs({ doNotText: true }), email: null,                   phone: "+13105550106", hasOpenCase: true,  openCaseId: "k6", latestInvoiceId: null },
 ];
 
 const MESSAGES: ThreadMessageInput[] = [
-  { customerId: "c1", direction: "outbound", body: "Hi",       status: "delivered", errorCode: null, invoiceId: "i1",  createdAt: "2026-06-20T10:00:00Z" },
-  { customerId: "c1", direction: "inbound",  body: "Calling",  status: null,        errorCode: null, invoiceId: "i1",  createdAt: "2026-06-21T10:00:00Z" },
-  { customerId: "c2", direction: "outbound", body: "Past due", status: "failed",    errorCode: "30007", invoiceId: "i2", createdAt: "2026-06-19T10:00:00Z" },
-  { customerId: "c3", direction: "outbound", body: "Reminder", status: "delivered", errorCode: null, invoiceId: null,  createdAt: "2026-06-18T10:00:00Z" },
-  { customerId: "c4", direction: "inbound",  body: "Paid?",    status: null,        errorCode: null, invoiceId: null,  createdAt: "2026-06-17T10:00:00Z" },
-  { customerId: "c6", direction: "inbound",  body: "Stop pls", status: null,        errorCode: null, invoiceId: null,  createdAt: "2026-06-16T10:00:00Z" },
+  { customerId: "c1", channel: "sms", direction: "outbound", body: "Hi",       subject: null, status: "delivered", errorCode: null,     invoiceId: "i1",  createdAt: "2026-06-20T10:00:00Z" },
+  { customerId: "c1", channel: "sms", direction: "inbound",  body: "Calling",  subject: null, status: null,        errorCode: null,     invoiceId: "i1",  createdAt: "2026-06-21T10:00:00Z" },
+  { customerId: "c2", channel: "sms", direction: "outbound", body: "Past due", subject: null, status: "failed",    errorCode: "30007",  invoiceId: "i2",  createdAt: "2026-06-19T10:00:00Z" },
+  { customerId: "c3", channel: "sms", direction: "outbound", body: "Reminder", subject: null, status: "delivered", errorCode: null,     invoiceId: null,  createdAt: "2026-06-18T10:00:00Z" },
+  { customerId: "c4", channel: "sms", direction: "inbound",  body: "Paid?",    subject: null, status: null,        errorCode: null,     invoiceId: null,  createdAt: "2026-06-17T10:00:00Z" },
+  { customerId: "c6", channel: "sms", direction: "inbound",  body: "Stop pls", subject: null, status: null,        errorCode: null,     invoiceId: null,  createdAt: "2026-06-16T10:00:00Z" },
 ];
 const LABELS = new Map([["u1", "diskin"]]);
 
@@ -59,7 +59,7 @@ test("needsReply, needsAttention, active, unansweredInbound derivation", () => {
 
 test("needsAttention also trips on errorCode regardless of status string", () => {
   const msgs: ThreadMessageInput[] = [
-    { customerId: "c1", direction: "outbound", body: "x", status: "sent", errorCode: "30008", invoiceId: "i1", createdAt: "2026-06-22T10:00:00Z" },
+    { customerId: "c1", channel: "sms", direction: "outbound", body: "x", subject: null, status: "sent", errorCode: "30008", invoiceId: "i1", createdAt: "2026-06-22T10:00:00Z" },
   ];
   const r = buildThreadRows([CUSTOMERS[0]], msgs, LABELS)[0];
   expect(r.needsAttention).toBe(true);
@@ -81,7 +81,7 @@ test("canReply truth table + replyDisabledReason precedence", () => {
   // consent ok but no invoice
   const noInv: ThreadCustomerInput = { ...CUSTOMERS[0], customerId: "c9", latestInvoiceId: null };
   const msgs: ThreadMessageInput[] = [
-    { customerId: "c9", direction: "inbound", body: "hi", status: null, errorCode: null, invoiceId: null, createdAt: "2026-06-22T10:00:00Z" },
+    { customerId: "c9", channel: "sms", direction: "inbound", body: "hi", subject: null, status: null, errorCode: null, invoiceId: null, createdAt: "2026-06-22T10:00:00Z" },
   ];
   const r = buildThreadRows([noInv], msgs, LABELS)[0];
   expect(r.canReply).toBe(false);
@@ -89,7 +89,7 @@ test("canReply truth table + replyDisabledReason precedence", () => {
   // consent ok (smsConsent true) but customer opted out via doNotText
   const optedOut: ThreadCustomerInput = { ...CUSTOMERS[0], customerId: "c10", smsConsent: true, commPrefs: prefs({ doNotText: true }) };
   const optedOutMsgs: ThreadMessageInput[] = [
-    { customerId: "c10", direction: "inbound", body: "hi", status: null, errorCode: null, invoiceId: "i1", createdAt: "2026-06-22T10:00:00Z" },
+    { customerId: "c10", channel: "sms", direction: "inbound", body: "hi", subject: null, status: null, errorCode: null, invoiceId: "i1", createdAt: "2026-06-22T10:00:00Z" },
   ];
   const ro = buildThreadRows([optedOut], optedOutMsgs, LABELS)[0];
   expect(ro.canReply).toBe(false);
@@ -97,7 +97,7 @@ test("canReply truth table + replyDisabledReason precedence", () => {
   // consent ok, not opted out, has an invoice — but no phone on file
   const noPhone: ThreadCustomerInput = { ...CUSTOMERS[0], customerId: "c11", phone: null };
   const noPhoneMsgs: ThreadMessageInput[] = [
-    { customerId: "c11", direction: "inbound", body: "hi", status: null, errorCode: null, invoiceId: "i1", createdAt: "2026-06-22T10:00:00Z" },
+    { customerId: "c11", channel: "sms", direction: "inbound", body: "hi", subject: null, status: null, errorCode: null, invoiceId: "i1", createdAt: "2026-06-22T10:00:00Z" },
   ];
   const rp = buildThreadRows([noPhone], noPhoneMsgs, LABELS)[0];
   expect(rp.canReply).toBe(false);
@@ -128,4 +128,83 @@ test("computeMessageMetrics counts", () => {
   expect(m.needsAttention).toBe(1);
   expect(m.active).toBe(4);
   expect(m.unanswered).toBe(3); // threads with the customer waiting on us (== needsReply for per-customer threads)
+});
+
+const labels = new Map<string, string>([["u1", "Owner One"]]);
+
+function cust(over: Partial<ThreadCustomerInput> = {}): ThreadCustomerInput {
+  return {
+    customerId: "c1", name: "Acme", ownerId: "u1",
+    smsConsent: true, commPrefs: resolveCommPrefs({}), phone: "5551234567",
+    email: "a@acme.com", hasOpenCase: true, openCaseId: "case1", latestInvoiceId: "inv1",
+    ...over,
+  };
+}
+function msg(over: Partial<ThreadMessageInput> = {}): ThreadMessageInput {
+  return {
+    customerId: "c1", channel: "sms", direction: "outbound", body: "hi", subject: null,
+    status: "sent", errorCode: null, invoiceId: "inv1", createdAt: "2026-01-01T00:00:00Z",
+    ...over,
+  };
+}
+
+describe("message-inbox channel awareness", () => {
+  it("REGRESSION: an SMS-only customer yields one sms row with the old gate", () => {
+    const rows = buildThreadRows([cust()], [msg({ channel: "sms", direction: "inbound" })], labels);
+    expect(rows).toHaveLength(1);
+    expect(rows[0].channel).toBe("sms");
+    expect(rows[0].canReply).toBe(true);
+    expect(rows[0].needsReply).toBe(true);
+    expect(rows[0].subjectSnippet).toBeNull();
+  });
+
+  it("a customer with both channels yields two rows", () => {
+    const rows = buildThreadRows([cust()], [
+      msg({ channel: "sms" }),
+      msg({ channel: "email", subject: "Invoice 1001", body: "please pay" }),
+    ], labels);
+    expect(rows.map((r) => r.channel).sort()).toEqual(["email", "sms"]);
+    const email = rows.find((r) => r.channel === "email")!;
+    expect(email.subjectSnippet).toBe("Invoice 1001");
+  });
+
+  it("email gate: opted out", () => {
+    const rows = buildThreadRows([cust({ commPrefs: resolveCommPrefs({ do_not_email: true }) })],
+      [msg({ channel: "email", subject: "x" })], labels);
+    expect(rows[0].canReply).toBe(false);
+    expect(rows[0].replyDisabledReason).toMatch(/opted out of email/i);
+  });
+
+  it("email gate: no email on file", () => {
+    const rows = buildThreadRows([cust({ email: null })], [msg({ channel: "email", subject: "x" })], labels);
+    expect(rows[0].canReply).toBe(false);
+    expect(rows[0].replyDisabledReason).toMatch(/no email/i);
+  });
+
+  it("email gate: no invoice to attach", () => {
+    const rows = buildThreadRows([cust({ latestInvoiceId: null })],
+      [msg({ channel: "email", subject: "x", invoiceId: null })], labels);
+    expect(rows[0].canReply).toBe(false);
+    expect(rows[0].replyDisabledReason).toMatch(/invoice/i);
+  });
+
+  it("bounced/complained trip needsAttention", () => {
+    const bounced = buildThreadRows([cust()], [msg({ channel: "email", subject: "x", status: "bounced" })], labels);
+    expect(bounced[0].needsAttention).toBe(true);
+  });
+
+  it("applyChannelFilter narrows by channel", () => {
+    const rows = buildThreadRows([cust()], [msg({ channel: "sms" }), msg({ channel: "email", subject: "x" })], labels);
+    expect(applyChannelFilter(rows, "sms").map((r) => r.channel)).toEqual(["sms"]);
+    expect(applyChannelFilter(rows, "email").map((r) => r.channel)).toEqual(["email"]);
+    expect(applyChannelFilter(rows, "all")).toHaveLength(2);
+  });
+
+  it("metrics count across both channels", () => {
+    const rows = buildThreadRows([cust()], [
+      msg({ channel: "sms", direction: "inbound" }),
+      msg({ channel: "email", subject: "x", direction: "inbound" }),
+    ], labels);
+    expect(computeMessageMetrics(rows).needsReply).toBe(2);
+  });
 });

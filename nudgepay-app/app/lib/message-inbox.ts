@@ -1,10 +1,13 @@
 // app/lib/message-inbox.ts
-// Pure deriver for the Messages tab (cross-customer SMS inbox). No I/O, no
-// node:*, no .server — imported by the route loader, components (type-only),
-// and tests. Mirrors app/lib/promise-ledger.ts in shape. SMS-only but
-// channel-aware: every row carries channel:"sms" so email slots in later.
+// Pure deriver for the Messages tab (cross-customer inbox). No I/O, no node:*,
+// no .server. Channel-aware: every message carries a channel and every row is one
+// (customer, channel) conversation. SMS and email are separate conversations
+// because their reply eligibility differs (TCPA consent + phone vs. opt-out +
+// address).
 
-import { canSendSms, type CommPrefs } from "./comm-prefs";
+import { canSendSms, canSendEmail, type CommPrefs } from "./comm-prefs";
+
+export type Channel = "sms" | "email";
 
 export type MessageTab = "needs-reply" | "needs-attention" | "active" | "inactive" | "all";
 export const MESSAGE_TABS: MessageTab[] = ["needs-reply", "needs-attention", "active", "inactive", "all"];
@@ -12,14 +15,19 @@ export const MESSAGE_TABS: MessageTab[] = ["needs-reply", "needs-attention", "ac
 export type MessageSort = "recent" | "oldest-waiting" | "name";
 export const MESSAGE_SORTS: MessageSort[] = ["recent", "oldest-waiting", "name"];
 
-// Twilio terminal-failure statuses (checked case-insensitively). errorCode
-// presence also trips needsAttention regardless of the status string.
-const FAILED_STATUSES = new Set(["failed", "undelivered"]);
+export type ChannelFilter = "all" | "sms" | "email";
+export const CHANNEL_FILTERS: ChannelFilter[] = ["all", "sms", "email"];
+
+// Terminal-failure statuses (case-insensitive). Twilio: failed/undelivered.
+// Resend: bounced/complained. errorCode presence also trips needsAttention.
+const FAILED_STATUSES = new Set(["failed", "undelivered", "bounced", "complained"]);
 
 export type ThreadMessageInput = {
   customerId: string;
+  channel: Channel;
   direction: "inbound" | "outbound";
   body: string | null;
+  subject: string | null; // null for sms
   status: string | null;
   errorCode: string | null;
   invoiceId: string | null;
@@ -32,14 +40,15 @@ export type ThreadCustomerInput = {
   ownerId: string | null;
   smsConsent: boolean;
   commPrefs: CommPrefs;
-  phone: string | null; // sending requires a phone (parallels the dashboard composer)
+  phone: string | null;
+  email: string | null;
   hasOpenCase: boolean;
   openCaseId: string | null;
-  latestInvoiceId: string | null; // most-recent invoice of ANY status — anchor fallback
+  latestInvoiceId: string | null;
 };
 
 export type ThreadRow = {
-  channel: "sms"; // reserved for future "email"
+  channel: Channel;
   customerId: string;
   customerName: string;
   ownerLabel: string;
@@ -50,6 +59,7 @@ export type ThreadRow = {
     errorCode: string | null;
     createdAt: string;
   } | null;
+  subjectSnippet: string | null; // last email subject; null for sms
   unansweredInbound: number;
   needsReply: boolean;
   needsAttention: boolean;
@@ -66,28 +76,58 @@ function isFailed(status: string | null, errorCode: string | null): boolean {
   return status != null && FAILED_STATUSES.has(status.toLowerCase());
 }
 
+function smsGate(c: ThreadCustomerInput, anchorInvoiceId: string | null): { canReply: boolean; reason: string | null } {
+  const reason = !c.smsConsent
+    ? "Customer has not consented to SMS"
+    : c.commPrefs.doNotText
+      ? "Customer opted out of texts"
+      : !c.phone
+        ? "Customer has no phone number"
+        : anchorInvoiceId == null
+          ? "No invoice on file to attach"
+          : null;
+  return { canReply: canSendSms(c.commPrefs, c.smsConsent) && !!c.phone && anchorInvoiceId != null, reason };
+}
+
+function emailGate(c: ThreadCustomerInput, anchorInvoiceId: string | null): { canReply: boolean; reason: string | null } {
+  const reason = c.commPrefs.doNotEmail
+    ? "Customer opted out of email"
+    : !c.email
+      ? "Customer has no email on file"
+      : anchorInvoiceId == null
+        ? "No invoice on file to attach"
+        : null;
+  return { canReply: canSendEmail(c.commPrefs) && !!c.email && anchorInvoiceId != null, reason };
+}
+
 export function buildThreadRows(
   customers: ThreadCustomerInput[],
   messages: ThreadMessageInput[],
   ownerLabels: Map<string, string>,
 ): ThreadRow[] {
-  // Group messages by customer.
-  const byCustomer = new Map<string, ThreadMessageInput[]>();
+  // Group messages by customer + channel.
+  const byKey = new Map<string, ThreadMessageInput[]>();
   for (const m of messages) {
-    const list = byCustomer.get(m.customerId);
+    const key = `${m.customerId}::${m.channel}`;
+    const list = byKey.get(key);
     if (list) list.push(m);
-    else byCustomer.set(m.customerId, [m]);
+    else byKey.set(key, [m]);
   }
 
+  const custById = new Map(customers.map((c) => [c.customerId, c]));
   const rows: ThreadRow[] = [];
-  for (const c of customers) {
-    const msgs = byCustomer.get(c.customerId);
-    if (!msgs || msgs.length === 0) continue; // inbox lists conversations, not the directory
+
+  for (const [key, msgs] of byKey) {
+    if (msgs.length === 0) continue;
+    const sep = key.lastIndexOf("::");
+    const customerId = key.slice(0, sep);
+    const channel = key.slice(sep + 2) as Channel;
+    const c = custById.get(customerId);
+    if (!c) continue; // message without a loaded customer (shouldn't happen)
 
     const sorted = [...msgs].sort((a, b) => a.createdAt.localeCompare(b.createdAt));
     const last = sorted[sorted.length - 1];
 
-    // unansweredInbound = inbound messages newer than the last outbound (all inbound if none).
     let lastOutboundIdx = -1;
     for (let i = sorted.length - 1; i >= 0; i--) {
       if (sorted[i].direction === "outbound") { lastOutboundIdx = i; break; }
@@ -97,7 +137,6 @@ export function buildThreadRows(
       if (sorted[i].direction === "inbound") unansweredInbound++;
     }
 
-    // anchor invoice: latest message (scan desc) with a non-null invoiceId, else customer's latest.
     let anchorInvoiceId: string | null = null;
     for (let i = sorted.length - 1; i >= 0; i--) {
       if (sorted[i].invoiceId) { anchorInvoiceId = sorted[i].invoiceId; break; }
@@ -107,22 +146,19 @@ export function buildThreadRows(
     const needsReply = last.direction === "inbound";
     const needsAttention = last.direction === "outbound" && isFailed(last.status, last.errorCode);
 
-    const consentOk = canSendSms(c.commPrefs, c.smsConsent);
-    const replyDisabledReason = !c.smsConsent
-      ? "Customer has not consented to SMS"
-      : c.commPrefs.doNotText
-        ? "Customer opted out of texts"
-        : !c.phone
-          ? "Customer has no phone number"
-          : anchorInvoiceId == null
-            ? "No invoice on file to attach"
-            : null;
-    const canReply = consentOk && !!c.phone && anchorInvoiceId != null;
+    const gate = channel === "sms" ? smsGate(c, anchorInvoiceId) : emailGate(c, anchorInvoiceId);
+
+    let subjectSnippet: string | null = null;
+    if (channel === "email") {
+      for (let i = sorted.length - 1; i >= 0; i--) {
+        if (sorted[i].subject) { subjectSnippet = sorted[i].subject; break; }
+      }
+    }
 
     const ownerLabel = c.ownerId ? (ownerLabels.get(c.ownerId) ?? "Unknown") : "Unassigned";
 
     rows.push({
-      channel: "sms",
+      channel,
       customerId: c.customerId,
       customerName: c.name,
       ownerLabel,
@@ -133,18 +169,24 @@ export function buildThreadRows(
         errorCode: last.errorCode,
         createdAt: last.createdAt,
       },
+      subjectSnippet,
       unansweredInbound,
       needsReply,
       needsAttention,
       active: c.hasOpenCase,
-      canReply,
-      replyDisabledReason,
+      canReply: gate.canReply,
+      replyDisabledReason: gate.reason,
       openCaseId: c.openCaseId,
       anchorInvoiceId,
       searchText: `${c.name} ${ownerLabel}`.toLowerCase(),
     });
   }
   return rows;
+}
+
+export function applyChannelFilter(rows: ThreadRow[], channel: ChannelFilter): ThreadRow[] {
+  if (channel === "all") return rows;
+  return rows.filter((r) => r.channel === channel);
 }
 
 export function applyMessageTab(rows: ThreadRow[], tab: MessageTab): ThreadRow[] {
@@ -165,14 +207,12 @@ export function sortThreadRows(rows: ThreadRow[], sort: MessageSort): ThreadRow[
     return copy.sort((a, b) => a.customerName.localeCompare(b.customerName));
   }
   if (sort === "oldest-waiting") {
-    // needs-reply rows first (oldest last-message first), everything else after by recency.
     return copy.sort((a, b) => {
       if (a.needsReply !== b.needsReply) return a.needsReply ? -1 : 1;
-      if (a.needsReply) return lastAt(a).localeCompare(lastAt(b));      // oldest first
-      return lastAt(b).localeCompare(lastAt(a));                        // recent first
+      if (a.needsReply) return lastAt(a).localeCompare(lastAt(b));
+      return lastAt(b).localeCompare(lastAt(a));
     });
   }
-  // "recent": newest last-message first; ties by customer name.
   return copy.sort((a, b) =>
     lastAt(a) === lastAt(b) ? a.customerName.localeCompare(b.customerName) : lastAt(b).localeCompare(lastAt(a)),
   );
