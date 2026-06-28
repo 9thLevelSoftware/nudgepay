@@ -290,11 +290,15 @@ export default function Messages() {
           <MessageThreadPanel
             thread={d.selected}
             messages={d.selectedMessages}
+            emailMessages={d.selectedEmailMessages}
             consent={d.selectedConsent}
             phone={d.selectedPhone}
             vars={d.selectedVars}
             sms={d.sms}
             smsEnabled={d.smsEnabled}
+            emailEnabled={d.emailEnabled}
+            selectedEmail={d.selectedEmail}
+            selectedDoNotEmail={d.selectedDoNotEmail}
             tab={d.tab}
             sort={d.sort}
             q={d.q}
