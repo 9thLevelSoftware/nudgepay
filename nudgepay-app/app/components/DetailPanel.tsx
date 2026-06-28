@@ -8,7 +8,7 @@ import { SMS_TEMPLATES, applyTemplate, type TemplateVars } from "~/lib/sms-templ
 import { formatDate } from "~/lib/dates";
 import { STATUS_LABEL, EXCEPTION_REASON_LABEL, formatUSD } from "~/lib/format";
 import { isContactBlocked, isTerminal, exceptionLabel } from "~/lib/exceptions";
-import type { MessageEntry, RosterMember } from "~/routes/dashboard";
+import type { MessageEntry, EmailMessageEntry, RosterMember } from "~/routes/dashboard";
 import type { TimelineEntry } from "~/lib/timeline";
 import { canSendSms, type CommPrefs } from "~/lib/comm-prefs";
 import { resolveCallAction } from "~/lib/channel-actions";
@@ -305,6 +305,10 @@ export function DetailPanel({
   phone,
   sms,
   smsEnabled,
+  emailEnabled,
+  emailMessages,
+  customerEmail,
+  doNotEmail,
   promiseError,
   roster,
   view,
@@ -323,6 +327,10 @@ export function DetailPanel({
   phone: string | null;
   sms: string | null;
   smsEnabled: boolean;
+  emailEnabled?: boolean;
+  emailMessages?: EmailMessageEntry[];
+  customerEmail?: string | null;
+  doNotEmail?: boolean;
   promiseError?: string | null;
   roster: RosterMember[];
   view: string;

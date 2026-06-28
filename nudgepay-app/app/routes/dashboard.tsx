@@ -31,6 +31,7 @@ import { loadOrgConfig } from "../lib/org-config.server";
 import { DEFAULT_ORG_CONFIG, type OrgConfig } from "../lib/org-config";
 import { resolveCommPrefs, DEFAULT_COMM_PREFS, type CommPrefs } from "../lib/comm-prefs";
 import { resolveChannelSettings } from "../lib/channel-settings";
+import { resolveEmailSettings } from "../lib/email-settings";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -147,6 +148,16 @@ export type MessageEntry = {
   createdAt: string;
 };
 
+export type EmailMessageEntry = {
+  id: string;
+  direction: string;
+  subject: string | null;
+  body: string | null;
+  status: string | null;
+  errorCode: string | null;
+  createdAt: string;
+};
+
 export type RosterMember = { userId: string; email: string; label: string };
 
 export async function loader({ request, context }: LoaderFunctionArgs) {
@@ -246,6 +257,10 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
   let roster: OrgMember[] = [];
   let collisions: Record<string, Collision> = {};
   let smsEnabled = true;
+  let emailEnabled = false;
+  let selectedEmailMessages: EmailMessageEntry[] = [];
+  let selectedCustomerEmail: string | null = null;
+  let selectedDoNotEmail = false;
   let dashboardData: DashboardData = {
     items: [],
     metrics: {
@@ -419,6 +434,10 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
       .select("sms_enabled").eq("org_id", org.org_id).maybeSingle();
     smsEnabled = resolveChannelSettings(mcfg as { sms_enabled?: boolean | null } | null).smsEnabled;
 
+    const { data: ecfg } = await supabase.from("email_config")
+      .select("email_enabled").eq("org_id", org.org_id).maybeSingle();
+    emailEnabled = resolveEmailSettings(ecfg as any).emailEnabled;
+
     dashboardData = buildCaseData(
       cases, invoicesInput, customersInput, lastContactsInput, promisesInput,
       { view, sort, q, caseId, invoice, tab }, today, ownerLabels, user.id, orgConfig,
@@ -469,18 +488,37 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
         }));
       selectedTimeline = buildTimeline(logInputs, smsInputs);
 
-      // Consent + phone from the customer.
+      // Consent + phone + email prefs from the customer.
       const { data: custRow } = await supabase
-        .from("customers").select("phone, sms_consent, preferred_channel, do_not_call, do_not_text").eq("id", customerId).maybeSingle();
+        .from("customers").select("phone, email, sms_consent, preferred_channel, do_not_call, do_not_text, do_not_email").eq("id", customerId).maybeSingle();
       selectedConsent = (custRow as any)?.sms_consent ?? false;
       selectedPhone = (custRow as any)?.phone ?? null;
       selectedPrefs = resolveCommPrefs(custRow as any);
+      selectedCustomerEmail = (custRow as any)?.email ?? null;
+      selectedDoNotEmail = Boolean((custRow as any)?.do_not_email);
       selectedRepInvoiceId = repInvoiceId;
 
       // Active pending promise id for the cancel form
       const { data: ap } = await supabase
         .from("promises").select("id").eq("org_id", org.org_id).eq("case_id", sel.caseId).eq("status", "pending").maybeSingle();
       selectedPromiseId = ap?.id ?? null;
+
+      // Email thread: per-customer conversation (mirrors SMS thread above).
+      const { data: emailMsgRows } = await supabase
+        .from("email_messages")
+        .select("id, direction, subject, body, status, error_code, created_at")
+        .eq("org_id", org.org_id)
+        .eq("customer_id", customerId)
+        .order("created_at", { ascending: true });
+      selectedEmailMessages = ((emailMsgRows as any[]) ?? []).map((r) => ({
+        id: r.id as string,
+        direction: r.direction as string,
+        subject: (r.subject as string | null) ?? null,
+        body: (r.body as string | null) ?? null,
+        status: (r.status as string | null) ?? null,
+        errorCode: (r.error_code as string | null) ?? null,
+        createdAt: r.created_at as string,
+      }));
     }
   }
 
@@ -509,6 +547,10 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
       selectedPromiseId,
       sms,
       smsEnabled,
+      emailEnabled,
+      emailMessages: selectedEmailMessages,
+      customerEmail: selectedCustomerEmail,
+      doNotEmail: selectedDoNotEmail,
       promiseError,
       saved,
       prefsOpen,
@@ -554,6 +596,10 @@ export default function Dashboard() {
     selectedPromiseId,
     sms,
     smsEnabled,
+    emailEnabled,
+    emailMessages,
+    customerEmail,
+    doNotEmail,
     saved,
     prefsOpen,
     bulkAssign,
@@ -648,6 +694,10 @@ export default function Dashboard() {
                   roster={roster}
                   sms={sms}
                   smsEnabled={smsEnabled}
+                  emailEnabled={emailEnabled}
+                  emailMessages={emailMessages}
+                  customerEmail={customerEmail}
+                  doNotEmail={doNotEmail}
                   promiseError={promiseError}
                   view={view}
                   sort={sort}
