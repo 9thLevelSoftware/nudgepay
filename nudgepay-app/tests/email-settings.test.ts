@@ -9,15 +9,19 @@ function fd(entries: Record<string, string>): FormData {
 
 describe("email settings", () => {
   it("defaults: absent row => disabled, empty strings", () => {
-    expect(resolveEmailSettings(null)).toEqual({ emailEnabled: false, fromAddress: "", fromName: "" });
+    expect(resolveEmailSettings(null)).toEqual({ emailEnabled: false, fromAddress: "", fromName: "", postalAddress: "" });
   });
   it("resolves a row", () => {
-    expect(resolveEmailSettings({ email_enabled: true, from_address: "a@x.com", from_name: "A" }))
-      .toEqual({ emailEnabled: true, fromAddress: "a@x.com", fromName: "A" });
+    expect(resolveEmailSettings({ email_enabled: true, from_address: "a@x.com", from_name: "A", postal_address: "1 Main St" }))
+      .toEqual({ emailEnabled: true, fromAddress: "a@x.com", fromName: "A", postalAddress: "1 Main St" });
   });
   it("accepts a valid from address", () => {
-    const r = parseEmailSettingsUpdate(fd({ email_enabled: "true", from_address: "billing@x.com", from_name: "Chancey" }));
-    expect(r).toEqual({ ok: true, value: { email_enabled: true, from_address: "billing@x.com", from_name: "Chancey" } });
+    const r = parseEmailSettingsUpdate(fd({ email_enabled: "true", from_address: "billing@x.com", from_name: "Chancey", postal_address: "1 Main St" }));
+    expect(r).toEqual({ ok: true, value: { email_enabled: true, from_address: "billing@x.com", from_name: "Chancey", postal_address: "1 Main St" } });
+  });
+  it("postal_address is optional and trimmed", () => {
+    const r = parseEmailSettingsUpdate(fd({ email_enabled: "true", from_address: "billing@x.com", from_name: "", postal_address: "  1 Main St  " }));
+    expect(r.ok && r.value.postal_address).toBe("1 Main St");
   });
   it("rejects a malformed from address", () => {
     const r = parseEmailSettingsUpdate(fd({ email_enabled: "true", from_address: "not-an-email", from_name: "" }));

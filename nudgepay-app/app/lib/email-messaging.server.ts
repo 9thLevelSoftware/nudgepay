@@ -33,7 +33,7 @@ export async function sendInvoiceEmail(
   // Org-level email switch. Absent row => DISABLED (email defaults off). Fail loud
   // on DB error so a silent null cannot bypass the gate (Phase 14 PR #21 lesson).
   const { data: ec, error: ecErr } = await deps.service.from("email_config")
-    .select("email_enabled, from_address, from_name").eq("org_id", args.orgId).maybeSingle();
+    .select("email_enabled, from_address, from_name, postal_address").eq("org_id", args.orgId).maybeSingle();
   if (ecErr) throw ecErr;
   if (!ec || ec.email_enabled !== true) throw new Error("Email disabled for this workspace");
   if (!ec.from_address) throw new Error("No from address configured");
@@ -47,7 +47,12 @@ export async function sendInvoiceEmail(
 
   const token = await signUnsubscribeToken(deps.unsubscribeSecret, args.orgId, cust.id as string);
   const unsubUrl = `${deps.unsubscribeBaseUrl}/unsubscribe?token=${token}`;
-  const bodyWithFooter = `${args.body}\n\n—\nTo stop receiving these emails, unsubscribe: ${unsubUrl}`;
+  // CAN-SPAM footer: physical postal address (when configured) + unsubscribe link.
+  const postal = ((ec.postal_address as string | null) ?? "").trim();
+  const footerLines = ["—"];
+  if (postal) footerLines.push(postal);
+  footerLines.push(`To stop receiving these emails, unsubscribe: ${unsubUrl}`);
+  const bodyWithFooter = `${args.body}\n\n${footerLines.join("\n")}`;
   const from = formatSender(ec.from_address as string, (ec.from_name as string | null) ?? "");
 
   const result = await sendEmail(deps.fetchFn, deps.email, {
@@ -112,6 +117,20 @@ export async function recordInboundEmail(
   const toNorm = normalizeEmail(args.to);
   if (!toNorm) return { matched: false };
 
+  // Idempotency: Resend retries an event it does not see 2xx'd, and a signed
+  // payload can be replayed within the ±5min window. Skip if we already recorded
+  // this provider event (the unique index on provider_message_id is the backstop).
+  if (args.providerMessageId) {
+    const { data: dup, error: dupErr } = await service
+      .from("email_messages")
+      .select("id")
+      .eq("provider_message_id", args.providerMessageId)
+      .limit(1)
+      .maybeSingle();
+    if (dupErr) throw dupErr;
+    if (dup) return { matched: true };
+  }
+
   // Resolve the org that owns the recipient (args.to) address.  This is the
   // org's configured outbound from_address and identifies the tenant uniquely.
   // ilike performs a case-insensitive exact match (no wildcards) so mixed-case
@@ -166,7 +185,12 @@ export async function recordInboundEmail(
     subject: args.subject,
     body: args.body,
   });
-  if (insErr) throw insErr;
+  if (insErr) {
+    // Unique violation => a concurrent retry already recorded this event between
+    // our dedup check and insert. Idempotent success, not a 500 retry-loop.
+    if ((insErr as { code?: string }).code === "23505") return { matched: true };
+    throw insErr;
+  }
 
   return { matched: true };
 }

@@ -40,7 +40,7 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
   const smsEnabled = resolveChannelSettings(msg as { sms_enabled?: boolean | null } | null).smsEnabled;
 
   const { data: emailConfigRow } = await supabase.from("email_config")
-    .select("email_enabled, from_address, from_name").eq("org_id", org.org_id).maybeSingle();
+    .select("email_enabled, from_address, from_name, postal_address").eq("org_id", org.org_id).maybeSingle();
   const emailSettings = resolveEmailSettings(emailConfigRow as any);
 
   const config = await loadOrgConfig(supabase, org.org_id);
@@ -220,6 +220,18 @@ export default function Settings() {
                     placeholder="Your business name"
                     className="h-8 rounded-md border border-border bg-panel px-2 text-sm text-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-copper"
                   />
+                </div>
+                <div className="flex flex-col gap-1">
+                  <label htmlFor="postal-address" className="text-xs font-medium text-muted">Business mailing address</label>
+                  <textarea
+                    id="postal-address"
+                    name="postal_address"
+                    defaultValue={d.emailSettings.postalAddress}
+                    placeholder="123 Main St, Suite 100, City, ST 00000"
+                    rows={2}
+                    className="rounded-md border border-border bg-panel px-2 py-1 text-sm text-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-copper"
+                  />
+                  <p className="text-xs text-muted">Required by CAN-SPAM — appended to every email's footer.</p>
                 </div>
                 <div className="flex items-center gap-3">
                   <button type="submit" className="rounded-md bg-copper px-3 py-1.5 text-xs font-semibold text-ink hover:bg-copper/90">Save</button>

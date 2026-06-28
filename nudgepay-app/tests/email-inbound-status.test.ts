@@ -196,6 +196,31 @@ describe("email inbound + status", () => {
     expect(rows![0].customer_id).toBe(custA!.id as string);
   });
 
+  it("idempotent: a replayed inbound event does not create a duplicate row", async () => {
+    const { orgFromAddress } = await seedWithOutbound(
+      "cust-idem@x.com",
+      "re_out_idem",
+      `billing-idem-${Math.random()}@chancey.test`,
+    );
+    const pid = `in_idem_${Math.random()}`;
+    const args = {
+      from: "Cust <cust-idem@x.com>",
+      to: orgFromAddress,
+      subject: "Re",
+      body: "ok",
+      providerMessageId: pid,
+    };
+    const first = await recordInboundEmail(svc, args);
+    const second = await recordInboundEmail(svc, args); // replay/retry
+    expect(first.matched).toBe(true);
+    expect(second.matched).toBe(true);
+    const { data: rows } = await svc
+      .from("email_messages")
+      .select("id")
+      .eq("provider_message_id", pid);
+    expect(rows).toHaveLength(1); // exactly one, not two
+  });
+
   it("cross-tenant: unknown recipient address returns matched:false (not a DB leak)", async () => {
     // An inbound email whose To: address is not registered in any org's
     // email_config must be silently dropped, never attributed to a random org.
