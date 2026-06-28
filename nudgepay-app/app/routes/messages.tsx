@@ -5,6 +5,7 @@ import { getConnectionStatus } from "../lib/qbo-connection.server";
 import { createSupabaseServiceClient } from "../lib/supabase.server";
 import { listOrgMembers } from "../lib/orgs.server";
 import { resolveCommPrefs } from "../lib/comm-prefs";
+import { resolveChannelSettings } from "../lib/channel-settings";
 import {
   buildThreadRows, applyMessageTab, sortThreadRows, computeMessageMetrics,
   MESSAGE_TABS, MESSAGE_SORTS,
@@ -179,12 +180,16 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
     };
   }
 
+  const { data: mcfg } = await supabase.from("messaging_config")
+    .select("sms_enabled").eq("org_id", org.org_id).maybeSingle();
+  const smsEnabled = resolveChannelSettings(mcfg as { sms_enabled?: boolean | null } | null).smsEnabled;
+
   return data(
     {
       orgName: orgRow?.name ?? "(unknown)",
       initials, syncLabel, connected, isOwner,
       rows, metrics, counts, tab, sort, q,
-      selected, selectedMessages, selectedConsent, selectedPhone, selectedVars, sms,
+      selected, selectedMessages, selectedConsent, selectedPhone, selectedVars, sms, smsEnabled,
     },
     { headers },
   );
@@ -219,6 +224,7 @@ export default function Messages() {
             phone={d.selectedPhone}
             vars={d.selectedVars}
             sms={d.sms}
+            smsEnabled={d.smsEnabled}
             tab={d.tab}
             sort={d.sort}
             q={d.q}

@@ -128,6 +128,7 @@ interface WorkQueueProps {
   roster: { userId: string; label: string }[];
   returnTo: string;
   collisions: Record<string, Collision>;
+  smsEnabled: boolean;
 }
 
 // ---------------------------------------------------------------------------
@@ -344,6 +345,7 @@ export function WorkQueue({
   roster,
   returnTo,
   collisions,
+  smsEnabled,
 }: WorkQueueProps) {
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [smsOpen, setSmsOpen] = useState(false);
@@ -612,6 +614,7 @@ export function WorkQueue({
         onClose={() => setSmsOpen(false)}
         cases={selectedCases}
         returnTo={returnTo}
+        smsEnabled={smsEnabled}
       />
     </section>
   );
