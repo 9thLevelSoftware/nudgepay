@@ -175,13 +175,13 @@ export function sortThreadRows(rows: ThreadRow[], sort: MessageSort): ThreadRow[
   );
 }
 
-export type MessageMetrics = { needsReply: number; needsAttention: number; active: number; unanswered: number };
+export type MessageMetrics = { needsReply: number; needsAttention: number; active: number; total: number };
 
 export function computeMessageMetrics(rows: ThreadRow[]): MessageMetrics {
   return {
     needsReply: rows.filter((r) => r.needsReply).length,
     needsAttention: rows.filter((r) => r.needsAttention).length,
     active: rows.filter((r) => r.active).length,
-    unanswered: rows.filter((r) => r.unansweredInbound > 0).length,
+    total: rows.length,
   };
 }

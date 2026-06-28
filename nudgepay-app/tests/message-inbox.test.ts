@@ -119,5 +119,5 @@ test("computeMessageMetrics counts", () => {
   expect(m.needsReply).toBe(3);
   expect(m.needsAttention).toBe(1);
   expect(m.active).toBe(4);
-  expect(m.unanswered).toBe(3); // rows with unansweredInbound > 0 (c1, c4, c6)
+  expect(m.total).toBe(5);
 });

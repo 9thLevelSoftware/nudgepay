@@ -48,7 +48,7 @@ const NAV_ITEMS: NavItem[] = [
  * top bar. A backdrop overlay closes the drawer on mobile.
  *
  * Accessibility: copper focus rings on all interactive elements,
- * aria-disabled on future-nav links, aria-label on icon-only controls,
+ * aria-disabled on restricted nav items (Reports for non-owners), aria-label on icon-only controls,
  * aria-expanded on the menu toggle.
  */
 export function AppShell({

@@ -148,7 +148,7 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
   const rows = sortThreadRows(applyMessageTab(searched, tab), sort);
 
   // --- Selected thread ---
-  const selected = customerId ? (searched.find((r) => r.customerId === customerId) ?? null) : null;
+  const selected = customerId ? (allRows.find((r) => r.customerId === customerId) ?? null) : null;
   let selectedMessages: MessageEntry[] = [];
   let selectedConsent = false;
   let selectedPhone: string | null = null;
@@ -171,7 +171,7 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
     const anchor = selected.anchorInvoiceId ? invoiceById.get(selected.anchorInvoiceId) : null;
     selectedVars = {
       customer: selected.customerName,
-      invoice: anchor?.docNumber ?? selected.customerName,
+      invoice: anchor?.docNumber ?? "",
       balance: formatUSD(anchor?.balance ?? 0),
       dueDate: formatDate(anchor?.dueDate ?? null),
     };
