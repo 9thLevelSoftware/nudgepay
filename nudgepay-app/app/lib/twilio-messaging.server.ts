@@ -142,9 +142,12 @@ export async function recordInboundMessage(
   }
 
   // Thread to the customer's most recent outbound invoice, if any.
-  const { data: lastOut } = await service.from("text_messages")
+  const { data: lastOut, error: lastOutErr } = await service.from("text_messages")
     .select("invoice_id").eq("customer_id", match.id as string).eq("direction", "outbound")
     .not("invoice_id", "is", null).order("created_at", { ascending: false }).limit(1).maybeSingle();
+  // Fail loud: a swallowed read error would silently thread the inbound row with a
+  // null invoice_id instead of surfacing the failure (matches the other reads here).
+  if (lastOutErr) throw lastOutErr;
 
   const caseId = await activeCaseId(service, match.org_id as string, match.id as string);
 
