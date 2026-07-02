@@ -1,5 +1,5 @@
 import { useRef, useState } from "react";
-import { Form, Link, useNavigate } from "react-router";
+import { Link, useFetcher, useNavigate } from "react-router";
 import type { CaseItem } from "../lib/cases";
 import type { Collision } from "../lib/collision";
 import { CONTACT_METHODS, CONTACT_OUTCOMES } from "../lib/contact-log";
@@ -7,6 +7,7 @@ import { PRIMARY_EXCEPTION_STATES, requiresReviewDate, isContactBlocked, type Ex
 import { EXCEPTION_REASON_LABEL, formatUSD } from "../lib/format";
 import { OUTCOME_LABELS } from "../lib/timeline";
 import { useDialog } from "../lib/use-dialog";
+import type { action } from "../routes/api.contact-logs";
 
 const METHOD_LABEL: Record<string, string> = {
   call: "Call", text: "Text", note: "Note",
@@ -50,6 +51,9 @@ export function LogContactDrawer({
     onClose: () => navigate(returnTo),
     initialFocusRef: firstFieldRef as React.RefObject<HTMLElement | null>,
   });
+  const fetcher = useFetcher<typeof action>();
+  const saving = fetcher.state !== "idle";
+  const activeError = (fetcher.data && !fetcher.data.ok) ? fetcher.data.error : logError;
 
   const showPromise = nextStep === "promise";
 
@@ -89,13 +93,13 @@ export function LogContactDrawer({
           ) : null;
         })()}
 
-        {logError && ERROR_MESSAGE[logError] && (
+        {activeError && ERROR_MESSAGE[activeError] && (
           <p role="alert" className="mx-5 mt-3 rounded-md bg-hot/10 border border-hot/30 px-3 py-2 text-sm text-hot font-sans">
-            {ERROR_MESSAGE[logError]}
+            {ERROR_MESSAGE[activeError]}
           </p>
         )}
 
-        <Form
+        <fetcher.Form
           method="post"
           action="/api/contact-logs"
           className="flex flex-col gap-4 px-5 py-4"
@@ -257,12 +261,13 @@ export function LogContactDrawer({
             </Link>
             <button
               type="submit"
-              className="rounded-md bg-copper px-4 py-2 text-sm font-sans font-semibold text-surface hover:bg-copper/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-copper focus-visible:ring-offset-2"
+              disabled={saving}
+              className="rounded-md bg-copper px-4 py-2 text-sm font-sans font-semibold text-surface hover:bg-copper/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-copper focus-visible:ring-offset-2 disabled:opacity-60 disabled:cursor-not-allowed"
             >
-              Save contact
+              {saving ? "Saving…" : "Save contact"}
             </button>
           </div>
-        </Form>
+        </fetcher.Form>
       </div>
     </div>
   );
