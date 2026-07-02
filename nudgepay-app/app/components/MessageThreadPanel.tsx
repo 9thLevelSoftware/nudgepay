@@ -72,7 +72,7 @@ export function MessageThreadPanel({
   const smsSendDisabled = !smsEnabled || !thread.canReply;
   // Workspace-off and opt-outs are compliance-sensitive (red); routine soft blocks are amber.
   const smsGateMessage = !smsEnabled ? "Text messaging is turned off for this workspace." : thread.replyDisabledReason ?? "Sending is not available.";
-  const smsGateHard = !smsEnabled || (thread.replyDisabledReason ?? "").includes("opted out");
+  const smsGateHard = !smsEnabled || (thread.replyDisabledReason ?? "").includes("opted out") || (thread.replyDisabledReason ?? "").includes("do-not-contact");
 
   // F-022: warn before composing into an address that just hard-bounced.
   const lastEmail = emailMessages.length > 0 ? emailMessages[emailMessages.length - 1] : null;
@@ -251,7 +251,7 @@ export function MessageThreadPanel({
               className={`mb-2 rounded-md px-3 py-2 text-xs font-sans font-medium ${
                 smsGateHard
                   ? "bg-hot/10 border border-hot/30 text-hot"
-                  : "bg-amber-400/10 border border-amber-400/30 text-amber-700"
+                  : "bg-advisory/10 border border-advisory/30 text-advisory"
               }`}
               role={smsGateHard ? "alert" : "status"}
             >

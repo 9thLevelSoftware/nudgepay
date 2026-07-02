@@ -12,12 +12,12 @@ const prefs = (over = {}) => ({ ...DEFAULT_COMM_PREFS, ...over });
 // c3 latest=outbound delivered, open case → active; c4 no open case → inactive;
 // c5 has NO messages → excluded entirely; c6 no consent → canReply false.
 const CUSTOMERS: ThreadCustomerInput[] = [
-  { customerId: "c1", name: "Acme",    ownerId: "u1",  smsConsent: true,  commPrefs: prefs(),                    email: "acme@example.com",     phone: "+13105550101", hasOpenCase: true,  openCaseId: "k1", latestInvoiceId: "i1" },
-  { customerId: "c2", name: "Globex",  ownerId: null,  smsConsent: true,  commPrefs: prefs(),                    email: "globex@example.com",   phone: "+13105550102", hasOpenCase: true,  openCaseId: "k2", latestInvoiceId: "i2" },
-  { customerId: "c3", name: "Initech", ownerId: "u1",  smsConsent: true,  commPrefs: prefs(),                    email: "initech@example.com",  phone: "+13105550103", hasOpenCase: true,  openCaseId: "k3", latestInvoiceId: "i3" },
-  { customerId: "c4", name: "Umbrella",ownerId: "u1",  smsConsent: true,  commPrefs: prefs(),                    email: "umbrella@example.com", phone: "+13105550104", hasOpenCase: false, openCaseId: null, latestInvoiceId: "i4" },
-  { customerId: "c5", name: "Stark",   ownerId: "u1",  smsConsent: true,  commPrefs: prefs(),                    email: "stark@example.com",    phone: "+13105550105", hasOpenCase: true,  openCaseId: "k5", latestInvoiceId: "i5" },
-  { customerId: "c6", name: "Wayne",   ownerId: "u1",  smsConsent: false, commPrefs: prefs({ doNotText: true }), email: null,                   phone: "+13105550106", hasOpenCase: true,  openCaseId: "k6", latestInvoiceId: null },
+  { customerId: "c1", name: "Acme",    ownerId: "u1",  smsConsent: true,  commPrefs: prefs(),                    email: "acme@example.com",     phone: "+13105550101", hasOpenCase: true,  openCaseId: "k1", latestInvoiceId: "i1", contactBlocked: false },
+  { customerId: "c2", name: "Globex",  ownerId: null,  smsConsent: true,  commPrefs: prefs(),                    email: "globex@example.com",   phone: "+13105550102", hasOpenCase: true,  openCaseId: "k2", latestInvoiceId: "i2", contactBlocked: false },
+  { customerId: "c3", name: "Initech", ownerId: "u1",  smsConsent: true,  commPrefs: prefs(),                    email: "initech@example.com",  phone: "+13105550103", hasOpenCase: true,  openCaseId: "k3", latestInvoiceId: "i3", contactBlocked: false },
+  { customerId: "c4", name: "Umbrella",ownerId: "u1",  smsConsent: true,  commPrefs: prefs(),                    email: "umbrella@example.com", phone: "+13105550104", hasOpenCase: false, openCaseId: null, latestInvoiceId: "i4", contactBlocked: false },
+  { customerId: "c5", name: "Stark",   ownerId: "u1",  smsConsent: true,  commPrefs: prefs(),                    email: "stark@example.com",    phone: "+13105550105", hasOpenCase: true,  openCaseId: "k5", latestInvoiceId: "i5", contactBlocked: false },
+  { customerId: "c6", name: "Wayne",   ownerId: "u1",  smsConsent: false, commPrefs: prefs({ doNotText: true }), email: null,                   phone: "+13105550106", hasOpenCase: true,  openCaseId: "k6", latestInvoiceId: null, contactBlocked: false },
 ];
 
 const MESSAGES: ThreadMessageInput[] = [
@@ -77,7 +77,7 @@ test("canReply truth table + replyDisabledReason precedence", () => {
   expect(byId.get("c1")!.canReply).toBe(true);
   expect(byId.get("c1")!.replyDisabledReason).toBe(null);
   expect(byId.get("c6")!.canReply).toBe(false);
-  expect(byId.get("c6")!.replyDisabledReason).toBe("Customer has not consented to SMS");
+  expect(byId.get("c6")!.replyDisabledReason).toBe("Customer opted out of texts");
   // consent ok but no invoice
   const noInv: ThreadCustomerInput = { ...CUSTOMERS[0], customerId: "c9", latestInvoiceId: null };
   const msgs: ThreadMessageInput[] = [
@@ -137,6 +137,7 @@ function cust(over: Partial<ThreadCustomerInput> = {}): ThreadCustomerInput {
     customerId: "c1", name: "Acme", ownerId: "u1",
     smsConsent: true, commPrefs: resolveCommPrefs({}), phone: "5551234567",
     email: "a@acme.com", hasOpenCase: true, openCaseId: "case1", latestInvoiceId: "inv1",
+    contactBlocked: false,
     ...over,
   };
 }
@@ -206,5 +207,38 @@ describe("message-inbox channel awareness", () => {
       msg({ channel: "email", subject: "x", direction: "inbound" }),
     ], labels);
     expect(computeMessageMetrics(rows).needsReply).toBe(2);
+  });
+});
+
+describe("message-inbox gate parity (P5 fixes)", () => {
+  it("smsGate: doNotText wins over smsConsent=false", () => {
+    // Both opted out AND no consent — reason should be the opt-out, not the consent
+    const rows = buildThreadRows(
+      [cust({ smsConsent: false, commPrefs: resolveCommPrefs({ do_not_text: true }) })],
+      [msg({ channel: "sms", direction: "inbound" })],
+      labels,
+    );
+    expect(rows[0].canReply).toBe(false);
+    expect(rows[0].replyDisabledReason).toBe("Customer opted out of texts");
+  });
+
+  it("smsGate: contactBlocked gates first with blocked reason", () => {
+    const rows = buildThreadRows(
+      [cust({ contactBlocked: true })],
+      [msg({ channel: "sms", direction: "inbound" })],
+      labels,
+    );
+    expect(rows[0].canReply).toBe(false);
+    expect(rows[0].replyDisabledReason).toMatch(/do-not-contact|legal/i);
+  });
+
+  it("emailGate: contactBlocked gates first with blocked reason", () => {
+    const rows = buildThreadRows(
+      [cust({ contactBlocked: true })],
+      [msg({ channel: "email", subject: "Invoice", direction: "inbound" })],
+      labels,
+    );
+    expect(rows[0].canReply).toBe(false);
+    expect(rows[0].replyDisabledReason).toMatch(/do-not-contact|legal/i);
   });
 });

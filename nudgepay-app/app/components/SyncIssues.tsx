@@ -56,7 +56,7 @@ export function SyncIssues({ issues, returnTo }: { issues: SyncIssue[]; returnTo
       <button
         ref={triggerRef}
         type="button"
-        className="hidden sm:inline-flex items-center gap-1.5 rounded-md border border-amber-400/40 bg-amber-400/10 px-2.5 h-8 text-xs font-sans text-amber-700 hover:border-amber-300 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-copper"
+        className="hidden sm:inline-flex items-center gap-1.5 rounded-md border border-advisory/40 bg-advisory/10 px-2.5 h-8 text-xs font-sans text-advisory hover:border-advisory/60 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-copper"
         aria-haspopup="dialog"
         aria-expanded={open}
         aria-label={`${label} — show details`}

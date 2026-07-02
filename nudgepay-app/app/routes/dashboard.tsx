@@ -275,6 +275,7 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
   const bulkSent = sp.get("sent");
   const bulkFailed = sp.get("failed");
   const bulkSkipped = sp.get("skipped");
+  const denied = sp.get("denied");
 
   let selectedTimeline: TimelineEntry[] = [];
   let selectedMessages: MessageEntry[] = [];
@@ -557,6 +558,7 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
       bulkSent,
       bulkFailed,
       bulkSkipped,
+      denied,
       roster,
       collisions,
       currentUserId: user.id,
@@ -604,6 +606,7 @@ export default function Dashboard() {
     bulkSent,
     bulkFailed,
     bulkSkipped,
+    denied,
     roster,
     collisions,
     items,
@@ -659,6 +662,11 @@ export default function Dashboard() {
       {bulkSms === "error" ? (
         <div className="px-6 py-2 bg-hot/10 border-b border-hot/30 text-sm font-sans font-medium text-hot" role="alert">
           Could not send the bulk text — please try again.
+        </div>
+      ) : null}
+      {denied === "reports" ? (
+        <div className="px-6 py-2 bg-hot/10 border-b border-hot/30 text-sm font-sans font-medium text-hot" role="status">
+          Reports are available to workspace owners only.
         </div>
       ) : null}
 

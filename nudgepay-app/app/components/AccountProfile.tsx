@@ -62,7 +62,7 @@ export function AccountProfile(p: Props) {
         {p.activeCaseId ? (
           <Link
             to={`/dashboard?case=${p.activeCaseId}`}
-            className="mt-3 inline-flex items-center gap-1.5 h-8 px-3 rounded bg-copper text-surface text-xs font-medium"
+            className="mt-3 inline-flex items-center gap-1.5 h-8 px-3 rounded bg-copper text-ink text-xs font-medium"
           >
             Open in Collections <Icon name="external" size={14} />
           </Link>
@@ -153,7 +153,7 @@ export function AccountProfile(p: Props) {
               placeholder="NudgePay-only notes (not synced to QuickBooks)…"
             />
           </label>
-          <button type="submit" disabled={formBusy("/api/account-notes")} className="h-9 px-3 rounded bg-copper text-surface text-sm font-medium disabled:opacity-60 disabled:cursor-not-allowed">{formBusy("/api/account-notes") ? "Saving…" : "Save notes"}</button>
+          <button type="submit" disabled={formBusy("/api/account-notes")} className="h-9 px-3 rounded bg-copper text-ink text-sm font-medium disabled:opacity-60 disabled:cursor-not-allowed">{formBusy("/api/account-notes") ? "Saving…" : "Save notes"}</button>
         </Form>
       </section>
 

@@ -1,11 +1,10 @@
-import { useLoaderData, redirect, data, type LoaderFunctionArgs } from "react-router";
+import { useLoaderData, data, type LoaderFunctionArgs } from "react-router";
 import { useFlashCleanup } from "../lib/use-flash-cleanup";
 import { getEnv } from "../lib/env.server";
-import { requireUser, resolveOrg } from "../lib/session.server";
-import { getConnectionStatus } from "../lib/qbo-connection.server";
-import { createSupabaseServiceClient } from "../lib/supabase.server";
+import { loadWorkspaceChrome } from "../lib/workspace.server";
 import { listOrgMembers } from "../lib/orgs.server";
 import { resolveCommPrefs } from "../lib/comm-prefs";
+import { isContactBlocked } from "../lib/exceptions";
 import { resolveChannelSettings } from "../lib/channel-settings";
 import { resolveEmailSettings } from "../lib/email-settings";
 import {
@@ -41,40 +40,12 @@ function mapSms(r: any): Omit<ThreadMessageInput, "channel" | "subject"> {
 }
 
 export async function loader({ request, context }: LoaderFunctionArgs) {
-  // --- Prelude: mirrors promises.tsx / accounts.tsx exactly ---
   const env = getEnv(context as any);
-  const { supabase, headers, user } = await requireUser(request, env);
-  const org = await resolveOrg(supabase, user.id);
-  if (!org) throw redirect("/onboarding", { headers });
-
-  const { data: orgRow } = await supabase
-    .from("organizations").select("name").eq("id", org.org_id).single();
-
-  const emailParts = (user.email ?? "").split("@")[0].split(/[.\-_]/);
-  const initials =
-    emailParts.slice(0, 2).map((p) => p[0]?.toUpperCase() ?? "").join("") || "?";
-
-  const service = createSupabaseServiceClient(env);
-  const conn = await getConnectionStatus(service, org.org_id);
-  const connected = conn?.status === "connected";
-  if (!connected) throw redirect("/settings", { headers });
-
-  const { data: connMeta } = await service
-    .from("qbo_connections").select("last_sync_at").eq("org_id", org.org_id).maybeSingle();
-  const lastSyncAt = (connMeta?.last_sync_at as string | null) ?? null;
-  let syncLabel: string;
-  if (lastSyncAt) {
-    const diffMin = Math.floor((Date.now() - new Date(lastSyncAt).getTime()) / 60_000);
-    const diffHr = Math.floor(diffMin / 60);
-    const diffDay = Math.floor(diffHr / 24);
-    if (diffMin < 2) syncLabel = "Synced just now";
-    else if (diffMin < 60) syncLabel = `Synced ${diffMin}m ago`;
-    else if (diffHr < 24) syncLabel = `Synced ${diffHr}h ago`;
-    else syncLabel = `Synced ${diffDay}d ago`;
-  } else {
-    syncLabel = "Connected";
-  }
-  const isOwner = org.role === "owner";
+  const {
+    supabase, service, headers, isOwner, org,
+    orgName, initials, connected, syncLabel,
+  } = await loadWorkspaceChrome(request, env);
+  // requireQbo defaults true — gate already handled inside helper
 
   // --- URL params ---
   const url = new URL(request.url);
@@ -130,13 +101,19 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
     custRows = (data as any[]) ?? [];
   }
 
-  // Open cases for those customers → hasOpenCase / openCaseId.
+  // Open cases for those customers → hasOpenCase / openCaseId / contactBlocked.
   const openCaseByCustomer = new Map<string, string>();
+  const blockedByCustomer = new Map<string, boolean>();
   if (customerIds.length > 0) {
     const { data: caseRows } = await supabase
-      .from("collection_cases").select("id, customer_id, closed_at")
+      .from("collection_cases").select("id, customer_id, closed_at, exception_reason")
       .eq("org_id", org.org_id).in("customer_id", customerIds).is("closed_at", null);
-    for (const c of (caseRows as any[]) ?? []) openCaseByCustomer.set(c.customer_id as string, c.id as string);
+    for (const c of (caseRows as any[]) ?? []) {
+      openCaseByCustomer.set(c.customer_id as string, c.id as string);
+      if (isContactBlocked(c.exception_reason as any)) {
+        blockedByCustomer.set(c.customer_id as string, true);
+      }
+    }
   }
 
   // Latest invoice (any status) per customer → anchor fallback + selected template vars.
@@ -171,6 +148,7 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
     hasOpenCase: openCaseByCustomer.has(c.id as string),
     openCaseId: openCaseByCustomer.get(c.id as string) ?? null,
     latestInvoiceId: latestInvoiceByCustomer.get(c.id as string)?.id ?? null,
+    contactBlocked: blockedByCustomer.get(c.id as string) ?? false,
   }));
 
   const roster = await listOrgMembers(service, org.org_id);
@@ -253,7 +231,7 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
 
   return data(
     {
-      orgName: orgRow?.name ?? "(unknown)",
+      orgName,
       initials, syncLabel, connected, isOwner,
       rows, metrics, counts, tab, sort, q,
       channel, channelCounts, emailEnabled,

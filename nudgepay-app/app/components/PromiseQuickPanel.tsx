@@ -74,7 +74,7 @@ export function PromiseQuickPanel({ promise, invoices, note }: Props) {
         {promise.caseOpen ? (
           <Link
             to={`/dashboard?case=${promise.caseId}`}
-            className="inline-flex items-center gap-1.5 h-9 px-3 rounded bg-copper text-surface text-sm font-medium hover:bg-copper/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-copper"
+            className="inline-flex items-center gap-1.5 h-9 px-3 rounded bg-copper text-ink text-sm font-medium hover:bg-copper/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-copper"
           >
             Open in Collections <Icon name="chevronRight" size={16} />
           </Link>

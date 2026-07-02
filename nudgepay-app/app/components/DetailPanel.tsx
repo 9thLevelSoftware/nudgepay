@@ -243,7 +243,7 @@ function MessagesTab({
             className={`mb-2 rounded-md px-3 py-2 text-xs font-sans font-medium ${
               smsGate.severity === "hard"
                 ? "bg-hot/10 border border-hot/30 text-hot"
-                : "bg-amber-400/10 border border-amber-400/30 text-amber-700"
+                : "bg-advisory/10 border border-advisory/30 text-advisory"
             }`}
             role={smsGate.severity === "hard" ? "alert" : "status"}
           >
@@ -288,7 +288,7 @@ function MessagesTab({
             className="w-full resize-none rounded-md border border-border bg-panel px-3 py-2 text-sm font-sans text-text placeholder:text-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-copper disabled:opacity-40 disabled:cursor-not-allowed"
           />
           {confirmSend ? (
-            <p className="text-xs font-sans text-amber-700" role="alert">
+            <p className="text-xs font-sans text-advisory" role="alert">
               {collision?.level === "live"
                 ? `${collision.byUser} is viewing this customer now. Send anyway?`
                 : `${collision?.byUser} contacted this customer recently. Send anyway?`}
@@ -635,8 +635,8 @@ export function DetailPanel({
       aria-label={`Selected account ${selected.customerName}`}
       className="flex flex-col bg-surface border-l border-border h-full overflow-y-auto"
     >
-      {/* Mobile: back to queue */}
-      <div className="md:hidden px-4 pt-3 pb-1">
+      {/* Mobile/tablet: back to queue */}
+      <div className="lg:hidden px-4 pt-3 pb-1">
         <Link
           to={`?${new URLSearchParams({ view, sort, ...(q ? { q } : {}) }).toString()}`}
           className="inline-flex items-center gap-1 text-xs text-muted hover:text-copper focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-copper rounded"
@@ -773,7 +773,7 @@ export function DetailPanel({
           role="status"
           className={
             collision.level === "live"
-              ? "mx-5 mt-3 rounded-md border border-amber-400/40 bg-amber-400/10 px-3 py-2 text-xs font-sans text-amber-700"
+              ? "mx-5 mt-3 rounded-md border border-advisory/40 bg-advisory/10 px-3 py-2 text-xs font-sans text-advisory"
               : "mx-5 mt-3 rounded-md border border-border bg-panel px-3 py-2 text-xs font-sans text-muted"
           }
         >
