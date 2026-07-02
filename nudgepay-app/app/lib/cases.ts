@@ -241,7 +241,7 @@ export function applyCaseView(
   if (view === "never-contacted") return items.filter((i) => i.lastContact === null && !i.suppressed);
   if (view === "follow-ups-due") return items.filter((i) => i.nextActionAt != null && i.nextActionAt <= today && !i.suppressed);
   if (view === "broken-promises") return items.filter((i) => i.brokenPromise && !i.suppressed);
-  if (view === "waiting") return items.filter((i) => i.status === "waiting" || i.status === "on_hold");
+  if (view === "waiting") return items.filter((i) => i.status === "waiting");
   if (view === "on-hold") return items.filter((i) => i.suppressed);
   if (view === "my-work") return items.filter((i) => i.ownerId != null && i.ownerId === currentUserId);
   return items.filter((i) => !i.suppressed);

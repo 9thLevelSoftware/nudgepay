@@ -182,7 +182,7 @@ test("sortCaseItems recommended orders by effective level, then score, then prio
   expect(sortCaseItems(items, "recommended").map((c) => c.customerId)).toEqual(["c2", "c1"]);
 });
 
-test("waiting view selects waiting + on_hold cases; exception fields flow through", () => {
+test("waiting view selects only waiting cases; exception fields flow through", () => {
   const cases: CaseRow[] = [
     { id: "c-w", customerId: "x1", status: "waiting", nextActionType: "waiting", nextActionAt: "2026-07-20", exceptionReason: null, exceptionNote: null },
     { id: "c-h", customerId: "x2", status: "on_hold", nextActionType: "exception", nextActionAt: "2026-07-20", exceptionReason: "disputed", exceptionNote: "line 3" },
@@ -204,7 +204,11 @@ test("waiting view selects waiting + on_hold cases; exception fields flow throug
   expect(hold.exceptionNote).toBe("line 3");
 
   const waiting = applyCaseView(items, "waiting", "2026-07-10", null).map((i) => i.caseId).sort();
-  expect(waiting).toEqual(["c-h", "c-w"]);
+  expect(waiting).toEqual(["c-w"]);
+
+  // The on_hold case appears in the on-hold view instead of the waiting view.
+  const onHold = applyCaseView(items, "on-hold", "2026-07-10", null).map((i) => i.caseId);
+  expect(onHold).toContain("c-h");
 
   // The two deferred cases have a future review date -> excluded from follow-ups-due.
   const due = applyCaseView(items, "follow-ups-due", "2026-07-10", null).map((i) => i.caseId);
@@ -231,7 +235,7 @@ test("buildCaseItems threads smsConsent from the customer (defaults false)", () 
   expect(byId["case-2"].smsConsent).toBe(false);
 });
 
-test("suppressed case with broken promise excluded from broken-promises view and metric but present in waiting view", () => {
+test("suppressed case with broken promise excluded from broken-promises view and metric but present in on-hold view", () => {
   const today = "2026-06-25";
   // A case that was put on_hold (parked exception, future review date) BUT already had
   // a broken promise before it was parked. applyNextStep cancels PENDING promises, not
@@ -264,9 +268,13 @@ test("suppressed case with broken promise excluded from broken-promises view and
   const m = computeCaseMetrics(items, today);
   expect(m.brokenPromises.count).toBe(1);
 
-  // waiting view still includes the suppressed parked case.
+  // waiting view no longer includes the suppressed parked (on_hold) case.
   const waitingView = applyCaseView(items, "waiting", today, null).map((i) => i.caseId);
-  expect(waitingView).toContain("parked-broken");
+  expect(waitingView).not.toContain("parked-broken");
+
+  // The on-hold view includes it instead.
+  const onHoldView = applyCaseView(items, "on-hold", today, null).map((i) => i.caseId);
+  expect(onHoldView).toContain("parked-broken");
 });
 
 test("suppressed parked cases drop out of the default view and active metrics; onHold counts them", () => {
@@ -291,9 +299,13 @@ test("suppressed parked cases drop out of the default view and active metrics; o
   const def = applyCaseView(items, "all-open", today, null).map((i) => i.caseId).sort();
   expect(def).toEqual(["active", "resurfaced"]);
 
-  // Exceptions/On-hold view ("waiting") includes ALL parked, including terminal.
-  const onHoldView = applyCaseView(items, "waiting", today, null).map((i) => i.caseId).sort();
-  expect(onHoldView).toEqual(["parked-future", "parked-terminal", "resurfaced"]);
+  // On-hold view includes suppressed cases.
+  const onHoldView = applyCaseView(items, "on-hold", today, null).map((i) => i.caseId).sort();
+  expect(onHoldView).toEqual(["parked-future", "parked-terminal"]);
+
+  // Waiting view only includes waiting-status cases (none in this test).
+  const waitingView = applyCaseView(items, "waiting", today, null).map((i) => i.caseId);
+  expect(waitingView).toEqual([]);
 
   // Metrics: allOpen excludes the two still-parked; onHold counts them.
   const m = computeCaseMetrics(items, today);
