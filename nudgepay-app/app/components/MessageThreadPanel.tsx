@@ -69,6 +69,7 @@ export function MessageThreadPanel({
   }
 
   const isEmail = thread.channel === "email";
+  const smsSendDisabled = !smsEnabled || !thread.canReply;
 
   // F-022: warn before composing into an address that just hard-bounced.
   const lastEmail = emailMessages.length > 0 ? emailMessages[emailMessages.length - 1] : null;
@@ -233,7 +234,7 @@ export function MessageThreadPanel({
               <button
                 type="submit"
                 disabled={!emailEnabled || !thread.canReply || formBusy("/api/email/send")}
-                className="inline-flex items-center gap-1.5 rounded-md bg-copper px-3 py-1.5 text-xs font-semibold text-surface hover:bg-copper/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-copper disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                className="inline-flex items-center gap-1.5 rounded-md bg-copper px-3 py-1.5 text-xs font-semibold text-ink hover:bg-copper/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-copper disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
               >
                 <Icon name="mail" size={14} aria-hidden /> {formBusy("/api/email/send") ? "Sending…" : "Send email"}
               </button>
@@ -242,11 +243,16 @@ export function MessageThreadPanel({
         </div>
       ) : (
         <div className="border-t border-border px-4 py-3">
+          {smsSendDisabled && (
+            <p className="mb-2 rounded-md bg-amber-400/10 border border-amber-400/30 px-3 py-2 text-xs font-sans font-medium text-amber-700" role="status">
+              {!smsEnabled ? "Text messaging is turned off for this workspace." : thread.replyDisabledReason ?? "Sending is not available."}
+            </p>
+          )}
           <div className="flex flex-wrap gap-1.5 mb-2" role="group" aria-label="Message templates">
             {SMS_TEMPLATES.map((t) => (
               <button
-                key={t.id} type="button" onClick={() => setBody(applyTemplate(t.body, vars))}
-                className="text-xs text-muted border border-border rounded-md px-2 py-1 hover:text-copper hover:border-copper focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-copper transition-colors"
+                key={t.id} type="button" disabled={smsSendDisabled} onClick={() => setBody(applyTemplate(t.body, vars))}
+                className="text-xs text-muted border border-border rounded-md px-2 py-1 hover:text-copper hover:border-copper focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-copper transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
               >
                 {t.label}
               </button>
@@ -258,18 +264,15 @@ export function MessageThreadPanel({
             <textarea
               name="body" rows={3} value={body} onChange={(e) => setBody(e.target.value)}
               placeholder="Type a message…" required
+              disabled={smsSendDisabled}
               aria-label="Message body"
-              className="w-full resize-none rounded-md border border-border bg-panel px-3 py-2 text-sm text-text placeholder:text-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-copper"
+              className="w-full resize-none rounded-md border border-border bg-panel px-3 py-2 text-sm text-text placeholder:text-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-copper disabled:opacity-40 disabled:cursor-not-allowed"
             />
             <div className="flex items-center justify-between gap-2">
-              {!smsEnabled ? (
-                <span className="text-xs text-hot">Text messaging is turned off for this workspace.</span>
-              ) : thread.canReply ? <span /> : (
-                <span className="text-xs text-muted">{thread.replyDisabledReason}</span>
-              )}
+              <span />
               <button
-                type="submit" disabled={!smsEnabled || !thread.canReply || formBusy("/api/text/send")}
-                className="inline-flex items-center gap-1.5 rounded-md bg-copper px-3 py-1.5 text-xs font-semibold text-surface hover:bg-copper/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-copper disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                type="submit" disabled={smsSendDisabled || formBusy("/api/text/send")}
+                className="inline-flex items-center gap-1.5 rounded-md bg-copper px-3 py-1.5 text-xs font-semibold text-ink hover:bg-copper/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-copper disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
               >
                 <Icon name="message" size={14} aria-hidden /> {formBusy("/api/text/send") ? "Sending…" : "Send text"}
               </button>
