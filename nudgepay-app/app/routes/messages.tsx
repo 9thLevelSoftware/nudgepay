@@ -1,4 +1,5 @@
 import { useLoaderData, redirect, data, type LoaderFunctionArgs } from "react-router";
+import { useFlashCleanup } from "../lib/use-flash-cleanup";
 import { getEnv } from "../lib/env.server";
 import { requireUser, resolveOrg } from "../lib/session.server";
 import { getConnectionStatus } from "../lib/qbo-connection.server";
@@ -266,6 +267,7 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
 
 export default function Messages() {
   const d = useLoaderData<typeof loader>();
+  useFlashCleanup();
   return (
     <AppShell
       orgName={d.orgName}
