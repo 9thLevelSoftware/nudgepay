@@ -38,3 +38,14 @@ export async function resolveOrg(
     .maybeSingle();
   return data ? { org_id: data.org_id as string, role: data.role as string } : null;
 }
+
+// Composed helper for routes that require both an authenticated user and an
+// org membership. Deliberately excludes the QBO-connected gate — that must
+// stay a per-route post-batch check so callers can parallelize their own
+// data loads instead of serializing behind this helper.
+export async function requireOrgUser(request: Request, env: AppEnv) {
+  const { supabase, headers, user } = await requireUser(request, env);
+  const org = await resolveOrg(supabase, user.id);
+  if (!org) throw redirect("/onboarding", { headers });
+  return { supabase, headers, user, org };
+}

@@ -1,6 +1,6 @@
 import { useLoaderData, redirect, data, type LoaderFunctionArgs } from "react-router";
 import { getEnv } from "../lib/env.server";
-import { requireUser, resolveOrg } from "../lib/session.server";
+import { requireOrgUser } from "../lib/session.server";
 import { getConnectionStatus } from "../lib/qbo-connection.server";
 import { createSupabaseServiceClient } from "../lib/supabase.server";
 import { listOrgMembers, type OrgMember } from "../lib/orgs.server";
@@ -167,9 +167,7 @@ export type RosterMember = { userId: string; email: string; label: string };
 
 export async function loader({ request, context }: LoaderFunctionArgs) {
   const env = getEnv(context as any);
-  const { supabase, headers, user } = await requireUser(request, env);
-  const org = await resolveOrg(supabase, user.id);
-  if (!org) throw redirect("/onboarding", { headers });
+  const { supabase, headers, user, org } = await requireOrgUser(request, env);
 
   // Org name
   const { data: orgRow } = await supabase
