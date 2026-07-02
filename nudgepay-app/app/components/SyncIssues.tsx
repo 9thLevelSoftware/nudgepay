@@ -27,8 +27,10 @@ function relativeTime(iso: string): string {
 export function SyncIssues({ issues, returnTo }: { issues: SyncIssue[]; returnTo: string }) {
   const [open, setOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
+  const triggerRef = useRef<HTMLButtonElement>(null);
 
   // Close the panel on Escape or a click outside it (only while open).
+  // Cleanup restores focus to the trigger button (F-029 focus-return).
   useEffect(() => {
     if (!open) return;
     function onKey(e: KeyboardEvent) {
@@ -42,6 +44,7 @@ export function SyncIssues({ issues, returnTo }: { issues: SyncIssue[]; returnTo
     return () => {
       document.removeEventListener("keydown", onKey);
       document.removeEventListener("mousedown", onPointer);
+      triggerRef.current?.focus();
     };
   }, [open]);
 
@@ -51,6 +54,7 @@ export function SyncIssues({ issues, returnTo }: { issues: SyncIssue[]; returnTo
   return (
     <div className="relative" ref={rootRef}>
       <button
+        ref={triggerRef}
         type="button"
         className="hidden sm:inline-flex items-center gap-1.5 rounded-md border border-amber-400/40 bg-amber-400/10 px-2.5 h-8 text-xs font-sans text-amber-700 hover:border-amber-300 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-copper"
         aria-haspopup="dialog"
