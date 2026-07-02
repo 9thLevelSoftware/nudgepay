@@ -195,7 +195,12 @@ function MessagesTab({
       ) : null}
 
       {/* Thread */}
-      <div className="flex-1 min-h-0 overflow-y-auto px-5 py-4">
+      <div
+        className="flex-1 min-h-0 overflow-y-auto px-5 py-4"
+        tabIndex={0}
+        role="region"
+        aria-label="Message history"
+      >
         {messages.length === 0 ? (
           <div className="flex flex-col items-center justify-center gap-2 py-10 text-center">
             <Icon name="message" size={24} className="text-border" aria-hidden />
@@ -241,6 +246,7 @@ function MessagesTab({
             onChange={(e) => setBody(e.target.value)}
             placeholder="Type a message…"
             required
+            aria-label="Message body"
             className="w-full resize-none rounded-md border border-border bg-panel px-3 py-2 text-sm font-sans text-text placeholder:text-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-copper"
           />
           {confirmSend ? (
@@ -353,7 +359,12 @@ function EmailTab({
       ) : null}
 
       {/* Email thread */}
-      <div className="flex-1 min-h-0 overflow-y-auto px-5 py-4">
+      <div
+        className="flex-1 min-h-0 overflow-y-auto px-5 py-4"
+        tabIndex={0}
+        role="region"
+        aria-label="Message history"
+      >
         {emailMessages.length === 0 ? (
           <div className="flex flex-col items-center justify-center gap-2 py-10 text-center">
             <Icon name="mail" size={24} className="text-border" aria-hidden />
@@ -417,6 +428,7 @@ function EmailTab({
             placeholder="Subject"
             required
             disabled={sendDisabled}
+            aria-label="Email subject"
             className="w-full rounded-md border border-border bg-panel px-3 py-2 text-sm font-sans text-text placeholder:text-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-copper disabled:opacity-40 disabled:cursor-not-allowed"
           />
           <textarea
@@ -427,6 +439,7 @@ function EmailTab({
             placeholder="Type an email…"
             required
             disabled={sendDisabled}
+            aria-label="Email body"
             className="w-full resize-none rounded-md border border-border bg-panel px-3 py-2 text-sm font-sans text-text placeholder:text-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-copper disabled:opacity-40 disabled:cursor-not-allowed"
           />
           <div className="flex items-center justify-between gap-2">

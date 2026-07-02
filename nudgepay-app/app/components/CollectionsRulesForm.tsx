@@ -91,8 +91,9 @@ export function CollectionsRulesForm({
           <Form method="post" action="/api/org-settings" className="mt-2 flex items-center gap-2">
             <input type="hidden" name="intent" value="add_holiday" />
             <input type="hidden" name="returnTo" value="/settings" />
-            <input type="date" name="holiday_date" required
-              className="rounded-md border border-border bg-surface px-2 py-1.5 text-sm text-text" />
+            <label className="sr-only" htmlFor="holiday-date-input">Holiday date</label>
+            <input id="holiday-date-input" type="date" name="holiday_date" required
+              className="rounded-md border border-border bg-surface px-2 py-1.5 text-sm text-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-copper" />
             <button type="submit" className="rounded-md border border-border px-3 py-1.5 text-xs font-medium text-text hover:border-copper">
               Add holiday
             </button>
