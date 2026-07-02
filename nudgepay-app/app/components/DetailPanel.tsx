@@ -151,23 +151,26 @@ function MessagesTab({
   const consentBusy = navigation.state !== "idle" && navigation.formAction === "/api/sms-consent";
   const sendBusy = navigation.state !== "idle" && navigation.formAction === "/api/text/send";
 
-  // Reset confirmSend when the case changes
+  // Reset draft state when the case changes
   useEffect(() => {
     setConfirmSend(false);
+    setBody("");
   }, [selected.caseId]);
 
-  // Derive the first gate reason that applies. Order: workspace → blocked → no-invoice → opted-out → no-phone.
+  // Derive the first gate reason that applies.
   // Severity: "hard" = compliance-sensitive (red), "soft" = routine informational (amber).
+  // Order: workspace → blocked → opted-out → no-invoice → no-consent → no-phone.
+  // doNotText MUST precede !consent so agents never see "mark consent" when a customer opted out.
   const smsGate: { reason: string; severity: "hard" | "soft" } | null = !smsEnabled
     ? { reason: "Text messaging is turned off for this workspace.", severity: "hard" }
     : contactBlocked
       ? { reason: `Messaging blocked — ${exceptionLabel(selected.exceptionReason)}.`, severity: "hard" }
-      : noInvoice
-        ? { reason: "No invoice to reference.", severity: "soft" }
-        : !consent
-          ? { reason: "Mark consent to enable sending.", severity: "soft" }
-          : prefs.doNotText
-            ? { reason: "Customer opted out of texts.", severity: "hard" }
+      : prefs.doNotText
+        ? { reason: "Customer opted out of texts.", severity: "hard" }
+        : noInvoice
+          ? { reason: "No invoice to reference.", severity: "soft" }
+          : !consent
+            ? { reason: "Mark consent to enable sending.", severity: "soft" }
             : !phone
               ? { reason: "Customer has no phone number.", severity: "soft" }
               : null;
@@ -1098,6 +1101,7 @@ export function DetailPanel({
 
       {activeTab === "email" ? (
         <EmailTab
+          key={selected.caseId}
           selected={selected}
           repInvoiceId={repInvoiceId}
           emailMessages={emailMessages ?? []}
