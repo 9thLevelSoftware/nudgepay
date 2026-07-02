@@ -26,3 +26,16 @@ export function intuitDisconnectPlan(
   if (org) return { clear: true, orgId: org.org_id };
   return { clear: false, orgId: null };
 }
+
+// Maps raw Supabase auth error strings to human-readable copy. Deliberately
+// does NOT change error/success timing or enumerate valid emails differently
+// from invalid ones — that's an auth-hardening concern out of scope here;
+// this is purely a copy fix so users understand what went wrong.
+const AUTH_ERROR_MAP: Record<string, string> = {
+  "Invalid login credentials": "That email and password don't match. Try again or create an account.",
+  "User already registered": "An account with this email already exists — log in instead.",
+};
+
+export function humanAuthError(message: string): string {
+  return AUTH_ERROR_MAP[message] ?? "Something went wrong. Please try again.";
+}

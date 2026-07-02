@@ -1,5 +1,5 @@
 import { expect, test } from "vitest";
-import { signupOutcome, intuitDisconnectPlan } from "../app/lib/auth-flow.server";
+import { signupOutcome, intuitDisconnectPlan, humanAuthError } from "../app/lib/auth-flow.server";
 
 test("signupOutcome redirects to onboarding when a session is returned with no returnTo", () => {
   expect(signupOutcome(true, "")).toEqual({ redirectTo: "/onboarding" });
@@ -29,4 +29,22 @@ test("intuitDisconnectPlan clears tokens for a non-owner member too (Intuit alre
 
 test("intuitDisconnectPlan clears nothing when there is no session/org", () => {
   expect(intuitDisconnectPlan(null)).toEqual({ clear: false, orgId: null });
+});
+
+test("humanAuthError maps invalid login credentials to human copy", () => {
+  expect(humanAuthError("Invalid login credentials")).toBe(
+    "That email and password don't match. Try again or create an account."
+  );
+});
+
+test("humanAuthError maps user already registered to human copy", () => {
+  expect(humanAuthError("User already registered")).toBe(
+    "An account with this email already exists — log in instead."
+  );
+});
+
+test("humanAuthError falls back to a generic message for unmapped errors", () => {
+  expect(humanAuthError("Some obscure Supabase error")).toBe(
+    "Something went wrong. Please try again."
+  );
 });

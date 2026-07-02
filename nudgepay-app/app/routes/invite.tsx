@@ -1,7 +1,16 @@
-import { Form, redirect, useActionData, type ActionFunctionArgs, type LoaderFunctionArgs } from "react-router";
+import {
+  Form,
+  redirect,
+  useActionData,
+  useNavigation,
+  type ActionFunctionArgs,
+  type LoaderFunctionArgs,
+} from "react-router";
 import { getEnv } from "../lib/env.server";
 import { createSupabaseServiceClient } from "../lib/supabase.server";
 import { requireUser, resolveOrg } from "../lib/session.server";
+import { PublicLayout } from "../components/PublicLayout";
+import { Button, inputClass } from "../components/ui";
 
 export async function loader({ request, context }: LoaderFunctionArgs) {
   const env = getEnv(context as any);
@@ -30,13 +39,22 @@ export async function action({ request, context }: ActionFunctionArgs) {
 
 export default function Invite() {
   const actionData = useActionData<typeof action>();
+  const busy = useNavigation().state !== "idle";
   return (
-    <Form method="post" style={{ maxWidth: 420, margin: "64px auto", display: "grid", gap: 12 }}>
-      <h1>Invite a teammate</h1>
-      {actionData?.error && <p style={{ color: "#C0202A" }}>{actionData.error}</p>}
-      {actionData?.ok && <p>Invite link: <code>{actionData.link}</code></p>}
-      <input name="email" type="email" placeholder="teammate@company.com" required />
-      <button type="submit">Send invite</button>
-    </Form>
+    <PublicLayout title="Invite a teammate" width="card">
+      <Form method="post" className="grid gap-4">
+        {actionData?.error && <p role="alert" className="text-sm text-hot">{actionData.error}</p>}
+        {actionData?.ok && (
+          <p className="text-sm text-muted">
+            Invite link: <code className="rounded bg-surface px-1.5 py-0.5 text-text">{actionData.link}</code>
+          </p>
+        )}
+        <label className="grid gap-1 text-sm font-medium text-text">
+          Email
+          <input name="email" type="email" placeholder="teammate@company.com" required className={inputClass} />
+        </label>
+        <Button type="submit" disabled={busy}>{busy ? "Sending invite…" : "Send invite"}</Button>
+      </Form>
+    </PublicLayout>
   );
 }

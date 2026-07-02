@@ -3,13 +3,16 @@ import {
   Link,
   redirect,
   useActionData,
+  useNavigation,
   useSearchParams,
   type ActionFunctionArgs,
 } from "react-router";
 import { getEnv } from "../lib/env.server";
 import { createSupabaseUserClient } from "../lib/supabase.server";
-import { signupOutcome } from "../lib/auth-flow.server";
+import { signupOutcome, humanAuthError } from "../lib/auth-flow.server";
 import { safeReturnTo } from "../lib/return-to";
+import { PublicLayout } from "../components/PublicLayout";
+import { Button, inputClass } from "../components/ui";
 
 export async function action({ request, context }: ActionFunctionArgs) {
   const env = getEnv(context as any);
@@ -21,7 +24,7 @@ export async function action({ request, context }: ActionFunctionArgs) {
   const returnTo = safeReturnTo(form.get("returnTo"), "");
   const { supabase, headers } = createSupabaseUserClient(request, env);
   const { data, error } = await supabase.auth.signUp({ email, password });
-  if (error) return { error: error.message };
+  if (error) return { error: humanAuthError(error.message) };
 
   const outcome = signupOutcome(Boolean(data.session), returnTo);
   if ("redirectTo" in outcome) return redirect(outcome.redirectTo, { headers });
@@ -30,6 +33,7 @@ export async function action({ request, context }: ActionFunctionArgs) {
 
 export default function Signup() {
   const actionData = useActionData<typeof action>();
+  const busy = useNavigation().state !== "idle";
   const [searchParams] = useSearchParams();
   const returnTo = searchParams.get("returnTo") ?? "";
 
@@ -38,11 +42,12 @@ export default function Signup() {
       ? `/login?returnTo=${encodeURIComponent(actionData.returnTo)}`
       : "/login";
     return (
-      <main style={{ maxWidth: 360, margin: "64px auto" }}>
-        <h1>Check your email</h1>
-        <p>We sent a confirmation link to your inbox. Click it to finish creating
-          your NudgePay account, then <Link to={loginHref}>sign in</Link>.</p>
-      </main>
+      <PublicLayout title="Check your email" width="card">
+        <p className="text-sm text-muted">
+          We sent a confirmation link to your inbox. Click it to finish creating
+          your NudgePay account, then <Link to={loginHref} className="font-medium text-text underline">sign in</Link>.
+        </p>
+      </PublicLayout>
     );
   }
 
@@ -50,19 +55,42 @@ export default function Signup() {
     ? `/login?returnTo=${encodeURIComponent(returnTo)}`
     : "/login";
 
+  const error = actionData && "error" in actionData ? actionData.error : undefined;
+  // Turn the "log in instead" suggestion into a real link, preserving returnTo.
+  const [before, after] = error?.includes("log in instead")
+    ? error.split("log in instead")
+    : [error, undefined];
+
   return (
-    <Form method="post" style={{ maxWidth: 360, margin: "64px auto", display: "grid", gap: 12 }}>
-      <h1>Create your NudgePay account</h1>
-      {actionData && "error" in actionData && actionData.error && (
-        <p className="text-hot">{actionData.error}</p>
-      )}
-      <input type="hidden" name="returnTo" value={returnTo} />
-      <input name="email" type="email" placeholder="Email" required />
-      <input name="password" type="password" placeholder="Password" required minLength={8} />
-      <button type="submit">Sign up</button>
-      <p style={{ textAlign: "center" }}>
-        Already have an account? <Link to={loginHref}>Log in</Link>
-      </p>
-    </Form>
+    <PublicLayout title="Create your NudgePay account" width="card">
+      <Form method="post" className="grid gap-4">
+        {error && (
+          <p role="alert" className="text-sm text-hot">
+            {after !== undefined ? (
+              <>
+                {before}
+                <Link to={loginHref} className="underline">log in instead</Link>
+                {after}
+              </>
+            ) : (
+              error
+            )}
+          </p>
+        )}
+        <input type="hidden" name="returnTo" value={returnTo} />
+        <label className="grid gap-1 text-sm font-medium text-text">
+          Email
+          <input name="email" type="email" required className={inputClass} />
+        </label>
+        <label className="grid gap-1 text-sm font-medium text-text">
+          Password
+          <input name="password" type="password" required minLength={8} className={inputClass} />
+        </label>
+        <Button type="submit" disabled={busy}>{busy ? "Creating account…" : "Sign up"}</Button>
+        <p className="text-center text-sm text-muted">
+          Already have an account? <Link to={loginHref} className="font-medium text-text underline">Log in</Link>
+        </p>
+      </Form>
+    </PublicLayout>
   );
 }
