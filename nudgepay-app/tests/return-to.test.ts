@@ -32,3 +32,9 @@ test("rejects backslash bypass (browser normalizes \\ to /)", () => {
 test("rejects tab-based open redirect", () => {
   expect(safeReturnTo("/\t/evil.com", "/dashboard")).toBe("/dashboard");
 });
+
+test("accepts paths with hyphens (UUID tokens)", () => {
+  expect(safeReturnTo("/accept/a174dc41-1234-5678-9abc-def012345678")).toBe(
+    "/accept/a174dc41-1234-5678-9abc-def012345678",
+  );
+});

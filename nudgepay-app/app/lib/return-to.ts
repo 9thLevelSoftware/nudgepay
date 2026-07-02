@@ -10,7 +10,7 @@ export function safeReturnTo(
     typeof value === "string" &&
     value.startsWith("/") &&
     !value.startsWith("//") &&
-    !/[\\\t\r\n -]/.test(value)
+    !/[\\\x00-\x1f]/.test(value)
   ) {
     return value;
   }
