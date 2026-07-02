@@ -186,10 +186,13 @@ export default function Settings() {
               )}
             </div>
             <dl className="mt-2 flex flex-col gap-1 text-sm">
-              <div className="flex gap-2"><dt className="text-muted w-28">From</dt><dd className="text-text tabular-nums">{d.messaging.sender ?? "Not provisioned"}</dd></div>
-              <div className="flex gap-2"><dt className="text-muted w-28">Status</dt><dd className={d.messaging.configured ? "text-cool" : "text-muted"}>{d.messaging.configured ? "Set up" : "Not provisioned"}</dd></div>
+              <div className="flex gap-2"><dt className="text-muted w-28">From</dt><dd className="text-text tabular-nums">{d.messaging.sender ?? "Not yet assigned"}</dd></div>
+              <div className="flex gap-2"><dt className="text-muted w-28">Status</dt><dd className={d.messaging.configured ? "text-cool" : "text-muted"}>{d.messaging.configured ? "Set up" : "Setup in progress — managed by NudgePay"}</dd></div>
             </dl>
             <p className="mt-2 text-xs text-muted">Text-message carrier registration is managed by NudgePay.</p>
+            {d.messaging.smsEnabled && !d.messaging.configured ? (
+              <p className="mt-1 text-xs text-muted">Texting turns on automatically once your number is assigned.</p>
+            ) : null}
             {!d.messaging.smsEnabled ? (
               <p className="mt-1 text-xs text-hot">Outbound texts are turned off — composers are disabled and sends are blocked.</p>
             ) : null}

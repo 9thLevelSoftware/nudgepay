@@ -5,15 +5,13 @@ import type { Collision } from "../lib/collision";
 import { CONTACT_METHODS, CONTACT_OUTCOMES } from "../lib/contact-log";
 import { PRIMARY_EXCEPTION_STATES, requiresReviewDate, isContactBlocked, type ExceptionState } from "../lib/exceptions";
 import { EXCEPTION_REASON_LABEL, formatUSD } from "../lib/format";
+import { NEXT_ACTION_LABEL as NEXT_STEP_LABEL } from "../lib/labels";
 import { OUTCOME_LABELS } from "../lib/timeline";
 import { useDialog } from "../lib/use-dialog";
 import type { action } from "../routes/api.contact-logs";
 
 const METHOD_LABEL: Record<string, string> = {
   call: "Call", text: "Text", note: "Note",
-};
-const NEXT_STEP_LABEL: Record<string, string> = {
-  follow_up: "Follow up", promise: "Promise to pay", waiting: "Waiting on customer", exception: "Exception (hold)",
 };
 const ERROR_MESSAGE: Record<string, string> = {
   "bad-method": "Choose a contact method.",

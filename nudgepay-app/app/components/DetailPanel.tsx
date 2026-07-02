@@ -9,6 +9,7 @@ import { EMAIL_TEMPLATES, applyEmailTemplate } from "~/lib/email-templates";
 import { formatDate } from "~/lib/dates";
 import { STATUS_LABEL, EXCEPTION_REASON_LABEL, formatUSD } from "~/lib/format";
 import { isContactBlocked, isTerminal, exceptionLabel } from "~/lib/exceptions";
+import { nextActionLabel, emailFailureLabel, isHardBounce } from "~/lib/labels";
 import type { MessageEntry, EmailMessageEntry, RosterMember } from "~/routes/dashboard";
 import type { TimelineEntry } from "~/lib/timeline";
 import { canSendSms, canSendEmail, type CommPrefs } from "~/lib/comm-prefs";
@@ -327,6 +328,10 @@ function EmailTab({
   const navigation = useNavigation();
   const busy = navigation.state !== "idle" && navigation.formAction === "/api/email/send";
 
+  // F-022: warn before composing into an address that just hard-bounced.
+  const lastEmail = emailMessages.length > 0 ? emailMessages[emailMessages.length - 1] : null;
+  const lastEmailBounced = lastEmail != null && lastEmail.direction === "outbound" && isHardBounce(lastEmail.errorCode);
+
   // Derive the first gate reason that applies. Order: workspace → blocked → no-email → opted-out.
   const gateReason = !emailEnabled
     ? "Email is turned off for this workspace."
@@ -388,7 +393,7 @@ function EmailTab({
                   <p className="text-xs font-sans whitespace-pre-wrap">{msg.body}</p>
                   <p className="mt-1 text-[10px] text-muted">{formatDate(msg.createdAt)}</p>
                   {msg.errorCode ? (
-                    <p className="text-xs font-sans text-hot">Error {msg.errorCode}</p>
+                    <p className="text-xs font-sans text-hot">{emailFailureLabel(msg.errorCode)}</p>
                   ) : null}
                 </div>
               </li>
@@ -444,6 +449,9 @@ function EmailTab({
             aria-label="Email body"
             className="w-full resize-none rounded-md border border-border bg-panel px-3 py-2 text-sm font-sans text-text placeholder:text-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-copper disabled:opacity-40 disabled:cursor-not-allowed"
           />
+          {lastEmailBounced ? (
+            <p className="text-xs font-sans text-hot">Last email to this address bounced.</p>
+          ) : null}
           <div className="flex items-center justify-between gap-2">
             {gateReason ? (
               <span className="text-xs text-hot">{gateReason}</span>
@@ -758,7 +766,7 @@ export function DetailPanel({
               label="Next action"
               value={
                 selected.nextActionType
-                  ? `${selected.nextActionType}${selected.nextActionAt ? ` · ${formatDate(selected.nextActionAt)}` : ""}`
+                  ? `${nextActionLabel(selected.nextActionType)}${selected.nextActionAt ? ` · ${formatDate(selected.nextActionAt)}` : ""}`
                   : "—"
               }
             />
@@ -979,7 +987,7 @@ export function DetailPanel({
                             <span className="text-xs text-muted whitespace-pre-wrap line-clamp-3">{e.body}</span>
                           ) : null}
                           {e.errorCode ? (
-                            <span className="text-xs font-sans text-hot">Error {e.errorCode}</span>
+                            <span className="text-xs font-sans text-hot">{emailFailureLabel(e.errorCode)}</span>
                           ) : null}
                         </div>
                       </li>

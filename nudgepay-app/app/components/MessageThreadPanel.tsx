@@ -7,6 +7,7 @@ import { MessageBubbles } from "./MessageBubbles";
 import { SMS_TEMPLATES, applyTemplate, type TemplateVars } from "../lib/sms-templates";
 import { EMAIL_TEMPLATES, applyEmailTemplate } from "../lib/email-templates";
 import { formatDate } from "../lib/dates";
+import { emailFailureLabel, isHardBounce } from "../lib/labels";
 import { Icon } from "./Icons";
 
 const SMS_BANNER: Record<string, { text: string; tone: string }> = {
@@ -68,6 +69,10 @@ export function MessageThreadPanel({
   }
 
   const isEmail = thread.channel === "email";
+
+  // F-022: warn before composing into an address that just hard-bounced.
+  const lastEmail = emailMessages.length > 0 ? emailMessages[emailMessages.length - 1] : null;
+  const lastEmailBounced = lastEmail != null && lastEmail.direction === "outbound" && isHardBounce(lastEmail.errorCode);
 
   const params = new URLSearchParams({
     tab, sort, ...(q ? { q } : {}),
@@ -151,7 +156,7 @@ export function MessageThreadPanel({
                     ) : null}
                     <p className="text-xs whitespace-pre-wrap">{msg.body}</p>
                     <p className="mt-1 text-[10px] text-muted">{formatDate(msg.createdAt)}</p>
-                    {msg.errorCode ? <p className="text-xs text-hot">Error {msg.errorCode}</p> : null}
+                    {msg.errorCode ? <p className="text-xs text-hot">{emailFailureLabel(msg.errorCode)}</p> : null}
                   </div>
                 </li>
               ))}
@@ -216,6 +221,9 @@ export function MessageThreadPanel({
               aria-label="Email body"
               className="w-full resize-none rounded-md border border-border bg-panel px-3 py-2 text-sm text-text placeholder:text-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-copper disabled:opacity-40 disabled:cursor-not-allowed"
             />
+            {lastEmailBounced ? (
+              <p className="text-xs text-hot">Last email to this address bounced.</p>
+            ) : null}
             <div className="flex items-center justify-between gap-2">
               {!emailEnabled ? (
                 <span className="text-xs text-hot">Email is turned off for this workspace.</span>
