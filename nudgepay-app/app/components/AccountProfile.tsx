@@ -40,7 +40,8 @@ interface Props {
 }
 
 export function AccountProfile(p: Props) {
-  const busy = useNavigation().state !== "idle";
+  const navigation = useNavigation();
+  const formBusy = (action: string) => navigation.state !== "idle" && navigation.formAction === action;
 
   return (
     <div key={p.customerId} className="max-w-5xl mx-auto p-4 sm:p-6 space-y-6">
@@ -113,7 +114,7 @@ export function AccountProfile(p: Props) {
               ))}
             </select>
           </label>
-          <button type="submit" disabled={busy} className="h-9 px-3 rounded bg-ink text-surface text-sm font-medium disabled:opacity-60 disabled:cursor-not-allowed">{busy ? "Saving…" : "Save owner"}</button>
+          <button type="submit" disabled={formBusy("/api/assign")} className="h-9 px-3 rounded bg-ink text-surface text-sm font-medium disabled:opacity-60 disabled:cursor-not-allowed">{formBusy("/api/assign") ? "Saving…" : "Save owner"}</button>
         </Form>
 
         <Form method="post" action="/api/comm-prefs" className="flex flex-wrap items-end gap-3">
@@ -137,7 +138,7 @@ export function AccountProfile(p: Props) {
           <label className="flex items-center gap-1.5 text-sm">
             <input type="checkbox" name="do_not_text" value="true" defaultChecked={p.commPrefs.doNotText} /> Do not text
           </label>
-          <button type="submit" disabled={busy} className="h-9 px-3 rounded bg-ink text-surface text-sm font-medium disabled:opacity-60 disabled:cursor-not-allowed">{busy ? "Saving…" : "Save preferences"}</button>
+          <button type="submit" disabled={formBusy("/api/comm-prefs")} className="h-9 px-3 rounded bg-ink text-surface text-sm font-medium disabled:opacity-60 disabled:cursor-not-allowed">{formBusy("/api/comm-prefs") ? "Saving…" : "Save preferences"}</button>
         </Form>
 
         <Form method="post" action="/api/account-notes" className="space-y-2">
@@ -152,7 +153,7 @@ export function AccountProfile(p: Props) {
               placeholder="NudgePay-only notes (not synced to QuickBooks)…"
             />
           </label>
-          <button type="submit" disabled={busy} className="h-9 px-3 rounded bg-copper text-surface text-sm font-medium disabled:opacity-60 disabled:cursor-not-allowed">{busy ? "Saving…" : "Save notes"}</button>
+          <button type="submit" disabled={formBusy("/api/account-notes")} className="h-9 px-3 rounded bg-copper text-surface text-sm font-medium disabled:opacity-60 disabled:cursor-not-allowed">{formBusy("/api/account-notes") ? "Saving…" : "Save notes"}</button>
         </Form>
       </section>
 

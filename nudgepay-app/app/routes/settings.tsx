@@ -1,4 +1,5 @@
 import { redirect, useLoaderData, useNavigation, useSearchParams, Form, data, type LoaderFunctionArgs } from "react-router";
+import { useFlashCleanup } from "../lib/use-flash-cleanup";
 import { getEnv } from "../lib/env.server";
 import { requireUser, resolveOrg } from "../lib/session.server";
 import { getConnectionStatus } from "../lib/qbo-connection.server";
@@ -85,8 +86,10 @@ export default function Settings() {
     navigation.formAction === "/api/org-settings" &&
     navigation.formData?.get("intent") === intent;
 
+  useFlashCleanup();
+
   return (
-    <AppShell orgName={d.orgName} userInitials={d.initials} syncLabel={syncLabel} connected={d.connected} isOwner={d.isOwner}>
+    <AppShell orgName={d.orgName} userInitials={d.initials} syncLabel={syncLabel} connected={d.connected} isOwner={d.isOwner} activeNav="settings">
       <div className="h-full overflow-auto bg-panel p-6">
         <div className="mx-auto flex max-w-3xl flex-col gap-5">
           <h1 className="font-display text-xl font-semibold text-text">Settings</h1>
@@ -186,10 +189,13 @@ export default function Settings() {
               )}
             </div>
             <dl className="mt-2 flex flex-col gap-1 text-sm">
-              <div className="flex gap-2"><dt className="text-muted w-28">From</dt><dd className="text-text tabular-nums">{d.messaging.sender ?? "Not provisioned"}</dd></div>
-              <div className="flex gap-2"><dt className="text-muted w-28">Status</dt><dd className={d.messaging.configured ? "text-cool" : "text-muted"}>{d.messaging.configured ? "Set up" : "Not provisioned"}</dd></div>
+              <div className="flex gap-2"><dt className="text-muted w-28">From</dt><dd className="text-text tabular-nums">{d.messaging.sender ?? "Not yet assigned"}</dd></div>
+              <div className="flex gap-2"><dt className="text-muted w-28">Status</dt><dd className={d.messaging.configured ? "text-cool" : "text-muted"}>{d.messaging.configured ? "Set up" : "Setup in progress — managed by NudgePay"}</dd></div>
             </dl>
             <p className="mt-2 text-xs text-muted">Text-message carrier registration is managed by NudgePay.</p>
+            {d.messaging.smsEnabled && !d.messaging.configured ? (
+              <p className="mt-1 text-xs text-muted">Texting turns on automatically once your number is assigned.</p>
+            ) : null}
             {!d.messaging.smsEnabled ? (
               <p className="mt-1 text-xs text-hot">Outbound texts are turned off — composers are disabled and sends are blocked.</p>
             ) : null}
@@ -258,7 +264,7 @@ export default function Settings() {
                   <button type="submit" disabled={intentBusy("save_email")} className="rounded-md bg-copper px-3 py-1.5 text-xs font-semibold text-ink hover:bg-copper/90 disabled:opacity-60 disabled:cursor-not-allowed">
                     {intentBusy("save_email") ? "Saving…" : "Save"}
                   </button>
-                  {saved ? <span className="text-xs text-cool">Saved.</span> : null}
+                  {saved ? <span className="text-xs text-cool" role="status">Saved.</span> : null}
                 </div>
               </Form>
             ) : (

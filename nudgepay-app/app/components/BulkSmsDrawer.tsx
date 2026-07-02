@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Form, useNavigation } from "react-router";
 import { SMS_TEMPLATES } from "../lib/sms-templates";
 import { partitionEligibility, renderCaseBody, type SkipReason, type TextableCase, type RenderableCase } from "../lib/bulk";
+import { plural } from "../lib/labels";
 import { useDialog } from "../lib/use-dialog";
 
 export type DrawerCase = TextableCase & RenderableCase;
@@ -70,7 +71,7 @@ export function BulkSmsDrawer({
         onClick={(e) => e.stopPropagation()}
       >
         <h2 className="font-display text-lg font-semibold text-text mb-1">
-          Send SMS to {eligible.length} customer(s)
+          Send SMS to {plural(eligible.length, "customer")}
         </h2>
         <p className="text-xs font-sans text-muted mb-3">
           {eligible.length} of {cases.length} eligible
@@ -124,7 +125,7 @@ export function BulkSmsDrawer({
             <input type="hidden" name="body" value={body} />
             <input type="hidden" name="returnTo" value={returnTo} />
             <p id="bulk-sms-confirm-desc" className="text-sm font-sans text-text mb-3">
-              Send this message to {eligible.length} customer(s)? This cannot be undone. Eligibility is re-checked when you send, so the final count may be lower.
+              Send this message to {plural(eligible.length, "customer")}? This cannot be undone. Eligibility is re-checked when you send, so the final count may be lower.
             </p>
             <div className="flex justify-end gap-2">
               <button type="button" onClick={() => setConfirming(false)} className="rounded-md border border-border bg-panel px-3 h-9 text-xs text-muted hover:text-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-copper">

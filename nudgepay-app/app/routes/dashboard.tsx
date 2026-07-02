@@ -1,4 +1,5 @@
 import { useLoaderData, redirect, data, type LoaderFunctionArgs } from "react-router";
+import { useFlashCleanup } from "../lib/use-flash-cleanup";
 import { getEnv } from "../lib/env.server";
 import { requireOrgUser } from "../lib/session.server";
 import { getConnectionStatus } from "../lib/qbo-connection.server";
@@ -32,6 +33,7 @@ import { DEFAULT_ORG_CONFIG, type OrgConfig } from "../lib/org-config";
 import { resolveCommPrefs, DEFAULT_COMM_PREFS, type CommPrefs } from "../lib/comm-prefs";
 import { resolveChannelSettings } from "../lib/channel-settings";
 import { resolveEmailSettings } from "../lib/email-settings";
+import { plural } from "../lib/labels";
 import { pageTitle } from "../lib/meta";
 import type { Route } from "./+types/dashboard";
 
@@ -611,6 +613,7 @@ export default function Dashboard() {
     repInvoiceId,
   } = useLoaderData<typeof loader>();
 
+  useFlashCleanup();
 
   return (
     <AppShell
@@ -628,7 +631,7 @@ export default function Dashboard() {
       ) : null}
       {bulkAssign === "done" ? (
         <div className="px-6 py-2 bg-cool/10 border-b border-cool/30 text-sm font-sans font-medium text-cool" role="status">
-          Reassigned {bulkAssignCount ?? "0"} account(s).
+          Reassigned {plural(Number(bulkAssignCount) || 0, "account")}.
         </div>
       ) : null}
       {bulkSms === "done" ? (
@@ -637,12 +640,12 @@ export default function Dashboard() {
         </div>
       ) : null}
       {bulkSms === "disabled" ? (
-        <div className="px-6 py-2 bg-hot/10 border-b border-hot/30 text-sm font-sans font-medium text-hot" role="status">
+        <div className="px-6 py-2 bg-hot/10 border-b border-hot/30 text-sm font-sans font-medium text-hot" role="alert">
           Bulk text not sent — text messaging is turned off for this workspace.
         </div>
       ) : null}
       {bulkSms === "error" ? (
-        <div className="px-6 py-2 bg-hot/10 border-b border-hot/30 text-sm font-sans font-medium text-hot" role="status">
+        <div className="px-6 py-2 bg-hot/10 border-b border-hot/30 text-sm font-sans font-medium text-hot" role="alert">
           Could not send the bulk text — please try again.
         </div>
       ) : null}
