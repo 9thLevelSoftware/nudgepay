@@ -6,7 +6,12 @@ export function safeReturnTo(
   value: FormDataEntryValue | null,
   fallback = "/dashboard",
 ): string {
-  if (typeof value === "string" && value.startsWith("/") && !value.startsWith("//") && !value.includes("\\")) {
+  if (
+    typeof value === "string" &&
+    value.startsWith("/") &&
+    !value.startsWith("//") &&
+    !/[\\\t\r\n -]/.test(value)
+  ) {
     return value;
   }
   return fallback;

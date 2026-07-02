@@ -53,8 +53,6 @@ export async function action({ request, params, context }: ActionFunctionArgs) {
   return redirect("/dashboard", { headers });
 }
 
-const h1Class = "font-display text-lg font-semibold text-text mb-4";
-
 export default function Accept() {
   const { orgName, notFound, alreadyAccepted, emailMismatch } =
     useLoaderData<typeof loader>();
@@ -63,33 +61,29 @@ export default function Accept() {
 
   if (notFound) {
     return (
-      <PublicLayout width="card">
-        <h1 className={h1Class}>Invite not found</h1>
+      <PublicLayout width="card" title="Invite not found">
         <p className="text-sm text-muted">This invite link is invalid or has been removed.</p>
       </PublicLayout>
     );
   }
   if (alreadyAccepted) {
     return (
-      <PublicLayout width="card">
-        <h1 className={h1Class}>Invite already accepted</h1>
+      <PublicLayout width="card" title="Invite already accepted">
         <p className="text-sm text-muted">This invite has already been used.</p>
       </PublicLayout>
     );
   }
   if (emailMismatch) {
     return (
-      <PublicLayout width="card">
-        <h1 className={h1Class}>Wrong account</h1>
+      <PublicLayout width="card" title="Wrong account">
         <p className="text-sm text-muted">This invite was sent to a different email address. Sign in with the invited account to accept it.</p>
       </PublicLayout>
     );
   }
 
   return (
-    <PublicLayout width="card">
+    <PublicLayout width="card" title={`Join ${orgName}?`}>
       <Form method="post" className="grid gap-4">
-        <h1 className={h1Class}>Join {orgName}?</h1>
         {actionData?.error && <p role="alert" className="text-sm text-hot">{actionData.error}</p>}
         <Button type="submit" disabled={busy}>{busy ? "Joining…" : "Accept invite"}</Button>
       </Form>

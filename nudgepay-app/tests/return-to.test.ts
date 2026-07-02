@@ -28,3 +28,7 @@ test("honors a custom fallback", () => {
 test("rejects backslash bypass (browser normalizes \\ to /)", () => {
   expect(safeReturnTo("/\\evil.com", "/dashboard")).toBe("/dashboard");
 });
+
+test("rejects tab-based open redirect", () => {
+  expect(safeReturnTo("/\t/evil.com", "/dashboard")).toBe("/dashboard");
+});
