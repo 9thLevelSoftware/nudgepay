@@ -82,7 +82,7 @@ export default function Accept() {
   }
 
   return (
-    <PublicLayout width="card" title={`Join ${orgName}?`}>
+    <PublicLayout width="card" title={orgName ? `Join ${orgName}?` : "Join organization?"}>
       <Form method="post" className="grid gap-4">
         {actionData?.error && <p role="alert" className="text-sm text-hot">{actionData.error}</p>}
         <Button type="submit" disabled={busy}>{busy ? "Joining…" : "Accept invite"}</Button>

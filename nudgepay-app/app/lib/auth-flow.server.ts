@@ -34,6 +34,7 @@ export function intuitDisconnectPlan(
 const AUTH_ERROR_MAP: Record<string, string> = {
   "Invalid login credentials": "That email and password don't match. Try again or create an account.",
   "User already registered": "An account with this email already exists — log in instead.",
+  "Email not confirmed": "Please check your inbox and confirm your email before signing in.",
 };
 
 export function humanAuthError(message: string): string {

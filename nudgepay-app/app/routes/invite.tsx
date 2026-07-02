@@ -51,7 +51,7 @@ export default function Invite() {
         )}
         <label className="grid gap-1 text-sm font-medium text-text">
           Email
-          <input name="email" type="email" placeholder="teammate@company.com" required className={inputClass} />
+          <input name="email" type="email" placeholder="teammate@company.com" required autoComplete="email" className={inputClass} />
         </label>
         <Button type="submit" disabled={busy}>{busy ? "Sending invite…" : "Send invite"}</Button>
       </Form>

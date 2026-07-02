@@ -80,11 +80,11 @@ export default function Signup() {
         <input type="hidden" name="returnTo" value={returnTo} />
         <label className="grid gap-1 text-sm font-medium text-text">
           Email
-          <input name="email" type="email" required className={inputClass} />
+          <input name="email" type="email" required autoComplete="email" className={inputClass} />
         </label>
         <label className="grid gap-1 text-sm font-medium text-text">
           Password
-          <input name="password" type="password" required minLength={8} className={inputClass} />
+          <input name="password" type="password" required minLength={8} autoComplete="new-password" className={inputClass} />
         </label>
         <Button type="submit" disabled={busy}>{busy ? "Creating account…" : "Sign up"}</Button>
         <p className="text-center text-sm text-muted">

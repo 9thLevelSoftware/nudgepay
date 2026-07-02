@@ -43,6 +43,12 @@ test("humanAuthError maps user already registered to human copy", () => {
   );
 });
 
+test("humanAuthError maps email not confirmed to actionable copy", () => {
+  expect(humanAuthError("Email not confirmed")).toBe(
+    "Please check your inbox and confirm your email before signing in."
+  );
+});
+
 test("humanAuthError falls back to a generic message for unmapped errors", () => {
   expect(humanAuthError("Some obscure Supabase error")).toBe(
     "Something went wrong. Please try again."

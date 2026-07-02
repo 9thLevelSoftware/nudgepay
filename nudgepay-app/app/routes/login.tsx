@@ -72,11 +72,11 @@ export default function Login() {
         <input type="hidden" name="returnTo" value={returnTo} />
         <label className="grid gap-1 text-sm font-medium text-text">
           Email
-          <input name="email" type="email" required className={inputClass} />
+          <input name="email" type="email" required autoComplete="email" className={inputClass} />
         </label>
         <label className="grid gap-1 text-sm font-medium text-text">
           Password
-          <input name="password" type="password" required className={inputClass} />
+          <input name="password" type="password" required autoComplete="current-password" className={inputClass} />
         </label>
         <Button type="submit" disabled={busy}>{busy ? "Signing in…" : "Log in"}</Button>
         <p className="text-center text-sm text-muted">
