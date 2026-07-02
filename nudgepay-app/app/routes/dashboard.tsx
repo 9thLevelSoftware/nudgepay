@@ -169,13 +169,6 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
   const env = getEnv(context as any);
   const { supabase, headers, user, org } = await requireOrgUser(request, env);
 
-  // Org name
-  const { data: orgRow } = await supabase
-    .from("organizations")
-    .select("name")
-    .eq("id", org.org_id)
-    .single();
-
   // User initials from email
   const emailParts = (user.email ?? "").split("@")[0].split(/[.\-_]/);
   const initials = emailParts
@@ -183,18 +176,51 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
     .map((p) => p[0]?.toUpperCase() ?? "")
     .join("") || "?";
 
+  const today = new Date().toISOString().slice(0, 10);
+
   // Connection status — service client only (no RLS needed for own org's connection)
   const service = createSupabaseServiceClient(env);
-  const conn = await getConnectionStatus(service, org.org_id);
+
+  // Batch A: everything that needs only org.org_id. PostgREST builders resolve with
+  // { data, error } (never reject), so Promise.all won't short-circuit on a DB error —
+  // only getConnectionStatus/listOrgMembers/loadOrgConfig can throw, matching today's
+  // behavior. Disconnected orgs pay ~9 wasted queries once (the redirect gate below
+  // runs right after this batch settles) — acceptable.
+  const [
+    { data: orgRow },
+    conn,
+    { data: connMeta },
+    { data: invRows },
+    { data: caseRows },
+    roster,
+    orgConfig,
+    { data: mcfg },
+    { data: ecfg },
+  ] = await Promise.all([
+    supabase.from("organizations").select("name").eq("id", org.org_id).single(),
+    getConnectionStatus(service, org.org_id),
+    service.from("qbo_connections").select("last_sync_at").eq("org_id", org.org_id).maybeSingle(),
+    supabase
+      .from("invoices")
+      .select("id, qbo_doc_number, balance, due_date, customer_id, customers(name, phone, email, owner, sms_consent, preferred_channel, do_not_call, do_not_text)")
+      .eq("org_id", org.org_id)
+      .gt("balance", 0)
+      .lt("due_date", today),
+    supabase
+      .from("collection_cases")
+      .select("id, customer_id, status, next_action_type, next_action_at, opened_at, exception_reason, exception_note, priority_override, priority_override_reason, priority_override_by, priority_override_at")
+      .eq("org_id", org.org_id)
+      .is("closed_at", null),
+    listOrgMembers(service, org.org_id),
+    loadOrgConfig(supabase, org.org_id).catch(() => DEFAULT_ORG_CONFIG),
+    supabase.from("messaging_config").select("sms_enabled").eq("org_id", org.org_id).maybeSingle(),
+    supabase.from("email_config").select("email_enabled").eq("org_id", org.org_id).maybeSingle(),
+  ]);
+
   const connected = conn?.status === "connected";
   if (!connected) throw redirect("/settings", { headers });
 
   // Sync label from last_sync_at (connected is guaranteed true here — redirect above)
-  const { data: connMeta } = await service
-    .from("qbo_connections")
-    .select("last_sync_at")
-    .eq("org_id", org.org_id)
-    .maybeSingle();
   const lastSyncAt = (connMeta?.last_sync_at as string | null) ?? null;
   let syncLabel: string;
   if (lastSyncAt) {
@@ -248,8 +274,6 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
   const bulkFailed = sp.get("failed");
   const bulkSkipped = sp.get("skipped");
 
-  const today = new Date().toISOString().slice(0, 10);
-
   let selectedTimeline: TimelineEntry[] = [];
   let selectedMessages: MessageEntry[] = [];
   let selectedConsent = false;
@@ -257,270 +281,241 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
   let selectedPrefs: CommPrefs = DEFAULT_COMM_PREFS;
   let selectedRepInvoiceId: string | null = null;
   let selectedPromiseId: string | null = null;
-  let roster: OrgMember[] = [];
   let collisions: Record<string, Collision> = {};
-  let smsEnabled = true;
-  let emailEnabled = false;
   let selectedEmailMessages: EmailMessageEntry[] = [];
   let selectedCustomerEmail: string | null = null;
-  let dashboardData: DashboardData = {
-    items: [],
-    metrics: {
-      thirtyPlus: { count: 0, amount: 0 },
-      highValue: { count: 0, amount: 0 },
-      neverContacted: { count: 0, amount: 0 },
-      allOpen: { count: 0, amount: 0 },
-      followUpsDue: { count: 0, amount: 0 },
-      brokenPromises: { count: 0, amount: 0 },
-      onHold: { count: 0, amount: 0 },
-    },
-    viewCounts: {
-      "all-open": 0, "30-plus": 0, "high-value": 0,
-      "never-contacted": 0, "follow-ups-due": 0, "broken-promises": 0, "waiting": 0, "on-hold": 0, "my-work": 0,
-    },
-    selected: null,
+
+  // RLS-scoped invoice read (USER client) — from Batch A
+  const rawInvoices = (invRows as unknown as InvoiceRow[]) ?? [];
+
+  // Build InvoiceInput arrays
+  const invoicesInput: InvoiceInput[] = rawInvoices.map((r) => ({
+    id: r.id,
+    qbo_doc_number: r.qbo_doc_number,
+    customer_id: r.customer_id,
+    balance: Number(r.balance ?? 0),
+    due_date: r.due_date,
+  }));
+
+  // Deduplicate customers from the embedded rows
+  const customerMap = new Map<string, CustomerInput>();
+  for (const r of rawInvoices) {
+    if (r.customer_id && r.customers && !customerMap.has(r.customer_id)) {
+      customerMap.set(r.customer_id, {
+        id: r.customer_id,
+        name: r.customers.name ?? "(unknown customer)",
+        phone: r.customers.phone ?? null,
+        email: r.customers.email ?? null,
+        owner: r.customers.owner ?? null,
+        smsConsent: r.customers.sms_consent ?? false,
+        commPrefs: resolveCommPrefs(r.customers),
+      });
+    }
+  }
+  const customersInput: CustomerInput[] = [...customerMap.values()];
+
+  // Load open cases (USER client) — from Batch A
+  const cases: CaseRow[] = ((caseRows as CaseRowRaw[]) ?? []).map((r) => ({
+    id: r.id, customerId: r.customer_id, status: r.status as CaseStatus,
+    nextActionType: r.next_action_type as NextActionType | null, nextActionAt: r.next_action_at,
+    exceptionReason: r.exception_reason as ExceptionReason | null, exceptionNote: r.exception_note,
+    priorityOverride: (r.priority_override as PriorityOverrideLevel | null) ?? null,
+    priorityOverrideReason: r.priority_override_reason,
+    priorityOverrideBy: r.priority_override_by,
+    priorityOverrideAt: r.priority_override_at,
+  }));
+
+  // Per-case last contact: contact_logs and outbound texts are both keyed by
+  // case_id, so we can read both by case_id directly — no customer mapping needed.
+  const caseIds = cases.map((c) => c.id);
+  const lastContactsInput: CaseLastContactInput[] = [];
+  const recentByCase = new Map<string, RecentContactInput[]>();
+  const pushRecent = (caseId: string, userId: string | null, at: string) => {
+    const list = recentByCase.get(caseId) ?? [];
+    list.push({ userId, at });
+    recentByCase.set(caseId, list);
   };
 
-  if (connected) {
-    // RLS-scoped invoice read (USER client)
-    const { data: invRows } = await supabase
-      .from("invoices")
-      .select("id, qbo_doc_number, balance, due_date, customer_id, customers(name, phone, email, owner, sms_consent, preferred_channel, do_not_call, do_not_text)")
-      .eq("org_id", org.org_id)
-      .gt("balance", 0)
-      .lt("due_date", today);
+  // Presence (C1): advisory. Degrade to empty on error — never throw the loader.
+  const presenceCustomerIds = [...new Set(cases.map((c) => c.customerId))];
 
-    const rawInvoices = (invRows as unknown as InvoiceRow[]) ?? [];
+  const promisesInput: CasePromiseInput[] = [];
+  let presenceRows: { customer_id: string; user_id: string; last_seen_at: string }[] = [];
 
-    // Build InvoiceInput arrays
-    const invoicesInput: InvoiceInput[] = rawInvoices.map((r) => ({
-      id: r.id,
-      qbo_doc_number: r.qbo_doc_number,
-      customer_id: r.customer_id,
-      balance: Number(r.balance ?? 0),
-      due_date: r.due_date,
-    }));
-
-    // Deduplicate customers from the embedded rows
-    const customerMap = new Map<string, CustomerInput>();
-    for (const r of rawInvoices) {
-      if (r.customer_id && r.customers && !customerMap.has(r.customer_id)) {
-        customerMap.set(r.customer_id, {
-          id: r.customer_id,
-          name: r.customers.name ?? "(unknown customer)",
-          phone: r.customers.phone ?? null,
-          email: r.customers.email ?? null,
-          owner: r.customers.owner ?? null,
-          smsConsent: r.customers.sms_consent ?? false,
-          commPrefs: resolveCommPrefs(r.customers),
-        });
-      }
-    }
-    const customersInput: CustomerInput[] = [...customerMap.values()];
-
-    // Load open cases (USER client)
-    const { data: caseRows } = await supabase
-      .from("collection_cases")
-      .select("id, customer_id, status, next_action_type, next_action_at, opened_at, exception_reason, exception_note, priority_override, priority_override_reason, priority_override_by, priority_override_at")
-      .eq("org_id", org.org_id)
-      .is("closed_at", null);
-    const cases: CaseRow[] = ((caseRows as CaseRowRaw[]) ?? []).map((r) => ({
-      id: r.id, customerId: r.customer_id, status: r.status as CaseStatus,
-      nextActionType: r.next_action_type as NextActionType | null, nextActionAt: r.next_action_at,
-      exceptionReason: r.exception_reason as ExceptionReason | null, exceptionNote: r.exception_note,
-      priorityOverride: (r.priority_override as PriorityOverrideLevel | null) ?? null,
-      priorityOverrideReason: r.priority_override_reason,
-      priorityOverrideBy: r.priority_override_by,
-      priorityOverrideAt: r.priority_override_at,
-    }));
-
-    // Per-case last contact: contact_logs and outbound texts are both keyed by
-    // case_id, so we can read both by case_id directly — no customer mapping needed.
-    const caseIds = cases.map((c) => c.id);
-    const lastContactsInput: CaseLastContactInput[] = [];
-    const recentByCase = new Map<string, RecentContactInput[]>();
-    const pushRecent = (caseId: string, userId: string | null, at: string) => {
-      const list = recentByCase.get(caseId) ?? [];
-      list.push({ userId, at });
-      recentByCase.set(caseId, list);
-    };
-    if (caseIds.length > 0) {
-      const { data: logRows } = await supabase
+  // Batch B: everything keyed on caseIds — one 4-way Promise.all, skipped when
+  // there are no open cases. readPresence also short-circuits to [] on an empty
+  // customerIds array (which is guaranteed here when caseIds is empty), so folding
+  // it into this same guard is behavior-identical to running it unconditionally.
+  if (caseIds.length > 0) {
+    const [{ data: logRows }, { data: msgRows }, { data: promRows }, presenceResult] = await Promise.all([
+      supabase
         .from("contact_logs")
         .select("case_id, method, created_at, user_id")
         .eq("org_id", org.org_id).in("case_id", caseIds)
-        .order("created_at", { ascending: false });
-      const methodLabel: Record<string, string> = { call: "Call", email: "Email", text: "Text", note: "Note" };
-      for (const r of (logRows as any[]) ?? []) {
-        if (r.case_id) {
-          lastContactsInput.push({ caseId: r.case_id, date: r.created_at, channel: methodLabel[r.method] ?? "Note" });
-          pushRecent(r.case_id, r.user_id ?? null, r.created_at);
-        }
-      }
-      // Outbound texts now carry case_id (stamped at send time, 7c), so key on it
-      // directly — no customer mapping / opened_at window needed.
-      const { data: msgRows } = await supabase
+        .order("created_at", { ascending: false }),
+      supabase
         .from("text_messages")
         .select("case_id, created_at, sent_by_user_id")
         .eq("org_id", org.org_id).in("case_id", caseIds).eq("direction", "outbound")
-        .order("created_at", { ascending: false });
-      for (const r of (msgRows as any[]) ?? []) {
-        if (r.case_id) {
-          lastContactsInput.push({ caseId: r.case_id, date: r.created_at, channel: "Text" });
-          pushRecent(r.case_id, r.sent_by_user_id ?? null, r.created_at);
-        }
-      }
-    }
-
-    // Active promise per open case (pending preferred, else most-recent non-cancelled).
-    const promisesInput: CasePromiseInput[] = [];
-    if (caseIds.length > 0) {
-      const { data: promRows } = await supabase
+        .order("created_at", { ascending: false }),
+      supabase
         .from("promises")
         .select("case_id, status, promised_amount, promised_date, amount_received, created_at")
         .eq("org_id", org.org_id).in("case_id", caseIds)
         .neq("status", "cancelled")
-        .order("created_at", { ascending: false });
-      const seen = new Set<string>();
-      const pendingFirst = [...((promRows as any[]) ?? [])].sort((a, b) =>
-        (a.status === "pending" ? 0 : 1) - (b.status === "pending" ? 0 : 1));
-      for (const r of pendingFirst) {
-        if (seen.has(r.case_id)) continue;
-        seen.add(r.case_id);
-        promisesInput.push({
-          caseId: r.case_id, status: r.status, promisedAmount: Number(r.promised_amount) || 0,
-          promisedDate: r.promised_date, amountReceived: Number(r.amount_received) || 0,
-        });
+        .order("created_at", { ascending: false }),
+      readPresence(supabase, { orgId: org.org_id, customerIds: presenceCustomerIds }).catch((e) => {
+        console.error("presence read failed (degrading to no presence):", e);
+        return [];
+      }),
+    ]);
+
+    const methodLabel: Record<string, string> = { call: "Call", email: "Email", text: "Text", note: "Note" };
+    for (const r of (logRows as any[]) ?? []) {
+      if (r.case_id) {
+        lastContactsInput.push({ caseId: r.case_id, date: r.created_at, channel: methodLabel[r.method] ?? "Note" });
+        pushRecent(r.case_id, r.user_id ?? null, r.created_at);
+      }
+    }
+    // Outbound texts now carry case_id (stamped at send time, 7c), so key on it
+    // directly — no customer mapping / opened_at window needed.
+    for (const r of (msgRows as any[]) ?? []) {
+      if (r.case_id) {
+        lastContactsInput.push({ caseId: r.case_id, date: r.created_at, channel: "Text" });
+        pushRecent(r.case_id, r.sent_by_user_id ?? null, r.created_at);
       }
     }
 
-    roster = await listOrgMembers(service, org.org_id);
-    const ownerLabels = new Map(roster.map((m) => [m.userId, m.label]));
-
-    // Presence (C1): advisory. Degrade to empty on error — never throw the loader.
-    const presenceCustomerIds = [...new Set(cases.map((c) => c.customerId))];
-    let presenceRows: { customer_id: string; user_id: string; last_seen_at: string }[] = [];
-    try {
-      presenceRows = await readPresence(supabase, { orgId: org.org_id, customerIds: presenceCustomerIds });
-    } catch (e) {
-      console.error("presence read failed (degrading to no presence):", e);
-      presenceRows = [];
-    }
-    const presenceByCustomer = new Map<string, { userId: string; lastSeenAt: string }[]>();
-    for (const r of presenceRows) {
-      const list = presenceByCustomer.get(r.customer_id) ?? [];
-      list.push({ userId: r.user_id, lastSeenAt: r.last_seen_at });
-      presenceByCustomer.set(r.customer_id, list);
-    }
-
-    // Per-case collision (self-excluded). Plain object so it serializes over the loader.
-    const nowMs = Date.now();
-    for (const cse of cases) {
-      collisions[cse.id] = collisionState({
-        contacts: recentByCase.get(cse.id) ?? [],
-        heartbeats: presenceByCustomer.get(cse.customerId) ?? [],
-        currentUserId: user.id,
-        nowMs,
-        label: (id) => ownerLabels.get(id) ?? "A teammate",
+    // Active promise per open case (pending preferred, else most-recent non-cancelled).
+    const seen = new Set<string>();
+    const pendingFirst = [...((promRows as any[]) ?? [])].sort((a, b) =>
+      (a.status === "pending" ? 0 : 1) - (b.status === "pending" ? 0 : 1));
+    for (const r of pendingFirst) {
+      if (seen.has(r.case_id)) continue;
+      seen.add(r.case_id);
+      promisesInput.push({
+        caseId: r.case_id, status: r.status, promisedAmount: Number(r.promised_amount) || 0,
+        promisedDate: r.promised_date, amountReceived: Number(r.amount_received) || 0,
       });
     }
 
-    let orgConfig;
-    try {
-      orgConfig = await loadOrgConfig(supabase, org.org_id);
-    } catch {
-      orgConfig = DEFAULT_ORG_CONFIG;
-    }
+    presenceRows = presenceResult;
+  }
 
-    const { data: mcfg } = await supabase.from("messaging_config")
-      .select("sms_enabled").eq("org_id", org.org_id).maybeSingle();
-    smsEnabled = resolveChannelSettings(mcfg as { sms_enabled?: boolean | null } | null).smsEnabled;
+  const ownerLabels = new Map(roster.map((m) => [m.userId, m.label]));
 
-    const { data: ecfg } = await supabase.from("email_config")
-      .select("email_enabled").eq("org_id", org.org_id).maybeSingle();
-    emailEnabled = resolveEmailSettings(ecfg as any).emailEnabled;
+  const presenceByCustomer = new Map<string, { userId: string; lastSeenAt: string }[]>();
+  for (const r of presenceRows) {
+    const list = presenceByCustomer.get(r.customer_id) ?? [];
+    list.push({ userId: r.user_id, lastSeenAt: r.last_seen_at });
+    presenceByCustomer.set(r.customer_id, list);
+  }
 
-    dashboardData = buildCaseData(
-      cases, invoicesInput, customersInput, lastContactsInput, promisesInput,
-      { view, sort, q, caseId, invoice, tab }, today, ownerLabels, user.id, orgConfig,
-    );
+  // Per-case collision (self-excluded). Plain object so it serializes over the loader.
+  const nowMs = Date.now();
+  for (const cse of cases) {
+    collisions[cse.id] = collisionState({
+      contacts: recentByCase.get(cse.id) ?? [],
+      heartbeats: presenceByCustomer.get(cse.customerId) ?? [],
+      currentUserId: user.id,
+      nowMs,
+      label: (id) => ownerLabels.get(id) ?? "A teammate",
+    });
+  }
 
-    const sel = dashboardData.selected;
-    if (sel) {
-      const customerId = sel.customerId;
-      const repInvoiceId =
-        (invoice && sel.invoices.some((iv) => iv.invoiceId === invoice))
-          ? invoice
-          : (sel.invoices[0]?.invoiceId ?? null);
+  const smsEnabled = resolveChannelSettings(mcfg as { sms_enabled?: boolean | null } | null).smsEnabled;
+  const emailEnabled = resolveEmailSettings(ecfg as any).emailEnabled;
 
-      // Activity: contact logs for the case (timeline input).
-      const { data: actRows } = await supabase
+  const dashboardData: DashboardData = buildCaseData(
+    cases, invoicesInput, customersInput, lastContactsInput, promisesInput,
+    { view, sort, q, caseId, invoice, tab }, today, ownerLabels, user.id, orgConfig,
+  );
+
+  const sel = dashboardData.selected;
+  if (sel) {
+    const customerId = sel.customerId;
+    const repInvoiceId =
+      (invoice && sel.invoices.some((iv) => iv.invoiceId === invoice))
+        ? invoice
+        : (sel.invoices[0]?.invoiceId ?? null);
+
+    // Batch C: the 5 selected-case queries.
+    const [
+      { data: actRows },
+      { data: msgRows },
+      { data: custRow },
+      { data: ap },
+      { data: emailMsgRows },
+    ] = await Promise.all([
+      supabase
         .from("contact_logs")
         .select("id, method, outcome, notes, created_at, follow_up_at, promised_amount, promised_date")
         .eq("org_id", org.org_id)
         .eq("case_id", sel.caseId)
-        .order("created_at", { ascending: false });
-      const logInputs: TimelineLogInput[] = ((actRows as unknown as ContactLogRow[]) ?? []).map((r) => ({
-        id: r.id, at: r.created_at, method: r.method, outcome: r.outcome, notes: r.notes,
-        followUpAt: r.follow_up_at,
-        promisedAmount: r.promised_amount == null ? null : Number(r.promised_amount),
-        promisedDate: r.promised_date,
-      }));
-
-      // Messages: thread by CUSTOMER (one conversation per customer); also carries
-      // case_id so we can derive the per-case slice for the timeline.
-      const { data: msgRows } = await supabase
+        .order("created_at", { ascending: false }),
+      supabase
         .from("text_messages")
         .select("id, case_id, direction, body, status, error_code, created_at")
         .eq("org_id", org.org_id)
         .eq("customer_id", customerId)
-        .order("created_at", { ascending: true });
-      const msgRowsTyped = (msgRows as unknown as (SelectedMessageRow & { case_id: string | null })[]) ?? [];
-      selectedMessages = msgRowsTyped.map((r) => ({
-        id: r.id, direction: r.direction, body: r.body, status: r.status,
-        errorCode: r.error_code, createdAt: r.created_at,
-      }));
-
-      // Timeline: case-scoped logs + case-scoped SMS, merged newest-first.
-      const smsInputs: TimelineSmsInput[] = msgRowsTyped
-        .filter((r) => r.case_id === sel.caseId)
-        .map((r) => ({
-          id: r.id, at: r.created_at, direction: r.direction,
-          body: r.body, status: r.status, errorCode: r.error_code,
-        }));
-      selectedTimeline = buildTimeline(logInputs, smsInputs);
-
-      // Consent + phone + email prefs from the customer.
-      const { data: custRow } = await supabase
-        .from("customers").select("phone, email, sms_consent, preferred_channel, do_not_call, do_not_text, do_not_email").eq("id", customerId).maybeSingle();
-      selectedConsent = (custRow as any)?.sms_consent ?? false;
-      selectedPhone = (custRow as any)?.phone ?? null;
-      selectedPrefs = resolveCommPrefs(custRow as any);
-      selectedCustomerEmail = (custRow as any)?.email ?? null;
-      selectedRepInvoiceId = repInvoiceId;
-
-      // Active pending promise id for the cancel form
-      const { data: ap } = await supabase
-        .from("promises").select("id").eq("org_id", org.org_id).eq("case_id", sel.caseId).eq("status", "pending").maybeSingle();
-      selectedPromiseId = ap?.id ?? null;
-
-      // Email thread: per-customer conversation (mirrors SMS thread above).
-      const { data: emailMsgRows } = await supabase
+        .order("created_at", { ascending: true }),
+      supabase
+        .from("customers").select("phone, email, sms_consent, preferred_channel, do_not_call, do_not_text, do_not_email").eq("id", customerId).maybeSingle(),
+      supabase
+        .from("promises").select("id").eq("org_id", org.org_id).eq("case_id", sel.caseId).eq("status", "pending").maybeSingle(),
+      supabase
         .from("email_messages")
         .select("id, direction, subject, body, status, error_code, created_at")
         .eq("org_id", org.org_id)
         .eq("customer_id", customerId)
-        .order("created_at", { ascending: true });
-      selectedEmailMessages = ((emailMsgRows as any[]) ?? []).map((r) => ({
-        id: r.id as string,
-        direction: r.direction as string,
-        subject: (r.subject as string | null) ?? null,
-        body: (r.body as string | null) ?? null,
-        status: (r.status as string | null) ?? null,
-        errorCode: (r.error_code as string | null) ?? null,
-        createdAt: r.created_at as string,
+        .order("created_at", { ascending: true }),
+    ]);
+
+    // Activity: contact logs for the case (timeline input).
+    const logInputs: TimelineLogInput[] = ((actRows as unknown as ContactLogRow[]) ?? []).map((r) => ({
+      id: r.id, at: r.created_at, method: r.method, outcome: r.outcome, notes: r.notes,
+      followUpAt: r.follow_up_at,
+      promisedAmount: r.promised_amount == null ? null : Number(r.promised_amount),
+      promisedDate: r.promised_date,
+    }));
+
+    // Messages: thread by CUSTOMER (one conversation per customer); also carries
+    // case_id so we can derive the per-case slice for the timeline.
+    const msgRowsTyped = (msgRows as unknown as (SelectedMessageRow & { case_id: string | null })[]) ?? [];
+    selectedMessages = msgRowsTyped.map((r) => ({
+      id: r.id, direction: r.direction, body: r.body, status: r.status,
+      errorCode: r.error_code, createdAt: r.created_at,
+    }));
+
+    // Timeline: case-scoped logs + case-scoped SMS, merged newest-first.
+    const smsInputs: TimelineSmsInput[] = msgRowsTyped
+      .filter((r) => r.case_id === sel.caseId)
+      .map((r) => ({
+        id: r.id, at: r.created_at, direction: r.direction,
+        body: r.body, status: r.status, errorCode: r.error_code,
       }));
-    }
+    selectedTimeline = buildTimeline(logInputs, smsInputs);
+
+    // Consent + phone + email prefs from the customer.
+    selectedConsent = (custRow as any)?.sms_consent ?? false;
+    selectedPhone = (custRow as any)?.phone ?? null;
+    selectedPrefs = resolveCommPrefs(custRow as any);
+    selectedCustomerEmail = (custRow as any)?.email ?? null;
+    selectedRepInvoiceId = repInvoiceId;
+
+    // Active pending promise id for the cancel form
+    selectedPromiseId = ap?.id ?? null;
+
+    // Email thread: per-customer conversation (mirrors SMS thread above).
+    selectedEmailMessages = ((emailMsgRows as any[]) ?? []).map((r) => ({
+      id: r.id as string,
+      direction: r.direction as string,
+      subject: (r.subject as string | null) ?? null,
+      body: (r.body as string | null) ?? null,
+      status: (r.status as string | null) ?? null,
+      errorCode: (r.error_code as string | null) ?? null,
+      createdAt: r.created_at as string,
+    }));
   }
 
   return data(
