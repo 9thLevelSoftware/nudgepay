@@ -5,6 +5,7 @@ import {
   EMAIL_FAILURE_LABEL,
   emailFailureLabel,
   isHardBounce,
+  plural,
 } from "../app/lib/labels";
 
 describe("nextActionLabel", () => {
@@ -72,5 +73,21 @@ describe("isHardBounce", () => {
     expect(isHardBounce("soft")).toBe(false);
     expect(isHardBounce("complaint")).toBe(false);
     expect(isHardBounce(null)).toBe(false);
+  });
+});
+
+describe("plural", () => {
+  it("uses singular for 1", () => {
+    expect(plural(1, "invoice")).toBe("1 invoice");
+  });
+
+  it("uses plural for 0 and >1", () => {
+    expect(plural(0, "invoice")).toBe("0 invoices");
+    expect(plural(3, "invoice")).toBe("3 invoices");
+  });
+
+  it("accepts an explicit plural form for irregulars", () => {
+    expect(plural(2, "person", "people")).toBe("2 people");
+    expect(plural(1, "person", "people")).toBe("1 person");
   });
 });

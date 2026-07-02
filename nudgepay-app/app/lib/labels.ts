@@ -60,3 +60,14 @@ export function isHardBounce(code: string | null): boolean {
   if (!code) return false;
   return HARD_BOUNCE_CODES.has(code.toLowerCase());
 }
+
+// ─── Pluralization ────────────────────────────────────────────────────────────
+
+/**
+ * Simple English pluralization: `plural(1, "invoice")` → `"1 invoice"`,
+ * `plural(3, "invoice")` → `"3 invoices"`. For irregular nouns, pass the
+ * plural form: `plural(2, "person", "people")`.
+ */
+export function plural(n: number, singular: string, pluralForm?: string): string {
+  return `${n} ${n === 1 ? singular : (pluralForm ?? singular + "s")}`;
+}

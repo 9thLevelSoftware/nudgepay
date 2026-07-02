@@ -7,7 +7,16 @@ import { formatDate } from "../lib/dates";
 import { STATUS_LABEL, formatUSD } from "../lib/format";
 import { exceptionLabel } from "../lib/exceptions";
 import { partitionEligibility, clampBatch, MAX_BATCH } from "../lib/bulk";
+import { plural } from "../lib/labels";
 import { BulkActionBar } from "./BulkActionBar";
+
+// Shared grid template — used by both the header row and queue rows so
+// column widths can't drift apart.
+const QUEUE_GRID = [
+  "grid-cols-[auto_minmax(180px,2fr)_minmax(96px,0.9fr)_minmax(56px,0.5fr)]",
+  "lg:grid-cols-[auto_minmax(180px,2fr)_minmax(96px,0.7fr)_minmax(56px,0.5fr)_minmax(96px,0.7fr)_minmax(230px,2fr)]",
+  "xl:grid-cols-[auto_minmax(180px,2fr)_minmax(96px,0.7fr)_minmax(56px,0.5fr)_minmax(96px,0.7fr)_minmax(230px,2fr)_minmax(104px,0.7fr)]",
+].join(" ");
 import { BulkSmsDrawer } from "./BulkSmsDrawer";
 import { ThermalBand } from "./ThermalBand";
 import { Icon } from "./Icons";
@@ -184,9 +193,7 @@ function QueueRow({
         aria-current={selected ? "true" : undefined}
         className={[
           "group flex-1 grid items-center gap-x-6 gap-y-0",
-          "grid-cols-[auto_minmax(140px,1.5fr)_minmax(96px,0.9fr)_minmax(56px,0.5fr)]",
-          "lg:grid-cols-[auto_minmax(140px,1.3fr)_minmax(96px,0.8fr)_minmax(56px,0.5fr)_minmax(96px,0.85fr)_minmax(230px,2fr)]",
-          "xl:grid-cols-[auto_minmax(140px,1.3fr)_minmax(96px,0.8fr)_minmax(56px,0.5fr)_minmax(96px,0.85fr)_minmax(230px,2fr)_minmax(104px,0.75fr)]",
+          QUEUE_GRID,
           "px-4 py-2.5 text-sm",
           "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-copper focus-visible:ring-inset",
         ].join(" ")}
@@ -200,7 +207,7 @@ function QueueRow({
         <span data-label="Customer" className="min-w-0">
           <span className="block font-sans text-text truncate">{item.customerName}</span>
           <span className="flex items-center gap-1.5">
-            <span className="font-mono text-xs text-muted">{item.invoiceCount} invoice(s)</span>
+            <span className="font-mono text-xs text-muted">{plural(item.invoiceCount, "invoice")}</span>
             <span className={`inline-flex items-center gap-0.5 rounded px-1.5 py-0.5 text-[10px] font-sans font-semibold ${LEVEL_BADGE[item.effectiveLevel] ?? "text-muted"}`}>
               {item.override ? <span aria-hidden>📌</span> : null}
               {item.effectiveLevel}
@@ -286,7 +293,7 @@ function MobileCard({
             <div className="min-w-0">
               <p className="font-sans text-text font-medium truncate">{item.customerName}</p>
               <p className="flex items-center gap-1.5">
-                <span className="font-mono text-xs text-muted">{item.invoiceCount} invoice(s)</span>
+                <span className="font-mono text-xs text-muted">{plural(item.invoiceCount, "invoice")}</span>
                 <span className={`inline-flex items-center gap-0.5 rounded px-1.5 py-0.5 text-[10px] font-sans font-semibold ${LEVEL_BADGE[item.effectiveLevel] ?? "text-muted"}`}>
                   {item.override ? <span aria-hidden>📌</span> : null}
                   {item.effectiveLevel}
@@ -545,7 +552,7 @@ export function WorkQueue({
                     className="h-4 w-4 rounded border-border text-copper focus-visible:ring-2 focus-visible:ring-copper"
                   />
                 </label>
-                <div className="flex-1 grid items-center gap-x-6 grid-cols-[auto_minmax(140px,1.5fr)_minmax(96px,0.9fr)_minmax(56px,0.5fr)] lg:grid-cols-[auto_minmax(140px,1.3fr)_minmax(96px,0.8fr)_minmax(56px,0.5fr)_minmax(96px,0.85fr)_minmax(230px,2fr)] xl:grid-cols-[auto_minmax(140px,1.3fr)_minmax(96px,0.8fr)_minmax(56px,0.5fr)_minmax(96px,0.85fr)_minmax(230px,2fr)_minmax(104px,0.75fr)]">
+                <div className={`flex-1 grid items-center gap-x-6 ${QUEUE_GRID}`}>
                   <span className="font-sans text-xs text-muted uppercase tracking-wide">Heat</span>
                   <span className="font-sans text-xs text-muted uppercase tracking-wide">Customer</span>
                   <span className="font-sans text-xs text-muted uppercase tracking-wide text-right">Total overdue</span>

@@ -5,7 +5,7 @@ import type { Collision } from "../lib/collision";
 import { CONTACT_METHODS, CONTACT_OUTCOMES } from "../lib/contact-log";
 import { PRIMARY_EXCEPTION_STATES, requiresReviewDate, isContactBlocked, type ExceptionState } from "../lib/exceptions";
 import { EXCEPTION_REASON_LABEL, formatUSD } from "../lib/format";
-import { NEXT_ACTION_LABEL as NEXT_STEP_LABEL } from "../lib/labels";
+import { NEXT_ACTION_LABEL as NEXT_STEP_LABEL, plural } from "../lib/labels";
 import { OUTCOME_LABELS } from "../lib/timeline";
 import { useDialog } from "../lib/use-dialog";
 import type { action } from "../routes/api.contact-logs";
@@ -76,7 +76,7 @@ export function LogContactDrawer({
         <p className="px-5 pt-3 text-sm text-muted font-sans">
           {selected.customerName}
           <span className="mx-1.5 text-border">·</span>
-          {selected.invoiceCount} open invoice(s)
+          {plural(selected.invoiceCount, "open invoice")}
         </p>
         {(() => {
           const inv = repInvoiceId

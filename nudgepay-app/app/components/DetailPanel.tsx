@@ -9,7 +9,7 @@ import { EMAIL_TEMPLATES, applyEmailTemplate } from "~/lib/email-templates";
 import { formatDate } from "~/lib/dates";
 import { STATUS_LABEL, EXCEPTION_REASON_LABEL, formatUSD } from "~/lib/format";
 import { isContactBlocked, isTerminal, exceptionLabel } from "~/lib/exceptions";
-import { nextActionLabel, emailFailureLabel, isHardBounce } from "~/lib/labels";
+import { nextActionLabel, emailFailureLabel, isHardBounce, plural } from "~/lib/labels";
 import type { MessageEntry, EmailMessageEntry, RosterMember } from "~/routes/dashboard";
 import type { TimelineEntry } from "~/lib/timeline";
 import { canSendSms, canSendEmail, type CommPrefs } from "~/lib/comm-prefs";
@@ -634,7 +634,7 @@ export function DetailPanel({
           {selected.customerName}
         </h2>
         <p className="mt-1 text-xs text-surface/60">
-          {selected.invoiceCount} open invoice(s)
+          {plural(selected.invoiceCount, "open invoice")}
           <span className="mx-1.5 text-surface/30 select-none">·</span>
           oldest{" "}
           <span className={`font-mono font-semibold ${HEAT_TEXT[selected.heat.band] ?? "text-surface"}`}>
