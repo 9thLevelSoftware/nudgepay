@@ -147,7 +147,8 @@ function MessagesTab({
   const noInvoice = repInvoiceId === null;
   const contactBlocked = isContactBlocked(selected.exceptionReason);
   const navigation = useNavigation();
-  const busy = navigation.state !== "idle";
+  const consentBusy = navigation.state !== "idle" && navigation.formAction === "/api/sms-consent";
+  const sendBusy = navigation.state !== "idle" && navigation.formAction === "/api/text/send";
 
   // Reset confirmSend when the case changes
   useEffect(() => {
@@ -181,10 +182,10 @@ function MessagesTab({
             <input type="hidden" name="consent" value={consent ? "false" : "true"} />
             <button
               type="submit"
-              disabled={busy}
+              disabled={consentBusy}
               className="text-xs font-sans font-medium text-copper hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-copper rounded disabled:opacity-60 disabled:cursor-not-allowed"
             >
-              {busy ? "Updating…" : consent ? "Revoke consent" : "Mark consented"}
+              {consentBusy ? "Updating…" : consent ? "Revoke consent" : "Mark consented"}
             </button>
           </form>
         </div>
@@ -273,11 +274,11 @@ function MessagesTab({
             ) : <span />}
             <button
               type="submit"
-              disabled={!smsEnabled || !canSendSms(prefs, consent) || noInvoice || contactBlocked || !phone || busy}
+              disabled={!smsEnabled || !canSendSms(prefs, consent) || noInvoice || contactBlocked || !phone || sendBusy}
               className="inline-flex items-center gap-1.5 rounded-md bg-copper px-3 py-1.5 text-xs font-sans font-semibold text-surface hover:bg-copper/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-copper disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
             >
               <Icon name="message" size={14} aria-hidden />
-              {busy ? "Sending…" : "Send text"}
+              {sendBusy ? "Sending…" : "Send text"}
             </button>
           </div>
         </form>
@@ -324,7 +325,7 @@ function EmailTab({
   const noInvoice = repInvoiceId === null;
   const contactBlocked = isContactBlocked(selected.exceptionReason);
   const navigation = useNavigation();
-  const busy = navigation.state !== "idle";
+  const busy = navigation.state !== "idle" && navigation.formAction === "/api/email/send";
 
   // Derive the first gate reason that applies. Order: workspace → blocked → no-email → opted-out.
   const gateReason = !emailEnabled
@@ -559,7 +560,7 @@ export function DetailPanel({
   }, [customerId]);
   const navigate = useNavigate();
   const navigation = useNavigation();
-  const busy = navigation.state !== "idle";
+  const formBusy = (action: string) => navigation.state !== "idle" && navigation.formAction === action;
 
   // ── Empty state ────────────────────────────────────────────────────────────
   if (selected === null) {
@@ -855,10 +856,10 @@ export function DetailPanel({
               />
               <button
                 type="submit"
-                disabled={busy}
+                disabled={formBusy("/api/priority-override")}
                 className="rounded-md border border-copper/40 px-3 py-1 text-xs font-sans font-medium text-copper hover:bg-copper/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-copper transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
               >
-                {busy ? "Saving…" : "Save"}
+                {formBusy("/api/priority-override") ? "Saving…" : "Save"}
               </button>
             </form>
           </div>
@@ -932,10 +933,10 @@ export function DetailPanel({
                     <input type="hidden" name="returnTo" value={overviewReturnTo} />
                     <button
                       type="submit"
-                      disabled={busy}
+                      disabled={formBusy("/api/promises/cancel")}
                       className="text-xs font-sans font-medium text-copper hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-copper rounded disabled:opacity-60 disabled:cursor-not-allowed"
                     >
-                      {busy ? "Cancelling…" : "Cancel promise"}
+                      {formBusy("/api/promises/cancel") ? "Cancelling…" : "Cancel promise"}
                     </button>
                   </form>
                 ) : null}
