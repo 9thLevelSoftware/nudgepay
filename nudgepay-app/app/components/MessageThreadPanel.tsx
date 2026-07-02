@@ -72,7 +72,7 @@ export function MessageThreadPanel({
   const smsSendDisabled = !smsEnabled || !thread.canReply;
   // Workspace-off and opt-outs are compliance-sensitive (red); routine soft blocks are amber.
   const smsGateMessage = !smsEnabled ? "Text messaging is turned off for this workspace." : thread.replyDisabledReason ?? "Sending is not available.";
-  const smsGateHard = !smsEnabled || (thread.replyDisabledReason ?? "").includes("opted out");
+  const smsGateHard = !smsEnabled || (thread.replyDisabledReason ?? "").includes("opted out") || (thread.replyDisabledReason ?? "").includes("do-not-contact");
 
   // F-022: warn before composing into an address that just hard-bounced.
   const lastEmail = emailMessages.length > 0 ? emailMessages[emailMessages.length - 1] : null;

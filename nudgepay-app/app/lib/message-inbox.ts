@@ -47,6 +47,7 @@ export type ThreadCustomerInput = {
   hasOpenCase: boolean;
   openCaseId: string | null;
   latestInvoiceId: string | null;
+  contactBlocked: boolean;
 };
 
 export type ThreadRow = {
@@ -79,27 +80,37 @@ function isFailed(status: string | null, errorCode: string | null): boolean {
 }
 
 function smsGate(c: ThreadCustomerInput, anchorInvoiceId: string | null): { canReply: boolean; reason: string | null } {
-  const reason = !c.smsConsent
-    ? "Customer has not consented to SMS"
+  const reason = c.contactBlocked
+    ? "This case is marked do-not-contact / legal"
     : c.commPrefs.doNotText
       ? "Customer opted out of texts"
-      : !c.phone
-        ? "Customer has no phone number"
-        : anchorInvoiceId == null
-          ? "No invoice on file to attach"
-          : null;
-  return { canReply: canSendSms(c.commPrefs, c.smsConsent) && !!c.phone && anchorInvoiceId != null, reason };
+      : !c.smsConsent
+        ? "Customer has not consented to SMS"
+        : !c.phone
+          ? "Customer has no phone number"
+          : anchorInvoiceId == null
+            ? "No invoice on file to attach"
+            : null;
+  return {
+    canReply: !c.contactBlocked && canSendSms(c.commPrefs, c.smsConsent) && !!c.phone && anchorInvoiceId != null,
+    reason,
+  };
 }
 
 function emailGate(c: ThreadCustomerInput, anchorInvoiceId: string | null): { canReply: boolean; reason: string | null } {
-  const reason = c.commPrefs.doNotEmail
-    ? "Customer opted out of email"
-    : !c.email
-      ? "Customer has no email on file"
-      : anchorInvoiceId == null
-        ? "No invoice on file to attach"
-        : null;
-  return { canReply: canSendEmail(c.commPrefs) && !!c.email && anchorInvoiceId != null, reason };
+  const reason = c.contactBlocked
+    ? "This case is marked do-not-contact / legal"
+    : c.commPrefs.doNotEmail
+      ? "Customer opted out of email"
+      : !c.email
+        ? "Customer has no email on file"
+        : anchorInvoiceId == null
+          ? "No invoice on file to attach"
+          : null;
+  return {
+    canReply: !c.contactBlocked && canSendEmail(c.commPrefs) && !!c.email && anchorInvoiceId != null,
+    reason,
+  };
 }
 
 export function buildThreadRows(

@@ -4,6 +4,7 @@ import { getEnv } from "../lib/env.server";
 import { loadWorkspaceChrome } from "../lib/workspace.server";
 import { listOrgMembers } from "../lib/orgs.server";
 import { resolveCommPrefs } from "../lib/comm-prefs";
+import { isContactBlocked } from "../lib/exceptions";
 import { resolveChannelSettings } from "../lib/channel-settings";
 import { resolveEmailSettings } from "../lib/email-settings";
 import {
@@ -100,13 +101,19 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
     custRows = (data as any[]) ?? [];
   }
 
-  // Open cases for those customers → hasOpenCase / openCaseId.
+  // Open cases for those customers → hasOpenCase / openCaseId / contactBlocked.
   const openCaseByCustomer = new Map<string, string>();
+  const blockedByCustomer = new Map<string, boolean>();
   if (customerIds.length > 0) {
     const { data: caseRows } = await supabase
-      .from("collection_cases").select("id, customer_id, closed_at")
+      .from("collection_cases").select("id, customer_id, closed_at, exception_reason")
       .eq("org_id", org.org_id).in("customer_id", customerIds).is("closed_at", null);
-    for (const c of (caseRows as any[]) ?? []) openCaseByCustomer.set(c.customer_id as string, c.id as string);
+    for (const c of (caseRows as any[]) ?? []) {
+      openCaseByCustomer.set(c.customer_id as string, c.id as string);
+      if (isContactBlocked(c.exception_reason as any)) {
+        blockedByCustomer.set(c.customer_id as string, true);
+      }
+    }
   }
 
   // Latest invoice (any status) per customer → anchor fallback + selected template vars.
@@ -141,6 +148,7 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
     hasOpenCase: openCaseByCustomer.has(c.id as string),
     openCaseId: openCaseByCustomer.get(c.id as string) ?? null,
     latestInvoiceId: latestInvoiceByCustomer.get(c.id as string)?.id ?? null,
+    contactBlocked: blockedByCustomer.get(c.id as string) ?? false,
   }));
 
   const roster = await listOrgMembers(service, org.org_id);
