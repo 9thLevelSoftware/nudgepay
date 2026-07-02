@@ -38,3 +38,21 @@ body {
 	@apply bg-panel text-text;
 	font-family: var(--font-sans);
 }
+
+@keyframes progress-slide {
+	from {
+		transform: translateX(-100%);
+	}
+	to {
+		transform: translateX(300%);
+	}
+}
+
+@keyframes fade-in {
+	from {
+		opacity: 0;
+	}
+	to {
+		opacity: 1;
+	}
+}
