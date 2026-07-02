@@ -75,7 +75,7 @@ export function MessagesInbox({ rows, tab, sort, search, counts, selectedId, sel
               key={ch.id} to={channelHref(ch.id)} aria-current={active ? "page" : undefined}
               className={[
                 "inline-flex items-center gap-1.5 h-7 px-3 rounded-full text-xs font-medium border",
-                active ? "bg-copper text-surface border-copper" : "bg-paper text-muted border-border hover:border-copper/50",
+                active ? "bg-copper text-ink border-copper" : "bg-paper text-muted border-border hover:border-copper/50",
               ].join(" ")}
             >
               {ch.label}

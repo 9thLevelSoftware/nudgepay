@@ -169,7 +169,7 @@ export function AppShell({
         {/* Mobile backdrop */}
         {navOpen && (
           <div
-            className="fixed inset-0 z-20 bg-ink/60 md:hidden"
+            className="fixed inset-0 z-20 bg-ink/40 md:hidden"
             aria-hidden="true"
             onClick={() => setNavOpen(false)}
           />

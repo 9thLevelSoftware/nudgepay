@@ -24,7 +24,7 @@ export function CommPrefsDrawer({
   const formBusy = navigation.state !== "idle" && navigation.formAction === "/api/comm-prefs";
 
   return (
-    <div className="fixed inset-0 z-40 flex justify-end bg-black/40" role="dialog" aria-modal="true" aria-label="Communication preferences">
+    <div className="fixed inset-0 z-40 flex justify-end bg-ink/40" role="dialog" aria-modal="true" aria-label="Communication preferences">
       {/* Overlay click closes (Link to the case without ?prefs) */}
       <Link to={closeHref} aria-hidden="true" tabIndex={-1} aria-label="Close" className="absolute inset-0" />
       <div ref={panelRef} className="relative z-50 flex h-full w-full max-w-md flex-col gap-4 overflow-y-auto border-l border-border bg-surface p-5 shadow-panel">
@@ -68,7 +68,7 @@ export function CommPrefsDrawer({
 
           <div className="flex justify-end gap-2">
             <Link to={closeHref} className="rounded-md px-3 py-1.5 text-xs text-muted hover:text-text">Cancel</Link>
-            <button type="submit" disabled={formBusy} className="rounded-md bg-copper px-3 py-1.5 text-xs font-sans font-semibold text-surface hover:bg-copper/90 disabled:opacity-60 disabled:cursor-not-allowed">
+            <button type="submit" disabled={formBusy} className="rounded-md bg-copper px-3 py-1.5 text-xs font-sans font-semibold text-ink hover:bg-copper/90 disabled:opacity-60 disabled:cursor-not-allowed">
               {formBusy ? "Saving…" : "Save preferences"}
             </button>
           </div>

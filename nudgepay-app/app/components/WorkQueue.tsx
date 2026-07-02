@@ -66,7 +66,7 @@ function CommPrefBadges({ prefs }: { prefs: { preferredChannel: string | null; d
     badges.push({ key: "pref", label: PREF_CHANNEL_LABEL[prefs.preferredChannel], cls: "bg-cool/15 text-cool" });
   }
   if (prefs.doNotText) badges.push({ key: "nt", label: "No text", cls: "bg-hot/15 text-hot" });   // enforced
-  if (prefs.doNotCall) badges.push({ key: "nc", label: "No call", cls: "bg-amber-500/15 text-amber-700" }); // advisory
+  if (prefs.doNotCall) badges.push({ key: "nc", label: "No call", cls: "bg-advisory/15 text-advisory" }); // advisory
   if (badges.length === 0) return null;
   return (
     <span className="flex flex-wrap items-center gap-1">
@@ -89,7 +89,7 @@ function CollisionMarker({ collision }: { collision?: Collision }) {
       : `Contacted by ${collision.byUser ?? "a teammate"} recently`;
   return (
     <span
-      className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[10px] font-sans font-medium text-amber-700 bg-amber-400/10 border border-amber-400/30"
+      className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[10px] font-sans font-medium text-advisory bg-advisory/10 border border-advisory/30"
       title={text}
       aria-label={text}
     >
@@ -309,7 +309,7 @@ function MobileCard({
           <span className="font-sans font-medium text-text">
             {STATUS_LABEL[item.status] ?? item.status}
             {item.status === "on_hold" && item.exceptionReason ? (
-              <span className="ml-1.5 inline-flex items-center rounded-sm bg-amber-500/15 px-1.5 py-0.5 text-[11px] font-medium text-amber-700">
+              <span className="ml-1.5 inline-flex items-center rounded-sm bg-advisory/15 px-1.5 py-0.5 text-[11px] font-medium text-advisory">
                 {exceptionLabel(item.exceptionReason)}
               </span>
             ) : null}

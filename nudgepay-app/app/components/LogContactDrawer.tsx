@@ -235,7 +235,7 @@ export function LogContactDrawer({
                     className="rounded-md border border-border bg-surface px-3 py-2 text-sm font-sans text-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-copper" />
                 </label>
               ) : (
-                <p className="text-xs font-sans text-amber-700">
+                <p className="text-xs font-sans text-advisory">
                   Parks this case indefinitely{isContactBlocked(exceptionReason) ? " and blocks outbound messages" : ""}.
                 </p>
               )}
@@ -243,7 +243,7 @@ export function LogContactDrawer({
           )}
 
           {confirmSave ? (
-            <p className="text-xs font-sans text-amber-700" role="alert">
+            <p className="text-xs font-sans text-advisory" role="alert">
               {collision?.level === "live"
                 ? `${collision.byUser} is viewing this customer now. Log anyway?`
                 : `${collision?.byUser} contacted this customer recently. Log anyway?`}
@@ -260,7 +260,7 @@ export function LogContactDrawer({
             <button
               type="submit"
               disabled={saving}
-              className="rounded-md bg-copper px-4 py-2 text-sm font-sans font-semibold text-surface hover:bg-copper/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-copper focus-visible:ring-offset-2 disabled:opacity-60 disabled:cursor-not-allowed"
+              className="rounded-md bg-copper px-4 py-2 text-sm font-sans font-semibold text-ink hover:bg-copper/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-copper focus-visible:ring-offset-2 disabled:opacity-60 disabled:cursor-not-allowed"
             >
               {saving ? "Saving…" : "Save contact"}
             </button>

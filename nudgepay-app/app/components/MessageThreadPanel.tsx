@@ -251,7 +251,7 @@ export function MessageThreadPanel({
               className={`mb-2 rounded-md px-3 py-2 text-xs font-sans font-medium ${
                 smsGateHard
                   ? "bg-hot/10 border border-hot/30 text-hot"
-                  : "bg-amber-400/10 border border-amber-400/30 text-amber-700"
+                  : "bg-advisory/10 border border-advisory/30 text-advisory"
               }`}
               role={smsGateHard ? "alert" : "status"}
             >
