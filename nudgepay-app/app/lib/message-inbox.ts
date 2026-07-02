@@ -80,16 +80,17 @@ function isFailed(status: string | null, errorCode: string | null): boolean {
 }
 
 function smsGate(c: ThreadCustomerInput, anchorInvoiceId: string | null): { canReply: boolean; reason: string | null } {
+  // Order matches DetailPanel: blocked → opted-out → no-invoice → no-consent → no-phone
   const reason = c.contactBlocked
     ? "This case is marked do-not-contact / legal"
     : c.commPrefs.doNotText
       ? "Customer opted out of texts"
-      : !c.smsConsent
-        ? "Customer has not consented to SMS"
-        : !c.phone
-          ? "Customer has no phone number"
-          : anchorInvoiceId == null
-            ? "No invoice on file to attach"
+      : anchorInvoiceId == null
+        ? "No invoice on file to attach"
+        : !c.smsConsent
+          ? "Customer has not consented to SMS"
+          : !c.phone
+            ? "Customer has no phone number"
             : null;
   return {
     canReply: !c.contactBlocked && canSendSms(c.commPrefs, c.smsConsent) && !!c.phone && anchorInvoiceId != null,
@@ -98,12 +99,13 @@ function smsGate(c: ThreadCustomerInput, anchorInvoiceId: string | null): { canR
 }
 
 function emailGate(c: ThreadCustomerInput, anchorInvoiceId: string | null): { canReply: boolean; reason: string | null } {
+  // Order matches DetailPanel: blocked → no-email → opted-out → no-invoice
   const reason = c.contactBlocked
     ? "This case is marked do-not-contact / legal"
-    : c.commPrefs.doNotEmail
-      ? "Customer opted out of email"
-      : !c.email
-        ? "Customer has no email on file"
+    : !c.email
+      ? "Customer has no email on file"
+      : c.commPrefs.doNotEmail
+        ? "Customer opted out of email"
         : anchorInvoiceId == null
           ? "No invoice on file to attach"
           : null;
