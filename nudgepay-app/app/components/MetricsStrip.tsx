@@ -2,78 +2,9 @@ import { Link } from "react-router";
 import type { Metrics, ViewId, SortId } from "../lib/worklist";
 import { formatUSD } from "../lib/format";
 import { Icon } from "./Icons";
+import { MetricTile, type MetricAccent } from "./MetricTile";
 
-type Accent = "copper" | "cool" | "hot" | "ink" | "neutral";
-
-interface TileProps {
-  label: string;
-  count: number;
-  amount: number;
-  viewId: ViewId;
-  active: boolean;
-  href: string;
-  accent: Accent;
-}
-
-// Static literal maps for the Tailwind v4 scanner.
-const ACCENT_TEXT: Record<Accent, string> = {
-  copper: "text-copper",
-  cool: "text-cool",
-  hot: "text-hot",
-  ink: "text-text",
-  neutral: "text-muted",
-};
-const ACCENT_DOT: Record<Accent, string> = {
-  copper: "bg-copper",
-  cool: "bg-cool",
-  hot: "bg-hot",
-  ink: "bg-ink",
-  neutral: "bg-muted",
-};
-
-/**
- * MetricTile — a clickable KPI tile.
- *
- * Leads with the dollar amount (the at-a-glance financial signal), with the
- * count + label beneath. The whole tile is a `<Link>` to its `?view=` filter,
- * mirroring the queue's URL-driven selection. The tile whose view is active
- * gets the single copper active treatment (ring + faint tint).
- */
-function MetricTile({ label, count, amount, active, href, accent }: TileProps) {
-  return (
-    <Link
-      to={href}
-      aria-label={`${label}: ${count} accounts, ${formatUSD(amount)}`}
-      aria-current={active ? "true" : undefined}
-      className={[
-        "relative flex flex-col text-left p-4 rounded-tile overflow-hidden min-w-0 transition-colors",
-        "snap-start shrink-0 min-w-[140px] sm:shrink sm:min-w-0",
-        "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-copper",
-        active
-          ? "bg-copper/5 border border-copper shadow-tile"
-          : "bg-paper border border-border hover:border-copper/50",
-      ].join(" ")}
-    >
-      <span
-        aria-hidden="true"
-        className={`absolute top-0 inset-x-0 h-0.5 ${active ? "bg-copper" : "bg-transparent"}`}
-      />
-      <span className="flex items-center gap-1.5 mb-2">
-        <span aria-hidden="true" className={`w-2 h-2 rounded-full shrink-0 ${ACCENT_DOT[accent]}`} />
-        <span className="font-mono text-[11px] font-semibold uppercase tracking-wide text-muted truncate">
-          {label}
-        </span>
-      </span>
-      <span className="font-display text-2xl font-semibold leading-none tracking-tight tabular-nums text-text">
-        {formatUSD(amount)}
-      </span>
-      <span className="mt-1.5 text-xs text-muted">
-        <span className={`font-mono font-semibold ${ACCENT_TEXT[accent]}`}>{count}</span>{" "}
-        {count === 1 ? "account" : "accounts"}
-      </span>
-    </Link>
-  );
-}
+type Accent = MetricAccent;
 
 interface MetricsStripProps {
   metrics: Metrics;
@@ -136,12 +67,13 @@ export function MetricsStrip({ metrics, view, sort = "recommended", search = "",
           <MetricTile
             key={t.viewId}
             label={t.label}
-            count={t.m.count}
-            amount={t.m.amount}
-            viewId={t.viewId}
-            active={view === t.viewId}
-            href={href(t.viewId)}
+            value={formatUSD(t.m.amount)}
+            sub={`${t.m.count} ${t.m.count === 1 ? "account" : "accounts"}`}
             accent={t.accent}
+            href={href(t.viewId)}
+            active={view === t.viewId}
+            ariaLabel={`${t.label}: ${t.m.count} accounts, ${formatUSD(t.m.amount)}`}
+            className="snap-start shrink-0 min-w-[140px] sm:shrink sm:min-w-0"
           />
         ))}
       </div>

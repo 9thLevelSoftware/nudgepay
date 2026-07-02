@@ -1,8 +1,7 @@
-import { redirect, useLoaderData, useNavigation, useSearchParams, Form, data, type LoaderFunctionArgs } from "react-router";
+import { useLoaderData, useNavigation, useSearchParams, Form, data, type LoaderFunctionArgs } from "react-router";
 import { useFlashCleanup } from "../lib/use-flash-cleanup";
 import { getEnv } from "../lib/env.server";
-import { requireUser, resolveOrg } from "../lib/session.server";
-import { getConnectionStatus } from "../lib/qbo-connection.server";
+import { loadWorkspaceChrome } from "../lib/workspace.server";
 import { loadOrgConfig } from "../lib/org-config.server";
 import { AppShell } from "../components/AppShell";
 import { CollectionsRulesForm } from "../components/CollectionsRulesForm";
@@ -15,20 +14,10 @@ export const meta: Route.MetaFunction = () => pageTitle("Settings");
 
 export async function loader({ request, context }: LoaderFunctionArgs) {
   const env = getEnv(context as any);
-  const { supabase, headers, user } = await requireUser(request, env);
-  const org = await resolveOrg(supabase, user.id);
-  if (!org) throw redirect("/onboarding", { headers });
-  const isOwner = org.role === "owner";
-
-  const { data: orgRow } = await supabase.from("organizations").select("name").eq("id", org.org_id).single();
-  const emailParts = (user.email ?? "").split("@")[0].split(/[.\-_]/);
-  const initials = emailParts.slice(0, 2).map((p) => p[0]?.toUpperCase() ?? "").join("") || "?";
-
-  const conn = await getConnectionStatus(supabase, org.org_id);
-  const connected = conn?.status === "connected";
-
-  const { data: connMeta } = await supabase.from("qbo_connections").select("last_sync_at").eq("org_id", org.org_id).maybeSingle();
-  const lastSyncAt = (connMeta?.last_sync_at as string | null) ?? null;
+  const {
+    supabase, headers, isOwner, org,
+    orgName, initials, connected, lastSyncAt,
+  } = await loadWorkspaceChrome(request, env, { requireQbo: false });
 
   const { data: syncErrorRows } = await supabase.from("sync_errors")
     .select("id, source, scope, message, occurred_at").eq("org_id", org.org_id)
@@ -51,7 +40,7 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
   const config = await loadOrgConfig(supabase, org.org_id);
 
   return data({
-    orgName: (orgRow?.name as string) ?? "Workspace",
+    orgName,
     initials, isOwner, connected, lastSyncAt, syncIssues,
     messaging: { sender, configured: messagingConfigured, smsEnabled },
     emailSettings,

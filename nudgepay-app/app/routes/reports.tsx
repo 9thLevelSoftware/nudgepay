@@ -1,8 +1,6 @@
-import { data, redirect, useLoaderData, Link, type LoaderFunctionArgs } from "react-router";
+import { data, useLoaderData, Link, type LoaderFunctionArgs } from "react-router";
 import { getEnv } from "../lib/env.server";
-import { requireUser, resolveOrg } from "../lib/session.server";
-import { getConnectionStatus } from "../lib/qbo-connection.server";
-import { createSupabaseServiceClient } from "../lib/supabase.server";
+import { loadWorkspaceChrome } from "../lib/workspace.server";
 import { listOrgMembers } from "../lib/orgs.server";
 import { addCalendarDays } from "../lib/business-days";
 import { AppShell } from "../components/AppShell";
@@ -20,20 +18,12 @@ export const meta: Route.MetaFunction = ({ data }) => {
 
 export async function loader({ request, context }: LoaderFunctionArgs) {
   const env = getEnv(context as any);
-  const { supabase, headers, user } = await requireUser(request, env);
-  const org = await resolveOrg(supabase, user.id);
-  if (!org) throw redirect("/onboarding", { headers });
-  // Owner-only surface gate (not a security boundary — rows are RLS-readable).
-  if (org.role !== "owner") throw redirect("/dashboard", { headers });
-
-  const service = createSupabaseServiceClient(env);
-
-  // Org chrome (mirror dashboard)
-  const { data: orgRow } = await supabase.from("organizations").select("name").eq("id", org.org_id).single();
-  const emailParts = (user.email ?? "").split("@")[0].split(/[.\-_]/);
-  const initials = emailParts.slice(0, 2).map((p) => p[0]?.toUpperCase() ?? "").join("") || "?";
-  const conn = await getConnectionStatus(service, org.org_id);
-  const connected = conn?.status === "connected";
+  const {
+    supabase, service, headers, org,
+    orgName, initials, connected, syncLabel,
+  } = await loadWorkspaceChrome(request, env, { requireQbo: false, requireOwner: true });
+  // Owner-only surface gate is enforced inside the helper
+  // (redirects to /dashboard?denied=reports for non-owners).
 
   // Window
   const url = new URL(request.url);
@@ -130,10 +120,8 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
 
   const report = buildTeamReport({ range, roster, contactLogs, promises, openedCases, workloadCases, today });
 
-  const syncLabel = connected ? "Connected" : "Not connected";
-
   return data(
-    { report, orgName: (orgRow?.name as string) ?? "Workspace", initials, connected, syncLabel },
+    { report, orgName, initials, connected, syncLabel },
     { headers },
   );
 }
