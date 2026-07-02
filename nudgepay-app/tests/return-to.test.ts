@@ -24,3 +24,7 @@ test("rejects null and non-string", () => {
 test("honors a custom fallback", () => {
   expect(safeReturnTo("nope", "/onboarding")).toBe("/onboarding");
 });
+
+test("rejects backslash bypass (browser normalizes \\ to /)", () => {
+  expect(safeReturnTo("/\\evil.com", "/dashboard")).toBe("/dashboard");
+});
