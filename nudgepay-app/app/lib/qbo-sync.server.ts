@@ -139,7 +139,7 @@ export async function syncOverdueInvoices(
   const plus7 = new Date(Date.now() + 7 * 86_400_000).toISOString().slice(0, 10);
   const invoices = await qboQuery(
     deps.fetchFn, deps.api, accessToken, realmId,
-    `select * from Invoice where Balance > '0' and DueDate < '${plus7}' startposition 1 maxresults ${QUERY_LIMIT}`,
+    `select * from Invoice where Balance > '0' and DueDate <= '${plus7}' startposition 1 maxresults ${QUERY_LIMIT}`,
     "Invoice",
   );
 

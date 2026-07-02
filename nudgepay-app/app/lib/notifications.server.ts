@@ -87,16 +87,16 @@ export async function sendBrokenPromiseAlerts(
       if (pref && pref.broken_promise_email === false) continue;
       if (!member.email) continue;
 
-      // Ledger-first: insert dedup row; 23505 (unique violation) → already sent
+      // Dedup check: skip if already sent (the promise transition is one-shot,
+      // so send-first is safe — there is no duplicate-trigger risk).
       const dedupeKey = `promise:${detail.promiseId}:${member.userId}`;
-      const { error: ledgerErr } = await deps.service
+      const { count } = await deps.service
         .from("notification_log")
-        .insert({ org_id: orgId, kind: "broken_promise", dedupe_key: dedupeKey, recipient_email: member.email });
-      if (ledgerErr) {
-        if (ledgerErr.code === "23505") continue; // already sent
-        console.error("notification ledger insert failed", ledgerErr);
-        continue;
-      }
+        .select("id", { count: "exact", head: true })
+        .eq("org_id", orgId)
+        .eq("kind", "broken_promise")
+        .eq("dedupe_key", dedupeKey);
+      if ((count ?? 0) > 0) continue; // already sent
 
       try {
         await sendEmail(deps.fetchFn, deps.email, {
@@ -105,15 +105,15 @@ export async function sendBrokenPromiseAlerts(
           subject: emailContent.subject,
           html: emailContent.html,
         });
-      } catch (e) {
-        console.error(`broken-promise email failed for ${member.email}`, e);
-        // Remove ledger row so the next sync can retry this alert
+        // Record successful send in the ledger
         await deps.service
           .from("notification_log")
-          .delete()
-          .eq("org_id", orgId)
-          .eq("kind", "broken_promise")
-          .eq("dedupe_key", dedupeKey);
+          .insert({ org_id: orgId, kind: "broken_promise", dedupe_key: dedupeKey, recipient_email: member.email });
+      } catch (e) {
+        console.error(`broken-promise email failed for ${member.email}`, e);
+        // No ledger row inserted — the alert remains retryable, but the
+        // promise transition is one-shot so a manual re-trigger or retry
+        // job would be needed. Log for operator visibility.
       }
     }
   }
@@ -236,16 +236,15 @@ export async function runDailyDigest(
     const unassignedForMember = ownerUserIds.has(member.userId) ? unassigned : [];
     if (assignedCases.length === 0 && unassignedForMember.length === 0) continue;
 
-    // Ledger-first dedup
+    // Dedup: check if already sent today
     const dedupeKey = `digest:${member.userId}:${today}`;
-    const { error: ledgerErr } = await deps.service
+    const { count } = await deps.service
       .from("notification_log")
-      .insert({ org_id: orgId, kind: "daily_digest", dedupe_key: dedupeKey, recipient_email: member.email });
-    if (ledgerErr) {
-      if (ledgerErr.code === "23505") continue; // already sent today
-      console.error("digest ledger insert failed", ledgerErr);
-      continue;
-    }
+      .select("id", { count: "exact", head: true })
+      .eq("org_id", orgId)
+      .eq("kind", "daily_digest")
+      .eq("dedupe_key", dedupeKey);
+    if ((count ?? 0) > 0) continue; // already sent today
 
     const emailContent = digestEmail({
       recipientName: member.label,
@@ -262,15 +261,13 @@ export async function runDailyDigest(
         subject: emailContent.subject,
         html: emailContent.html,
       });
-    } catch (e) {
-      console.error(`digest email failed for ${member.email}`, e);
-      // Remove ledger row so the next cron can retry this digest
+      // Record successful send
       await deps.service
         .from("notification_log")
-        .delete()
-        .eq("org_id", orgId)
-        .eq("kind", "daily_digest")
-        .eq("dedupe_key", dedupeKey);
+        .insert({ org_id: orgId, kind: "daily_digest", dedupe_key: dedupeKey, recipient_email: member.email });
+    } catch (e) {
+      console.error(`digest email failed for ${member.email}`, e);
+      // No ledger row — next cron invocation within the same day can retry
     }
   }
 }
