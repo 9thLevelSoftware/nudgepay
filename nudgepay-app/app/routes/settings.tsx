@@ -89,7 +89,7 @@ export default function Settings() {
   useFlashCleanup();
 
   return (
-    <AppShell orgName={d.orgName} userInitials={d.initials} syncLabel={syncLabel} connected={d.connected} isOwner={d.isOwner}>
+    <AppShell orgName={d.orgName} userInitials={d.initials} syncLabel={syncLabel} connected={d.connected} isOwner={d.isOwner} activeNav="settings">
       <div className="h-full overflow-auto bg-panel p-6">
         <div className="mx-auto flex max-w-3xl flex-col gap-5">
           <h1 className="font-display text-xl font-semibold text-text">Settings</h1>
