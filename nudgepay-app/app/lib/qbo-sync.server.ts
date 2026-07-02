@@ -159,19 +159,40 @@ export async function syncOverdueInvoices(
     const id = String(inv?.Id ?? "");
     if (id && !seen.has(id)) { seen.add(id); invoices.push(inv); }
   }
-  const custIds = invoices.map((i) => i?.CustomerRef?.value).filter(Boolean).map(String);
+  // Hydrate customers in two passes so overdue customers (critical for case
+  // pipeline) are never displaced by coming-due customers at the query cap.
+  const overdueCustIds = [...new Set(
+    overdueInvoices.map((i) => i?.CustomerRef?.value).filter(Boolean).map(String),
+  )];
+  const comingDueCustIds = [...new Set(
+    comingDueInvoices.map((i) => i?.CustomerRef?.value).filter(Boolean).map(String),
+  )];
+  // Only fetch coming-due customers not already covered by the overdue set.
+  const overdueCustSet = new Set(overdueCustIds);
+  const extraCustIds = comingDueCustIds.filter((id) => !overdueCustSet.has(id));
+
   let customerRows: CustomerUpsert[] = [];
-  const uniqueCustIds = [...new Set(custIds)];
-  if (uniqueCustIds.length > 0) {
-    const idList = uniqueCustIds.map((id) => `'${id}'`).join(",");
+  if (overdueCustIds.length > 0) {
+    const idList = overdueCustIds.map((id) => `'${id}'`).join(",");
     const customers = await qboQuery(
       deps.fetchFn, deps.api, accessToken, realmId,
       `select * from Customer where Id in (${idList}) startposition 1 maxresults ${QUERY_LIMIT}`,
       "Customer",
     );
-    customerRows = customers.map((c) => mapQboCustomer(c, orgId));
+    customerRows.push(...customers.map((c) => mapQboCustomer(c, orgId)));
+  }
+  if (extraCustIds.length > 0) {
+    const idList = extraCustIds.map((id) => `'${id}'`).join(",");
+    const customers = await qboQuery(
+      deps.fetchFn, deps.api, accessToken, realmId,
+      `select * from Customer where Id in (${idList}) startposition 1 maxresults ${QUERY_LIMIT}`,
+      "Customer",
+    );
+    customerRows.push(...customers.map((c) => mapQboCustomer(c, orgId)));
   }
   await upsertCustomers(deps.service, customerRows);
+
+  const custIds = invoices.map((i) => i?.CustomerRef?.value).filter(Boolean).map(String);
 
   const idMap = await customerIdMap(deps.service, orgId, custIds);
   const now = new Date();
