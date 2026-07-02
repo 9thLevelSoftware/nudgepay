@@ -134,9 +134,12 @@ export async function syncOverdueInvoices(
     deps.fetchFn, deps.service, deps.cfg, deps.key, orgId,
   );
   const today = new Date().toISOString().slice(0, 10);
+  // Widen to include invoices due within the next 7 days so the coming-due
+  // view has data even for invoices that existed before the QBO connection.
+  const plus7 = new Date(Date.now() + 7 * 86_400_000).toISOString().slice(0, 10);
   const invoices = await qboQuery(
     deps.fetchFn, deps.api, accessToken, realmId,
-    `select * from Invoice where Balance > '0' and DueDate < '${today}' startposition 1 maxresults ${QUERY_LIMIT}`,
+    `select * from Invoice where Balance > '0' and DueDate < '${plus7}' startposition 1 maxresults ${QUERY_LIMIT}`,
     "Invoice",
   );
 

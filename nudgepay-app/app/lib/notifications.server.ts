@@ -107,6 +107,13 @@ export async function sendBrokenPromiseAlerts(
         });
       } catch (e) {
         console.error(`broken-promise email failed for ${member.email}`, e);
+        // Remove ledger row so the next sync can retry this alert
+        await deps.service
+          .from("notification_log")
+          .delete()
+          .eq("org_id", orgId)
+          .eq("kind", "broken_promise")
+          .eq("dedupe_key", dedupeKey);
       }
     }
   }
@@ -157,15 +164,18 @@ export async function runDailyDigest(
     .in("id", custIds);
   const custById = new Map((custRows ?? []).map((c: any) => [c.id as string, c]));
 
-  // Build per-owner line items
-  type CaseEntry = { ownerId: string | null; line: DigestCaseLine };
+  // Build per-owner line items, keyed by customer_id (not name) to avoid
+  // collisions when two cases share the same customer display name.
+  type CaseEntry = { ownerId: string | null; customerId: string; line: DigestCaseLine };
   const entries: CaseEntry[] = activeCases.map((c: any) => {
-    const cust = custById.get(c.customer_id as string);
+    const custId = c.customer_id as string;
+    const cust = custById.get(custId);
     return {
       ownerId: (cust?.owner as string) ?? null,
+      customerId: custId,
       line: {
         customerName: (cust?.name as string) ?? "(unknown customer)",
-        totalOverdue: 0, // balance is available from invoices, but we keep it simple
+        totalOverdue: 0,
         nextActionAt: c.next_action_at as string | null,
       },
     };
@@ -185,12 +195,7 @@ export async function runDailyDigest(
     balanceByCust.set(cid, (balanceByCust.get(cid) ?? 0) + Number(inv.balance ?? 0));
   }
   for (const entry of entries) {
-    const cust = custById.get(activeCases.find((c: any) =>
-      (custById.get(c.customer_id as string)?.name ?? "(unknown customer)") === entry.line.customerName
-    )?.customer_id as string ?? "");
-    if (cust) {
-      entry.line.totalOverdue = balanceByCust.get(cust.id as string) ?? 0;
-    }
+    entry.line.totalOverdue = balanceByCust.get(entry.customerId) ?? 0;
   }
 
   // Members + prefs
@@ -259,6 +264,13 @@ export async function runDailyDigest(
       });
     } catch (e) {
       console.error(`digest email failed for ${member.email}`, e);
+      // Remove ledger row so the next cron can retry this digest
+      await deps.service
+        .from("notification_log")
+        .delete()
+        .eq("org_id", orgId)
+        .eq("kind", "daily_digest")
+        .eq("dedupe_key", dedupeKey);
     }
   }
 }
