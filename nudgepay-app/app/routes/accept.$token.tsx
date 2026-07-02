@@ -14,6 +14,11 @@ import { requireUser } from "../lib/session.server";
 import { acceptInvite } from "../lib/orgs.server";
 import { PublicLayout } from "../components/PublicLayout";
 import { Button } from "../components/ui";
+import { pageTitle } from "../lib/meta";
+import type { Route } from "./+types/accept.$token";
+
+export const meta: Route.MetaFunction = ({ data }) =>
+  pageTitle(data?.orgName ? `Join ${data.orgName}` : "Invite");
 
 export async function loader({ request, params, context }: LoaderFunctionArgs) {
   const env = getEnv(context as any);

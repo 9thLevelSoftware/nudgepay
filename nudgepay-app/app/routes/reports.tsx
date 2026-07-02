@@ -10,6 +10,11 @@ import {
   buildTeamReport, REPORT_RANGES, activeBrokenCaseIds, type ReportRange, type TeamReport,
   type ReportContactLog, type ReportPromise, type ReportOpenedCase, type ReportWorkloadCase,
 } from "../lib/reports";
+import { pageTitle } from "../lib/meta";
+import type { Route } from "./+types/reports";
+
+// Loader returns Response.json (untyped) — data is not typed here, so title is static.
+export const meta: Route.MetaFunction = () => pageTitle("Reports");
 
 export async function loader({ request, context }: LoaderFunctionArgs) {
   const env = getEnv(context as any);

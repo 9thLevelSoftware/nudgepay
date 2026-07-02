@@ -11,6 +11,10 @@ import { createSupabaseServiceClient } from "../lib/supabase.server";
 import { requireUser, resolveOrg } from "../lib/session.server";
 import { PublicLayout } from "../components/PublicLayout";
 import { Button, inputClass } from "../components/ui";
+import { pageTitle } from "../lib/meta";
+import type { Route } from "./+types/invite";
+
+export const meta: Route.MetaFunction = () => pageTitle("Invite a teammate");
 
 export async function loader({ request, context }: LoaderFunctionArgs) {
   const env = getEnv(context as any);

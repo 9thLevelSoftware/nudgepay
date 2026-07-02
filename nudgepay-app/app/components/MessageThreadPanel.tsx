@@ -127,7 +127,12 @@ export function MessageThreadPanel({
       {banner ? <p className={`px-4 py-2 text-xs font-medium ${banner.tone}`}>{banner.text}</p> : null}
 
       {/* Thread */}
-      <div className="max-h-[420px] overflow-y-auto px-4 py-4">
+      <div
+        className="max-h-[420px] overflow-y-auto px-4 py-4"
+        tabIndex={0}
+        role="region"
+        aria-label="Message history"
+      >
         {isEmail ? (
           emailMessages.length === 0 ? (
             <div className="flex flex-col items-center justify-center gap-2 py-10 text-center">
@@ -195,6 +200,7 @@ export function MessageThreadPanel({
               placeholder="Subject"
               required
               disabled={!emailEnabled || !thread.canReply}
+              aria-label="Email subject"
               className="w-full rounded-md border border-border bg-panel px-3 py-2 text-sm text-text placeholder:text-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-copper disabled:opacity-40 disabled:cursor-not-allowed"
             />
             <textarea
@@ -205,6 +211,7 @@ export function MessageThreadPanel({
               placeholder="Type an email…"
               required
               disabled={!emailEnabled || !thread.canReply}
+              aria-label="Email body"
               className="w-full resize-none rounded-md border border-border bg-panel px-3 py-2 text-sm text-text placeholder:text-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-copper disabled:opacity-40 disabled:cursor-not-allowed"
             />
             <div className="flex items-center justify-between gap-2">
@@ -241,6 +248,7 @@ export function MessageThreadPanel({
             <textarea
               name="body" rows={3} value={body} onChange={(e) => setBody(e.target.value)}
               placeholder="Type a message…" required
+              aria-label="Message body"
               className="w-full resize-none rounded-md border border-border bg-panel px-3 py-2 text-sm text-text placeholder:text-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-copper"
             />
             <div className="flex items-center justify-between gap-2">

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useRef, useState } from "react";
 import { Form, Link, useNavigate } from "react-router";
 import type { CaseItem } from "../lib/cases";
 import type { Collision } from "../lib/collision";
@@ -6,6 +6,7 @@ import { CONTACT_METHODS, CONTACT_OUTCOMES } from "../lib/contact-log";
 import { PRIMARY_EXCEPTION_STATES, requiresReviewDate, isContactBlocked, type ExceptionState } from "../lib/exceptions";
 import { EXCEPTION_REASON_LABEL, formatUSD } from "../lib/format";
 import { OUTCOME_LABELS } from "../lib/timeline";
+import { useDialog } from "../lib/use-dialog";
 
 const METHOD_LABEL: Record<string, string> = {
   call: "Call", text: "Text", note: "Note",
@@ -44,37 +45,11 @@ export function LogContactDrawer({
   const [confirmSave, setConfirmSave] = useState(false);
   const needsConfirm = !!collision && collision.level !== "none";
   const firstFieldRef = useRef<HTMLSelectElement>(null);
-  const panelRef = useRef<HTMLDivElement>(null);
   const navigate = useNavigate();
-
-  useEffect(() => {
-    firstFieldRef.current?.focus();
-  }, []);
-
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") navigate(returnTo); };
-    document.addEventListener("keydown", onKey);
-    return () => document.removeEventListener("keydown", onKey);
-  }, [navigate, returnTo]);
-
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key !== "Tab") return;
-      const panel = panelRef.current;
-      if (!panel) return;
-      const focusable = panel.querySelectorAll<HTMLElement>(
-        'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'
-      );
-      if (focusable.length === 0) return;
-      const first = focusable[0];
-      const last = focusable[focusable.length - 1];
-      if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
-      else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
-    };
-    const panel = panelRef.current;
-    panel?.addEventListener("keydown", onKey);
-    return () => panel?.removeEventListener("keydown", onKey);
-  }, []);
+  const { panelRef } = useDialog({
+    onClose: () => navigate(returnTo),
+    initialFocusRef: firstFieldRef as React.RefObject<HTMLElement | null>,
+  });
 
   const showPromise = nextStep === "promise";
 

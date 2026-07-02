@@ -7,6 +7,10 @@ import { AppShell } from "../components/AppShell";
 import { CollectionsRulesForm } from "../components/CollectionsRulesForm";
 import { resolveChannelSettings } from "../lib/channel-settings";
 import { resolveEmailSettings } from "../lib/email-settings";
+import { pageTitle } from "../lib/meta";
+import type { Route } from "./+types/settings";
+
+export const meta: Route.MetaFunction = () => pageTitle("Settings");
 
 export async function loader({ request, context }: LoaderFunctionArgs) {
   const env = getEnv(context as any);

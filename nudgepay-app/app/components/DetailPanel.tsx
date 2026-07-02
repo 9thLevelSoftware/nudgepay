@@ -155,8 +155,6 @@ function MessagesTab({
   return (
     <section
       id="messages-panel"
-      role="tabpanel"
-      aria-labelledby="messages-tab"
       className="flex flex-1 flex-col min-h-0"
     >
       {/* Consent row */}
@@ -195,7 +193,12 @@ function MessagesTab({
       ) : null}
 
       {/* Thread */}
-      <div className="flex-1 min-h-0 overflow-y-auto px-5 py-4">
+      <div
+        className="flex-1 min-h-0 overflow-y-auto px-5 py-4"
+        tabIndex={0}
+        role="region"
+        aria-label="Message history"
+      >
         {messages.length === 0 ? (
           <div className="flex flex-col items-center justify-center gap-2 py-10 text-center">
             <Icon name="message" size={24} className="text-border" aria-hidden />
@@ -241,6 +244,7 @@ function MessagesTab({
             onChange={(e) => setBody(e.target.value)}
             placeholder="Type a message…"
             required
+            aria-label="Message body"
             className="w-full resize-none rounded-md border border-border bg-panel px-3 py-2 text-sm font-sans text-text placeholder:text-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-copper"
           />
           {confirmSend ? (
@@ -333,8 +337,6 @@ function EmailTab({
   return (
     <section
       id="email-panel"
-      role="tabpanel"
-      aria-labelledby="email-tab"
       className="flex flex-1 flex-col min-h-0"
     >
       {/* Customer email info row */}
@@ -353,7 +355,12 @@ function EmailTab({
       ) : null}
 
       {/* Email thread */}
-      <div className="flex-1 min-h-0 overflow-y-auto px-5 py-4">
+      <div
+        className="flex-1 min-h-0 overflow-y-auto px-5 py-4"
+        tabIndex={0}
+        role="region"
+        aria-label="Message history"
+      >
         {emailMessages.length === 0 ? (
           <div className="flex flex-col items-center justify-center gap-2 py-10 text-center">
             <Icon name="mail" size={24} className="text-border" aria-hidden />
@@ -417,6 +424,7 @@ function EmailTab({
             placeholder="Subject"
             required
             disabled={sendDisabled}
+            aria-label="Email subject"
             className="w-full rounded-md border border-border bg-panel px-3 py-2 text-sm font-sans text-text placeholder:text-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-copper disabled:opacity-40 disabled:cursor-not-allowed"
           />
           <textarea
@@ -427,6 +435,7 @@ function EmailTab({
             placeholder="Type an email…"
             required
             disabled={sendDisabled}
+            aria-label="Email body"
             className="w-full resize-none rounded-md border border-border bg-panel px-3 py-2 text-sm font-sans text-text placeholder:text-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-copper disabled:opacity-40 disabled:cursor-not-allowed"
           />
           <div className="flex items-center justify-between gap-2">
@@ -683,8 +692,7 @@ export function DetailPanel({
       </div>
 
       {/* ── Tab bar ─────────────────────────────────────────────────────────── */}
-      <div
-        role="tablist"
+      <nav
         aria-label="Selected account sections"
         className="flex border-b border-border shrink-0 bg-paper"
       >
@@ -695,9 +703,7 @@ export function DetailPanel({
               key={tab.id}
               to={`?${new URLSearchParams({ case: selected.caseId, tab: tab.id, view, sort, ...(q ? { q } : {}) }).toString()}`}
               id={`${tab.id}-tab`}
-              role="tab"
-              aria-selected={isActive ? "true" : "false"}
-              aria-controls={`${tab.id}-panel`}
+              aria-current={isActive ? "page" : undefined}
               className={[
                 "px-4 py-3 text-[13px] font-sans focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-copper transition-colors",
                 isActive
@@ -709,7 +715,7 @@ export function DetailPanel({
             </Link>
           );
         })}
-      </div>
+      </nav>
 
       {/* ── Collision banner ────────────────────────────────────────────────── */}
       {collision && (collision.level !== "none" || collision.byUser) ? (
@@ -732,8 +738,6 @@ export function DetailPanel({
       {activeTab === "overview" ? (
         <section
           id="overview-panel"
-          role="tabpanel"
-          aria-labelledby="overview-tab"
           className="flex-1 px-5 py-4"
         >
           <div className="grid grid-cols-1 gap-6 sm:grid-cols-2">
@@ -933,7 +937,7 @@ export function DetailPanel({
       ) : null}
 
       {activeTab === "activity" ? (
-        <section id="activity-panel" role="tabpanel" aria-labelledby="activity-tab" className="flex-1 px-5 py-4">
+        <section id="activity-panel" className="flex-1 px-5 py-4">
           {timeline.length === 0 ? (
             <div className="flex flex-col items-center justify-center gap-2 py-10 text-center">
               <Icon name="note" size={24} className="text-border" aria-hidden />

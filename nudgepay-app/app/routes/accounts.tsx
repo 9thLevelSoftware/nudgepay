@@ -23,6 +23,10 @@ import { AppShell } from "../components/AppShell";
 import { AccountsMetrics } from "../components/AccountsMetrics";
 import { AccountsDirectory } from "../components/AccountsDirectory";
 import { AccountQuickPanel } from "../components/AccountQuickPanel";
+import { pageTitle } from "../lib/meta";
+import type { Route } from "./+types/accounts";
+
+export const meta: Route.MetaFunction = () => pageTitle("Accounts");
 
 // ---------------------------------------------------------------------------
 // Loader

@@ -1,5 +1,9 @@
 import { Link } from "react-router";
 import { PublicLayout } from "../components/PublicLayout";
+import { pageTitle } from "../lib/meta";
+import type { Route } from "./+types/home";
+
+export const meta: Route.MetaFunction = () => pageTitle();
 
 const primaryLinkClass =
   "rounded-md bg-copper px-4 py-2 text-sm font-semibold text-ink transition-colors hover:bg-copper/90 " +

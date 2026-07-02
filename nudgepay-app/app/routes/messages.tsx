@@ -22,6 +22,10 @@ import { AppShell } from "../components/AppShell";
 import { MessagesMetrics } from "../components/MessagesMetrics";
 import { MessagesInbox } from "../components/MessagesInbox";
 import { MessageThreadPanel } from "../components/MessageThreadPanel";
+import { pageTitle } from "../lib/meta";
+import type { Route } from "./+types/messages";
+
+export const meta: Route.MetaFunction = () => pageTitle("Messages");
 
 function mapSms(r: any): Omit<ThreadMessageInput, "channel" | "subject"> {
   return {

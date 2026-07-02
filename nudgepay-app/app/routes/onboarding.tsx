@@ -12,6 +12,10 @@ import { requireUser, resolveOrg } from "../lib/session.server";
 import { createOrgForUser } from "../lib/orgs.server";
 import { PublicLayout } from "../components/PublicLayout";
 import { Button, inputClass } from "../components/ui";
+import { pageTitle } from "../lib/meta";
+import type { Route } from "./+types/onboarding";
+
+export const meta: Route.MetaFunction = () => pageTitle("Onboarding");
 
 export async function loader({ request, context }: LoaderFunctionArgs) {
   const env = getEnv(context as any);

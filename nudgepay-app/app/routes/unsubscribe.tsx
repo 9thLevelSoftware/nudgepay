@@ -2,6 +2,10 @@ import { useLoaderData, useActionData, Form, data, type LoaderFunctionArgs, type
 import { getEnv, getUnsubscribeEnv } from "../lib/env.server";
 import { createSupabaseServiceClient } from "../lib/supabase.server";
 import { verifyUnsubscribeToken } from "../lib/unsubscribe-token";
+import { pageTitle } from "../lib/meta";
+import type { Route } from "./+types/unsubscribe";
+
+export const meta: Route.MetaFunction = () => pageTitle("Unsubscribe");
 
 // RFC 8058: a GET only renders a confirmation page; the opt-out mutation happens
 // solely on POST. This prevents email security scanners / link prefetchers (which

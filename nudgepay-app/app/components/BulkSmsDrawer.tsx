@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Form, useNavigation } from "react-router";
 import { SMS_TEMPLATES } from "../lib/sms-templates";
 import { partitionEligibility, renderCaseBody, type SkipReason, type TextableCase, type RenderableCase } from "../lib/bulk";
+import { useDialog } from "../lib/use-dialog";
 
 export type DrawerCase = TextableCase & RenderableCase;
 
@@ -34,6 +35,7 @@ export function BulkSmsDrawer({
   const [templateId, setTemplateId] = useState(SMS_TEMPLATES[0]?.id ?? "");
   const [body, setBody] = useState(SMS_TEMPLATES[0]?.body ?? "");
   const [confirming, setConfirming] = useState(false);
+  const { panelRef } = useDialog({ onClose, enabled: open });
 
   useEffect(() => {
     if (!open) {
@@ -63,6 +65,7 @@ export function BulkSmsDrawer({
       onClick={onClose}
     >
       <div
+        ref={panelRef}
         className="w-full max-w-lg rounded-lg border border-border bg-surface p-4 shadow-panel"
         onClick={(e) => e.stopPropagation()}
       >
