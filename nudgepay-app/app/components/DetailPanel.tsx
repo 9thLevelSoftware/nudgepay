@@ -574,6 +574,13 @@ export function DetailPanel({
   // Reset confirm state when case changes
   useEffect(() => { setConfirmCancelPromise(false); }, [customerId]);
 
+  // Auto-reset cancel confirmation after 5s; cleanup prevents stale timers
+  useEffect(() => {
+    if (!confirmCancelPromise) return;
+    const id = setTimeout(() => setConfirmCancelPromise(false), 5000);
+    return () => clearTimeout(id);
+  }, [confirmCancelPromise]);
+
   // ── Empty state ────────────────────────────────────────────────────────────
   if (selected === null) {
     return (
@@ -964,10 +971,7 @@ export function DetailPanel({
                     ) : (
                       <button
                         type="button"
-                        onClick={() => {
-                          setConfirmCancelPromise(true);
-                          setTimeout(() => setConfirmCancelPromise(false), 5000);
-                        }}
+                        onClick={() => setConfirmCancelPromise(true)}
                         className="text-xs font-sans font-medium text-copper hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-copper rounded"
                       >
                         Cancel promise
@@ -1014,7 +1018,7 @@ export function DetailPanel({
                             <span className="text-xs text-muted whitespace-pre-wrap line-clamp-3">{e.body}</span>
                           ) : null}
                           {e.errorCode ? (
-                            <span className="text-xs font-sans text-hot">{emailFailureLabel(e.errorCode)}</span>
+                            <span className="text-xs font-sans text-hot">Error {e.errorCode}</span>
                           ) : null}
                         </div>
                       </li>
