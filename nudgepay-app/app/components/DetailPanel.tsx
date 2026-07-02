@@ -569,6 +569,10 @@ export function DetailPanel({
   const navigate = useNavigate();
   const navigation = useNavigation();
   const formBusy = (action: string) => navigation.state !== "idle" && navigation.formAction === action;
+  const [confirmCancelPromise, setConfirmCancelPromise] = useState(false);
+
+  // Reset confirm state when case changes
+  useEffect(() => { setConfirmCancelPromise(false); }, [customerId]);
 
   // ── Empty state ────────────────────────────────────────────────────────────
   if (selected === null) {
@@ -939,13 +943,36 @@ export function DetailPanel({
                   <form method="post" action="/api/promises/cancel" className="mt-2">
                     <input type="hidden" name="promiseId" value={selectedPromiseId} />
                     <input type="hidden" name="returnTo" value={overviewReturnTo} />
-                    <button
-                      type="submit"
-                      disabled={formBusy("/api/promises/cancel")}
-                      className="text-xs font-sans font-medium text-copper hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-copper rounded disabled:opacity-60 disabled:cursor-not-allowed"
-                    >
-                      {formBusy("/api/promises/cancel") ? "Cancelling…" : "Cancel promise"}
-                    </button>
+                    {confirmCancelPromise ? (
+                      <span className="inline-flex items-center gap-2 text-xs font-sans">
+                        <span className="text-muted">Cancel this promise?</span>
+                        <button
+                          type="submit"
+                          disabled={formBusy("/api/promises/cancel")}
+                          className="font-medium text-hot hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-copper rounded disabled:opacity-60 disabled:cursor-not-allowed"
+                        >
+                          {formBusy("/api/promises/cancel") ? "Cancelling…" : "Confirm"}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setConfirmCancelPromise(false)}
+                          className="font-medium text-muted hover:text-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-copper rounded"
+                        >
+                          Keep
+                        </button>
+                      </span>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setConfirmCancelPromise(true);
+                          setTimeout(() => setConfirmCancelPromise(false), 5000);
+                        }}
+                        className="text-xs font-sans font-medium text-copper hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-copper rounded"
+                      >
+                        Cancel promise
+                      </button>
+                    )}
                   </form>
                 ) : null}
               </div>
