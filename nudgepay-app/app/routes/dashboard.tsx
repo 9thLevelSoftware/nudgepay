@@ -32,6 +32,11 @@ import { DEFAULT_ORG_CONFIG, type OrgConfig } from "../lib/org-config";
 import { resolveCommPrefs, DEFAULT_COMM_PREFS, type CommPrefs } from "../lib/comm-prefs";
 import { resolveChannelSettings } from "../lib/channel-settings";
 import { resolveEmailSettings } from "../lib/email-settings";
+import { pageTitle } from "../lib/meta";
+import type { Route } from "./+types/dashboard";
+
+export const meta: Route.MetaFunction = ({ data }) =>
+  pageTitle(data?.selected ? `${data.selected.customerName} — Collections` : "Collections");
 
 // ---------------------------------------------------------------------------
 // Types

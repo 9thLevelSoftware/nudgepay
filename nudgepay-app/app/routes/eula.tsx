@@ -1,4 +1,8 @@
 import { PublicLayout } from "../components/PublicLayout";
+import { pageTitle } from "../lib/meta";
+import type { Route } from "./+types/eula";
+
+export const meta: Route.MetaFunction = () => pageTitle("EULA");
 
 export default function Eula() {
   return (

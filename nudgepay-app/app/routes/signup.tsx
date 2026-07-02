@@ -13,6 +13,10 @@ import { signupOutcome, humanAuthError } from "../lib/auth-flow.server";
 import { safeReturnTo } from "../lib/return-to";
 import { PublicLayout } from "../components/PublicLayout";
 import { Button, inputClass } from "../components/ui";
+import { pageTitle } from "../lib/meta";
+import type { Route } from "./+types/signup";
+
+export const meta: Route.MetaFunction = () => pageTitle("Sign up");
 
 export async function action({ request, context }: ActionFunctionArgs) {
   const env = getEnv(context as any);

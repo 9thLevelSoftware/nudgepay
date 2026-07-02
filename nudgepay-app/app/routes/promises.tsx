@@ -21,6 +21,10 @@ import { AppShell } from "../components/AppShell";
 import { PromisesMetrics } from "../components/PromisesMetrics";
 import { PromisesLedger } from "../components/PromisesLedger";
 import { PromiseQuickPanel } from "../components/PromiseQuickPanel";
+import { pageTitle } from "../lib/meta";
+import type { Route } from "./+types/promises";
+
+export const meta: Route.MetaFunction = () => pageTitle("Promises");
 
 export async function loader({ request, context }: LoaderFunctionArgs) {
   // --- Prelude: mirrors accounts.tsx / dashboard.tsx exactly ---

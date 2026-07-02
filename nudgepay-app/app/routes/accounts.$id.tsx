@@ -11,6 +11,11 @@ import { resolveCommPrefs } from "../lib/comm-prefs";
 import { isCaseSuppressed, type ExceptionState } from "../lib/exceptions";
 import { ageInDays } from "../lib/worklist";
 import { deriveStanding } from "../lib/accounts";
+import { pageTitle } from "../lib/meta";
+import type { Route } from "./+types/accounts.$id";
+
+export const meta: Route.MetaFunction = ({ data }) =>
+  pageTitle(data?.account?.name ? `${data.account.name} — Account` : "Account");
 
 // ---------------------------------------------------------------------------
 // Local DB row shapes (no generated types — mirror the SELECT columns)
