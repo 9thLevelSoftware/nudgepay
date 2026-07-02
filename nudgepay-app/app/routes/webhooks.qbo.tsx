@@ -1,5 +1,5 @@
 import type { ActionFunctionArgs } from "react-router";
-import { getEnv, getQboEnv } from "../lib/env.server";
+import { getEnv, getQboEnv, getEmailEnvOrNull } from "../lib/env.server";
 import { createSupabaseServiceClient } from "../lib/supabase.server";
 import { verifyQboSignature, parseQboWebhook } from "../lib/qbo-webhook.server";
 import { qboApiBaseUrl } from "../lib/qbo-api.server";
@@ -7,6 +7,7 @@ import {
   applyInvoiceWebhook, applyCustomerWebhook, applyPaymentWebhook, type SyncDeps,
 } from "../lib/qbo-sync.server";
 import { recordSyncError, resolveSyncErrors } from "../lib/sync-errors.server";
+import { sendBrokenPromiseAlerts } from "../lib/notifications.server";
 
 export async function action({ request, context }: ActionFunctionArgs) {
   const qbo = getQboEnv(context as any);
@@ -20,12 +21,21 @@ export async function action({ request, context }: ActionFunctionArgs) {
 
   const env = getEnv(context as any);
   const service = createSupabaseServiceClient(env);
+  const emailEnv = getEmailEnvOrNull(context as any);
+  const notify = emailEnv
+    ? (orgId: string, brokenDetails: any[], today: string) =>
+        sendBrokenPromiseAlerts(
+          { fetchFn: fetch, service, email: { apiKey: emailEnv.RESEND_API_KEY }, appUrl: emailEnv.APP_PUBLIC_BASE_URL ?? "" },
+          orgId, brokenDetails, today,
+        )
+    : undefined;
   const deps: SyncDeps = {
     fetchFn: fetch,
     service,
     cfg: { clientId: qbo.QBO_CLIENT_ID, clientSecret: qbo.QBO_CLIENT_SECRET, redirectUri: qbo.QBO_REDIRECT_URI },
     api: { baseUrl: qboApiBaseUrl(qbo.QBO_SANDBOX) },
     key: qbo.QBO_ENCRYPTION_KEY,
+    notify,
   };
 
   // Per-event isolation: a failed event records a durable sync_error and does not

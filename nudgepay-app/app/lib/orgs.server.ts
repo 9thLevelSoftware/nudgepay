@@ -1,4 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { displayLabel } from "./names";
 
 export async function acceptInvite(
   service: SupabaseClient,
@@ -48,7 +49,8 @@ export type OrgMember = { userId: string; email: string; label: string };
 
 // Roster of the org's members with display labels. Uses the SERVICE client
 // because member emails live in auth.users, which the RLS user client cannot
-// read (same own-org exception as connection status). label = email local-part.
+// read (same own-org exception as connection status). Label = display_name from
+// user_metadata when set, falling back to email local-part.
 export async function listOrgMembers(
   service: SupabaseClient,
   orgId: string,
@@ -61,11 +63,12 @@ export async function listOrgMembers(
 
   const { data: list, error: listErr } = await service.auth.admin.listUsers({ perPage: 1000 });
   if (listErr) throw listErr;
-  const emailById = new Map(list.users.map((u) => [u.id, u.email ?? ""]));
+  const userById = new Map(list.users.map((u) => [u.id, u]));
 
   const members: OrgMember[] = [...memberIds].map((userId) => {
-    const email = emailById.get(userId) ?? "";
-    const label = email ? email.split("@")[0] : userId.slice(0, 8);
+    const u = userById.get(userId);
+    const email = u?.email ?? "";
+    const label = displayLabel(u?.user_metadata?.display_name, email, userId);
     return { userId, email, label };
   });
   members.sort((a, b) => a.label.localeCompare(b.label));

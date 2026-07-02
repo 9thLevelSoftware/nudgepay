@@ -84,7 +84,7 @@ export function LogContactDrawer({
             : null;
           return inv ? (
             <p className="px-5 pt-1 text-xs font-mono text-muted">
-              {inv.docNumber ?? inv.invoiceId}
+              {inv.docNumber ?? "—"}
               <span className="mx-1 text-border">·</span>
               {formatUSD(inv.balance)}
             </p>

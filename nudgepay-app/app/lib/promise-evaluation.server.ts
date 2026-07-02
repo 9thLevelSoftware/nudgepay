@@ -4,17 +4,24 @@ import { evaluatePromises, type PromiseEvalRow, type PromiseStatus } from "./pro
 // Recompute pending promises for one org against current linked-invoice balances.
 // Org-scoped on every query (service client at the sync layer). Idempotent: only
 // `pending` promises transition; terminal states are skipped by the pure evaluator.
+export type BrokenPromiseDetail = {
+  promiseId: string;
+  caseId: string;
+  promisedAmount: number;
+  promisedDate: string;
+};
+
 export async function applyPromiseEvaluation(
   client: SupabaseClient, orgId: string, today: string,
-): Promise<{ kept: number; partiallyKept: number; broken: number }> {
+): Promise<{ kept: number; partiallyKept: number; broken: number; brokenDetails: BrokenPromiseDetail[] }> {
   const { data: pend, error: pErr } = await client
     .from("promises")
-    .select("id, status, promised_amount, baseline_balance, grace_until, case_id")
+    .select("id, status, promised_amount, promised_date, baseline_balance, grace_until, case_id")
     .eq("org_id", orgId)
     .eq("status", "pending");
   if (pErr) throw pErr;
   const promises = pend ?? [];
-  if (promises.length === 0) return { kept: 0, partiallyKept: 0, broken: 0 };
+  if (promises.length === 0) return { kept: 0, partiallyKept: 0, broken: 0, brokenDetails: [] };
 
   // Map case_id for case-state reflection on broken promises.
   const caseByPromise = new Map(promises.map((p) => [p.id as string, p.case_id as string]));
@@ -52,7 +59,11 @@ export async function applyPromiseEvaluation(
 
   const ops = evaluatePromises(rows, balanceByPromiseId, today);
 
+  // Map promise id → promised_date for broken-detail surfacing.
+  const promisedDateByPromise = new Map(promises.map((p) => [p.id as string, p.promised_date as string | null]));
+
   let kept = 0, partiallyKept = 0, broken = 0;
+  const brokenDetails: BrokenPromiseDetail[] = [];
   for (const op of ops) {
     const { data: updated, error } = await client.from("promises")
       .update({ status: op.status, amount_received: op.amountReceived, resolved_at: new Date().toISOString() })
@@ -71,8 +82,15 @@ export async function applyPromiseEvaluation(
           .update({ status: "working", next_action_type: "follow_up", next_action_at: today })
           .eq("id", caseId);
         if (cErr) throw cErr;
+        const promRow = promises.find((p) => (p.id as string) === op.promiseId);
+        brokenDetails.push({
+          promiseId: op.promiseId,
+          caseId,
+          promisedAmount: Number(promRow?.promised_amount) || 0,
+          promisedDate: promisedDateByPromise.get(op.promiseId) ?? today,
+        });
       }
     }
   }
-  return { kept, partiallyKept, broken };
+  return { kept, partiallyKept, broken, brokenDetails };
 }

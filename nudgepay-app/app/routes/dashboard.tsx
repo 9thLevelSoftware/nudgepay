@@ -35,6 +35,8 @@ import { resolveChannelSettings } from "../lib/channel-settings";
 import { resolveEmailSettings } from "../lib/email-settings";
 import { plural } from "../lib/labels";
 import { pageTitle } from "../lib/meta";
+import { displayLabel, initialsFrom } from "../lib/names";
+import { buildComingDueGroups, comingDueMetric, type ComingDueGroup } from "../lib/coming-due";
 import type { Route } from "./+types/dashboard";
 
 export const meta: Route.MetaFunction = ({ data }) =>
@@ -58,9 +60,10 @@ type DashboardData = {
   metrics: Metrics;
   viewCounts: Record<ViewId, number>;
   selected: CaseItem | null;
+  comingDueGroups: ComingDueGroup[];
 };
 
-const ALL_VIEWS: ViewId[] = ["all-open", "30-plus", "high-value", "never-contacted", "follow-ups-due", "broken-promises", "waiting", "on-hold", "my-work"];
+const ALL_VIEWS: ViewId[] = ["all-open", "coming-due", "30-plus", "high-value", "never-contacted", "follow-ups-due", "broken-promises", "waiting", "on-hold", "my-work"];
 
 // ---------------------------------------------------------------------------
 // Pure helper — exported so tests can call it without I/O
@@ -77,17 +80,33 @@ export function buildCaseData(
   ownerLabels: Map<string, string>,
   currentUserId: string | null,
   config: OrgConfig,
+  comingDueInvoices: InvoiceInput[] = [],
 ): DashboardData {
   const { view, sort, q, caseId } = params;
   const allItems = buildCaseItems(cases, invoices, customers, lastContacts, promises, today, ownerLabels, config);
   const searched = q.trim() === "" ? allItems : allItems.filter((i) => i.searchText.includes(q.toLowerCase()));
   const metrics = computeCaseMetrics(searched, today);
+
+  // Coming-due groups: built from the separate non-overdue invoice set
+  const allComingDueGroups = buildComingDueGroups(comingDueInvoices, customers, today);
+  const lowerQ = q.trim().toLowerCase();
+  const filteredComingDue = lowerQ === ""
+    ? allComingDueGroups
+    : allComingDueGroups.filter((g) =>
+        g.customerName.toLowerCase().includes(lowerQ) ||
+        g.invoices.some((i) => (i.docNumber ?? "").toLowerCase().includes(lowerQ)),
+      );
+  metrics.comingDue = comingDueMetric(filteredComingDue);
+
   const viewCounts = Object.fromEntries(
-    ALL_VIEWS.map((v) => [v, applyCaseView(searched, v, today, currentUserId).length]),
+    ALL_VIEWS.map((v) => {
+      if (v === "coming-due") return [v, filteredComingDue.length];
+      return [v, applyCaseView(searched, v, today, currentUserId).length];
+    }),
   ) as Record<ViewId, number>;
   const items = sortCaseItems(applyCaseView(searched, view, today, currentUserId), sort);
   const selected = caseId != null ? (searched.find((i) => i.caseId === caseId) ?? null) : null;
-  return { items, metrics, viewCounts, selected };
+  return { items, metrics, viewCounts, selected, comingDueGroups: filteredComingDue };
 }
 
 // ---------------------------------------------------------------------------
@@ -171,14 +190,13 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
   const env = getEnv(context as any);
   const { supabase, headers, user, org } = await requireOrgUser(request, env);
 
-  // User initials from email
-  const emailParts = (user.email ?? "").split("@")[0].split(/[.\-_]/);
-  const initials = emailParts
-    .slice(0, 2)
-    .map((p) => p[0]?.toUpperCase() ?? "")
-    .join("") || "?";
+  // User initials from display name or email
+  const userLabel = displayLabel(user.user_metadata?.display_name, user.email, user.id);
+  const initials = initialsFrom(userLabel);
 
   const today = new Date().toISOString().slice(0, 10);
+  // 7-day lookahead for "Coming Due" invoices
+  const plus7 = new Date(Date.now() + 7 * 86_400_000).toISOString().slice(0, 10);
 
   // Connection status — service client only (no RLS needed for own org's connection)
   const service = createSupabaseServiceClient(env);
@@ -207,7 +225,7 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
       .select("id, qbo_doc_number, balance, due_date, customer_id, customers(name, phone, email, owner, sms_consent, preferred_channel, do_not_call, do_not_text)")
       .eq("org_id", org.org_id)
       .gt("balance", 0)
-      .lt("due_date", today),
+      .lte("due_date", plus7),
     supabase
       .from("collection_cases")
       .select("id, customer_id, status, next_action_type, next_action_at, opened_at, exception_reason, exception_note, priority_override, priority_override_reason, priority_override_by, priority_override_at")
@@ -242,7 +260,7 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
   const url = new URL(request.url);
   const sp = url.searchParams;
 
-  const VALID_VIEWS: ViewId[] = ["all-open", "30-plus", "high-value", "never-contacted", "follow-ups-due", "broken-promises", "waiting", "on-hold", "my-work"];
+  const VALID_VIEWS: ViewId[] = ["all-open", "coming-due", "30-plus", "high-value", "never-contacted", "follow-ups-due", "broken-promises", "waiting", "on-hold", "my-work"];
   const VALID_SORTS: SortId[] = ["recommended", "most-overdue", "highest-balance", "customer"];
   const VALID_TABS = ["overview", "activity", "messages", "email"] as const;
 
@@ -291,14 +309,18 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
   // RLS-scoped invoice read (USER client) — from Batch A
   const rawInvoices = (invRows as unknown as InvoiceRow[]) ?? [];
 
-  // Build InvoiceInput arrays
-  const invoicesInput: InvoiceInput[] = rawInvoices.map((r) => ({
+  // Build InvoiceInput arrays — split into overdue (existing case pipeline) and
+  // coming-due (awareness-only, no cases). The split is critical: only overdue
+  // invoices feed buildCaseItems / totalOverdue / case reconciliation.
+  const allInvoicesInput: InvoiceInput[] = rawInvoices.map((r) => ({
     id: r.id,
     qbo_doc_number: r.qbo_doc_number,
     customer_id: r.customer_id,
     balance: Number(r.balance ?? 0),
     due_date: r.due_date,
   }));
+  const invoicesInput = allInvoicesInput.filter((i) => i.due_date != null && i.due_date < today);
+  const comingDueInvoices = allInvoicesInput.filter((i) => i.due_date != null && i.due_date >= today);
 
   // Deduplicate customers from the embedded rows
   const customerMap = new Map<string, CustomerInput>();
@@ -432,6 +454,7 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
   const dashboardData: DashboardData = buildCaseData(
     cases, invoicesInput, customersInput, lastContactsInput, promisesInput,
     { view, sort, q, caseId, invoice, tab }, today, ownerLabels, user.id, orgConfig,
+    comingDueInvoices,
   );
 
   const sel = dashboardData.selected;
@@ -452,7 +475,7 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
     ] = await Promise.all([
       supabase
         .from("contact_logs")
-        .select("id, method, outcome, notes, created_at, follow_up_at, promised_amount, promised_date")
+        .select("id, user_id, method, outcome, notes, created_at, follow_up_at, promised_amount, promised_date")
         .eq("org_id", org.org_id)
         .eq("case_id", sel.caseId)
         .order("created_at", { ascending: false }),
@@ -475,11 +498,12 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
     ]);
 
     // Activity: contact logs for the case (timeline input).
-    const logInputs: TimelineLogInput[] = ((actRows as unknown as ContactLogRow[]) ?? []).map((r) => ({
+    const logInputs: TimelineLogInput[] = ((actRows as unknown as (ContactLogRow & { user_id: string | null })[]) ?? []).map((r) => ({
       id: r.id, at: r.created_at, method: r.method, outcome: r.outcome, notes: r.notes,
       followUpAt: r.follow_up_at,
       promisedAmount: r.promised_amount == null ? null : Number(r.promised_amount),
       promisedDate: r.promised_date,
+      authorLabel: r.user_id ? (ownerLabels.get(r.user_id) ?? null) : null,
     }));
 
     // Messages: thread by CUSTOMER (one conversation per customer); also carries
@@ -613,6 +637,7 @@ export default function Dashboard() {
     metrics,
     viewCounts,
     selected,
+    comingDueGroups,
     repInvoiceId,
   } = useLoaderData<typeof loader>();
 
@@ -621,7 +646,8 @@ export default function Dashboard() {
   const VIEW_LABEL: Record<string, string> = {
     "30-plus": "30+ days past due", "high-value": "High value",
     "never-contacted": "Never contacted", "all-open": "All open",
-    "follow-ups-due": "Follow-ups due", "broken-promises": "Broken promises",
+    "coming-due": "Coming due", "follow-ups-due": "Follow-ups due",
+    "broken-promises": "Broken promises",
     "on-hold": "On hold", "waiting": "Waiting", "my-work": "My work",
   };
   const isFiltered = q !== "" || (view !== "all-open" && view !== undefined);
@@ -692,6 +718,7 @@ export default function Dashboard() {
                 returnTo={`/dashboard?${new URLSearchParams({ view, sort, ...(q ? { q } : {}) }).toString()}`}
                 collisions={collisions}
                 smsEnabled={smsEnabled}
+                comingDueGroups={comingDueGroups}
               />
             </div>
 

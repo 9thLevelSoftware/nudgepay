@@ -17,6 +17,7 @@ import { isCaseSuppressed, isContactBlocked } from "./exceptions";
 import { DEFAULT_COMM_PREFS, type CommPrefs } from "./comm-prefs";
 import { suggestFollowUpDate } from "./follow-up-cadence";
 import type { OrgConfig } from "./org-config";
+import { computeLateFee } from "./late-fees";
 
 export type CasePromiseInput = {
   caseId: string;
@@ -51,6 +52,7 @@ export type CaseInvoice = {
   dueDate: string | null;
   ageDays: number;
   heat: Heat;
+  lateFee: number;
 };
 
 export type CaseItem = {
@@ -92,6 +94,7 @@ export type CaseItem = {
   suggestedFollowUpAt: string;
   suggestedFollowUpIntervalDays: number;
   followUpDue: boolean;
+  lateFeeTotal: number;
   searchText: string;
   invoices: CaseInvoice[];
 };
@@ -136,13 +139,15 @@ export function buildCaseItems(
   for (const inv of invoices) {
     if (!inv.customer_id) continue;
     const ageDays = inv.due_date ? ageInDays(inv.due_date, today) : 0;
+    const balance = Number(inv.balance || 0);
     const ci: CaseInvoice = {
       invoiceId: inv.id,
       docNumber: inv.qbo_doc_number,
-      balance: Number(inv.balance || 0),
+      balance,
       dueDate: inv.due_date,
       ageDays,
       heat: heatOf(ageDays),
+      lateFee: computeLateFee(balance, ageDays, config.lateFee),
     };
     const list = invoicesByCustomer.get(inv.customer_id) ?? [];
     list.push(ci);
@@ -168,6 +173,7 @@ export function buildCaseItems(
       .slice()
       .sort((a, b) => b.ageDays - a.ageDays); // oldest first
     const totalOverdue = invList.reduce((s, i) => s + i.balance, 0);
+    const lateFeeTotal = invList.reduce((s, i) => s + i.lateFee, 0);
     const oldestAgeDays = invList.length ? invList[0].ageDays : 0;
     const lc = lastByCase.get(cse.id) ?? null;
     const ownerId = cust?.owner ?? null;
@@ -198,6 +204,7 @@ export function buildCaseItems(
       nextActionType: cse.nextActionType,
       nextActionAt: cse.nextActionAt,
       totalOverdue,
+      lateFeeTotal,
       invoiceCount: invList.length,
       oldestAgeDays,
       heat: heatOf(oldestAgeDays),
@@ -244,6 +251,7 @@ export function applyCaseView(
   if (view === "waiting") return items.filter((i) => i.status === "waiting");
   if (view === "on-hold") return items.filter((i) => i.suppressed);
   if (view === "my-work") return items.filter((i) => i.ownerId != null && i.ownerId === currentUserId);
+  if (view === "coming-due") return []; // Coming-due rows are non-case; rendered from a separate dataset
   return items.filter((i) => !i.suppressed);
 }
 
@@ -274,5 +282,6 @@ export function computeCaseMetrics(items: CaseItem[], today: string): Metrics {
     followUpsDue: bucket(active, (i) => i.nextActionAt != null && i.nextActionAt <= today),
     brokenPromises: bucket(active, (i) => i.brokenPromise),
     onHold: bucket(items, (i) => i.suppressed),
+    comingDue: { count: 0, amount: 0 }, // real value injected by buildCaseData from a separate dataset
   };
 }

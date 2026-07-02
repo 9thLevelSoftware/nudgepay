@@ -18,3 +18,7 @@
 # Demo videos — large binaries kept out of history
 nudgepay-app/demo-recording/*.mp4
 nudgepay-app/demo-recording/*.webm
+
+# Local scratch — agent session reports + one-off demo seed/record scripts
+nudgepay-app/.superpowers/
+nudgepay-app/scripts/demo-*phase8.mjs

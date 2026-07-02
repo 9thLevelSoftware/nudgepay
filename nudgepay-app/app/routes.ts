@@ -40,4 +40,6 @@ export default [
   route("webhooks/twilio/inbound", "routes/webhooks.twilio.inbound.tsx"),
   route("webhooks/twilio/status", "routes/webhooks.twilio.status.tsx"),
   route("webhooks/resend", "routes/webhooks.resend.tsx"),
+  route("api/profile", "routes/api.profile.tsx"),
+  route("api/notification-prefs", "routes/api.notification-prefs.tsx"),
 ] satisfies RouteConfig;

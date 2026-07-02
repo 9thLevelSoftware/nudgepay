@@ -12,6 +12,7 @@ import { isCaseSuppressed, type ExceptionState } from "../lib/exceptions";
 import { ageInDays } from "../lib/worklist";
 import { deriveStanding } from "../lib/accounts";
 import { pageTitle } from "../lib/meta";
+import { displayLabel, initialsFrom } from "../lib/names";
 import type { Route } from "./+types/accounts.$id";
 
 export const meta: Route.MetaFunction = ({ data }) =>
@@ -89,10 +90,9 @@ export async function loader({ request, params, context }: LoaderFunctionArgs) {
     .eq("id", org.org_id)
     .single();
 
-  // User initials from email
-  const emailParts = (user.email ?? "").split("@")[0].split(/[.\-_]/);
-  const initials =
-    emailParts.slice(0, 2).map((p) => p[0]?.toUpperCase() ?? "").join("") || "?";
+  // User initials from display name or email
+  const userLabel = displayLabel(user.user_metadata?.display_name, user.email, user.id);
+  const initials = initialsFrom(userLabel);
 
   // Connection status — service client only (no RLS needed for own org's connection)
   const service = createSupabaseServiceClient(env);
@@ -204,19 +204,27 @@ export async function loader({ request, params, context }: LoaderFunctionArgs) {
     : false;
 
   // ---------------------------------------------------------------------------
+  // Roster (service client — reads auth.users; needed for timeline author labels
+  // and owner assignment UIs)
+  // ---------------------------------------------------------------------------
+
+  const roster = await listOrgMembers(service, org.org_id);
+  const ownerLabels = new Map(roster.map((m) => [m.userId, m.label]));
+
+  // ---------------------------------------------------------------------------
   // Timeline logs — customer-scoped (all logs across all cases for this customer)
   // ---------------------------------------------------------------------------
 
   const { data: logData } = await supabase
     .from("contact_logs")
     .select(
-      "id, created_at, method, outcome, notes, follow_up_at, promised_amount, promised_date",
+      "id, user_id, created_at, method, outcome, notes, follow_up_at, promised_amount, promised_date",
     )
     .eq("org_id", org.org_id)
     .eq("customer_id", customerId)
     .order("created_at", { ascending: false });
 
-  const logInputs: TimelineLogInput[] = ((logData as unknown as ContactLogRow[]) ?? []).map(
+  const logInputs: TimelineLogInput[] = ((logData as unknown as (ContactLogRow & { user_id: string | null })[]) ?? []).map(
     (r) => ({
       id: r.id,
       at: r.created_at,
@@ -226,6 +234,7 @@ export async function loader({ request, params, context }: LoaderFunctionArgs) {
       followUpAt: r.follow_up_at,
       promisedAmount: r.promised_amount == null ? null : Number(r.promised_amount) || null,
       promisedDate: r.promised_date,
+      authorLabel: r.user_id ? (ownerLabels.get(r.user_id) ?? null) : null,
     }),
   );
 
@@ -259,13 +268,6 @@ export async function loader({ request, params, context }: LoaderFunctionArgs) {
   }
 
   const timeline = buildTimeline(logInputs, smsInputs);
-
-  // ---------------------------------------------------------------------------
-  // Roster (service client — reads auth.users)
-  // ---------------------------------------------------------------------------
-
-  const roster = await listOrgMembers(service, org.org_id);
-  const ownerLabels = new Map(roster.map((m) => [m.userId, m.label]));
 
   // ---------------------------------------------------------------------------
   // Derived fields

@@ -1,5 +1,6 @@
 import { createRequestHandler } from "react-router";
 import { runScheduledCdc } from "../app/lib/qbo-cron.server";
+import { runScheduledDigest } from "../app/lib/digest-cron.server";
 
 declare module "react-router" {
 	export interface AppLoadContext {
@@ -21,8 +22,14 @@ export default {
 			cloudflare: { env, ctx },
 		});
 	},
-	scheduled(_controller, env, ctx) {
-		// Bounded CDC catch-up for all connected orgs.
-		ctx.waitUntil(runScheduledCdc(env as unknown as Record<string, string>));
+	scheduled(controller, env, ctx) {
+		const envRecord = env as unknown as Record<string, string>;
+		if (controller.cron === "0 13 * * *") {
+			// Daily digest — 1pm UTC ≈ 8am ET
+			ctx.waitUntil(runScheduledDigest(envRecord));
+		} else {
+			// Default: bounded CDC catch-up for all connected orgs.
+			ctx.waitUntil(runScheduledCdc(envRecord));
+		}
 	},
 } satisfies ExportedHandler<Env>;

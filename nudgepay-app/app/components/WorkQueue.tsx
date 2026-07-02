@@ -21,6 +21,8 @@ import { BulkSmsDrawer } from "./BulkSmsDrawer";
 import { ThermalBand } from "./ThermalBand";
 import { Icon } from "./Icons";
 import { statusChipTone, type ChipTone } from "../lib/status-style";
+import type { ComingDueGroup } from "../lib/coming-due";
+import { ComingDueList } from "./ComingDueList";
 
 // ---------------------------------------------------------------------------
 // Static maps — Tailwind v4 scanner requires literal class strings; no template
@@ -105,6 +107,7 @@ function CollisionMarker({ collision }: { collision?: Collision }) {
 
 const SAVED_VIEWS: { id: ViewId; label: string }[] = [
   { id: "all-open",         label: "All open" },
+  { id: "coming-due",       label: "Coming due" },
   { id: "30-plus",          label: "30+ days" },
   { id: "high-value",       label: "High value" },
   { id: "never-contacted",  label: "Never contacted" },
@@ -138,6 +141,7 @@ interface WorkQueueProps {
   returnTo: string;
   collisions: Record<string, Collision>;
   smsEnabled: boolean;
+  comingDueGroups: ComingDueGroup[];
 }
 
 // ---------------------------------------------------------------------------
@@ -353,6 +357,7 @@ export function WorkQueue({
   returnTo,
   collisions,
   smsEnabled,
+  comingDueGroups,
 }: WorkQueueProps) {
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [smsOpen, setSmsOpen] = useState(false);
@@ -522,7 +527,9 @@ export function WorkQueue({
 
       {/* Table / cards content */}
       <div className="flex-1 overflow-auto bg-surface">
-        {items.length === 0 ? (
+        {view === "coming-due" ? (
+          <ComingDueList groups={comingDueGroups} />
+        ) : items.length === 0 ? (
           /* Empty state */
           <div className="flex flex-col items-center justify-center gap-3 py-16 px-6 text-center">
             <div className="w-10 h-10 rounded-full bg-paper flex items-center justify-center">

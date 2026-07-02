@@ -11,27 +11,34 @@ login with row-level isolation.
 
 ## Status
 
-Actively built. 
-
-The high-level requirements gap checklist lives at
-[`docs/superpowers/2026-06-23-nudgepay-requirements-gap-checklist.md`](docs/superpowers/2026-06-23-nudgepay-requirements-gap-checklist.md)
-and tracks what's shipped, what's open, and what's deliberately deferred.
+Actively built. The gap analysis lives at
+[`docs/gap-analysis-2026-07-02.md`](docs/gap-analysis-2026-07-02.md).
 
 ## What's in the box
 
 - **Prioritized, filterable, sortable work queue** with saved views
-  (all-open, 30-plus, high-value, never-contacted, follow-ups-due,
-  broken-promises, waiting, my-work) and explainable "why this priority"
-  reasoning.
+  (all-open, coming-due, 30-plus, high-value, never-contacted,
+  follow-ups-due, broken-promises, waiting, on-hold, my-work) and
+  explainable "why this priority" reasoning.
 - **Customer-centric case workspace** — every customer has a collection
   case that groups their invoices, contact log, SMS thread, and a
   next-action invariant (scheduled follow-up / pending promise / waiting /
   exception / closed).
+- **Coming-due awareness** — 7-day window of approaching invoices,
+  read-only metric tile + grouped view (no cases opened).
 - **Promise-to-pay state machine** with multi-invoice linkage, manual
   cancel, auto-supersede, and payment-validated broken-promise detection
   (balance-delta with a business-day grace window).
 - **Two-way SMS** via Twilio — templated sends, delivery status,
   inbound threading, STOP / opt-out handling, status callbacks.
+- **Email** — invoice email via Resend, delivery tracking, CAN-SPAM
+  unsubscribe handling.
+- **Team alert emails** — immediate broken-promise alerts + daily
+  follow-ups-due digest per member, with per-user opt-out.
+- **Display names** — real names in all labels + contact-log author
+  attribution in timeline.
+- **Late fees (display-only)** — org-configurable (grace days, monthly %,
+  flat fee), shown for awareness only, never written to QBO.
 - **QBO OAuth + sync** — connection per org, encrypted token store,
   idempotent upserts, QuickBooks webhooks + a 30-minute CDC catch-up
   cron, payment/credit classification via invoice balance-delta, and an
@@ -49,45 +56,42 @@ and tracks what's shipped, what's open, and what's deliberately deferred.
 |--------------|----------------------------------------------------------------------|
 | Web framework| React Router 7 (SSR)                                                 |
 | UI           | React 19, Tailwind CSS 4, IBM Plex / Space Grotesk                   |
-| Runtime      | Cloudflare Workers (`workers/app.ts`) + scheduled cron handler       |
-| Backend      | Supabase (Postgres + Auth + RLS) — 12 migrations under `supabase/`   |
+| Runtime      | Cloudflare Workers (`workers/app.ts`) + scheduled cron handlers      |
+| Backend      | Supabase (Postgres + Auth + RLS) — 24 migrations under `supabase/`   |
 | QBO          | Intuit QuickBooks Online Data API + webhooks (OAuth + CDC catch-up)  |
-| Messaging    | Twilio (SMS two-way, status callbacks, signature verification)       |
+| Messaging    | Twilio (SMS two-way), Resend (email)                                 |
 | Build / test | Vite 7, TypeScript 5.9, Vitest 4, Wrangler 4                         |
 
 ## Repo layout
 
 ```
 .
-├── docs/
-│   └── superpowers/                 # design specs, gap checklists, implementation plans
+├── docs/                                # gap analysis, Intuit production checklist
+├── netlify/                             # legacy domain redirects → Worker
+├── nudgepay-frontend/                   # DEPRECATED — legacy React SPA
+├── nudgepay-backend/                    # DEPRECATED — legacy Express API
 └── nudgepay-app/
     ├── app/
-    │   ├── components/              # AppShell, WorkQueue, DetailPanel, MetricsStrip, ...
-    │   ├── lib/                     # server-side domain logic (qbo-sync, promises, worklist, ...)
-    │   └── routes/                  # page + API + webhook routes (see below)
-    ├── public/                      # static assets
+    │   ├── components/                  # AppShell, WorkQueue, DetailPanel, MetricsStrip, ...
+    │   ├── lib/                         # pure + server-side domain logic
+    │   └── routes/                      # page + API + webhook routes
     ├── supabase/
-    │   ├── migrations/              # 0001–0012 schema + RLS
-    │   └── seed.sql
-    ├── tests/                       # 47 vitest suites (server logic + API contracts)
+    │   └── migrations/                  # 0001–0024 schema + RLS
+    ├── tests/                           # vitest suites
     ├── workers/
-    │   └── app.ts                   # Cloudflare fetch + scheduled handler
-    ├── react-router.config.ts
-    ├── vite.config.ts
-    ├── vitest.config.ts
-    └── wrangler.toml                # env config + cron schedule
+    │   └── app.ts                       # Cloudflare fetch + scheduled handlers
+    └── wrangler.toml                    # env config + cron schedules
 ```
 
 ### Route map
 
-`/` (home) · `/signup` · `/login` · `/onboarding` · `/invite` · `/accept/:token` · `/dashboard` · `/privacy` · `/eula`
+`/` · `/signup` · `/login` · `/onboarding` · `/invite` · `/accept/:token` · `/dashboard` · `/accounts` · `/accounts/:id` · `/promises` · `/messages` · `/reports` · `/settings` · `/privacy` · `/eula`
 
-API: `/api/contact-logs` · `/api/sms-consent` · `/api/assign` · `/api/priority-override` · `/api/promises/cancel` · `/api/text/send` · `/api/qbo/connect|refresh|disconnect`
+API: `/api/contact-logs` · `/api/sms-consent` · `/api/comm-prefs` · `/api/org-settings` · `/api/assign` · `/api/bulk-assign` · `/api/bulk-sms` · `/api/priority-override` · `/api/sync-errors/dismiss` · `/api/presence/heartbeat` · `/api/promises/cancel` · `/api/text/send` · `/api/email/send` · `/api/account-notes` · `/api/profile` · `/api/notification-prefs` · `/api/qbo/connect|refresh|disconnect`
 
-OAuth callback: `/auth/qbo/callback`
+OAuth: `/auth/qbo/callback`
 
-Webhooks (signature-verified): `/webhooks/qbo` · `/webhooks/twilio/inbound` · `/webhooks/twilio/status`
+Webhooks: `/webhooks/qbo` · `/webhooks/twilio/inbound` · `/webhooks/twilio/status` · `/webhooks/resend`
 
 ## Local development
 
@@ -106,8 +110,8 @@ npm run build        # production build
 Wrangler binds the dev worker to the local Supabase at
 `http://127.0.0.1:54321` (see `wrangler.toml`). All secrets — Supabase
 keys, QBO client id/secret/encryption-key/webhook-verifier-token,
-Twilio account/auth/sender — are loaded via `wrangler secret put`, never
-committed.
+Twilio account/auth/sender, Resend API key/webhook secret — are loaded
+via `wrangler secret put`, never committed.
 
 ## Deploy
 
@@ -119,7 +123,8 @@ npm run deploy -- --env production
 
 A successful deploy requires every secret listed under
 `[env.production]` in `wrangler.toml`; the QBO and Twilio routes throw
-500 at runtime until their respective secrets are present.
+500 at runtime until their respective secrets are present. Email/alert
+secrets are optional — `getEmailEnvOrNull` degrades gracefully.
 
 ## Testing
 
@@ -129,32 +134,9 @@ npm test
 ```
 
 The suite covers server-side domain logic (priority scoring, worklist
-derivation, promise evaluation, business-day math, RLS contracts), API
-endpoints (assignment, contact logs, priority override, promise cancel,
-SMS send/consent, QBO connect/disconnect/refresh/webhook), Twilio
-sends/inbound/status, and route registration. CI is not wired up here
-yet.
-
-## Roadmap
-
-The `docs/superpowers/` gap checklist is the source of truth. The
-currently-open, in-build work:
-
-- **B5** — extend priority scoring (balance, broken-promises,
-  time-since-last-contact, prior attempts, follow-up-due) — *shipping
-  in 7b on `phase7b-priority`*.
-- **B6** — surface failed-sync state and an "unresolved sync errors"
-  count.
-- **C1** — collision / recent-contact warnings on the same customer.
-- **C2** — expand the on-hold exception taxonomy (disputed,
-  incorrect-amount, work-incomplete, ...) into a first-class workflow.
-- **C3** — click-to-call + email composer (or honest "log-only" email).
-- **C5** — bulk assignment + templated batch SMS.
-- **C7** — configurable grace periods + holiday calendar.
-
-Deliberately deferred: automated outreach sequences, predictive payment
-scoring, AI-generated messages, voice/transcription, advanced
-segmentation, benchmarking.
+derivation, promise evaluation, case lifecycle, coming-due grouping,
+late-fee math, display names, notification builders, business-day math,
+RLS contracts), API endpoints, webhook handlers, and route registration.
 
 ## License
 

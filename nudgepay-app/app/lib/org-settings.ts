@@ -57,6 +57,49 @@ export function parseOrgSettingsUpdate(form: FormData): ParseResult {
   };
 }
 
+// ---------------------------------------------------------------------------
+// Late-fee settings (C2 gap closure, display-only). Mirrors the pattern above.
+// ---------------------------------------------------------------------------
+
+export type LateFeePatch = {
+  late_fee_enabled: boolean;
+  late_fee_grace_days: number;
+  late_fee_monthly_percent: number;
+  late_fee_flat_amount: number;
+};
+
+export type LateFeeParseResult =
+  | { ok: true; patch: LateFeePatch }
+  | { ok: false; error: string };
+
+export function parseLateFeeSettingsUpdate(form: FormData): LateFeeParseResult {
+  const enabled = form.get("late_fee_enabled") === "true";
+  const grace = intField(form, "late_fee_grace_days");
+  if (grace === null || grace < 0) return { ok: false, error: "late_fee_grace" };
+
+  const rawPercent = form.get("late_fee_monthly_percent");
+  const percent = typeof rawPercent === "string" ? Number(rawPercent) : null;
+  if (percent === null || Number.isNaN(percent) || percent < 0 || percent > 100) {
+    return { ok: false, error: "late_fee_percent" };
+  }
+
+  const rawFlat = form.get("late_fee_flat_amount");
+  const flat = typeof rawFlat === "string" ? Number(rawFlat) : null;
+  if (flat === null || Number.isNaN(flat) || flat < 0) {
+    return { ok: false, error: "late_fee_flat" };
+  }
+
+  return {
+    ok: true,
+    patch: {
+      late_fee_enabled: enabled,
+      late_fee_grace_days: grace,
+      late_fee_monthly_percent: Math.round(percent * 100) / 100, // up to 2dp
+      late_fee_flat_amount: Math.round(flat * 100) / 100,
+    },
+  };
+}
+
 // Validates a single YYYY-MM-DD holiday date (for add/remove). Returns the
 // normalized string, or null when malformed or not a real calendar day.
 export function parseHolidayDate(value: FormDataEntryValue | null): string | null {

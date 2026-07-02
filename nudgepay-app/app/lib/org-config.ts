@@ -7,12 +7,14 @@
 import type { PriorityLevel } from "./priority";
 import { CADENCE_DAYS } from "./follow-up-cadence";
 import { GRACE_BUSINESS_DAYS, DEFAULT_WORKING_DAYS, NO_HOLIDAYS } from "./business-days";
+import { DEFAULT_LATE_FEE_CONFIG, type LateFeeConfig } from "./late-fees";
 
 export type OrgConfig = {
   promiseGraceDays: number;
   workingDays: ReadonlySet<number>;
   holidays: ReadonlySet<string>;
   cadenceDays: Readonly<Record<PriorityLevel, number>>;
+  lateFee: LateFeeConfig;
 };
 
 // Nullable to match a SELECT against optional columns / an absent row.
@@ -23,6 +25,10 @@ export type OrgSettingsRow = {
   cadence_high: number | null;
   cadence_medium: number | null;
   cadence_low: number | null;
+  late_fee_enabled: boolean | null;
+  late_fee_grace_days: number | null;
+  late_fee_monthly_percent: number | null;
+  late_fee_flat_amount: number | null;
 };
 
 export const DEFAULT_ORG_CONFIG: OrgConfig = Object.freeze({
@@ -30,6 +36,7 @@ export const DEFAULT_ORG_CONFIG: OrgConfig = Object.freeze({
   workingDays: DEFAULT_WORKING_DAYS,
   holidays: NO_HOLIDAYS,
   cadenceDays: CADENCE_DAYS,
+  lateFee: DEFAULT_LATE_FEE_CONFIG,
 });
 
 export function resolveOrgConfig(
@@ -53,6 +60,12 @@ export function resolveOrgConfig(
       High: settings.cadence_high ?? CADENCE_DAYS.High,
       Medium: settings.cadence_medium ?? CADENCE_DAYS.Medium,
       Low: settings.cadence_low ?? CADENCE_DAYS.Low,
+    },
+    lateFee: {
+      enabled: settings.late_fee_enabled ?? DEFAULT_LATE_FEE_CONFIG.enabled,
+      graceDays: settings.late_fee_grace_days ?? DEFAULT_LATE_FEE_CONFIG.graceDays,
+      monthlyPercent: Number(settings.late_fee_monthly_percent ?? DEFAULT_LATE_FEE_CONFIG.monthlyPercent),
+      flatAmount: Number(settings.late_fee_flat_amount ?? DEFAULT_LATE_FEE_CONFIG.flatAmount),
     },
   };
 }

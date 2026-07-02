@@ -34,8 +34,8 @@ export type WorkItem = {
 };
 
 export type Metric = { count: number; amount: number };
-export type Metrics = { thirtyPlus: Metric; highValue: Metric; neverContacted: Metric; allOpen: Metric; followUpsDue: Metric; brokenPromises: Metric; onHold: Metric };
-export type ViewId = "all-open" | "30-plus" | "high-value" | "never-contacted" | "follow-ups-due" | "broken-promises" | "waiting" | "on-hold" | "my-work";
+export type Metrics = { thirtyPlus: Metric; highValue: Metric; neverContacted: Metric; allOpen: Metric; followUpsDue: Metric; brokenPromises: Metric; onHold: Metric; comingDue: Metric };
+export type ViewId = "all-open" | "30-plus" | "high-value" | "never-contacted" | "follow-ups-due" | "broken-promises" | "waiting" | "on-hold" | "my-work" | "coming-due";
 export type SortId = "recommended" | "most-overdue" | "highest-balance" | "customer";
 
 export type InvoiceInput = { id: string; qbo_doc_number: string | null; customer_id: string | null; balance: number; due_date: string | null };
@@ -160,6 +160,7 @@ export function applyView(items: WorkItem[], view: ViewId, today: string, curren
   if (view === "follow-ups-due") return items.filter((i) => isFollowUpDue(i, today));
   if (view === "broken-promises") return items.filter((i) => isBrokenPromise(i, today));
   if (view === "my-work") return items.filter((i) => i.ownerId != null && i.ownerId === currentUserId);
+  if (view === "coming-due") return []; // Coming-due rows are non-case; rendered from a separate dataset
   return items;
 }
 
@@ -184,5 +185,6 @@ export function computeMetrics(items: WorkItem[], today: string): Metrics {
     followUpsDue: bucket((i) => isFollowUpDue(i, today)),
     brokenPromises: bucket((i) => isBrokenPromise(i, today)),
     onHold: { count: 0, amount: 0 },
+    comingDue: { count: 0, amount: 0 },
   };
 }

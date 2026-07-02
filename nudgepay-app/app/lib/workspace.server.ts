@@ -3,6 +3,7 @@ import { requireOrgUser } from "./session.server";
 import { createSupabaseServiceClient } from "./supabase.server";
 import { getConnectionStatus } from "./qbo-connection.server";
 import type { AppEnv } from "./env.server";
+import { displayLabel, initialsFrom } from "./names";
 
 // Shared "chrome" prelude for authenticated workspace routes: auth + org
 // membership + QBO connection status + sync label. Dedupes the ~45-line
@@ -36,10 +37,9 @@ export async function loadWorkspaceChrome(
     throw redirect("/settings", { headers });
   }
 
-  // Initials from email
-  const emailParts = (user.email ?? "").split("@")[0].split(/[.\-_]/);
-  const initials =
-    emailParts.slice(0, 2).map((p) => p[0]?.toUpperCase() ?? "").join("") || "?";
+  // Initials from display name or email
+  const userLabel = displayLabel(user.user_metadata?.display_name, user.email, user.id);
+  const initials = initialsFrom(userLabel);
 
   // Sync label
   const lastSyncAt = (connMetaRes?.data?.last_sync_at as string | null) ?? null;

@@ -7,7 +7,9 @@ import {
 } from "./qbo-mappers.server";
 import type { QboHttpConfig } from "./qbo-client.server";
 import { applyCaseReconciliation } from "./case-lifecycle.server";
-import { applyPromiseEvaluation } from "./promise-evaluation.server";
+import { applyPromiseEvaluation, type BrokenPromiseDetail } from "./promise-evaluation.server";
+
+export type NotifyFn = (orgId: string, brokenDetails: BrokenPromiseDetail[], today: string) => Promise<void>;
 
 export type SyncDeps = {
   fetchFn: typeof fetch;
@@ -15,6 +17,7 @@ export type SyncDeps = {
   cfg: QboHttpConfig;   // for token refresh inside getValidAccessToken
   api: QboApiConfig;    // data API base url
   key: string;          // AES key for token decrypt
+  notify?: NotifyFn;    // optional broken-promise alert callback
 };
 
 // QBO query page cap. Chancey carries 125-175 overdue invoices; CDC caps at
@@ -100,7 +103,13 @@ export async function applyPaymentsAndEvaluate(
   }
   try { await applyCaseReconciliation(deps.service, orgId, today); }
   catch (e) { console.error("[6b] reconciliation failed (payments)", e); }
-  try { await applyPromiseEvaluation(deps.service, orgId, today); }
+  try {
+    const evalResult = await applyPromiseEvaluation(deps.service, orgId, today);
+    if (evalResult.brokenDetails.length > 0 && deps.notify) {
+      try { await deps.notify(orgId, evalResult.brokenDetails, today); }
+      catch (e) { console.error("[6b] broken-promise notification failed (non-fatal)", e); }
+    }
+  }
   catch (e) { console.error("[6b] promise evaluation failed (payments)", e); }
 }
 

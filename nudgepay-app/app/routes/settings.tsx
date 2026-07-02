@@ -15,7 +15,7 @@ export const meta: Route.MetaFunction = () => pageTitle("Settings");
 export async function loader({ request, context }: LoaderFunctionArgs) {
   const env = getEnv(context as any);
   const {
-    supabase, headers, isOwner, org,
+    supabase, headers, isOwner, org, user,
     orgName, initials, connected, lastSyncAt,
   } = await loadWorkspaceChrome(request, env, { requireQbo: false });
 
@@ -39,8 +39,20 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
 
   const config = await loadOrgConfig(supabase, org.org_id);
 
+  const displayName = (user.user_metadata?.display_name as string | undefined) ?? "";
+
+  // Notification prefs (user client → RLS enforces self-only)
+  const { data: notifPrefs } = await supabase
+    .from("user_notification_prefs")
+    .select("broken_promise_email, daily_digest_email")
+    .eq("org_id", org.org_id)
+    .eq("user_id", user.id)
+    .maybeSingle();
+
   return data({
     orgName,
+    orgId: org.org_id,
+    displayName,
     initials, isOwner, connected, lastSyncAt, syncIssues,
     messaging: { sender, configured: messagingConfigured, smsEnabled },
     emailSettings,
@@ -49,6 +61,11 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
       workingDays: [...config.workingDays],
       cadence: config.cadenceDays,
       holidays: [...config.holidays].sort(),
+    },
+    lateFee: config.lateFee,
+    notificationPrefs: {
+      brokenPromiseEmail: notifPrefs?.broken_promise_email ?? true,
+      dailyDigestEmail: notifPrefs?.daily_digest_email ?? true,
     },
   }, { headers });
 }
@@ -82,6 +99,29 @@ export default function Settings() {
       <div className="h-full overflow-auto bg-panel p-6">
         <div className="mx-auto flex max-w-3xl flex-col gap-5">
           <h1 className="font-display text-xl font-semibold text-text">Settings</h1>
+
+          {/* Profile (WS2 — display name) */}
+          <section className="rounded-lg border border-border bg-surface p-5">
+            <h2 className="font-display text-base font-semibold text-text">Profile</h2>
+            <Form method="post" action="/api/profile" className="mt-3 flex items-end gap-3">
+              <input type="hidden" name="returnTo" value="/settings" />
+              <label className="flex-1 grid gap-1 text-sm font-medium text-text">
+                Display name
+                <input
+                  name="display_name" type="text" required maxLength={80} defaultValue={d.displayName}
+                  className="h-9 rounded-md border border-border bg-panel px-3 text-sm text-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-copper"
+                />
+              </label>
+              <button
+                type="submit" disabled={formBusy("/api/profile")}
+                className="h-9 rounded-md bg-copper px-4 text-sm font-medium text-white hover:bg-copper/90 disabled:opacity-60 disabled:cursor-not-allowed"
+              >
+                {formBusy("/api/profile") ? "Saving…" : "Save"}
+              </button>
+            </Form>
+            {sp.get("saved") === "profile" && <p className="mt-2 text-xs text-cool">Name updated.</p>}
+            <p className="mt-2 text-xs text-muted">Your display name appears in contact logs, owner assignments, and reports.</p>
+          </section>
 
           {/* QuickBooks connection (G1) */}
           <section className="rounded-lg border border-border bg-surface p-5">
@@ -266,6 +306,91 @@ export default function Settings() {
 
           {/* Collections rules (C7) */}
           <CollectionsRulesForm grace={d.rules.grace} workingDays={d.rules.workingDays} cadence={d.rules.cadence} holidays={d.rules.holidays} isOwner={d.isOwner} />
+
+          {/* Late fees (C2 — display only) */}
+          {d.isOwner ? (
+            <section className="rounded-lg border border-border bg-surface p-5">
+              <h2 className="font-display text-base font-semibold text-text">Late fees (display only)</h2>
+              <p className="mt-1 text-xs text-muted">Shown in NudgePay for awareness only — never added to QuickBooks invoices.</p>
+              <Form method="post" action="/api/org-settings" className="mt-3 flex flex-col gap-3">
+                <input type="hidden" name="intent" value="save_late_fees" />
+                <input type="hidden" name="returnTo" value="/settings" />
+                <label className="flex items-center gap-2 text-sm font-medium text-text">
+                  <select name="late_fee_enabled" defaultValue={d.lateFee.enabled ? "true" : "false"}
+                    className="h-8 rounded-md border border-border bg-panel px-2 text-sm text-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-copper">
+                    <option value="true">Enabled</option>
+                    <option value="false">Disabled</option>
+                  </select>
+                </label>
+                <div className="grid grid-cols-3 gap-3">
+                  <label className="grid gap-1 text-sm font-medium text-text">
+                    Grace days
+                    <input type="number" name="late_fee_grace_days" min={0} defaultValue={d.lateFee.graceDays}
+                      className="h-8 rounded-md border border-border bg-panel px-2 text-sm text-text tabular-nums focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-copper" />
+                  </label>
+                  <label className="grid gap-1 text-sm font-medium text-text">
+                    Monthly %
+                    <input type="number" name="late_fee_monthly_percent" min={0} max={100} step="0.01" defaultValue={d.lateFee.monthlyPercent}
+                      className="h-8 rounded-md border border-border bg-panel px-2 text-sm text-text tabular-nums focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-copper" />
+                  </label>
+                  <label className="grid gap-1 text-sm font-medium text-text">
+                    Flat fee ($)
+                    <input type="number" name="late_fee_flat_amount" min={0} step="0.01" defaultValue={d.lateFee.flatAmount}
+                      className="h-8 rounded-md border border-border bg-panel px-2 text-sm text-text tabular-nums focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-copper" />
+                  </label>
+                </div>
+                <div>
+                  <button type="submit" disabled={intentBusy("save_late_fees")} className="rounded-md bg-copper px-3 py-1.5 text-xs font-semibold text-ink hover:bg-copper/90 disabled:opacity-60 disabled:cursor-not-allowed">
+                    {intentBusy("save_late_fees") ? "Saving…" : "Save"}
+                  </button>
+                </div>
+              </Form>
+            </section>
+          ) : null}
+
+          {/* Notifications (WS5 — team alerts) */}
+          <section className="rounded-lg border border-border bg-surface p-5">
+            <h2 className="font-display text-base font-semibold text-text">Notifications</h2>
+            <p className="mt-1 text-xs text-muted">
+              Choose which team alert emails you receive.
+              {!d.emailSettings.emailEnabled && (
+                <span className="ml-1 text-hot">Org email is disabled — alerts won't send until enabled.</span>
+              )}
+            </p>
+            <Form method="post" action="/api/notification-prefs" className="mt-3 flex flex-col gap-3">
+              <input type="hidden" name="org_id" value={d.orgId} />
+              <label className="flex items-center gap-2 text-sm text-text">
+                <input
+                  type="checkbox"
+                  name="broken_promise_email"
+                  defaultChecked={d.notificationPrefs.brokenPromiseEmail}
+                  className="h-4 w-4 rounded border-border accent-copper"
+                />
+                Broken-promise alerts
+                <span className="text-xs text-muted ml-1">Immediate email when a customer breaks a promise</span>
+              </label>
+              <label className="flex items-center gap-2 text-sm text-text">
+                <input
+                  type="checkbox"
+                  name="daily_digest_email"
+                  defaultChecked={d.notificationPrefs.dailyDigestEmail}
+                  className="h-4 w-4 rounded border-border accent-copper"
+                />
+                Daily follow-up digest
+                <span className="text-xs text-muted ml-1">Morning summary of accounts needing follow-up</span>
+              </label>
+              <div className="flex items-center gap-3">
+                <button
+                  type="submit"
+                  disabled={formBusy("/api/notification-prefs")}
+                  className="rounded-md bg-copper px-3 py-1.5 text-xs font-semibold text-ink hover:bg-copper/90 disabled:opacity-60 disabled:cursor-not-allowed"
+                >
+                  {formBusy("/api/notification-prefs") ? "Saving…" : "Save"}
+                </button>
+                {sp.get("saved") === "notifications" && <span className="text-xs text-cool" role="status">Preferences saved.</span>}
+              </div>
+            </Form>
+          </section>
         </div>
       </div>
     </AppShell>
