@@ -1,4 +1,4 @@
-import { redirect, useLoaderData, useSearchParams, Form, data, type LoaderFunctionArgs } from "react-router";
+import { redirect, useLoaderData, useNavigation, useSearchParams, Form, data, type LoaderFunctionArgs } from "react-router";
 import { getEnv } from "../lib/env.server";
 import { requireUser, resolveOrg } from "../lib/session.server";
 import { getConnectionStatus } from "../lib/qbo-connection.server";
@@ -78,6 +78,8 @@ export default function Settings() {
   const saved = sp.get("email_saved") === "1";
   const errorCode = sp.get("error");
   const syncLabel = d.connected ? `Synced ${relTime(d.lastSyncAt)}` : "Not connected";
+  const navigation = useNavigation();
+  const busy = navigation.state !== "idle";
 
   return (
     <AppShell orgName={d.orgName} userInitials={d.initials} syncLabel={syncLabel} connected={d.connected} isOwner={d.isOwner}>
@@ -98,23 +100,31 @@ export default function Settings() {
                 <>
                   <Form method="post" action="/api/qbo/refresh">
                     <input type="hidden" name="returnTo" value="/settings" />
-                    <button type="submit" className="rounded-md border border-border px-3 py-1.5 text-xs font-medium text-text hover:border-copper">Refresh</button>
+                    <button type="submit" disabled={busy} className="rounded-md border border-border px-3 py-1.5 text-xs font-medium text-text hover:border-copper disabled:opacity-60 disabled:cursor-not-allowed">
+                      {busy ? "Refreshing…" : "Refresh"}
+                    </button>
                   </Form>
                   {d.isOwner ? (
                     <>
                       <Form method="post" action="/api/qbo/connect">
-                        <button type="submit" className="rounded-md border border-border px-3 py-1.5 text-xs font-medium text-text hover:border-copper">Reconnect</button>
+                        <button type="submit" disabled={busy} className="rounded-md border border-border px-3 py-1.5 text-xs font-medium text-text hover:border-copper disabled:opacity-60 disabled:cursor-not-allowed">
+                          {busy ? "Reconnecting…" : "Reconnect"}
+                        </button>
                       </Form>
                       <Form method="post" action="/api/qbo/disconnect">
                         <input type="hidden" name="returnTo" value="/settings" />
-                        <button type="submit" className="rounded-md border border-border px-3 py-1.5 text-xs font-medium text-hot hover:border-hot">Disconnect</button>
+                        <button type="submit" disabled={busy} className="rounded-md border border-border px-3 py-1.5 text-xs font-medium text-hot hover:border-hot disabled:opacity-60 disabled:cursor-not-allowed">
+                          {busy ? "Disconnecting…" : "Disconnect"}
+                        </button>
                       </Form>
                     </>
                   ) : null}
                 </>
               ) : d.isOwner ? (
                 <Form method="post" action="/api/qbo/connect">
-                  <button type="submit" className="rounded-md bg-copper px-3 py-1.5 text-xs font-semibold text-ink hover:bg-copper/90">Connect QuickBooks</button>
+                  <button type="submit" disabled={busy} className="rounded-md bg-copper px-3 py-1.5 text-xs font-semibold text-ink hover:bg-copper/90 disabled:opacity-60 disabled:cursor-not-allowed">
+                    {busy ? "Connecting…" : "Connect QuickBooks"}
+                  </button>
                 </Form>
               ) : (
                 <p className="text-sm text-muted">Not connected — ask an owner to connect QuickBooks.</p>
@@ -137,7 +147,9 @@ export default function Settings() {
                   <Form method="post" action="/api/sync-errors/dismiss" className="mt-1.5">
                     <input type="hidden" name="id" value={it.id} />
                     <input type="hidden" name="returnTo" value="/settings" />
-                    <button type="submit" className="text-[11px] font-medium text-copper hover:underline">Dismiss</button>
+                    <button type="submit" disabled={busy} className="text-[11px] font-medium text-copper hover:underline disabled:opacity-60 disabled:cursor-not-allowed">
+                      {busy ? "Dismissing…" : "Dismiss"}
+                    </button>
                   </Form>
                 </li>
               ))}
@@ -156,7 +168,8 @@ export default function Settings() {
                   <select
                     id="sms-enabled" name="sms_enabled" defaultValue={d.messaging.smsEnabled ? "true" : "false"}
                     onChange={(e) => e.currentTarget.form?.requestSubmit()}
-                    className="h-8 rounded-md border border-border bg-panel px-2 text-sm text-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-copper"
+                    disabled={busy}
+                    className="h-8 rounded-md border border-border bg-panel px-2 text-sm text-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-copper disabled:opacity-60 disabled:cursor-not-allowed"
                   >
                     <option value="true">On</option>
                     <option value="false">Off</option>
@@ -238,7 +251,9 @@ export default function Settings() {
                   <p className="text-xs text-muted">Required by CAN-SPAM — appended to every email's footer.</p>
                 </div>
                 <div className="flex items-center gap-3">
-                  <button type="submit" className="rounded-md bg-copper px-3 py-1.5 text-xs font-semibold text-ink hover:bg-copper/90">Save</button>
+                  <button type="submit" disabled={busy} className="rounded-md bg-copper px-3 py-1.5 text-xs font-semibold text-ink hover:bg-copper/90 disabled:opacity-60 disabled:cursor-not-allowed">
+                    {busy ? "Saving…" : "Save"}
+                  </button>
                   {saved ? <span className="text-xs text-cool">Saved.</span> : null}
                 </div>
               </Form>

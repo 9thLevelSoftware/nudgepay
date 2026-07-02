@@ -1,6 +1,6 @@
 // app/components/MessageThreadPanel.tsx
 import { useEffect, useState } from "react";
-import { Form, Link, useSearchParams } from "react-router";
+import { Form, Link, useNavigation, useSearchParams } from "react-router";
 import type { ThreadRow } from "../lib/message-inbox";
 import type { MessageEntry, EmailMessageEntry } from "~/routes/dashboard";
 import { MessageBubbles } from "./MessageBubbles";
@@ -50,6 +50,8 @@ export function MessageThreadPanel({
   const [subject, setSubject] = useState("");
   const [searchParams] = useSearchParams();
   const emailResult = searchParams.get("email");
+  const navigation = useNavigation();
+  const busy = navigation.state !== "idle";
 
   useEffect(() => {
     setBody("");
@@ -117,8 +119,8 @@ export function MessageThreadPanel({
             <input type="hidden" name="customerId" value={thread.customerId} />
             <input type="hidden" name="returnTo" value={returnTo} />
             <input type="hidden" name="consent" value={consent ? "false" : "true"} />
-            <button type="submit" className="text-xs font-medium text-copper hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-copper rounded">
-              {consent ? "Revoke consent" : "Mark consented"}
+            <button type="submit" disabled={busy} className="text-xs font-medium text-copper hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-copper rounded disabled:opacity-60 disabled:cursor-not-allowed">
+              {busy ? "Updating…" : consent ? "Revoke consent" : "Mark consented"}
             </button>
           </Form>
         </div>
@@ -222,10 +224,10 @@ export function MessageThreadPanel({
               ) : <span />}
               <button
                 type="submit"
-                disabled={!emailEnabled || !thread.canReply}
+                disabled={!emailEnabled || !thread.canReply || busy}
                 className="inline-flex items-center gap-1.5 rounded-md bg-copper px-3 py-1.5 text-xs font-semibold text-surface hover:bg-copper/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-copper disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
               >
-                <Icon name="mail" size={14} aria-hidden /> Send email
+                <Icon name="mail" size={14} aria-hidden /> {busy ? "Sending…" : "Send email"}
               </button>
             </div>
           </Form>
@@ -258,10 +260,10 @@ export function MessageThreadPanel({
                 <span className="text-xs text-muted">{thread.replyDisabledReason}</span>
               )}
               <button
-                type="submit" disabled={!smsEnabled || !thread.canReply}
+                type="submit" disabled={!smsEnabled || !thread.canReply || busy}
                 className="inline-flex items-center gap-1.5 rounded-md bg-copper px-3 py-1.5 text-xs font-semibold text-surface hover:bg-copper/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-copper disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
               >
-                <Icon name="message" size={14} aria-hidden /> Send text
+                <Icon name="message" size={14} aria-hidden /> {busy ? "Sending…" : "Send text"}
               </button>
             </div>
           </Form>

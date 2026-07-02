@@ -1,4 +1,4 @@
-import { Link, useNavigate } from "react-router";
+import { Link, useNavigate, useNavigation } from "react-router";
 import type { CommPrefs, Channel } from "~/lib/comm-prefs";
 import { useDialog } from "~/lib/use-dialog";
 
@@ -20,6 +20,8 @@ export function CommPrefsDrawer({
 }) {
   const navigate = useNavigate();
   const { panelRef } = useDialog({ onClose: () => navigate(closeHref) });
+  const navigation = useNavigation();
+  const busy = navigation.state !== "idle";
 
   return (
     <div className="fixed inset-0 z-40 flex justify-end bg-black/40" role="dialog" aria-modal="true" aria-label="Communication preferences">
@@ -66,7 +68,9 @@ export function CommPrefsDrawer({
 
           <div className="flex justify-end gap-2">
             <Link to={closeHref} className="rounded-md px-3 py-1.5 text-xs text-muted hover:text-text">Cancel</Link>
-            <button type="submit" className="rounded-md bg-copper px-3 py-1.5 text-xs font-sans font-semibold text-surface hover:bg-copper/90">Save preferences</button>
+            <button type="submit" disabled={busy} className="rounded-md bg-copper px-3 py-1.5 text-xs font-sans font-semibold text-surface hover:bg-copper/90 disabled:opacity-60 disabled:cursor-not-allowed">
+              {busy ? "Saving…" : "Save preferences"}
+            </button>
           </div>
         </form>
       </div>
