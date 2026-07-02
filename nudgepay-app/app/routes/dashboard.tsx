@@ -1,4 +1,5 @@
 import { useLoaderData, redirect, data, type LoaderFunctionArgs } from "react-router";
+import { useFlashCleanup } from "../lib/use-flash-cleanup";
 import { getEnv } from "../lib/env.server";
 import { requireOrgUser } from "../lib/session.server";
 import { getConnectionStatus } from "../lib/qbo-connection.server";
@@ -611,6 +612,7 @@ export default function Dashboard() {
     repInvoiceId,
   } = useLoaderData<typeof loader>();
 
+  useFlashCleanup();
 
   return (
     <AppShell

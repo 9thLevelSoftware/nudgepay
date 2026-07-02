@@ -1,4 +1,5 @@
 import { redirect, useLoaderData, useNavigation, useSearchParams, Form, data, type LoaderFunctionArgs } from "react-router";
+import { useFlashCleanup } from "../lib/use-flash-cleanup";
 import { getEnv } from "../lib/env.server";
 import { requireUser, resolveOrg } from "../lib/session.server";
 import { getConnectionStatus } from "../lib/qbo-connection.server";
@@ -84,6 +85,8 @@ export default function Settings() {
     navigation.state !== "idle" &&
     navigation.formAction === "/api/org-settings" &&
     navigation.formData?.get("intent") === intent;
+
+  useFlashCleanup();
 
   return (
     <AppShell orgName={d.orgName} userInitials={d.initials} syncLabel={syncLabel} connected={d.connected} isOwner={d.isOwner}>
