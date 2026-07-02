@@ -82,7 +82,7 @@ export function AppShell({
         Skip to content
       </a>
       {busy && (
-        <div aria-hidden="true" className="absolute inset-x-0 top-0 z-50 h-0.5 overflow-hidden animate-[fade-in_150ms_ease-in]">
+        <div aria-hidden="true" className="absolute inset-x-0 top-0 z-50 h-0.5 overflow-hidden opacity-0 animate-[fade-in_200ms_ease-in_150ms_forwards]">
           <div className="h-full w-1/3 bg-copper animate-[progress-slide_1s_ease-in-out_infinite]" />
         </div>
       )}

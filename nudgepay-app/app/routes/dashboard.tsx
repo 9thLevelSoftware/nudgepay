@@ -211,7 +211,7 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
       .select("id, customer_id, status, next_action_type, next_action_at, opened_at, exception_reason, exception_note, priority_override, priority_override_reason, priority_override_by, priority_override_at")
       .eq("org_id", org.org_id)
       .is("closed_at", null),
-    listOrgMembers(service, org.org_id),
+    listOrgMembers(service, org.org_id).catch(() => [] as OrgMember[]),
     loadOrgConfig(supabase, org.org_id).catch(() => DEFAULT_ORG_CONFIG),
     supabase.from("messaging_config").select("sms_enabled").eq("org_id", org.org_id).maybeSingle(),
     supabase.from("email_config").select("email_enabled").eq("org_id", org.org_id).maybeSingle(),
