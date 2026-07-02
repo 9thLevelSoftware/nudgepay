@@ -47,6 +47,7 @@ function MetricTile({ label, count, amount, active, href, accent }: TileProps) {
       aria-current={active ? "true" : undefined}
       className={[
         "relative flex flex-col text-left p-4 rounded-tile overflow-hidden min-w-0 transition-colors",
+        "snap-start shrink-0 min-w-[140px] sm:shrink sm:min-w-0",
         "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-copper",
         active
           ? "bg-copper/5 border border-copper shadow-tile"
@@ -128,7 +129,7 @@ export function MetricsStrip({ metrics, view, sort = "recommended", search = "",
         </div>
       )}
       <div
-        className="grid grid-cols-2 gap-3 sm:gap-6 sm:grid-cols-3 xl:grid-cols-7"
+        className="flex gap-3 overflow-x-auto snap-x snap-mandatory scrollbar-none sm:grid sm:gap-6 sm:grid-cols-3 xl:grid-cols-7"
         aria-label="Collections summary metrics"
       >
         {tiles.map((t) => (
