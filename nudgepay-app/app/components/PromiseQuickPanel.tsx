@@ -55,7 +55,7 @@ export function PromiseQuickPanel({ promise, invoices, note }: Props) {
           <ul className="space-y-1 text-sm">
             {invoices.map((inv) => (
               <li key={inv.invoiceId} className="flex justify-between">
-                <span className="text-text">#{inv.docNumber ?? inv.invoiceId.slice(0, 8)}</span>
+                <span className="text-text">{inv.docNumber ? `#${inv.docNumber}` : "(no invoice #)"}</span>
                 <span className="text-muted tabular-nums">{formatUSD(inv.balance)}</span>
               </li>
             ))}

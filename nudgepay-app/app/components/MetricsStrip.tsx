@@ -40,6 +40,7 @@ export function MetricsStrip({ metrics, view, sort = "recommended", search = "",
     { label: "High value",        viewId: "high-value",      accent: "cool",    m: metrics.highValue },
     { label: "Never contacted",   viewId: "never-contacted", accent: "neutral", m: metrics.neverContacted },
     { label: "All open",          viewId: "all-open",        accent: "ink",     m: metrics.allOpen },
+    { label: "Coming due",        viewId: "coming-due",      accent: "cool",    m: metrics.comingDue },
     { label: "Follow-ups due",    viewId: "follow-ups-due",  accent: "copper",  m: metrics.followUpsDue },
     { label: "Broken promises",   viewId: "broken-promises", accent: "hot",     m: metrics.brokenPromises },
     { label: "On hold",           viewId: "on-hold",         accent: "neutral", m: metrics.onHold },
@@ -60,7 +61,7 @@ export function MetricsStrip({ metrics, view, sort = "recommended", search = "",
         </div>
       )}
       <div
-        className="flex gap-3 overflow-x-auto snap-x snap-mandatory scrollbar-none sm:grid sm:gap-6 sm:grid-cols-3 xl:grid-cols-7"
+        className="flex gap-3 overflow-x-auto snap-x snap-mandatory scrollbar-none sm:grid sm:gap-6 sm:grid-cols-4 xl:grid-cols-8"
         aria-label="Collections summary metrics"
       >
         {tiles.map((t) => (

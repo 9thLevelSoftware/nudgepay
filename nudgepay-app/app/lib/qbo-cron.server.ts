@@ -1,11 +1,12 @@
 // Scheduled CDC catch-up across all connected orgs. Invoked from the Worker's
 // `scheduled` handler. Uses the global fetch (top of the call stack); all
 // lower layers stay injectable for tests.
-import { getEnv, getQboEnv } from "./env.server";
+import { getEnv, getQboEnv, getEmailEnvOrNull } from "./env.server";
 import { createSupabaseServiceClient } from "./supabase.server";
 import { qboApiBaseUrl } from "./qbo-api.server";
 import { runCdcCatchup, type SyncDeps } from "./qbo-sync.server";
 import { recordSyncError, resolveSyncErrors } from "./sync-errors.server";
+import { sendBrokenPromiseAlerts } from "./notifications.server";
 
 export async function runScheduledCdc(
   cfEnv: Record<string, string>,
@@ -19,12 +20,23 @@ export async function runScheduledCdc(
     .select("org_id").eq("status", "connected");
   if (error) throw error;
 
+  // Wire broken-promise notification when email secrets are available.
+  const emailEnv = getEmailEnvOrNull(context);
+  const notify = emailEnv
+    ? (orgId: string, brokenDetails: any[], today: string) =>
+        sendBrokenPromiseAlerts(
+          { fetchFn: fetch, service, email: { apiKey: emailEnv.RESEND_API_KEY }, appUrl: emailEnv.APP_PUBLIC_BASE_URL ?? "" },
+          orgId, brokenDetails, today,
+        )
+    : undefined;
+
   const deps: SyncDeps = {
     fetchFn: fetch,
     service,
     cfg: { clientId: qbo.QBO_CLIENT_ID, clientSecret: qbo.QBO_CLIENT_SECRET, redirectUri: qbo.QBO_REDIRECT_URI },
     api: { baseUrl: qboApiBaseUrl(qbo.QBO_SANDBOX) },
     key: qbo.QBO_ENCRYPTION_KEY,
+    notify,
   };
 
   for (const c of conns ?? []) {

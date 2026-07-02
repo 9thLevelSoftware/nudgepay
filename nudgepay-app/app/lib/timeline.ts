@@ -11,6 +11,7 @@ export type TimelineLogInput = {
   followUpAt: string | null;
   promisedAmount: number | null;
   promisedDate: string | null;
+  authorLabel: string | null;
 };
 
 export type TimelineSmsInput = {
@@ -34,6 +35,7 @@ export type TimelineEntry =
       followUpAt: string | null;
       promisedAmount: number | null;
       promisedDate: string | null;
+      authorLabel: string | null;
     }
   | {
       kind: "sms";
@@ -98,6 +100,7 @@ export function buildTimeline(
     followUpAt: l.followUpAt,
     promisedAmount: l.promisedAmount,
     promisedDate: l.promisedDate,
+    authorLabel: l.authorLabel,
   }));
 
   const smsEntries: TimelineEntry[] = smsMessages.map((m) => {

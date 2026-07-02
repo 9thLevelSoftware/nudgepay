@@ -203,6 +203,7 @@ export function AccountProfile(p: Props) {
                 <div>
                   <p className="text-sm text-text">
                     {e.kind === "log" ? (e.outcomeLabel ?? "Logged") : e.outcomeLabel}
+                    {e.kind === "log" && e.authorLabel ? <span className="text-muted"> · by {e.authorLabel}</span> : null}
                     <span className="text-muted"> · {formatDate(e.at)}</span>
                   </p>
                   {e.kind === "log" && e.notes ? <p className="text-sm text-muted">{e.notes}</p> : null}

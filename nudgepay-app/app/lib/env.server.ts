@@ -65,6 +65,24 @@ export function getEmailEnv(context: { cloudflare: { env: Record<string, string>
   };
 }
 
+/**
+ * Like getEmailEnv, but returns null when the Resend key is absent instead of
+ * throwing. Used by notification/alert paths that must never 500 the sync or
+ * cron even when email secrets are not yet configured.
+ */
+export function getEmailEnvOrNull(
+  context: { cloudflare: { env: Record<string, string> } },
+): EmailEnv | null {
+  const e = context.cloudflare.env;
+  if (!e.RESEND_API_KEY || !e.UNSUBSCRIBE_SECRET || !e.RESEND_WEBHOOK_SECRET) return null;
+  return {
+    RESEND_API_KEY: e.RESEND_API_KEY,
+    APP_PUBLIC_BASE_URL: e.APP_PUBLIC_BASE_URL || null,
+    UNSUBSCRIBE_SECRET: e.UNSUBSCRIBE_SECRET,
+    RESEND_WEBHOOK_SECRET: e.RESEND_WEBHOOK_SECRET,
+  };
+}
+
 // The public CAN-SPAM unsubscribe page only verifies the HMAC token — it never
 // sends mail. Scope its env to UNSUBSCRIBE_SECRET alone so the legally-required
 // opt-out keeps working even if the Resend send key is absent or rotated out

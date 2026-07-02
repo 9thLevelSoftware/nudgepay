@@ -26,8 +26,14 @@ export async function action({ request, context }: ActionFunctionArgs) {
   const rawPassword = form.get("password");
   const password = typeof rawPassword === "string" ? rawPassword : "";
   const returnTo = safeReturnTo(form.get("returnTo"), "");
+  const rawName = form.get("name");
+  const name = typeof rawName === "string" ? rawName.trim() : "";
   const { supabase, headers } = createSupabaseUserClient(request, env);
-  const { data, error } = await supabase.auth.signUp({ email, password });
+  const { data, error } = await supabase.auth.signUp({
+    email,
+    password,
+    options: name ? { data: { display_name: name } } : undefined,
+  });
   if (error) return { error: humanAuthError(error.message) };
 
   const outcome = signupOutcome(Boolean(data.session), returnTo);
@@ -82,6 +88,10 @@ export default function Signup() {
           </p>
         )}
         <input type="hidden" name="returnTo" value={returnTo} />
+        <label className="grid gap-1 text-sm font-medium text-text">
+          Full name
+          <input name="name" type="text" required autoComplete="name" className={inputClass} />
+        </label>
         <label className="grid gap-1 text-sm font-medium text-text">
           Email
           <input name="email" type="email" required autoComplete="email" className={inputClass} />

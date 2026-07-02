@@ -862,7 +862,7 @@ export function DetailPanel({
               {selected.override ? (
                 <> · pinned to {selected.override.level}
                   {selected.override.by
-                    ? ` by ${roster.find((m) => m.userId === selected.override!.by)?.label ?? selected.override.by}`
+                    ? ` by ${roster.find((m) => m.userId === selected.override!.by)?.label ?? "a teammate"}`
                     : ""}
                 </>
               ) : null}
@@ -912,13 +912,18 @@ export function DetailPanel({
             <ul className="mt-2 flex flex-col gap-1">
               {selected.invoices.map((inv) => (
                 <li key={inv.invoiceId} className="flex items-center justify-between gap-2 rounded-md bg-paper px-3 py-2">
-                  <span className="font-mono text-xs text-text">{inv.docNumber ?? inv.invoiceId}</span>
+                  <span className="font-mono text-xs text-text">{inv.docNumber ?? "—"}</span>
                   <span className="font-mono text-xs text-muted tabular-nums">
-                    {formatUSD(inv.balance)} · {inv.ageDays > 0 ? `${inv.ageDays}d` : "Due"}
+                    {formatUSD(inv.balance)}
+                    {inv.lateFee > 0 ? <span className="text-hot"> + {formatUSD(inv.lateFee)} late fee</span> : null}
+                    {" · "}{inv.ageDays > 0 ? `${inv.ageDays}d` : "Due"}
                   </span>
                 </li>
               ))}
             </ul>
+            {selected.lateFeeTotal > 0 ? (
+              <p className="mt-1 text-xs text-muted italic">Late fees are display-only estimates; QuickBooks balances are unchanged.</p>
+            ) : null}
           </div>
 
           {/* Exception panel — warm accent card */}
@@ -1060,6 +1065,7 @@ export function DetailPanel({
                       <div className="min-w-0 flex flex-col gap-0.5 pt-0.5">
                         <span className="text-sm font-sans font-semibold text-text">
                           {e.outcomeLabel ?? "Logged"}
+                          {e.authorLabel ? <span className="font-normal text-muted"> · by {e.authorLabel}</span> : null}
                         </span>
                         <span className="font-mono text-xs text-muted">{formatDate(e.at)}</span>
                         {e.promisedAmount != null && e.promisedDate != null && (

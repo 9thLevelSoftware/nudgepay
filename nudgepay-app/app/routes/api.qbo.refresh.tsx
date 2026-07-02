@@ -1,9 +1,10 @@
 import { redirect, type ActionFunctionArgs } from "react-router";
-import { getEnv, getQboEnv } from "../lib/env.server";
+import { getEnv, getQboEnv, getEmailEnvOrNull } from "../lib/env.server";
 import { createSupabaseServiceClient } from "../lib/supabase.server";
 import { requireUser, resolveOrg } from "../lib/session.server";
 import { qboApiBaseUrl } from "../lib/qbo-api.server";
 import { syncOverdueInvoices, type SyncDeps } from "../lib/qbo-sync.server";
+import { sendBrokenPromiseAlerts } from "../lib/notifications.server";
 import { recordSyncError, resolveSyncErrors } from "../lib/sync-errors.server";
 import { safeReturnTo } from "../lib/return-to";
 
@@ -19,12 +20,25 @@ export async function action({ request, context }: ActionFunctionArgs) {
   const sep = returnTo.includes("?") ? "&" : "?";
 
   const service = createSupabaseServiceClient(env);
+
+  // Wire broken-promise notification so manual refresh doesn't silently
+  // consume the one-shot promise transition without alerting.
+  const emailEnv = getEmailEnvOrNull(context as any);
+  const notify = emailEnv
+    ? (orgId: string, brokenDetails: any[], today: string) =>
+        sendBrokenPromiseAlerts(
+          { fetchFn: fetch, service, email: { apiKey: emailEnv.RESEND_API_KEY }, appUrl: emailEnv.APP_PUBLIC_BASE_URL ?? "" },
+          orgId, brokenDetails, today,
+        )
+    : undefined;
+
   const deps: SyncDeps = {
     fetchFn: fetch,
     service,
     cfg: { clientId: qbo.QBO_CLIENT_ID, clientSecret: qbo.QBO_CLIENT_SECRET, redirectUri: qbo.QBO_REDIRECT_URI },
     api: { baseUrl: qboApiBaseUrl(qbo.QBO_SANDBOX) },
     key: qbo.QBO_ENCRYPTION_KEY,
+    notify,
   };
   try {
     await syncOverdueInvoices(deps, org.org_id);

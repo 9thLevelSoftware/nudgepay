@@ -7,7 +7,9 @@ import {
 } from "./qbo-mappers.server";
 import type { QboHttpConfig } from "./qbo-client.server";
 import { applyCaseReconciliation } from "./case-lifecycle.server";
-import { applyPromiseEvaluation } from "./promise-evaluation.server";
+import { applyPromiseEvaluation, type BrokenPromiseDetail } from "./promise-evaluation.server";
+
+export type NotifyFn = (orgId: string, brokenDetails: BrokenPromiseDetail[], today: string) => Promise<void>;
 
 export type SyncDeps = {
   fetchFn: typeof fetch;
@@ -15,6 +17,7 @@ export type SyncDeps = {
   cfg: QboHttpConfig;   // for token refresh inside getValidAccessToken
   api: QboApiConfig;    // data API base url
   key: string;          // AES key for token decrypt
+  notify?: NotifyFn;    // optional broken-promise alert callback
 };
 
 // QBO query page cap. Chancey carries 125-175 overdue invoices; CDC caps at
@@ -100,7 +103,13 @@ export async function applyPaymentsAndEvaluate(
   }
   try { await applyCaseReconciliation(deps.service, orgId, today); }
   catch (e) { console.error("[6b] reconciliation failed (payments)", e); }
-  try { await applyPromiseEvaluation(deps.service, orgId, today); }
+  try {
+    const evalResult = await applyPromiseEvaluation(deps.service, orgId, today);
+    if (evalResult.brokenDetails.length > 0 && deps.notify) {
+      try { await deps.notify(orgId, evalResult.brokenDetails, today); }
+      catch (e) { console.error("[6b] broken-promise notification failed (non-fatal)", e); }
+    }
+  }
   catch (e) { console.error("[6b] promise evaluation failed (payments)", e); }
 }
 
@@ -125,25 +134,65 @@ export async function syncOverdueInvoices(
     deps.fetchFn, deps.service, deps.cfg, deps.key, orgId,
   );
   const today = new Date().toISOString().slice(0, 10);
-  const invoices = await qboQuery(
+
+  // Overdue invoices (critical path — feeds case pipeline). Separate query
+  // so coming-due rows can never displace overdue rows at the cap.
+  const overdueInvoices = await qboQuery(
     deps.fetchFn, deps.api, accessToken, realmId,
     `select * from Invoice where Balance > '0' and DueDate < '${today}' startposition 1 maxresults ${QUERY_LIMIT}`,
     "Invoice",
   );
 
-  const custIds = invoices.map((i) => i?.CustomerRef?.value).filter(Boolean).map(String);
+  // Coming-due invoices (awareness only — 7-day window, separate capped query).
+  const plus7 = new Date(Date.now() + 7 * 86_400_000).toISOString().slice(0, 10);
+  const comingDueInvoices = await qboQuery(
+    deps.fetchFn, deps.api, accessToken, realmId,
+    `select * from Invoice where Balance > '0' and DueDate >= '${today}' and DueDate <= '${plus7}' startposition 1 maxresults ${QUERY_LIMIT}`,
+    "Invoice",
+  );
+
+  // Merge and deduplicate by QBO Id (defensive — queries are disjoint by
+  // date range but a QBO edge case could return the same invoice in both).
+  const seen = new Set<string>();
+  const invoices: any[] = [];
+  for (const inv of [...overdueInvoices, ...comingDueInvoices]) {
+    const id = String(inv?.Id ?? "");
+    if (id && !seen.has(id)) { seen.add(id); invoices.push(inv); }
+  }
+  // Hydrate customers in two passes so overdue customers (critical for case
+  // pipeline) are never displaced by coming-due customers at the query cap.
+  const overdueCustIds = [...new Set(
+    overdueInvoices.map((i) => i?.CustomerRef?.value).filter(Boolean).map(String),
+  )];
+  const comingDueCustIds = [...new Set(
+    comingDueInvoices.map((i) => i?.CustomerRef?.value).filter(Boolean).map(String),
+  )];
+  // Only fetch coming-due customers not already covered by the overdue set.
+  const overdueCustSet = new Set(overdueCustIds);
+  const extraCustIds = comingDueCustIds.filter((id) => !overdueCustSet.has(id));
+
   let customerRows: CustomerUpsert[] = [];
-  const uniqueCustIds = [...new Set(custIds)];
-  if (uniqueCustIds.length > 0) {
-    const idList = uniqueCustIds.map((id) => `'${id}'`).join(",");
+  if (overdueCustIds.length > 0) {
+    const idList = overdueCustIds.map((id) => `'${id}'`).join(",");
     const customers = await qboQuery(
       deps.fetchFn, deps.api, accessToken, realmId,
       `select * from Customer where Id in (${idList}) startposition 1 maxresults ${QUERY_LIMIT}`,
       "Customer",
     );
-    customerRows = customers.map((c) => mapQboCustomer(c, orgId));
+    customerRows.push(...customers.map((c) => mapQboCustomer(c, orgId)));
+  }
+  if (extraCustIds.length > 0) {
+    const idList = extraCustIds.map((id) => `'${id}'`).join(",");
+    const customers = await qboQuery(
+      deps.fetchFn, deps.api, accessToken, realmId,
+      `select * from Customer where Id in (${idList}) startposition 1 maxresults ${QUERY_LIMIT}`,
+      "Customer",
+    );
+    customerRows.push(...customers.map((c) => mapQboCustomer(c, orgId)));
   }
   await upsertCustomers(deps.service, customerRows);
+
+  const custIds = invoices.map((i) => i?.CustomerRef?.value).filter(Boolean).map(String);
 
   const idMap = await customerIdMap(deps.service, orgId, custIds);
   const now = new Date();
@@ -166,7 +215,7 @@ export async function syncOverdueInvoices(
   return {
     customers: customerRows.length,
     invoices: invoiceRows.length,
-    truncated: invoices.length >= QUERY_LIMIT,
+    truncated: overdueInvoices.length >= QUERY_LIMIT,
   };
 }
 

@@ -51,4 +51,20 @@ begin
     insert into memberships (org_id, user_id, role)
     values (v_org, v_user_id, case when v_email = 'diskin' then 'owner' else 'member' end);
   end loop;
+
+  -- Dummy QBO connection so dev routes don't redirect to /settings
+  insert into qbo_connections (org_id, realm_id, status, last_sync_at)
+  values (v_org, 'dev-sandbox-1234', 'connected', now());
+
+  -- Fully provisioned SMS: fake Twilio number + service SID
+  insert into messaging_config (org_id, sender, messaging_service_sid, sms_enabled)
+  values (v_org, '+15551234567', 'MG_dev_fake_sid', true)
+  on conflict (org_id) do update
+    set sender = '+15551234567', messaging_service_sid = 'MG_dev_fake_sid', sms_enabled = true;
+
+  -- Fully provisioned email
+  insert into email_config (org_id, email_enabled, from_address, from_name)
+  values (v_org, true, 'collections@chancey-hvac.test', 'Chancey Collections')
+  on conflict (org_id) do update
+    set email_enabled = true, from_address = 'collections@chancey-hvac.test', from_name = 'Chancey Collections';
 end $$;

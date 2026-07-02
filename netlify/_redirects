@@ -1,0 +1,10 @@
+# Redirect from the legacy Netlify site (nudgepay-ar.netlify.app) to the
+# Worker production domain. The legacy SPA is retired; these redirects keep
+# Intuit app-card links (/privacy, /eula) working.
+#
+# TODO(deploy): replace WORKER_PROD_URL_PLACEHOLDER with the actual Worker
+# production URL before deploying.
+
+/privacy  https://WORKER_PROD_URL_PLACEHOLDER/privacy  301!
+/eula     https://WORKER_PROD_URL_PLACEHOLDER/eula     301!
+/*        https://WORKER_PROD_URL_PLACEHOLDER/          302
