@@ -134,15 +134,31 @@ export async function syncOverdueInvoices(
     deps.fetchFn, deps.service, deps.cfg, deps.key, orgId,
   );
   const today = new Date().toISOString().slice(0, 10);
-  // Widen to include invoices due within the next 7 days so the coming-due
-  // view has data even for invoices that existed before the QBO connection.
-  const plus7 = new Date(Date.now() + 7 * 86_400_000).toISOString().slice(0, 10);
-  const invoices = await qboQuery(
+
+  // Overdue invoices (critical path — feeds case pipeline). Separate query
+  // so coming-due rows can never displace overdue rows at the cap.
+  const overdueInvoices = await qboQuery(
     deps.fetchFn, deps.api, accessToken, realmId,
-    `select * from Invoice where Balance > '0' and DueDate <= '${plus7}' startposition 1 maxresults ${QUERY_LIMIT}`,
+    `select * from Invoice where Balance > '0' and DueDate < '${today}' startposition 1 maxresults ${QUERY_LIMIT}`,
     "Invoice",
   );
 
+  // Coming-due invoices (awareness only — 7-day window, separate capped query).
+  const plus7 = new Date(Date.now() + 7 * 86_400_000).toISOString().slice(0, 10);
+  const comingDueInvoices = await qboQuery(
+    deps.fetchFn, deps.api, accessToken, realmId,
+    `select * from Invoice where Balance > '0' and DueDate >= '${today}' and DueDate <= '${plus7}' startposition 1 maxresults ${QUERY_LIMIT}`,
+    "Invoice",
+  );
+
+  // Merge and deduplicate by QBO Id (defensive — queries are disjoint by
+  // date range but a QBO edge case could return the same invoice in both).
+  const seen = new Set<string>();
+  const invoices: any[] = [];
+  for (const inv of [...overdueInvoices, ...comingDueInvoices]) {
+    const id = String(inv?.Id ?? "");
+    if (id && !seen.has(id)) { seen.add(id); invoices.push(inv); }
+  }
   const custIds = invoices.map((i) => i?.CustomerRef?.value).filter(Boolean).map(String);
   let customerRows: CustomerUpsert[] = [];
   const uniqueCustIds = [...new Set(custIds)];
@@ -178,7 +194,7 @@ export async function syncOverdueInvoices(
   return {
     customers: customerRows.length,
     invoices: invoiceRows.length,
-    truncated: invoices.length >= QUERY_LIMIT,
+    truncated: overdueInvoices.length >= QUERY_LIMIT,
   };
 }
 
