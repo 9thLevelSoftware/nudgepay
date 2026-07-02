@@ -615,9 +615,15 @@ export default function Dashboard() {
 
   useFlashCleanup();
 
+  const VIEW_LABEL: Record<string, string> = {
+    "30-plus": "30+ days past due", "high-value": "High value",
+    "never-contacted": "Never contacted", "all-open": "All open",
+    "follow-ups-due": "Follow-ups due", "broken-promises": "Broken promises",
+    "on-hold": "On hold", "waiting": "Waiting", "my-work": "My work",
+  };
   const isFiltered = q !== "" || (view !== "all-open" && view !== undefined);
   const scopeLabel = isFiltered
-    ? q ? `Filtered — matching "${q}"` : `Filtered — ${view} view`
+    ? q ? `Filtered — matching "${q}"` : `Filtered — ${VIEW_LABEL[view ?? ""] ?? view}`
     : null;
   const clearHref = isFiltered ? "?view=all-open&sort=" + sort : undefined;
 

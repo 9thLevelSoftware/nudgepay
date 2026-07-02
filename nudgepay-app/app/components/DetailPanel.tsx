@@ -157,19 +157,21 @@ function MessagesTab({
   }, [selected.caseId]);
 
   // Derive the first gate reason that applies. Order: workspace → blocked → no-invoice → opted-out → no-phone.
-  const smsGateReason = !smsEnabled
-    ? "Text messaging is turned off for this workspace."
+  // Severity: "hard" = compliance-sensitive (red), "soft" = routine informational (amber).
+  const smsGate: { reason: string; severity: "hard" | "soft" } | null = !smsEnabled
+    ? { reason: "Text messaging is turned off for this workspace.", severity: "hard" }
     : contactBlocked
-      ? `Messaging blocked — ${exceptionLabel(selected.exceptionReason)}.`
+      ? { reason: `Messaging blocked — ${exceptionLabel(selected.exceptionReason)}.`, severity: "hard" }
       : noInvoice
-        ? "No invoice to reference."
+        ? { reason: "No invoice to reference.", severity: "soft" }
         : !consent
-          ? "Mark consent to enable sending."
+          ? { reason: "Mark consent to enable sending.", severity: "soft" }
           : prefs.doNotText
-            ? "Customer opted out of texts."
+            ? { reason: "Customer opted out of texts.", severity: "hard" }
             : !phone
-              ? "Customer has no phone number."
+              ? { reason: "Customer has no phone number.", severity: "soft" }
               : null;
+  const smsGateReason = smsGate?.reason ?? null;
   const smsSendDisabled = smsGateReason !== null;
 
   return (
@@ -233,9 +235,16 @@ function MessagesTab({
 
       {/* Templates + composer */}
       <div className="border-t border-border px-5 py-3 shrink-0">
-        {smsGateReason && (
-          <p className="mb-2 rounded-md bg-amber-400/10 border border-amber-400/30 px-3 py-2 text-xs font-sans font-medium text-amber-700" role="status">
-            {smsGateReason}
+        {smsGate && (
+          <p
+            className={`mb-2 rounded-md px-3 py-2 text-xs font-sans font-medium ${
+              smsGate.severity === "hard"
+                ? "bg-hot/10 border border-hot/30 text-hot"
+                : "bg-amber-400/10 border border-amber-400/30 text-amber-700"
+            }`}
+            role={smsGate.severity === "hard" ? "alert" : "status"}
+          >
+            {smsGate.reason}
           </p>
         )}
         <div className="flex flex-wrap gap-1.5 mb-2" role="group" aria-label="Message templates">

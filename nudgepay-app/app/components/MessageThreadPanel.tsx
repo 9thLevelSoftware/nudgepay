@@ -243,11 +243,23 @@ export function MessageThreadPanel({
         </div>
       ) : (
         <div className="border-t border-border px-4 py-3">
-          {smsSendDisabled && (
-            <p className="mb-2 rounded-md bg-amber-400/10 border border-amber-400/30 px-3 py-2 text-xs font-sans font-medium text-amber-700" role="status">
-              {!smsEnabled ? "Text messaging is turned off for this workspace." : thread.replyDisabledReason ?? "Sending is not available."}
-            </p>
-          )}
+          {smsSendDisabled && (() => {
+            // Workspace-off and opt-outs are compliance-sensitive (red); routine soft blocks (no phone, no invoice, no consent) are amber.
+            const reason = !smsEnabled ? "Text messaging is turned off for this workspace." : thread.replyDisabledReason ?? "Sending is not available.";
+            const hard = !smsEnabled || reason.includes("opted out");
+            return (
+              <p
+                className={`mb-2 rounded-md px-3 py-2 text-xs font-sans font-medium ${
+                  hard
+                    ? "bg-hot/10 border border-hot/30 text-hot"
+                    : "bg-amber-400/10 border border-amber-400/30 text-amber-700"
+                }`}
+                role={hard ? "alert" : "status"}
+              >
+                {reason}
+              </p>
+            );
+          })()}
           <div className="flex flex-wrap gap-1.5 mb-2" role="group" aria-label="Message templates">
             {SMS_TEMPLATES.map((t) => (
               <button
