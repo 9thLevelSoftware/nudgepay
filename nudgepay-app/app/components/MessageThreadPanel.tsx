@@ -131,7 +131,7 @@ export function MessageThreadPanel({
         </div>
       )}
 
-      {banner ? <p className={`px-4 py-2 text-xs font-medium ${banner.tone}`}>{banner.text}</p> : null}
+      {banner ? <p className={`px-4 py-2 text-xs font-medium ${banner.tone}`} role={banner.tone === "text-hot" ? "alert" : "status"}>{banner.text}</p> : null}
 
       {/* Thread */}
       <div

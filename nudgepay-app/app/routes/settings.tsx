@@ -261,7 +261,7 @@ export default function Settings() {
                   <button type="submit" disabled={intentBusy("save_email")} className="rounded-md bg-copper px-3 py-1.5 text-xs font-semibold text-ink hover:bg-copper/90 disabled:opacity-60 disabled:cursor-not-allowed">
                     {intentBusy("save_email") ? "Saving…" : "Save"}
                   </button>
-                  {saved ? <span className="text-xs text-cool">Saved.</span> : null}
+                  {saved ? <span className="text-xs text-cool" role="status">Saved.</span> : null}
                 </div>
               </Form>
             ) : (

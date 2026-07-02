@@ -194,7 +194,7 @@ function MessagesTab({
 
       {/* Banner */}
       {banner ? (
-        <p className={`px-5 py-2 text-xs font-sans font-medium ${banner.tone}`}>{banner.text}</p>
+        <p className={`px-5 py-2 text-xs font-sans font-medium ${banner.tone}`} role={banner.tone === "text-hot" ? "alert" : "status"}>{banner.text}</p>
       ) : null}
 
       {/* Thread */}
@@ -203,7 +203,7 @@ function MessagesTab({
         tabIndex={0}
         role="region"
         aria-label="Message history"
-      >
+>
         {messages.length === 0 ? (
           <div className="flex flex-col items-center justify-center gap-2 py-10 text-center">
             <Icon name="message" size={24} className="text-border" aria-hidden />
@@ -362,7 +362,7 @@ function EmailTab({
 
       {/* Result banner */}
       {banner ? (
-        <p className={`px-5 py-2 text-xs font-sans font-medium ${banner.tone}`}>{banner.text}</p>
+        <p className={`px-5 py-2 text-xs font-sans font-medium ${banner.tone}`} role={banner.tone === "text-hot" ? "alert" : "status"}>{banner.text}</p>
       ) : null}
 
       {/* Email thread */}
