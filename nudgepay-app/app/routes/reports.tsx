@@ -1,4 +1,4 @@
-import { redirect, useLoaderData, Link, type LoaderFunctionArgs } from "react-router";
+import { data, redirect, useLoaderData, Link, type LoaderFunctionArgs } from "react-router";
 import { getEnv } from "../lib/env.server";
 import { requireUser, resolveOrg } from "../lib/session.server";
 import { getConnectionStatus } from "../lib/qbo-connection.server";
@@ -7,14 +7,16 @@ import { listOrgMembers } from "../lib/orgs.server";
 import { addCalendarDays } from "../lib/business-days";
 import { AppShell } from "../components/AppShell";
 import {
-  buildTeamReport, REPORT_RANGES, activeBrokenCaseIds, type ReportRange, type TeamReport,
+  buildTeamReport, REPORT_RANGES, activeBrokenCaseIds, type ReportRange,
   type ReportContactLog, type ReportPromise, type ReportOpenedCase, type ReportWorkloadCase,
 } from "../lib/reports";
 import { pageTitle } from "../lib/meta";
 import type { Route } from "./+types/reports";
 
-// Loader returns Response.json (untyped) — data is not typed here, so title is static.
-export const meta: Route.MetaFunction = () => pageTitle("Reports");
+export const meta: Route.MetaFunction = ({ data }) => {
+  if (!data) return pageTitle("Reports");
+  return pageTitle(`Reports · ${data.report.range}d`);
+};
 
 export async function loader({ request, context }: LoaderFunctionArgs) {
   const env = getEnv(context as any);
@@ -130,7 +132,7 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
 
   const syncLabel = connected ? "Connected" : "Not connected";
 
-  return Response.json(
+  return data(
     { report, orgName: (orgRow?.name as string) ?? "Workspace", initials, connected, syncLabel },
     { headers },
   );
@@ -147,9 +149,7 @@ function fmtHours(x: number | null): string {
 }
 
 export default function Reports() {
-  const { report, orgName, initials, connected, syncLabel } = useLoaderData() as {
-    report: TeamReport; orgName: string; initials: string; connected: boolean; syncLabel: string;
-  };
+  const { report, orgName, initials, connected, syncLabel } = useLoaderData<typeof loader>();
   const teamContacts = report.perRep.reduce((s, r) => s + r.contactsLogged, 0);
   const teamKept = report.perRep.reduce((s, r) => s + r.kept, 0);
   const teamResolved = report.perRep.reduce((s, r) => s + r.resolved, 0);
