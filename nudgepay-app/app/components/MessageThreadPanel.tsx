@@ -155,7 +155,7 @@ export function MessageThreadPanel({
                       <p className="text-xs font-semibold text-muted mb-1">{msg.subject}</p>
                     ) : null}
                     <p className="text-xs whitespace-pre-wrap">{msg.body}</p>
-                    <p className="mt-1 text-[10px] text-muted">{formatDate(msg.createdAt)}</p>
+                    <p className="mt-1 text-[11px] text-muted">{formatDate(msg.createdAt)}</p>
                     {msg.errorCode ? <p className="text-xs text-hot">{emailFailureLabel(msg.errorCode)}</p> : null}
                   </div>
                 </li>

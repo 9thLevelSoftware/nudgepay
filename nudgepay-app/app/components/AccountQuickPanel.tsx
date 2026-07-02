@@ -24,8 +24,8 @@ export function AccountQuickPanel({ account }: { account: AccountRow | null }) {
         </span>
       </header>
       <div className="grid grid-cols-2 gap-3 p-4 bg-paper border-b border-border">
-        <div><p className="font-mono text-[10px] uppercase text-muted">Open balance</p><p className="font-display text-lg text-text tabular-nums">{formatUSD(account.openBalance)}</p></div>
-        <div><p className="font-mono text-[10px] uppercase text-muted">Open invoices</p><p className="font-display text-lg text-text tabular-nums">{account.openInvoiceCount}</p></div>
+        <div><p className="font-mono text-[11px] uppercase text-muted">Open balance</p><p className="font-display text-lg text-text tabular-nums">{formatUSD(account.openBalance)}</p></div>
+        <div><p className="font-mono text-[11px] uppercase text-muted">Open invoices</p><p className="font-display text-lg text-text tabular-nums">{account.openInvoiceCount}</p></div>
       </div>
       <dl className="p-4 space-y-2 text-sm">
         <div className="flex justify-between"><dt className="text-muted">Owner</dt><dd className="text-text">{account.owner}</dd></div>

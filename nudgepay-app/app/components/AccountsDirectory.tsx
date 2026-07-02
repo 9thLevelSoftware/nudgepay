@@ -98,7 +98,7 @@ export function AccountsDirectory({ rows, filter, sort, search, counts, selected
       </nav>
 
       {/* Column header (paper, mono uppercase) */}
-      <div className="hidden md:grid grid-cols-[2fr_1fr_1fr_1fr_1fr] gap-3 px-4 py-2 bg-paper border-b border-border font-mono text-[10px] uppercase tracking-wide text-muted">
+      <div className="hidden md:grid grid-cols-[2fr_1fr_1fr_1fr_1fr] gap-3 px-4 py-2 bg-paper border-b border-border font-mono text-[11px] uppercase tracking-wide text-muted">
         <span>Customer</span><span>Standing</span><span>Owner</span><span className="text-right">Open balance</span><span>Last contact</span>
       </div>
 

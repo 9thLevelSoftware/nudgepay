@@ -80,7 +80,7 @@ export function PromisesLedger({ rows, tab, sort, counts, selectedId }: Props) {
         })}
       </nav>
 
-      <div className="hidden md:grid grid-cols-[2fr_1fr_1fr_1.2fr_1fr] gap-3 px-4 py-2 bg-paper border-b border-border font-mono text-[10px] uppercase tracking-wide text-muted">
+      <div className="hidden md:grid grid-cols-[2fr_1fr_1fr_1.2fr_1fr] gap-3 px-4 py-2 bg-paper border-b border-border font-mono text-[11px] uppercase tracking-wide text-muted">
         <span>Customer</span><span className="text-right">Promised</span><span>Due</span><span>Received</span><span>Status</span>
       </div>
 

@@ -391,7 +391,7 @@ function EmailTab({
                     <p className="text-xs font-sans font-semibold text-muted mb-1">{msg.subject}</p>
                   ) : null}
                   <p className="text-xs font-sans whitespace-pre-wrap">{msg.body}</p>
-                  <p className="mt-1 text-[10px] text-muted">{formatDate(msg.createdAt)}</p>
+                  <p className="mt-1 text-[11px] text-muted">{formatDate(msg.createdAt)}</p>
                   {msg.errorCode ? (
                     <p className="text-xs font-sans text-hot">{emailFailureLabel(msg.errorCode)}</p>
                   ) : null}

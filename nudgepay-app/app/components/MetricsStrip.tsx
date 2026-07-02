@@ -58,7 +58,7 @@ function MetricTile({ label, count, amount, active, href, accent }: TileProps) {
       />
       <span className="flex items-center gap-1.5 mb-2">
         <span aria-hidden="true" className={`w-2 h-2 rounded-full shrink-0 ${ACCENT_DOT[accent]}`} />
-        <span className="font-mono text-[10px] font-semibold uppercase tracking-wide text-muted truncate">
+        <span className="font-mono text-[11px] font-semibold uppercase tracking-wide text-muted truncate">
           {label}
         </span>
       </span>
