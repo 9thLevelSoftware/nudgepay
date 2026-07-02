@@ -17,7 +17,10 @@ export function CollectionsRulesForm({
   const days = new Set(workingDays);
   const ro = !isOwner;
   const navigation = useNavigation();
-  const busy = navigation.state !== "idle";
+  const intentBusy = (intent: string) =>
+    navigation.state !== "idle" &&
+    navigation.formAction === "/api/org-settings" &&
+    navigation.formData?.get("intent") === intent;
   return (
     <section className="rounded-lg border border-border bg-surface p-5">
       <h2 className="font-display text-base font-semibold text-text">Collections rules</h2>
@@ -64,8 +67,8 @@ export function CollectionsRulesForm({
 
         {isOwner ? (
           <div>
-            <button type="submit" disabled={busy} className="rounded-md bg-copper px-3 py-1.5 text-xs font-semibold text-ink hover:bg-copper/90 disabled:opacity-60 disabled:cursor-not-allowed">
-              {busy ? "Saving…" : "Save rules"}
+            <button type="submit" disabled={intentBusy("save_rules")} className="rounded-md bg-copper px-3 py-1.5 text-xs font-semibold text-ink hover:bg-copper/90 disabled:opacity-60 disabled:cursor-not-allowed">
+              {intentBusy("save_rules") ? "Saving…" : "Save rules"}
             </button>
           </div>
         ) : null}
@@ -83,8 +86,8 @@ export function CollectionsRulesForm({
                   <input type="hidden" name="intent" value="remove_holiday" />
                   <input type="hidden" name="holiday_date" value={h} />
                   <input type="hidden" name="returnTo" value="/settings" />
-                  <button type="submit" disabled={busy} className="text-xs text-hot hover:underline disabled:opacity-60 disabled:cursor-not-allowed">
-                    {busy ? "Removing…" : "Remove"}
+                  <button type="submit" disabled={intentBusy("remove_holiday")} className="text-xs text-hot hover:underline disabled:opacity-60 disabled:cursor-not-allowed">
+                    {intentBusy("remove_holiday") ? "Removing…" : "Remove"}
                   </button>
                 </Form>
               ) : null}
@@ -98,8 +101,8 @@ export function CollectionsRulesForm({
             <label className="sr-only" htmlFor="holiday-date-input">Holiday date</label>
             <input id="holiday-date-input" type="date" name="holiday_date" required
               className="rounded-md border border-border bg-surface px-2 py-1.5 text-sm text-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-copper" />
-            <button type="submit" disabled={busy} className="rounded-md border border-border px-3 py-1.5 text-xs font-medium text-text hover:border-copper disabled:opacity-60 disabled:cursor-not-allowed">
-              {busy ? "Adding…" : "Add holiday"}
+            <button type="submit" disabled={intentBusy("add_holiday")} className="rounded-md border border-border px-3 py-1.5 text-xs font-medium text-text hover:border-copper disabled:opacity-60 disabled:cursor-not-allowed">
+              {intentBusy("add_holiday") ? "Adding…" : "Add holiday"}
             </button>
           </Form>
         ) : null}

@@ -51,7 +51,7 @@ export function MessageThreadPanel({
   const [searchParams] = useSearchParams();
   const emailResult = searchParams.get("email");
   const navigation = useNavigation();
-  const busy = navigation.state !== "idle";
+  const formBusy = (action: string) => navigation.state !== "idle" && navigation.formAction === action;
 
   useEffect(() => {
     setBody("");
@@ -119,8 +119,8 @@ export function MessageThreadPanel({
             <input type="hidden" name="customerId" value={thread.customerId} />
             <input type="hidden" name="returnTo" value={returnTo} />
             <input type="hidden" name="consent" value={consent ? "false" : "true"} />
-            <button type="submit" disabled={busy} className="text-xs font-medium text-copper hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-copper rounded disabled:opacity-60 disabled:cursor-not-allowed">
-              {busy ? "Updating…" : consent ? "Revoke consent" : "Mark consented"}
+            <button type="submit" disabled={formBusy("/api/sms-consent")} className="text-xs font-medium text-copper hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-copper rounded disabled:opacity-60 disabled:cursor-not-allowed">
+              {formBusy("/api/sms-consent") ? "Updating…" : consent ? "Revoke consent" : "Mark consented"}
             </button>
           </Form>
         </div>
@@ -224,10 +224,10 @@ export function MessageThreadPanel({
               ) : <span />}
               <button
                 type="submit"
-                disabled={!emailEnabled || !thread.canReply || busy}
+                disabled={!emailEnabled || !thread.canReply || formBusy("/api/email/send")}
                 className="inline-flex items-center gap-1.5 rounded-md bg-copper px-3 py-1.5 text-xs font-semibold text-surface hover:bg-copper/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-copper disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
               >
-                <Icon name="mail" size={14} aria-hidden /> {busy ? "Sending…" : "Send email"}
+                <Icon name="mail" size={14} aria-hidden /> {formBusy("/api/email/send") ? "Sending…" : "Send email"}
               </button>
             </div>
           </Form>
@@ -260,10 +260,10 @@ export function MessageThreadPanel({
                 <span className="text-xs text-muted">{thread.replyDisabledReason}</span>
               )}
               <button
-                type="submit" disabled={!smsEnabled || !thread.canReply || busy}
+                type="submit" disabled={!smsEnabled || !thread.canReply || formBusy("/api/text/send")}
                 className="inline-flex items-center gap-1.5 rounded-md bg-copper px-3 py-1.5 text-xs font-semibold text-surface hover:bg-copper/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-copper disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
               >
-                <Icon name="message" size={14} aria-hidden /> {busy ? "Sending…" : "Send text"}
+                <Icon name="message" size={14} aria-hidden /> {formBusy("/api/text/send") ? "Sending…" : "Send text"}
               </button>
             </div>
           </Form>
