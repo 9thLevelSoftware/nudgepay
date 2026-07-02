@@ -615,6 +615,12 @@ export default function Dashboard() {
 
   useFlashCleanup();
 
+  const isFiltered = q !== "" || (view !== "all-open" && view !== undefined);
+  const scopeLabel = isFiltered
+    ? q ? `Filtered — matching "${q}"` : `Filtered — ${view} view`
+    : null;
+  const clearHref = isFiltered ? "?view=all-open&sort=" + sort : undefined;
+
   return (
     <AppShell
       orgName={orgName}
@@ -653,7 +659,7 @@ export default function Dashboard() {
       <div className="flex flex-col h-full">
           {/* Metrics strip */}
           <div className="px-6 py-3 border-b border-border bg-panel shrink-0">
-            <MetricsStrip metrics={metrics} view={view} sort={sort} search={q} />
+            <MetricsStrip metrics={metrics} view={view} sort={sort} search={q} scopeLabel={scopeLabel} clearHref={clearHref} />
           </div>
 
           {/* Workspace: queue full-width until a case is selected, then two-pane */}

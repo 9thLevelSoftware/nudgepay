@@ -1,6 +1,7 @@
 import { Link } from "react-router";
 import type { Metrics, ViewId, SortId } from "../lib/worklist";
 import { formatUSD } from "../lib/format";
+import { Icon } from "./Icons";
 
 type Accent = "copper" | "cool" | "hot" | "ink" | "neutral";
 
@@ -78,6 +79,8 @@ interface MetricsStripProps {
   view?: ViewId;
   sort?: SortId;
   search?: string;
+  scopeLabel?: string | null;
+  clearHref?: string;
 }
 
 /**
@@ -90,7 +93,7 @@ interface MetricsStripProps {
  * warm on Never contacted/Follow-ups due (attention), copper on High value
  * (brand/value), neutral ink on All open.
  */
-export function MetricsStrip({ metrics, view, sort = "recommended", search = "" }: MetricsStripProps) {
+export function MetricsStrip({ metrics, view, sort = "recommended", search = "", scopeLabel, clearHref }: MetricsStripProps) {
   const href = (v: ViewId) => {
     const p = new URLSearchParams({ view: v, sort, ...(search ? { q: search } : {}) });
     return `?${p.toString()}`;
@@ -110,22 +113,37 @@ export function MetricsStrip({ metrics, view, sort = "recommended", search = "" 
     { label: "On hold",           viewId: "on-hold",         accent: "neutral", m: metrics.onHold },
   ];
   return (
-    <div
-      className="grid grid-cols-2 gap-3 sm:gap-6 sm:grid-cols-3 xl:grid-cols-7"
-      aria-label="Collections summary metrics"
-    >
-      {tiles.map((t) => (
-        <MetricTile
-          key={t.viewId}
-          label={t.label}
-          count={t.m.count}
-          amount={t.m.amount}
-          viewId={t.viewId}
-          active={view === t.viewId}
-          href={href(t.viewId)}
-          accent={t.accent}
-        />
-      ))}
-    </div>
+    <>
+      {scopeLabel && (
+        <div className="flex items-center gap-2 mb-2 text-xs font-sans text-muted">
+          <span className="inline-flex items-center gap-1.5 rounded-md bg-copper/10 border border-copper/20 px-2.5 py-1 font-medium text-copper">
+            <Icon name="filter" size={12} aria-hidden />
+            {scopeLabel}
+          </span>
+          {clearHref && (
+            <Link to={clearHref} className="text-copper hover:underline font-medium">
+              Clear
+            </Link>
+          )}
+        </div>
+      )}
+      <div
+        className="grid grid-cols-2 gap-3 sm:gap-6 sm:grid-cols-3 xl:grid-cols-7"
+        aria-label="Collections summary metrics"
+      >
+        {tiles.map((t) => (
+          <MetricTile
+            key={t.viewId}
+            label={t.label}
+            count={t.m.count}
+            amount={t.m.amount}
+            viewId={t.viewId}
+            active={view === t.viewId}
+            href={href(t.viewId)}
+            accent={t.accent}
+          />
+        ))}
+      </div>
+    </>
   );
 }
