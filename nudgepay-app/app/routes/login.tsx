@@ -1,7 +1,19 @@
-import { Form, redirect, useActionData, type ActionFunctionArgs } from "react-router";
+import {
+  Form,
+  Link,
+  redirect,
+  useActionData,
+  useNavigation,
+  useSearchParams,
+  type ActionFunctionArgs,
+} from "react-router";
 import { getEnv } from "../lib/env.server";
 import { createSupabaseUserClient } from "../lib/supabase.server";
 import { resolveOrg } from "../lib/session.server";
+import { safeReturnTo } from "../lib/return-to";
+import { humanAuthError } from "../lib/auth-flow.server";
+import { PublicLayout } from "../components/PublicLayout";
+import { Button, inputClass } from "../components/ui";
 
 export async function action({ request, context }: ActionFunctionArgs) {
   const env = getEnv(context as any);
@@ -12,20 +24,65 @@ export async function action({ request, context }: ActionFunctionArgs) {
   const password = typeof rawPassword === "string" ? rawPassword : "";
   const { supabase, headers } = createSupabaseUserClient(request, env);
   const { data, error } = await supabase.auth.signInWithPassword({ email, password });
-  if (error || !data.user) return { error: error?.message ?? "Login failed" };
+  if (error || !data.user) {
+    return { error: humanAuthError(error?.message ?? "Login failed") };
+  }
+
+  // Honor returnTo BEFORE resolveOrg — an org-less invitee must land on
+  // /accept/<token>, not /onboarding.
+  const returnTo = safeReturnTo(form.get("returnTo"), "");
+  if (returnTo) return redirect(returnTo, { headers });
+
   const org = await resolveOrg(supabase, data.user.id);
   return redirect(org ? "/dashboard" : "/onboarding", { headers });
 }
 
 export default function Login() {
   const actionData = useActionData<typeof action>();
+  const busy = useNavigation().state !== "idle";
+  const [searchParams] = useSearchParams();
+  const returnTo = searchParams.get("returnTo") ?? "";
+  const signupHref = returnTo
+    ? `/signup?returnTo=${encodeURIComponent(returnTo)}`
+    : "/signup";
+
+  const error = actionData?.error;
+  // The generic "Invalid login credentials" copy nudges toward signup; turn
+  // that mention into a real link when present, preserving returnTo.
+  const [before, after] = error?.includes("create an account")
+    ? error.split("create an account")
+    : [error, undefined];
+
   return (
-    <Form method="post" style={{ maxWidth: 360, margin: "64px auto", display: "grid", gap: 12 }}>
-      <h1>Log in to NudgePay</h1>
-      {actionData?.error && <p style={{ color: "#C0202A" }}>{actionData.error}</p>}
-      <input name="email" type="email" placeholder="Email" required />
-      <input name="password" type="password" placeholder="Password" required />
-      <button type="submit">Log in</button>
-    </Form>
+    <PublicLayout title="Log in to NudgePay" width="card">
+      <Form method="post" className="grid gap-4">
+        {error && (
+          <p role="alert" className="text-sm text-hot">
+            {after !== undefined ? (
+              <>
+                {before}
+                <Link to={signupHref} className="underline">create an account</Link>
+                {after}
+              </>
+            ) : (
+              error
+            )}
+          </p>
+        )}
+        <input type="hidden" name="returnTo" value={returnTo} />
+        <label className="grid gap-1 text-sm font-medium text-text">
+          Email
+          <input name="email" type="email" required autoComplete="email" className={inputClass} />
+        </label>
+        <label className="grid gap-1 text-sm font-medium text-text">
+          Password
+          <input name="password" type="password" required autoComplete="current-password" className={inputClass} />
+        </label>
+        <Button type="submit" disabled={busy}>{busy ? "Signing in…" : "Log in"}</Button>
+        <p className="text-center text-sm text-muted">
+          Don&apos;t have an account? <Link to={signupHref} className="font-medium text-text underline">Sign up</Link>
+        </p>
+      </Form>
+    </PublicLayout>
   );
 }

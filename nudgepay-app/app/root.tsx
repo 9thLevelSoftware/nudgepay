@@ -1,5 +1,6 @@
 import {
 	isRouteErrorResponse,
+	Link,
 	Links,
 	Meta,
 	Outlet,
@@ -9,6 +10,14 @@ import {
 
 import type { Route } from "./+types/root";
 import "./app.css";
+import { PublicLayout } from "./components/PublicLayout";
+
+const primaryLinkClass =
+	"rounded-md bg-copper px-4 py-2 text-sm font-semibold text-ink transition-colors hover:bg-copper/90 " +
+	"focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-copper";
+const secondaryLinkClass =
+	"rounded-md border border-border px-4 py-2 text-sm font-medium text-text transition-colors hover:border-copper " +
+	"focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-copper";
 
 export const links: Route.LinksFunction = () => [
 	{ rel: "preconnect", href: "https://fonts.googleapis.com" },
@@ -46,15 +55,15 @@ export default function App() {
 }
 
 export function ErrorBoundary({ error }: Route.ErrorBoundaryProps) {
-	let message = "Oops!";
+	let message = "Something went wrong";
 	let details = "An unexpected error occurred.";
 	let stack: string | undefined;
 
 	if (isRouteErrorResponse(error)) {
-		message = error.status === 404 ? "404" : "Error";
+		message = error.status === 404 ? "Page not found" : "Something went wrong";
 		details =
 			error.status === 404
-				? "The requested page could not be found."
+				? "The page you're looking for doesn't exist or has been moved."
 				: error.statusText || details;
 	} else if (import.meta.env.DEV && error && error instanceof Error) {
 		details = error.message;
@@ -62,14 +71,26 @@ export function ErrorBoundary({ error }: Route.ErrorBoundaryProps) {
 	}
 
 	return (
-		<main className="pt-16 p-4 container mx-auto">
-			<h1>{message}</h1>
-			<p>{details}</p>
-			{stack && (
-				<pre className="w-full p-4 overflow-x-auto">
-					<code>{stack}</code>
-				</pre>
-			)}
-		</main>
+		<PublicLayout width="prose">
+			<div className="text-center">
+				<h1 className="font-display text-3xl font-semibold text-text sm:text-4xl">
+					{message}
+				</h1>
+				<p className="mt-4 text-base text-hot" role="alert">{details}</p>
+				<div className="mt-8 flex items-center justify-center gap-3">
+					<Link to="/dashboard" className={primaryLinkClass}>
+						Go to dashboard
+					</Link>
+					<Link to="/" className={secondaryLinkClass}>
+						Back to home
+					</Link>
+				</div>
+				{stack && (
+					<pre className="mt-8 w-full overflow-x-auto rounded-md border border-border bg-panel p-4 text-left text-xs text-muted">
+						<code>{stack}</code>
+					</pre>
+				)}
+			</div>
+		</PublicLayout>
 	);
 }

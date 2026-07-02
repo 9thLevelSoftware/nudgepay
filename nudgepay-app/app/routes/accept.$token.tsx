@@ -4,6 +4,7 @@ import {
   redirect,
   useActionData,
   useLoaderData,
+  useNavigation,
   type ActionFunctionArgs,
   type LoaderFunctionArgs,
 } from "react-router";
@@ -11,6 +12,8 @@ import { getEnv } from "../lib/env.server";
 import { createSupabaseServiceClient } from "../lib/supabase.server";
 import { requireUser } from "../lib/session.server";
 import { acceptInvite } from "../lib/orgs.server";
+import { PublicLayout } from "../components/PublicLayout";
+import { Button } from "../components/ui";
 
 export async function loader({ request, params, context }: LoaderFunctionArgs) {
   const env = getEnv(context as any);
@@ -54,39 +57,36 @@ export default function Accept() {
   const { orgName, notFound, alreadyAccepted, emailMismatch } =
     useLoaderData<typeof loader>();
   const actionData = useActionData<typeof action>();
-
-  const wrapStyle = { maxWidth: 420, margin: "64px auto", display: "grid", gap: 12 } as const;
+  const busy = useNavigation().state !== "idle";
 
   if (notFound) {
     return (
-      <div style={wrapStyle}>
-        <h1>Invite not found</h1>
-        <p>This invite link is invalid or has been removed.</p>
-      </div>
+      <PublicLayout width="card" title="Invite not found">
+        <p className="text-sm text-muted">This invite link is invalid or has been removed.</p>
+      </PublicLayout>
     );
   }
   if (alreadyAccepted) {
     return (
-      <div style={wrapStyle}>
-        <h1>Invite already accepted</h1>
-        <p>This invite has already been used.</p>
-      </div>
+      <PublicLayout width="card" title="Invite already accepted">
+        <p className="text-sm text-muted">This invite has already been used.</p>
+      </PublicLayout>
     );
   }
   if (emailMismatch) {
     return (
-      <div style={wrapStyle}>
-        <h1>Wrong account</h1>
-        <p>This invite was sent to a different email address. Sign in with the invited account to accept it.</p>
-      </div>
+      <PublicLayout width="card" title="Wrong account">
+        <p className="text-sm text-muted">This invite was sent to a different email address. Sign in with the invited account to accept it.</p>
+      </PublicLayout>
     );
   }
 
   return (
-    <Form method="post" style={wrapStyle}>
-      <h1>Join {orgName}?</h1>
-      {actionData?.error && <p style={{ color: "#C0202A" }}>{actionData.error}</p>}
-      <button type="submit">Accept invite</button>
-    </Form>
+    <PublicLayout width="card" title={orgName ? `Join ${orgName}?` : "Join organization?"}>
+      <Form method="post" className="grid gap-4">
+        {actionData?.error && <p role="alert" className="text-sm text-hot">{actionData.error}</p>}
+        <Button type="submit" disabled={busy}>{busy ? "Joining…" : "Accept invite"}</Button>
+      </Form>
+    </PublicLayout>
   );
 }

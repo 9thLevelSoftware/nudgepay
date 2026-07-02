@@ -11,7 +11,17 @@ export async function getOptionalUser(request: Request, env: AppEnv) {
 
 export async function requireUser(request: Request, env: AppEnv) {
   const { supabase, headers, user } = await getOptionalUser(request, env);
-  if (!user) throw redirect("/login", { headers });
+  if (!user) {
+    const url = new URL(request.url);
+    const returnTo = url.pathname + url.search;
+    const target =
+      request.method === "GET" &&
+      returnTo !== "/" &&
+      !returnTo.startsWith("/login")
+        ? `/login?returnTo=${encodeURIComponent(returnTo)}`
+        : "/login";
+    throw redirect(target, { headers });
+  }
   return { supabase, headers, user: user as User };
 }
 
