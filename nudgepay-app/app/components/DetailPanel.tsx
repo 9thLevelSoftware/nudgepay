@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { Link, useNavigate, useRevalidator, useSearchParams } from "react-router";
+import { Link, useNavigate, useNavigation, useRevalidator, useSearchParams } from "react-router";
 import { HEARTBEAT_INTERVAL_MS, type Collision } from "~/lib/collision";
 import { type CaseItem } from "~/lib/cases";
 import { Icon } from "~/components/Icons";
@@ -146,6 +146,8 @@ function MessagesTab({
   const banner = sms ? SMS_BANNER[sms] : null;
   const noInvoice = repInvoiceId === null;
   const contactBlocked = isContactBlocked(selected.exceptionReason);
+  const navigation = useNavigation();
+  const busy = navigation.state !== "idle";
 
   // Reset confirmSend when the case changes
   useEffect(() => {
@@ -179,9 +181,10 @@ function MessagesTab({
             <input type="hidden" name="consent" value={consent ? "false" : "true"} />
             <button
               type="submit"
-              className="text-xs font-sans font-medium text-copper hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-copper rounded"
+              disabled={busy}
+              className="text-xs font-sans font-medium text-copper hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-copper rounded disabled:opacity-60 disabled:cursor-not-allowed"
             >
-              {consent ? "Revoke consent" : "Mark consented"}
+              {busy ? "Updating…" : consent ? "Revoke consent" : "Mark consented"}
             </button>
           </form>
         </div>
@@ -270,11 +273,11 @@ function MessagesTab({
             ) : <span />}
             <button
               type="submit"
-              disabled={!smsEnabled || !canSendSms(prefs, consent) || noInvoice || contactBlocked || !phone}
+              disabled={!smsEnabled || !canSendSms(prefs, consent) || noInvoice || contactBlocked || !phone || busy}
               className="inline-flex items-center gap-1.5 rounded-md bg-copper px-3 py-1.5 text-xs font-sans font-semibold text-surface hover:bg-copper/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-copper disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
             >
               <Icon name="message" size={14} aria-hidden />
-              Send text
+              {busy ? "Sending…" : "Send text"}
             </button>
           </div>
         </form>
@@ -320,6 +323,8 @@ function EmailTab({
   const [body, setBody] = useState("");
   const noInvoice = repInvoiceId === null;
   const contactBlocked = isContactBlocked(selected.exceptionReason);
+  const navigation = useNavigation();
+  const busy = navigation.state !== "idle";
 
   // Derive the first gate reason that applies. Order: workspace → blocked → no-email → opted-out.
   const gateReason = !emailEnabled
@@ -446,11 +451,11 @@ function EmailTab({
             ) : <span />}
             <button
               type="submit"
-              disabled={sendDisabled}
+              disabled={sendDisabled || busy}
               className="inline-flex items-center gap-1.5 rounded-md bg-copper px-3 py-1.5 text-xs font-sans font-semibold text-surface hover:bg-copper/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-copper disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
             >
               <Icon name="mail" size={14} aria-hidden />
-              Send email
+              {busy ? "Sending…" : "Send email"}
             </button>
           </div>
         </form>
@@ -553,6 +558,8 @@ export function DetailPanel({
     return () => { cancelled = true; clearInterval(id); };
   }, [customerId]);
   const navigate = useNavigate();
+  const navigation = useNavigation();
+  const busy = navigation.state !== "idle";
 
   // ── Empty state ────────────────────────────────────────────────────────────
   if (selected === null) {
@@ -848,9 +855,10 @@ export function DetailPanel({
               />
               <button
                 type="submit"
-                className="rounded-md border border-copper/40 px-3 py-1 text-xs font-sans font-medium text-copper hover:bg-copper/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-copper transition-colors"
+                disabled={busy}
+                className="rounded-md border border-copper/40 px-3 py-1 text-xs font-sans font-medium text-copper hover:bg-copper/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-copper transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
               >
-                Save
+                {busy ? "Saving…" : "Save"}
               </button>
             </form>
           </div>
@@ -924,9 +932,10 @@ export function DetailPanel({
                     <input type="hidden" name="returnTo" value={overviewReturnTo} />
                     <button
                       type="submit"
-                      className="text-xs font-sans font-medium text-copper hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-copper rounded"
+                      disabled={busy}
+                      className="text-xs font-sans font-medium text-copper hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-copper rounded disabled:opacity-60 disabled:cursor-not-allowed"
                     >
-                      Cancel promise
+                      {busy ? "Cancelling…" : "Cancel promise"}
                     </button>
                   </form>
                 ) : null}

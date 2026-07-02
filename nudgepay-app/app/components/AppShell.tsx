@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Form, Link } from "react-router";
+import { Form, Link, useNavigation } from "react-router";
 import { Icon } from "./Icons";
 
 interface AppShellProps {
@@ -63,6 +63,7 @@ export function AppShell({
   children,
 }: AppShellProps) {
   const [navOpen, setNavOpen] = useState(false);
+  const busy = useNavigation().state !== "idle";
 
   const SECTION_TITLES: Record<string, string> = {
     collections: "Collections", accounts: "Accounts", promises: "Promises", messages: "Messages", reports: "Reports",
@@ -73,13 +74,18 @@ export function AppShell({
   };
 
   return (
-    <div className="flex flex-col h-screen overflow-hidden font-sans">
+    <div className="relative flex flex-col h-screen overflow-hidden font-sans">
       <a
         href="#main-content"
         className="sr-only focus:not-sr-only focus:absolute focus:top-2 focus:left-2 focus:z-50 rounded-md bg-copper px-3 py-2 text-sm font-semibold text-ink"
       >
         Skip to content
       </a>
+      {busy && (
+        <div aria-hidden="true" className="absolute inset-x-0 top-0 z-50 h-0.5 overflow-hidden opacity-0 animate-[fade-in_200ms_ease-in_150ms_forwards]">
+          <div className="h-full w-1/3 bg-copper animate-[progress-slide_1s_ease-in-out_infinite]" />
+        </div>
+      )}
       {/* ── Top bar ─────────────────────────────────────────────────────── */}
       <header className="flex items-center gap-3 px-4 h-12 shrink-0 bg-ink text-surface">
         {/* Mobile menu toggle */}

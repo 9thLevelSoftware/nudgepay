@@ -1,10 +1,61 @@
 import { expect, test } from "vitest";
-import { serviceClient, makeUserClient } from "./helpers";
+import { createClient } from "@supabase/supabase-js";
+import { serviceClient, makeUserClient, TEST_ENV } from "./helpers";
 import { parseContactLogForm } from "../app/lib/contact-log";
-import { action as _contactLogAction } from "../app/routes/api.contact-logs";
+import { action as contactLogAction } from "../app/routes/api.contact-logs";
 import { createPromiseForLog } from "../app/lib/promise-create.server";
 import { applyNextStep } from "../app/lib/next-step.server";
 import { fd } from "./fd";
+
+// ── Task 3.4: direct action-invocation helpers (fetcher-error conversion) ────
+// Mirrors the cookie-session pattern used in save-email.action.test.ts so the
+// action can be called exactly as the route runtime calls it (cookie auth,
+// not the RLS user client directly).
+
+function ctx() {
+  return { cloudflare: { env: TEST_ENV } } as any;
+}
+
+function sessionCookie(session: object): string {
+  const host = new URL(TEST_ENV.SUPABASE_URL).hostname.split(".")[0];
+  const json = JSON.stringify(session);
+  const b64url = Buffer.from(json, "utf8")
+    .toString("base64")
+    .replace(/\+/g, "-")
+    .replace(/\//g, "_")
+    .replace(/=+$/, "");
+  return `sb-${host}-auth-token=base64-${b64url}`;
+}
+
+async function signInSession(email: string): Promise<object> {
+  const anon = createClient(TEST_ENV.SUPABASE_URL, TEST_ENV.SUPABASE_ANON_KEY);
+  const { data, error } = await anon.auth.signInWithPassword({
+    email,
+    password: "test-pass-123",
+  });
+  if (error) throw error;
+  return data.session!;
+}
+
+// The action returns a real Response for the redirect (success) path, but for
+// the 400 paths it returns react-router's `data()` wrapper — a
+// `DataWithResponseInit` object, NOT a Response — because the framework only
+// serializes that wrapper into an HTTP response when the request goes through
+// the router/server runtime. Calling the action function directly (as these
+// tests do) surfaces the raw wrapper, so callers must branch on shape.
+async function postContactLog(cookie: string, fields: Record<string, string>): Promise<any> {
+  const form = new FormData();
+  for (const [k, v] of Object.entries(fields)) form.set(k, v);
+  return contactLogAction({
+    request: new Request("http://localhost/api/contact-logs", {
+      method: "POST",
+      headers: { Cookie: cookie },
+      body: form,
+    }),
+    context: ctx(),
+    params: {},
+  } as any);
+}
 
 // ── Task 1: migration columns exist and accept promise data ──────────────────
 test("contact_logs accepts promised_amount and promised_date", async () => {
@@ -265,4 +316,106 @@ test("applyNextStep follow_up sets working + follow-up date, leaves a pending pr
   expect(c!.next_action_at).toBe("2026-07-05");
   const { data: p } = await svc.from("promises").select("status").eq("id", prom!.id).single();
   expect(p!.status).toBe("pending"); // untouched
+});
+
+// ── Task 3.4: action returns validation errors as data(), not redirects ──────
+// (F-035 — a fetcher-driven form must not lose field state on a failed submit,
+// which a redirect would force by remounting the drawer.)
+
+test("action: invalid form data returns 400 with { ok:false, error } and writes nothing", async () => {
+  const svc = serviceClient();
+  const { data: org } = await svc.from("organizations").insert({ name: `CL-err ${Math.random()}` }).select("id").single();
+  const orgId = org!.id as string;
+  const email = `cl-err-${Math.random()}@example.com`;
+  const owner = await makeUserClient(email);
+  await svc.from("memberships").insert({ org_id: orgId, user_id: owner.userId, role: "owner" });
+  const { data: cust } = await svc.from("customers")
+    .insert({ org_id: orgId, qbo_id: `cl-err-c1-${Math.random()}`, name: "Err Co" }).select("id").single();
+  const { data: cse } = await svc.from("collection_cases")
+    .insert({ org_id: orgId, customer_id: cust!.id, status: "new", next_action_type: "contact" })
+    .select("id").single();
+
+  const session = await signInSession(email);
+  const cookie = sessionCookie(session);
+
+  const res = await postContactLog(cookie, {
+    returnTo: "/dashboard",
+    caseId: cse!.id,
+    method: "smoke-signal", // invalid: not in CONTACT_METHODS
+    outcome: "no-answer",
+  });
+
+  // data() wraps { ok:false, error } with { status: 400 } — router serializes
+  // this to a real 400 JSON response at request time; here we assert the wrapper.
+  expect(res.init?.status).toBe(400);
+  expect(res.data).toEqual({ ok: false, error: "bad-method" });
+
+  const { data: rows } = await svc.from("contact_logs").select("id").eq("case_id", cse!.id);
+  expect(rows!.length).toBe(0);
+});
+
+test("action: foreign-org caseId returns 400 missing-case (cross-org guard via the action)", async () => {
+  const svc = serviceClient();
+  const { data: orgA } = await svc.from("organizations").insert({ name: `CL-xa ${Math.random()}` }).select("id").single();
+  const emailA = `cl-xa-${Math.random()}@example.com`;
+  const ownerA = await makeUserClient(emailA);
+  await svc.from("memberships").insert({ org_id: orgA!.id, user_id: ownerA.userId, role: "owner" });
+
+  const { data: orgB } = await svc.from("organizations").insert({ name: `CL-xb ${Math.random()}` }).select("id").single();
+  const { data: custB } = await svc.from("customers")
+    .insert({ org_id: orgB!.id, qbo_id: `cl-xb-c1-${Math.random()}`, name: "Foreign Co" }).select("id").single();
+  const { data: caseB } = await svc.from("collection_cases")
+    .insert({ org_id: orgB!.id, customer_id: custB!.id, status: "new", next_action_type: "contact" })
+    .select("id").single();
+
+  const session = await signInSession(emailA);
+  const cookie = sessionCookie(session);
+
+  const res = await postContactLog(cookie, {
+    returnTo: "/dashboard",
+    caseId: caseB!.id,
+    method: "call",
+    outcome: "no-answer",
+    nextStep: "waiting",
+    reviewAt: "2026-07-08",
+  });
+
+  expect(res.init?.status).toBe(400);
+  expect(res.data).toEqual({ ok: false, error: "missing-case" });
+});
+
+test("action: valid contact log inserts a row and redirects to returnTo?saved=1", async () => {
+  const svc = serviceClient();
+  const { data: org } = await svc.from("organizations").insert({ name: `CL-ok ${Math.random()}` }).select("id").single();
+  const orgId = org!.id as string;
+  const email = `cl-ok-${Math.random()}@example.com`;
+  const owner = await makeUserClient(email);
+  await svc.from("memberships").insert({ org_id: orgId, user_id: owner.userId, role: "owner" });
+  const { data: cust } = await svc.from("customers")
+    .insert({ org_id: orgId, qbo_id: `cl-ok-c1-${Math.random()}`, name: "OK Co" }).select("id").single();
+  const { data: cse } = await svc.from("collection_cases")
+    .insert({ org_id: orgId, customer_id: cust!.id, status: "new", next_action_type: "contact" })
+    .select("id").single();
+
+  const session = await signInSession(email);
+  const cookie = sessionCookie(session);
+
+  const res = await postContactLog(cookie, {
+    returnTo: "/dashboard",
+    caseId: cse!.id,
+    customerId: cust!.id,
+    method: "call",
+    outcome: "no-answer",
+    nextStep: "waiting",
+    reviewAt: "2026-07-08",
+  });
+
+  expect(res.status).toBe(302);
+  const location = res.headers.get("Location") ?? "";
+  expect(location).toBe("/dashboard?saved=1");
+
+  const { data: rows } = await svc.from("contact_logs").select("id, method, outcome").eq("case_id", cse!.id);
+  expect(rows!.length).toBe(1);
+  expect(rows![0].method).toBe("call");
+  expect(rows![0].outcome).toBe("no-answer");
 });
