@@ -1,7 +1,16 @@
-import { Form, useActionData, type ActionFunctionArgs } from "react-router";
+import { Form, redirect, useActionData, type ActionFunctionArgs, type LoaderFunctionArgs } from "react-router";
 import { getEnv } from "../lib/env.server";
 import { createSupabaseServiceClient } from "../lib/supabase.server";
 import { requireUser, resolveOrg } from "../lib/session.server";
+
+export async function loader({ request, context }: LoaderFunctionArgs) {
+  const env = getEnv(context as any);
+  const { supabase, headers, user } = await requireUser(request, env);
+  const org = await resolveOrg(supabase, user.id);
+  if (!org) throw redirect("/onboarding", { headers });
+  if (org.role !== "owner") throw redirect("/dashboard", { headers });
+  return new Response(null, { headers });
+}
 
 export async function action({ request, context }: ActionFunctionArgs) {
   const env = getEnv(context as any);
