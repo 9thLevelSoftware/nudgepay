@@ -78,7 +78,7 @@ export function AccountProfile(p: Props) {
           { label: "Lifetime invoiced (synced)", value: formatUSD(p.lifetimeInvoiced) },
         ].map((t) => (
           <div key={t.label} className="bg-paper border border-border rounded-tile p-4">
-            <p className="font-mono text-[10px] uppercase text-muted">{t.label}</p>
+            <p className="font-mono text-[11px] uppercase text-muted">{t.label}</p>
             <p className="font-display text-xl text-text tabular-nums mt-1">{t.value}</p>
           </div>
         ))}
@@ -165,7 +165,7 @@ export function AccountProfile(p: Props) {
         ) : (
           <table className="w-full text-sm">
             <thead>
-              <tr className="font-mono text-[10px] uppercase text-muted text-left">
+              <tr className="font-mono text-[11px] uppercase text-muted text-left">
                 <th className="px-5 py-2">Doc #</th>
                 <th className="px-5 py-2 text-right">Amount</th>
                 <th className="px-5 py-2 text-right">Balance</th>

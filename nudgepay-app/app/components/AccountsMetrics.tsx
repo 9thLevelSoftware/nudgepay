@@ -16,7 +16,7 @@ function Tile({ label, value, sub, accent }: { label: string; value: string; sub
       <span aria-hidden="true" className={`absolute top-0 inset-x-0 h-0.5 ${ACCENT_DOT[accent]}`} />
       <span className="flex items-center gap-1.5 mb-2">
         <span aria-hidden="true" className={`w-2 h-2 rounded-full shrink-0 ${ACCENT_DOT[accent]}`} />
-        <span className="font-mono text-[10px] font-semibold uppercase tracking-wide text-muted truncate">{label}</span>
+        <span className="font-mono text-[11px] font-semibold uppercase tracking-wide text-muted truncate">{label}</span>
       </span>
       <span className="font-display text-2xl font-semibold leading-none tracking-tight tabular-nums text-text">{value}</span>
       <span className={`mt-1.5 text-xs ${ACCENT_TEXT[accent]}`}>{sub}</span>

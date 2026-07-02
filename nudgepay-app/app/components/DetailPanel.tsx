@@ -12,7 +12,7 @@ import { isContactBlocked, isTerminal, exceptionLabel } from "~/lib/exceptions";
 import { nextActionLabel, emailFailureLabel, isHardBounce, plural } from "~/lib/labels";
 import type { MessageEntry, EmailMessageEntry, RosterMember } from "~/routes/dashboard";
 import type { TimelineEntry } from "~/lib/timeline";
-import { canSendSms, canSendEmail, type CommPrefs } from "~/lib/comm-prefs";
+import { canSendEmail, type CommPrefs } from "~/lib/comm-prefs";
 import { resolveCallAction } from "~/lib/channel-actions";
 import { statusChipTone, type ChipTone } from "~/lib/status-style";
 
@@ -151,10 +151,31 @@ function MessagesTab({
   const consentBusy = navigation.state !== "idle" && navigation.formAction === "/api/sms-consent";
   const sendBusy = navigation.state !== "idle" && navigation.formAction === "/api/text/send";
 
-  // Reset confirmSend when the case changes
+  // Reset draft state when the case changes
   useEffect(() => {
     setConfirmSend(false);
+    setBody("");
   }, [selected.caseId]);
+
+  // Derive the first gate reason that applies.
+  // Severity: "hard" = compliance-sensitive (red), "soft" = routine informational (amber).
+  // Order: workspace → blocked → opted-out → no-invoice → no-consent → no-phone.
+  // doNotText MUST precede !consent so agents never see "mark consent" when a customer opted out.
+  const smsGate: { reason: string; severity: "hard" | "soft" } | null = !smsEnabled
+    ? { reason: "Text messaging is turned off for this workspace.", severity: "hard" }
+    : contactBlocked
+      ? { reason: `Messaging blocked — ${exceptionLabel(selected.exceptionReason)}.`, severity: "hard" }
+      : prefs.doNotText
+        ? { reason: "Customer opted out of texts.", severity: "hard" }
+        : noInvoice
+          ? { reason: "No invoice to reference.", severity: "soft" }
+          : !consent
+            ? { reason: "Mark consent to enable sending.", severity: "soft" }
+            : !phone
+              ? { reason: "Customer has no phone number.", severity: "soft" }
+              : null;
+  const smsGateReason = smsGate?.reason ?? null;
+  const smsSendDisabled = smsGateReason !== null;
 
   return (
     <section
@@ -217,13 +238,26 @@ function MessagesTab({
 
       {/* Templates + composer */}
       <div className="border-t border-border px-5 py-3 shrink-0">
+        {smsGate && (
+          <p
+            className={`mb-2 rounded-md px-3 py-2 text-xs font-sans font-medium ${
+              smsGate.severity === "hard"
+                ? "bg-hot/10 border border-hot/30 text-hot"
+                : "bg-amber-400/10 border border-amber-400/30 text-amber-700"
+            }`}
+            role={smsGate.severity === "hard" ? "alert" : "status"}
+          >
+            {smsGate.reason}
+          </p>
+        )}
         <div className="flex flex-wrap gap-1.5 mb-2" role="group" aria-label="Message templates">
           {SMS_TEMPLATES.map((t) => (
             <button
               key={t.id}
               type="button"
+              disabled={smsSendDisabled}
               onClick={() => setBody(applyTemplate(t.body, vars))}
-              className="text-xs font-sans text-muted border border-border rounded-md px-2 py-1 hover:text-copper hover:border-copper focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-copper transition-colors"
+              className="text-xs font-sans text-muted border border-border rounded-md px-2 py-1 hover:text-copper hover:border-copper focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-copper transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
             >
               {t.label}
             </button>
@@ -249,8 +283,9 @@ function MessagesTab({
             onChange={(e) => setBody(e.target.value)}
             placeholder="Type a message…"
             required
+            disabled={smsSendDisabled}
             aria-label="Message body"
-            className="w-full resize-none rounded-md border border-border bg-panel px-3 py-2 text-sm font-sans text-text placeholder:text-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-copper"
+            className="w-full resize-none rounded-md border border-border bg-panel px-3 py-2 text-sm font-sans text-text placeholder:text-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-copper disabled:opacity-40 disabled:cursor-not-allowed"
           />
           {confirmSend ? (
             <p className="text-xs font-sans text-amber-700" role="alert">
@@ -260,23 +295,11 @@ function MessagesTab({
             </p>
           ) : null}
           <div className="flex items-center justify-between gap-2">
-            {!smsEnabled ? (
-              <span className="text-xs text-hot">Text messaging is turned off for this workspace.</span>
-            ) : contactBlocked ? (
-              <span className="text-xs text-hot">Messaging blocked — {exceptionLabel(selected.exceptionReason)}.</span>
-            ) : noInvoice ? (
-              <span className="text-xs text-muted">No invoice to reference.</span>
-            ) : !consent ? (
-              <span className="text-xs text-muted">Mark consent to enable sending.</span>
-            ) : prefs.doNotText ? (
-              <span className="text-xs text-hot">Customer opted out of texts.</span>
-            ) : !phone ? (
-              <span className="text-xs text-muted">Customer has no phone number.</span>
-            ) : <span />}
+            <span />
             <button
               type="submit"
-              disabled={!smsEnabled || !canSendSms(prefs, consent) || noInvoice || contactBlocked || !phone || sendBusy}
-              className="inline-flex items-center gap-1.5 rounded-md bg-copper px-3 py-1.5 text-xs font-sans font-semibold text-surface hover:bg-copper/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-copper disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+              disabled={smsSendDisabled || sendBusy}
+              className="inline-flex items-center gap-1.5 rounded-md bg-copper px-3 py-1.5 text-xs font-sans font-semibold text-ink hover:bg-copper/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-copper disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
             >
               <Icon name="message" size={14} aria-hidden />
               {sendBusy ? "Sending…" : "Send text"}
@@ -391,7 +414,7 @@ function EmailTab({
                     <p className="text-xs font-sans font-semibold text-muted mb-1">{msg.subject}</p>
                   ) : null}
                   <p className="text-xs font-sans whitespace-pre-wrap">{msg.body}</p>
-                  <p className="mt-1 text-[10px] text-muted">{formatDate(msg.createdAt)}</p>
+                  <p className="mt-1 text-[11px] text-muted">{formatDate(msg.createdAt)}</p>
                   {msg.errorCode ? (
                     <p className="text-xs font-sans text-hot">{emailFailureLabel(msg.errorCode)}</p>
                   ) : null}
@@ -461,7 +484,7 @@ function EmailTab({
             <button
               type="submit"
               disabled={sendDisabled || busy}
-              className="inline-flex items-center gap-1.5 rounded-md bg-copper px-3 py-1.5 text-xs font-sans font-semibold text-surface hover:bg-copper/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-copper disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+              className="inline-flex items-center gap-1.5 rounded-md bg-copper px-3 py-1.5 text-xs font-sans font-semibold text-ink hover:bg-copper/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-copper disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
             >
               <Icon name="mail" size={14} aria-hidden />
               {busy ? "Sending…" : "Send email"}
@@ -1078,6 +1101,7 @@ export function DetailPanel({
 
       {activeTab === "email" ? (
         <EmailTab
+          key={selected.caseId}
           selected={selected}
           repInvoiceId={repInvoiceId}
           emailMessages={emailMessages ?? []}

@@ -35,8 +35,8 @@ export function PromiseQuickPanel({ promise, invoices, note }: Props) {
       </header>
 
       <div className="grid grid-cols-2 gap-3 p-4 bg-paper border-b border-border">
-        <div><p className="font-mono text-[10px] uppercase text-muted">Promised</p><p className="font-display text-lg text-text tabular-nums">{formatUSD(promise.promisedAmount)}</p></div>
-        <div><p className="font-mono text-[10px] uppercase text-muted">Received</p><p className="font-display text-lg text-text tabular-nums">{formatUSD(promise.amountReceived)}</p></div>
+        <div><p className="font-mono text-[11px] uppercase text-muted">Promised</p><p className="font-display text-lg text-text tabular-nums">{formatUSD(promise.promisedAmount)}</p></div>
+        <div><p className="font-mono text-[11px] uppercase text-muted">Received</p><p className="font-display text-lg text-text tabular-nums">{formatUSD(promise.amountReceived)}</p></div>
       </div>
 
       <dl className="p-4 space-y-2 text-sm border-b border-border">
@@ -48,7 +48,7 @@ export function PromiseQuickPanel({ promise, invoices, note }: Props) {
       </dl>
 
       <div className="p-4 border-b border-border">
-        <p className="font-mono text-[10px] uppercase text-muted mb-2">Linked invoices</p>
+        <p className="font-mono text-[11px] uppercase text-muted mb-2">Linked invoices</p>
         {invoices.length === 0 ? (
           <p className="text-sm text-muted">No linked invoices.</p>
         ) : (
@@ -65,7 +65,7 @@ export function PromiseQuickPanel({ promise, invoices, note }: Props) {
 
       {note ? (
         <div className="p-4 border-b border-border">
-          <p className="font-mono text-[10px] uppercase text-muted mb-1">Originating note</p>
+          <p className="font-mono text-[11px] uppercase text-muted mb-1">Originating note</p>
           <p className="text-sm text-text whitespace-pre-wrap">{note}</p>
         </div>
       ) : null}

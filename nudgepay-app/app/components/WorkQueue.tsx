@@ -530,7 +530,8 @@ export function WorkQueue({
             </div>
             <p className="font-sans text-text font-medium">No accounts match this view.</p>
             <p className="font-sans text-sm text-muted max-w-xs">
-              Clear the search or pick another view.
+              <Link to={`?view=all-open&sort=${sort}`} className="text-copper hover:underline font-medium">Clear the search</Link>{" "}
+              or pick another view.
             </p>
           </div>
         ) : (
