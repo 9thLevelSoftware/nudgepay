@@ -476,8 +476,7 @@ export function WorkQueue({
       </div>
 
       {/* Saved-view tabs */}
-      <div
-        role="tablist"
+      <nav
         aria-label="Saved queue views"
         className="flex gap-1 overflow-x-auto border-b border-border bg-paper px-3.5 py-2 scrollbar-none"
       >
@@ -492,8 +491,7 @@ export function WorkQueue({
             <Link
               key={sv.id}
               to={`?${params.toString()}`}
-              role="tab"
-              aria-selected={isActive ? "true" : "false"}
+              aria-current={isActive ? "page" : undefined}
               className={[
                 "flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-[12.5px] whitespace-nowrap transition-colors",
                 "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-copper",
@@ -513,7 +511,7 @@ export function WorkQueue({
             </Link>
           );
         })}
-      </div>
+      </nav>
 
       {/* Table / cards content */}
       <div className="flex-1 overflow-auto bg-surface">
