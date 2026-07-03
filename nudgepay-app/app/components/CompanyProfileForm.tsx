@@ -2,7 +2,7 @@
 // Owner-only — members see a read-only summary.
 
 import { Form, useNavigation, useSearchParams } from "react-router";
-import { TIMEZONE_GROUPS } from "../lib/timezones";
+import { TIMEZONE_GROUPS, ALL_TIMEZONE_VALUES } from "../lib/timezones";
 import type { CompanyProfile } from "../lib/org-profile";
 
 export function CompanyProfileForm({
@@ -48,6 +48,11 @@ export function CompanyProfileForm({
         Your company identity — used in message templates via the <code className="rounded bg-panel px-1 py-0.5 font-mono text-[11px]">{"{company}"}</code> token,
         and for timezone-aware scheduling.
       </p>
+      {errorCode === "save" && (
+        <p className="mt-2 rounded-md border border-hot/30 bg-hot/10 px-3 py-2 text-xs text-hot" role="alert">
+          Something went wrong saving your profile. Please try again.
+        </p>
+      )}
       <Form method="post" action="/api/org-settings" className="mt-3 flex flex-col gap-3">
         <input type="hidden" name="intent" value="save_company_profile" />
         <input type="hidden" name="returnTo" value={returnTo} />
@@ -98,6 +103,10 @@ export function CompanyProfileForm({
             name="timezone" defaultValue={profile.timezone}
             className="h-9 rounded-md border border-border bg-panel px-2 text-sm text-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-copper"
           >
+            {/* Fallback: if current value isn't in curated list, render it so the select doesn't silently default */}
+            {!ALL_TIMEZONE_VALUES.has(profile.timezone) && (
+              <option value={profile.timezone}>{profile.timezone}</option>
+            )}
             {TIMEZONE_GROUPS.map((g) => (
               <optgroup key={g.region} label={g.region}>
                 {g.zones.map((z) => (

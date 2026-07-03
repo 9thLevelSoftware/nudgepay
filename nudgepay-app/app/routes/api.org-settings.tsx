@@ -27,14 +27,16 @@ export async function action({ request, context }: ActionFunctionArgs) {
   if (intent === "save_company_profile") {
     const parsed = parseCompanyProfileUpdate(form);
     if (!parsed.ok) return redirect(flag(returnTo, "error", parsed.error), { headers });
+    // Upsert profile columns first — more likely to fail due to constraints.
+    // If this succeeds but the rename below fails, the user sees the old name
+    // with updated settings: a benign partial state they can retry.
+    const { error } = await supabase.from("org_settings")
+      .upsert({ org_id: org.org_id, ...parsed.patch }, { onConflict: "org_id" });
+    if (error) return redirect(flag(returnTo, "error", "save"), { headers });
     // Rename the org (user client → org_owner_update RLS is the real boundary)
     const { error: nameErr } = await supabase.from("organizations")
       .update({ name: parsed.name }).eq("id", org.org_id);
     if (nameErr) return redirect(flag(returnTo, "error", "save"), { headers });
-    // Upsert profile columns into org_settings
-    const { error } = await supabase.from("org_settings")
-      .upsert({ org_id: org.org_id, ...parsed.patch }, { onConflict: "org_id" });
-    if (error) return redirect(flag(returnTo, "error", "save"), { headers });
     return redirect(flag(returnTo, "saved", "profile"), { headers });
   }
 

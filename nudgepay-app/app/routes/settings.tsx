@@ -179,6 +179,7 @@ export default function Settings() {
 
               {/* Company profile */}
               <CompanyProfileForm
+                key={d.orgId}
                 orgName={d.orgName}
                 profile={d.companyProfile}
                 isOwner={d.isOwner}
@@ -187,6 +188,7 @@ export default function Settings() {
 
               {/* Notifications */}
               <NotificationPrefsForm
+                key={d.orgId}
                 orgId={d.orgId}
                 emailEnabled={d.emailSettings.emailEnabled}
                 prefs={d.notificationPrefs}
@@ -325,7 +327,7 @@ export default function Settings() {
                 isOwner={d.isOwner}
                 returnTo={returnTo}
               />
-              {d.isOwner && <LateFeesForm lateFee={d.lateFee} returnTo={returnTo} />}
+              {d.isOwner && <LateFeesForm key={d.orgId} lateFee={d.lateFee} returnTo={returnTo} />}
             </>
           )}
         </div>

@@ -35,15 +35,17 @@ type ParseResult =
   | { ok: true; name: string; patch: { company_website: string | null; company_phone: string | null; payment_portal_url: string | null; timezone: string } }
   | { ok: false; error: string };
 
-function parseUrl(raw: string): string | null {
+type UrlResult = { valid: true; url: string | null } | { valid: false };
+
+function parseUrl(raw: string): UrlResult {
   const trimmed = raw.trim();
-  if (trimmed === "") return null;
+  if (trimmed === "") return { valid: true, url: null };
   try {
     const u = new URL(trimmed);
-    if (u.protocol !== "http:" && u.protocol !== "https:") return undefined as any; // signal invalid
-    return u.href;
+    if (u.protocol !== "http:" && u.protocol !== "https:") return { valid: false };
+    return { valid: true, url: u.href };
   } catch {
-    return undefined as any; // signal invalid
+    return { valid: false };
   }
 }
 
@@ -65,17 +67,11 @@ export function parseCompanyProfileUpdate(form: FormData): ParseResult {
     return { ok: false, error: "name" };
   }
 
-  const websiteRaw = (form.get("company_website") as string ?? "").trim();
-  const website = websiteRaw === "" ? null : parseUrl(websiteRaw);
-  if (websiteRaw !== "" && website === undefined) {
-    return { ok: false, error: "website" };
-  }
+  const websiteResult = parseUrl(form.get("company_website") as string ?? "");
+  if (!websiteResult.valid) return { ok: false, error: "website" };
 
-  const portalRaw = (form.get("payment_portal_url") as string ?? "").trim();
-  const portal = portalRaw === "" ? null : parseUrl(portalRaw);
-  if (portalRaw !== "" && portal === undefined) {
-    return { ok: false, error: "portal" };
-  }
+  const portalResult = parseUrl(form.get("payment_portal_url") as string ?? "");
+  if (!portalResult.valid) return { ok: false, error: "portal" };
 
   const phone = (form.get("company_phone") as string ?? "").trim() || null;
 
@@ -88,9 +84,9 @@ export function parseCompanyProfileUpdate(form: FormData): ParseResult {
     ok: true,
     name,
     patch: {
-      company_website: website as string | null,
+      company_website: websiteResult.url,
       company_phone: phone,
-      payment_portal_url: portal as string | null,
+      payment_portal_url: portalResult.url,
       timezone,
     },
   };
