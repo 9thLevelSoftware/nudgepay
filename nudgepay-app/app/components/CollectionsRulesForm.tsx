@@ -6,13 +6,14 @@ const WEEKDAYS: Array<{ value: number; label: string }> = [
 ];
 
 export function CollectionsRulesForm({
-  grace, workingDays, cadence, holidays, isOwner,
+  grace, workingDays, cadence, holidays, isOwner, returnTo = "/settings",
 }: {
   grace: number;
   workingDays: number[];
   cadence: { Critical: number; High: number; Medium: number; Low: number };
   holidays: string[];
   isOwner: boolean;
+  returnTo?: string;
 }) {
   const days = new Set(workingDays);
   const ro = !isOwner;
@@ -30,7 +31,7 @@ export function CollectionsRulesForm({
 
       <Form method="post" action="/api/org-settings" className="flex flex-col gap-4">
         <input type="hidden" name="intent" value="save_rules" />
-        <input type="hidden" name="returnTo" value="/settings" />
+        <input type="hidden" name="returnTo" value={returnTo} />
 
         <label className="flex flex-col gap-1 max-w-xs">
           <span className="text-xs font-medium uppercase tracking-wider text-muted">Promise grace (business days)</span>
@@ -85,7 +86,7 @@ export function CollectionsRulesForm({
                 <Form method="post" action="/api/org-settings">
                   <input type="hidden" name="intent" value="remove_holiday" />
                   <input type="hidden" name="holiday_date" value={h} />
-                  <input type="hidden" name="returnTo" value="/settings" />
+                  <input type="hidden" name="returnTo" value={returnTo} />
                   <button type="submit" disabled={intentBusy("remove_holiday")} className="text-xs text-hot hover:underline disabled:opacity-60 disabled:cursor-not-allowed">
                     {intentBusy("remove_holiday") ? "Removing…" : "Remove"}
                   </button>
@@ -97,7 +98,7 @@ export function CollectionsRulesForm({
         {isOwner ? (
           <Form method="post" action="/api/org-settings" className="mt-2 flex items-center gap-2">
             <input type="hidden" name="intent" value="add_holiday" />
-            <input type="hidden" name="returnTo" value="/settings" />
+            <input type="hidden" name="returnTo" value={returnTo} />
             <label className="sr-only" htmlFor="holiday-date-input">Holiday date</label>
             <input id="holiday-date-input" type="date" name="holiday_date" required
               className="rounded-md border border-border bg-surface px-2 py-1.5 text-sm text-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-copper" />
