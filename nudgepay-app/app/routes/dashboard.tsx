@@ -1,10 +1,11 @@
-import { useLoaderData, redirect, data, type LoaderFunctionArgs } from "react-router";
+import { useLoaderData, redirect, data, Link, type LoaderFunctionArgs } from "react-router";
 import { useFlashCleanup } from "../lib/use-flash-cleanup";
 import { getEnv } from "../lib/env.server";
 import { requireOrgUser } from "../lib/session.server";
 import { getConnectionStatus } from "../lib/qbo-connection.server";
 import { createSupabaseServiceClient } from "../lib/supabase.server";
-import { listOrgMembers, type OrgMember } from "../lib/orgs.server";
+import { loadCaseQueueSource } from "../lib/case-queue.server";
+import type { OrgMember } from "../lib/orgs.server";
 // worklist.ts is pure (no I/O, no node:*, no secrets) so it is safe in both the
 // client bundle and the server — buildCaseData is exported from this route
 // (for tests) and the UI components import its types directly.
@@ -26,12 +27,9 @@ import { DetailPanel } from "../components/DetailPanel";
 import { LogContactDrawer } from "../components/LogContactDrawer";
 import { CommPrefsDrawer } from "../components/CommPrefsDrawer";
 import { buildTimeline, type TimelineEntry, type TimelineLogInput, type TimelineSmsInput } from "~/lib/timeline";
-import { collisionState, type Collision, type RecentContactInput } from "../lib/collision";
-import { readPresence } from "../lib/presence.server";
-import { loadOrgConfig } from "../lib/org-config.server";
-import { DEFAULT_ORG_CONFIG, type OrgConfig } from "../lib/org-config";
+import { collisionState, type Collision } from "../lib/collision";
 import { resolveCommPrefs, DEFAULT_COMM_PREFS, type CommPrefs } from "../lib/comm-prefs";
-import { resolveChannelSettings } from "../lib/channel-settings";
+import type { OrgConfig } from "../lib/org-config";
 import { resolveEmailSettings } from "../lib/email-settings";
 import { plural } from "../lib/labels";
 import { pageTitle } from "../lib/meta";
@@ -113,21 +111,6 @@ export function buildCaseData(
 // Loader
 // ---------------------------------------------------------------------------
 
-// Supabase row shapes returned by the invoice+customer embed query
-type InvoiceRow = {
-  id: string;
-  qbo_doc_number: string | null;
-  balance: number | string | null;
-  due_date: string | null;
-  customer_id: string | null;
-  customers: { name: string | null; phone: string | null; email: string | null; owner: string | null; sms_consent: boolean | null; preferred_channel: string | null; do_not_call: boolean | null; do_not_text: boolean | null } | null;
-};
-
-type TextMessageRow = {
-  invoice_id: string;
-  created_at: string;
-};
-
 // Columns selected for the case activity timeline (keep in sync with the SELECT below).
 type ContactLogRow = {
   id: string;
@@ -138,22 +121,6 @@ type ContactLogRow = {
   follow_up_at: string | null;
   promised_amount: number | string | null;
   promised_date: string | null;
-};
-
-
-type CaseRowRaw = {
-  id: string;
-  customer_id: string;
-  status: string;
-  next_action_type: string | null;
-  next_action_at: string | null;
-  opened_at: string;
-  exception_reason: string | null;
-  exception_note: string | null;
-  priority_override: string | null;
-  priority_override_reason: string | null;
-  priority_override_by: string | null;
-  priority_override_at: string | null;
 };
 
 type SelectedMessageRow = {
@@ -198,42 +165,25 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
   // 7-day lookahead for "Coming Due" invoices
   const plus7 = new Date(Date.now() + 7 * 86_400_000).toISOString().slice(0, 10);
 
-  // Connection status — service client only (no RLS needed for own org's connection)
+  // Service client for connection-status + roster (no RLS needed)
   const service = createSupabaseServiceClient(env);
 
-  // Batch A: everything that needs only org.org_id. PostgREST builders resolve with
-  // { data, error } (never reject), so Promise.all won't short-circuit on a DB error —
-  // only getConnectionStatus/listOrgMembers/loadOrgConfig can throw, matching today's
-  // behavior. Disconnected orgs pay ~9 wasted queries once (the redirect gate below
-  // runs right after this batch settles) — acceptable.
+  // Batch A: shared queue source + dashboard-only queries in parallel.
+  // Disconnected orgs pay a few wasted queries (redirect gate runs right
+  // after this batch settles) — acceptable, same as the pre-extraction behaviour.
   const [
+    src,
     { data: orgRow },
     conn,
     { data: connMeta },
-    { data: invRows },
-    { data: caseRows },
-    roster,
-    orgConfig,
-    { data: mcfg },
     { data: ecfg },
   ] = await Promise.all([
+    loadCaseQueueSource({
+      supabase, service, orgId: org.org_id, today, plus7, includePresence: true,
+    }),
     supabase.from("organizations").select("name").eq("id", org.org_id).single(),
     getConnectionStatus(service, org.org_id),
     service.from("qbo_connections").select("last_sync_at").eq("org_id", org.org_id).maybeSingle(),
-    supabase
-      .from("invoices")
-      .select("id, qbo_doc_number, balance, due_date, customer_id, customers(name, phone, email, owner, sms_consent, preferred_channel, do_not_call, do_not_text)")
-      .eq("org_id", org.org_id)
-      .gt("balance", 0)
-      .lte("due_date", plus7),
-    supabase
-      .from("collection_cases")
-      .select("id, customer_id, status, next_action_type, next_action_at, opened_at, exception_reason, exception_note, priority_override, priority_override_reason, priority_override_by, priority_override_at")
-      .eq("org_id", org.org_id)
-      .is("closed_at", null),
-    listOrgMembers(service, org.org_id).catch(() => [] as OrgMember[]),
-    loadOrgConfig(supabase, org.org_id).catch(() => DEFAULT_ORG_CONFIG),
-    supabase.from("messaging_config").select("sms_enabled").eq("org_id", org.org_id).maybeSingle(),
     supabase.from("email_config").select("email_enabled").eq("org_id", org.org_id).maybeSingle(),
   ]);
 
@@ -306,137 +256,20 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
   let selectedEmailMessages: EmailMessageEntry[] = [];
   let selectedCustomerEmail: string | null = null;
 
-  // RLS-scoped invoice read (USER client) — from Batch A
-  const rawInvoices = (invRows as unknown as InvoiceRow[]) ?? [];
+  // Destructure the shared queue source
+  const {
+    cases, invoicesInput, comingDueInvoices, customersInput,
+    lastContactsInput, promisesInput, recentByCase, presenceRows,
+    roster, ownerLabels, orgConfig, smsEnabled,
+  } = src;
 
-  // Build InvoiceInput arrays — split into overdue (existing case pipeline) and
-  // coming-due (awareness-only, no cases). The split is critical: only overdue
-  // invoices feed buildCaseItems / totalOverdue / case reconciliation.
-  const allInvoicesInput: InvoiceInput[] = rawInvoices.map((r) => ({
-    id: r.id,
-    qbo_doc_number: r.qbo_doc_number,
-    customer_id: r.customer_id,
-    balance: Number(r.balance ?? 0),
-    due_date: r.due_date,
-  }));
-  const invoicesInput = allInvoicesInput.filter((i) => i.due_date != null && i.due_date < today);
-  const comingDueInvoices = allInvoicesInput.filter((i) => i.due_date != null && i.due_date >= today);
-
-  // Deduplicate customers from the embedded rows
-  const customerMap = new Map<string, CustomerInput>();
-  for (const r of rawInvoices) {
-    if (r.customer_id && r.customers && !customerMap.has(r.customer_id)) {
-      customerMap.set(r.customer_id, {
-        id: r.customer_id,
-        name: r.customers.name ?? "(unknown customer)",
-        phone: r.customers.phone ?? null,
-        email: r.customers.email ?? null,
-        owner: r.customers.owner ?? null,
-        smsConsent: r.customers.sms_consent ?? false,
-        commPrefs: resolveCommPrefs(r.customers),
-      });
-    }
-  }
-  const customersInput: CustomerInput[] = [...customerMap.values()];
-
-  // Load open cases (USER client) — from Batch A
-  const cases: CaseRow[] = ((caseRows as CaseRowRaw[]) ?? []).map((r) => ({
-    id: r.id, customerId: r.customer_id, status: r.status as CaseStatus,
-    nextActionType: r.next_action_type as NextActionType | null, nextActionAt: r.next_action_at,
-    exceptionReason: r.exception_reason as ExceptionReason | null, exceptionNote: r.exception_note,
-    priorityOverride: (r.priority_override as PriorityOverrideLevel | null) ?? null,
-    priorityOverrideReason: r.priority_override_reason,
-    priorityOverrideBy: r.priority_override_by,
-    priorityOverrideAt: r.priority_override_at,
-  }));
-
-  // Per-case last contact: contact_logs and outbound texts are both keyed by
-  // case_id, so we can read both by case_id directly — no customer mapping needed.
-  const caseIds = cases.map((c) => c.id);
-  const lastContactsInput: CaseLastContactInput[] = [];
-  const recentByCase = new Map<string, RecentContactInput[]>();
-  const pushRecent = (caseId: string, userId: string | null, at: string) => {
-    const list = recentByCase.get(caseId) ?? [];
-    list.push({ userId, at });
-    recentByCase.set(caseId, list);
-  };
-
-  // Presence (C1): advisory. Degrade to empty on error — never throw the loader.
-  const presenceCustomerIds = [...new Set(cases.map((c) => c.customerId))];
-
-  const promisesInput: CasePromiseInput[] = [];
-  let presenceRows: { customer_id: string; user_id: string; last_seen_at: string }[] = [];
-
-  // Batch B: everything keyed on caseIds — one 4-way Promise.all, skipped when
-  // there are no open cases. readPresence also short-circuits to [] on an empty
-  // customerIds array (which is guaranteed here when caseIds is empty), so folding
-  // it into this same guard is behavior-identical to running it unconditionally.
-  if (caseIds.length > 0) {
-    const [{ data: logRows }, { data: msgRows }, { data: promRows }, presenceResult] = await Promise.all([
-      supabase
-        .from("contact_logs")
-        .select("case_id, method, created_at, user_id")
-        .eq("org_id", org.org_id).in("case_id", caseIds)
-        .order("created_at", { ascending: false }),
-      supabase
-        .from("text_messages")
-        .select("case_id, created_at, sent_by_user_id")
-        .eq("org_id", org.org_id).in("case_id", caseIds).eq("direction", "outbound")
-        .order("created_at", { ascending: false }),
-      supabase
-        .from("promises")
-        .select("case_id, status, promised_amount, promised_date, amount_received, created_at")
-        .eq("org_id", org.org_id).in("case_id", caseIds)
-        .neq("status", "cancelled")
-        .order("created_at", { ascending: false }),
-      readPresence(supabase, { orgId: org.org_id, customerIds: presenceCustomerIds }).catch((e) => {
-        console.error("presence read failed (degrading to no presence):", e);
-        return [];
-      }),
-    ]);
-
-    const methodLabel: Record<string, string> = { call: "Call", email: "Email", text: "Text", note: "Note" };
-    for (const r of (logRows as any[]) ?? []) {
-      if (r.case_id) {
-        lastContactsInput.push({ caseId: r.case_id, date: r.created_at, channel: methodLabel[r.method] ?? "Note" });
-        pushRecent(r.case_id, r.user_id ?? null, r.created_at);
-      }
-    }
-    // Outbound texts now carry case_id (stamped at send time, 7c), so key on it
-    // directly — no customer mapping / opened_at window needed.
-    for (const r of (msgRows as any[]) ?? []) {
-      if (r.case_id) {
-        lastContactsInput.push({ caseId: r.case_id, date: r.created_at, channel: "Text" });
-        pushRecent(r.case_id, r.sent_by_user_id ?? null, r.created_at);
-      }
-    }
-
-    // Active promise per open case (pending preferred, else most-recent non-cancelled).
-    const seen = new Set<string>();
-    const pendingFirst = [...((promRows as any[]) ?? [])].sort((a, b) =>
-      (a.status === "pending" ? 0 : 1) - (b.status === "pending" ? 0 : 1));
-    for (const r of pendingFirst) {
-      if (seen.has(r.case_id)) continue;
-      seen.add(r.case_id);
-      promisesInput.push({
-        caseId: r.case_id, status: r.status, promisedAmount: Number(r.promised_amount) || 0,
-        promisedDate: r.promised_date, amountReceived: Number(r.amount_received) || 0,
-      });
-    }
-
-    presenceRows = presenceResult;
-  }
-
-  const ownerLabels = new Map(roster.map((m) => [m.userId, m.label]));
-
+  // Per-customer presence map → per-case collision (self-excluded).
   const presenceByCustomer = new Map<string, { userId: string; lastSeenAt: string }[]>();
   for (const r of presenceRows) {
     const list = presenceByCustomer.get(r.customer_id) ?? [];
     list.push({ userId: r.user_id, lastSeenAt: r.last_seen_at });
     presenceByCustomer.set(r.customer_id, list);
   }
-
-  // Per-case collision (self-excluded). Plain object so it serializes over the loader.
   const nowMs = Date.now();
   for (const cse of cases) {
     collisions[cse.id] = collisionState({
@@ -448,7 +281,6 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
     });
   }
 
-  const smsEnabled = resolveChannelSettings(mcfg as { sms_enabled?: boolean | null } | null).smsEnabled;
   const emailEnabled = resolveEmailSettings(ecfg as any).emailEnabled;
 
   const dashboardData: DashboardData = buildCaseData(
@@ -664,6 +496,14 @@ export default function Dashboard() {
       connected={connected}
       isOwner={isOwner}
       activeNav="collections"
+      headerActions={
+        <Link
+          to="/focus"
+          className="hidden sm:flex items-center gap-1.5 px-2.5 py-1 rounded border border-copper/40 text-copper text-[11px] font-sans font-semibold hover:bg-copper/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-copper"
+        >
+          Focus mode
+        </Link>
+      }
     >
       {saved ? (
         <div className="px-6 py-2 bg-cool/10 border-b border-cool/30 text-sm font-sans font-medium text-cool" role="status">
