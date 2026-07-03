@@ -55,9 +55,12 @@ export async function runScheduledDigest(
       // (next_action_at <= today) must use the org's calendar day, not UTC's.
       const today = todayInTz(tz, now);
 
-      // Atomically claim the digest slot: update last_digest_date only if it
-      // hasn't already been set to today. A concurrent cron tick that races past
-      // shouldSendDigestNow will find zero rows updated and skip the send.
+      // Atomically claim the digest slot. Two distinct cases:
+      // 1. org_settings row exists → conditional UPDATE (only if last_digest_date
+      //    is null or stale). A concurrent tick that races past shouldSendDigestNow
+      //    finds zero rows updated and skips the send.
+      // 2. org_settings row missing (new org that never visited Settings) → INSERT
+      //    via upsert to create the row and claim in one shot.
       // notification_log member-level dedupe remains as belt-and-braces.
       const { data: claimed, error: claimErr } = await service
         .from("org_settings")
@@ -69,7 +72,18 @@ export async function runScheduledDigest(
         console.error(`[digest] failed to claim last_digest_date for org ${orgId}:`, claimErr);
         continue;
       }
-      if (!claimed || (Array.isArray(claimed) && claimed.length === 0)) continue; // already sent today
+      const rowExisted = row !== null; // SELECT above returned a row
+      if (Array.isArray(claimed) && claimed.length === 0) {
+        if (rowExisted) continue; // row exists but already set to today — skip
+        // No org_settings row yet — create it and claim the slot.
+        const { error: insertErr } = await service
+          .from("org_settings")
+          .upsert({ org_id: orgId, last_digest_date: today }, { onConflict: "org_id" });
+        if (insertErr) {
+          console.error(`[digest] failed to create org_settings for org ${orgId}:`, insertErr);
+          continue;
+        }
+      }
 
       await runDailyDigest(
         { fetchFn: fetch, service, email: { apiKey: emailEnv.RESEND_API_KEY }, appUrl: emailEnv.APP_PUBLIC_BASE_URL ?? "" },
