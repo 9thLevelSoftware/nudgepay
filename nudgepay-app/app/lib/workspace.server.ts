@@ -34,7 +34,7 @@ export async function loadWorkspaceChrome(
 
   const connected = conn?.status === "connected";
   if (opts?.requireQbo !== false && !connected) {
-    throw redirect("/settings", { headers });
+    throw redirect("/settings?tab=integrations", { headers });
   }
 
   // Initials from display name or email

@@ -45,7 +45,7 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
   // QBO-connected guard
   const service = createSupabaseServiceClient(env);
   const conn = await getConnectionStatus(service, org.org_id);
-  if (conn?.status !== "connected") throw redirect("/settings", { headers });
+  if (conn?.status !== "connected") throw redirect("/settings?tab=integrations", { headers });
 
   const today = new Date().toISOString().slice(0, 10);
   const plus7 = new Date(Date.now() + 7 * 86_400_000).toISOString().slice(0, 10);

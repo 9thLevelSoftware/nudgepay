@@ -98,7 +98,7 @@ export async function loader({ request, params, context }: LoaderFunctionArgs) {
   const service = createSupabaseServiceClient(env);
   const conn = await getConnectionStatus(service, org.org_id);
   const connected = conn?.status === "connected";
-  if (!connected) throw redirect("/settings", { headers });
+  if (!connected) throw redirect("/settings?tab=integrations", { headers });
 
   // Sync label from last_sync_at (connected is guaranteed true here — redirect above)
   const { data: connMeta } = await service
