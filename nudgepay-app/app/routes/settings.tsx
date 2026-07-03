@@ -56,9 +56,8 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
   // last-sent timestamps, and failure counts for the status panels.
   const twilioConfigured = getTwilioEnvOrNull(context as any) !== null;
   const resendConfigured = getEmailEnvOrNull(context as any) !== null;
-  const webhookUrls = deriveWebhookUrls(
-    ...Object.values(getPublicBaseUrls(context as any)) as [string | null, string | null],
-  );
+  const { twilioBaseUrl, appBaseUrl } = getPublicBaseUrls(context as any);
+  const webhookUrls = deriveWebhookUrls(twilioBaseUrl, appBaseUrl);
 
   const since = new Date(Date.now() - 7 * 86_400_000).toISOString();
   const [smsLast, smsFailures, emailLast, emailFailures] = await Promise.all([
@@ -242,6 +241,7 @@ export default function Settings() {
 
           {/* Text messaging */}
           <SmsSettingsSection
+            key={d.orgId}
             isOwner={d.isOwner}
             smsEnabled={d.messaging.smsEnabled}
             sender={d.messaging.sender}
@@ -257,6 +257,7 @@ export default function Settings() {
 
           {/* Email */}
           <EmailSettingsSection
+            key={d.orgId}
             isOwner={d.isOwner}
             emailEnabled={d.emailSettings.emailEnabled}
             fromAddress={d.emailSettings.fromAddress}
