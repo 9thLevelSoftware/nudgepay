@@ -180,7 +180,7 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
   let selectedConsent = false;
   let selectedPhone: string | null = null;
   let selectedEmail: string | null = null;
-  let selectedVars: TemplateVars = { customer: "", invoice: "", balance: "", dueDate: "" };
+  let selectedVars: TemplateVars = { customer: "", invoice: "", balance: "", dueDate: "", company: "", phone: "", paymentLink: "" };
   if (selected) {
     const cust = custRows.find((c) => c.id === selected.customerId);
     selectedConsent = Boolean(cust?.sms_consent);
@@ -218,6 +218,9 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
       invoice: anchor?.docNumber ?? selected.customerName, // mirrors the dashboard composer fallback
       balance: formatUSD(anchor?.balance ?? 0),
       dueDate: formatDate(anchor?.dueDate ?? null),
+      company: "",
+      phone: "",
+      paymentLink: "",
     };
   }
 

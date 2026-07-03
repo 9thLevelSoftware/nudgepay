@@ -55,6 +55,9 @@ export function renderCaseBody(templateBody: string, c: RenderableCase): string 
     invoice: oldest?.docNumber ?? "your account",
     balance: formatUSD(c.totalOverdue),
     dueDate: oldest?.dueDate ? formatDate(oldest.dueDate) : "",
+    company: "",
+    phone: "",
+    paymentLink: "",
   });
 }
 

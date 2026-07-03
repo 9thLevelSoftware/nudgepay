@@ -4,8 +4,8 @@ import { HEARTBEAT_INTERVAL_MS, type Collision } from "~/lib/collision";
 import { type CaseItem } from "~/lib/cases";
 import { Icon } from "~/components/Icons";
 import { MessageBubbles } from "~/components/MessageBubbles";
-import { SMS_TEMPLATES, applyTemplate, type TemplateVars } from "~/lib/sms-templates";
-import { EMAIL_TEMPLATES, applyEmailTemplate } from "~/lib/email-templates";
+import { DEFAULT_SMS_TEMPLATES, applyTemplate, type TemplateVars } from "~/lib/sms-templates";
+import { DEFAULT_EMAIL_TEMPLATES, applyEmailTemplate } from "~/lib/email-templates";
 import { formatDate } from "~/lib/dates";
 import { STATUS_LABEL, EXCEPTION_REASON_LABEL, formatUSD } from "~/lib/format";
 import { isContactBlocked, isTerminal, exceptionLabel } from "~/lib/exceptions";
@@ -141,6 +141,9 @@ function MessagesTab({
     invoice:  repInvoice?.docNumber ?? selected.customerName,
     balance:  formatUSD(selected.totalOverdue),
     dueDate:  formatDate(repInvoice?.dueDate ?? null),
+    company: "",
+    phone: "",
+    paymentLink: "",
   };
 
   const [body, setBody] = useState("");
@@ -246,7 +249,7 @@ function MessagesTab({
           </p>
         )}
         <div className="flex flex-wrap gap-1.5 mb-2" role="group" aria-label="Message templates">
-          {SMS_TEMPLATES.map((t) => (
+          {DEFAULT_SMS_TEMPLATES.map((t) => (
             <button
               key={t.id}
               type="button"
@@ -337,6 +340,9 @@ function EmailTab({
     invoice:  repInvoice?.docNumber ?? selected.customerName,
     balance:  formatUSD(selected.totalOverdue),
     dueDate:  formatDate(repInvoice?.dueDate ?? null),
+    company: "",
+    phone: "",
+    paymentLink: "",
   };
 
   const [subject, setSubject] = useState("");
@@ -427,7 +433,7 @@ function EmailTab({
           defaultValue=""
           disabled={sendDisabled}
           onChange={(e) => {
-            const tmpl = EMAIL_TEMPLATES.find((t) => t.id === e.target.value);
+            const tmpl = DEFAULT_EMAIL_TEMPLATES.find((t) => t.id === e.target.value);
             if (tmpl) {
               setSubject(applyEmailTemplate(tmpl.subject, vars));
               setBody(applyEmailTemplate(tmpl.body, vars));
@@ -437,7 +443,7 @@ function EmailTab({
           aria-label="Email template"
         >
           <option value="" disabled>Pick a template…</option>
-          {EMAIL_TEMPLATES.map((t) => (
+          {DEFAULT_EMAIL_TEMPLATES.map((t) => (
             <option key={t.id} value={t.id}>{t.label}</option>
           ))}
         </select>

@@ -6,7 +6,7 @@ import { useEffect, useRef, useState } from "react";
 import { useFetcher } from "react-router";
 import type { CaseItem } from "../../lib/cases";
 import { smsGateFor } from "../../lib/sms-gate";
-import { SMS_TEMPLATES, applyTemplate, type TemplateVars } from "../../lib/sms-templates";
+import { DEFAULT_SMS_TEMPLATES, applyTemplate, type TemplateVars } from "../../lib/sms-templates";
 import { formatUSD } from "../../lib/format";
 import { formatDate } from "../../lib/dates";
 
@@ -37,6 +37,9 @@ export function SendTextMiniForm({ item, smsEnabled, onDone, onCancel, onError }
     invoice: firstInvoice?.docNumber ?? item.customerName,
     balance: formatUSD(item.totalOverdue),
     dueDate: formatDate(firstInvoice?.dueDate ?? null),
+    company: "",
+    phone: "",
+    paymentLink: "",
   };
 
   const [body, setBody] = useState("");
@@ -119,7 +122,7 @@ export function SendTextMiniForm({ item, smsEnabled, onDone, onCancel, onError }
         <>
           {/* Template chips */}
           <div className="flex flex-wrap gap-2 mb-3">
-            {SMS_TEMPLATES.map((t) => (
+            {DEFAULT_SMS_TEMPLATES.map((t) => (
               <button
                 key={t.id}
                 type="button"
