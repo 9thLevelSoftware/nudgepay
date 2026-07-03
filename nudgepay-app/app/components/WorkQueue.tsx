@@ -461,26 +461,20 @@ export function WorkQueue({
   // j/k/x keyboard navigation
   const navigate = useNavigate();
   const handleQueueKey = useCallback((key: QueueKey) => {
+    if (key === "x") {
+      if (selectedCaseId) toggle(selectedCaseId);
+      return;
+    }
     const currentIdx = selectedCaseId
       ? items.findIndex((i) => i.caseId === selectedCaseId)
       : -1;
-    if (key === "j") {
-      const next = currentIdx < items.length - 1 ? currentIdx + 1 : currentIdx;
-      const target = items[next === -1 ? 0 : next];
-      if (target) {
-        const p = new URLSearchParams({ case: target.caseId, view, sort, ...(search ? { q: search } : {}) });
-        navigate(`?${p.toString()}`);
-      }
-    } else if (key === "k") {
-      if (currentIdx > 0) {
-        const target = items[currentIdx - 1];
-        if (target) {
-          const p = new URLSearchParams({ case: target.caseId, view, sort, ...(search ? { q: search } : {}) });
-          navigate(`?${p.toString()}`);
-        }
-      }
-    } else if (key === "x" && selectedCaseId) {
-      toggle(selectedCaseId);
+    const nextIdx = key === "j"
+      ? Math.min(currentIdx + 1, items.length - 1)  // no selection → 0 (first), at end → stays
+      : currentIdx - 1;                              // k: move up
+    const target = items[nextIdx];
+    if (target) {
+      const p = new URLSearchParams({ case: target.caseId, view, sort, ...(search ? { q: search } : {}) });
+      navigate(`?${p.toString()}`);
     }
   }, [items, selectedCaseId, view, sort, search, navigate, toggle]);
 

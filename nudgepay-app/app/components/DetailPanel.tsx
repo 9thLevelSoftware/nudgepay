@@ -1158,7 +1158,10 @@ function NbaCard({
     phone,
   });
   const canText = gate === null;
+  const callAction = resolveCallAction(prefs, phone, selected.contactBlocked);
+  const canCall = callAction.kind === "live";
   const textHref = `?${new URLSearchParams({ case: selected.caseId, tab: "messages", view, sort, ...(q ? { q } : {}) }).toString()}`;
+  const callHref = "?" + new URLSearchParams({ case: selected.caseId, tab: "activity", view, sort, ...(q ? { q } : {}), log: "1", method: "call" }).toString();
 
   return (
     <div className="mx-4 my-3 rounded-lg border border-copper/30 bg-copper/5 px-4 py-3">
@@ -1178,15 +1181,15 @@ function NbaCard({
             <Icon name="message" size={13} aria-hidden />
             Send text
           </Link>
-        ) : (
+        ) : canCall ? (
           <Link
-            to={"?" + new URLSearchParams({ case: selected.caseId, tab: "activity", view, sort, ...(q ? { q } : {}), log: "1", method: "call" }).toString()}
+            to={callHref}
             className="inline-flex items-center gap-1.5 rounded-md bg-copper px-3 py-1.5 text-xs font-semibold text-surface hover:bg-copper/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-copper transition-colors"
           >
             <Icon name="phone" size={13} aria-hidden />
             Log call
           </Link>
-        )}
+        ) : null}
         <Link
           to={logHref}
           className="text-xs font-sans font-medium text-copper hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-copper rounded"

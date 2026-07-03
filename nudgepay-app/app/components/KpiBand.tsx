@@ -6,6 +6,7 @@
 import { Link } from "react-router";
 import type { Metrics, ViewId, SortId } from "../lib/worklist";
 import { formatUSD } from "../lib/format";
+import { plural } from "../lib/labels";
 import { Icon } from "./Icons";
 
 // Static accent → dot/text classes. Tailwind v4 scanner needs literal strings.
@@ -78,7 +79,7 @@ export function KpiBand({ metrics, view, sort = "recommended", search = "", scop
             <Link
               key={t.viewId}
               to={href(t.viewId)}
-              aria-label={`${t.label}: ${t.m.count} accounts, ${formatUSD(t.m.amount)}`}
+              aria-label={`${t.label}: ${plural(t.m.count, "account")}, ${formatUSD(t.m.amount)}`}
               aria-current={active ? "true" : undefined}
               className={[
                 "snap-start shrink-0 flex items-center gap-2.5 rounded-lg border px-3 py-2 min-w-[160px] transition-colors",
