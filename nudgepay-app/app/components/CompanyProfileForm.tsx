@@ -45,8 +45,8 @@ export function CompanyProfileForm({
     <section className="rounded-lg border border-border bg-surface p-5">
       <h2 className="font-display text-base font-semibold text-text">Company</h2>
       <p className="mt-1 text-xs text-muted">
-        Your company identity — used in message templates via the <code className="rounded bg-panel px-1 py-0.5 font-mono text-[11px]">{"{company}"}</code> token,
-        and for timezone-aware scheduling.
+        Your company identity — available in message templates as the <code className="rounded bg-panel px-1 py-0.5 font-mono text-[11px]">{"{company}"}</code> token
+        once the template editor is enabled, and for timezone-aware scheduling.
       </p>
       {errorCode === "save" && (
         <p className="mt-2 rounded-md border border-hot/30 bg-hot/10 px-3 py-2 text-xs text-hot" role="alert">
@@ -83,7 +83,7 @@ export function CompanyProfileForm({
             placeholder="(555) 123-4567"
             className="h-9 rounded-md border border-border bg-panel px-3 text-sm text-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-copper"
           />
-          <span className="text-xs text-muted font-normal">Displayed in messages via the <code className="rounded bg-panel px-1 py-0.5 font-mono text-[11px]">{"{phone}"}</code> token. Not used for dialing.</span>
+          <span className="text-xs text-muted font-normal">Will be available in templates as the <code className="rounded bg-panel px-1 py-0.5 font-mono text-[11px]">{"{phone}"}</code> token. Not used for dialing.</span>
         </label>
 
         <label className="flex flex-col gap-1 text-sm font-medium text-text">
@@ -93,7 +93,7 @@ export function CompanyProfileForm({
             placeholder="https://pay.yourcompany.com"
             className="h-9 rounded-md border border-border bg-panel px-3 text-sm text-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-copper"
           />
-          <span className="text-xs text-muted font-normal">Available in templates as <code className="rounded bg-panel px-1 py-0.5 font-mono text-[11px]">{"{paymentLink}"}</code>. Leave blank if you don't have one.</span>
+          <span className="text-xs text-muted font-normal">Will be available in templates as <code className="rounded bg-panel px-1 py-0.5 font-mono text-[11px]">{"{paymentLink}"}</code>. Leave blank if you don't have one.</span>
           {errorCode === "portal" && <p className="text-xs text-hot" role="alert">Enter a valid URL (https://…) or leave blank.</p>}
         </label>
 
