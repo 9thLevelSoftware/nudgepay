@@ -1,5 +1,5 @@
-import { useEffect, useRef, useState } from "react";
-import { Form, Link, useNavigation } from "react-router";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { Form, Link, useNavigate, useNavigation } from "react-router";
 import type { ViewId, SortId } from "../lib/worklist";
 import type { CaseItem } from "../lib/cases";
 import type { Collision } from "../lib/collision";
@@ -9,6 +9,7 @@ import { exceptionLabel } from "../lib/exceptions";
 import { partitionEligibility, clampBatch, MAX_BATCH } from "../lib/bulk";
 import { plural } from "../lib/labels";
 import { BulkActionBar } from "./BulkActionBar";
+import { useQueueKeys, type QueueKey } from "../lib/use-queue-keys";
 
 // Shared grid template — used by both the header row and queue rows so
 // column widths can't drift apart.
@@ -172,10 +173,13 @@ function QueueRow({
   const params = new URLSearchParams({ case: item.caseId, view, sort, ...(search ? { q: search } : {}) });
   const href = `?${params.toString()}`;
 
+  const msgHref = `?${new URLSearchParams({ case: item.caseId, tab: "messages", view, sort, ...(search ? { q: search } : {}) }).toString()}`;
+  const logHref = `?${new URLSearchParams({ case: item.caseId, log: "1", method: "call", view, sort, ...(search ? { q: search } : {}) }).toString()}`;
+
   return (
     <div
       className={[
-        "relative flex items-center border-b border-border transition-colors duration-100 hover:bg-paper",
+        "group relative flex items-center border-b border-border transition-colors duration-100 hover:bg-paper",
         selected ? "bg-copper/5" : "",
       ].join(" ")}
     >
@@ -196,9 +200,9 @@ function QueueRow({
         aria-label={`Open ${item.customerName}`}
         aria-current={selected ? "true" : undefined}
         className={[
-          "group flex-1 grid items-center gap-x-6 gap-y-0",
+          "flex-1 grid items-center gap-x-6 gap-y-0",
           QUEUE_GRID,
-          "px-4 py-2.5 text-sm",
+          "px-4 py-2 text-sm",
           "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-copper focus-visible:ring-inset",
         ].join(" ")}
       >
@@ -225,9 +229,19 @@ function QueueRow({
           {formatUSD(item.totalOverdue)}
         </span>
 
-        {/* Oldest age */}
-        <span data-label="Oldest age" className="font-mono text-sm text-muted tabular-nums hidden md:block whitespace-nowrap">
-          {item.oldestAgeDays > 0 ? `${item.oldestAgeDays}d` : "Due"}
+        {/* Oldest age + aging bar */}
+        <span data-label="Oldest age" className="hidden md:flex flex-col gap-1 min-w-[56px]">
+          <span className="font-mono text-sm text-muted tabular-nums whitespace-nowrap">
+            {item.oldestAgeDays > 0 ? `${item.oldestAgeDays}d` : "Due"}
+          </span>
+          {item.oldestAgeDays > 0 && (
+            <span className="h-[3px] w-full rounded-full bg-border/50 overflow-hidden">
+              <span
+                className={`block h-full rounded-full ${HEAT_BAR[item.heat.band] ?? "bg-muted"}`}
+                style={{ width: `${Math.min(100, (item.oldestAgeDays / 90) * 100)}%` }}
+              />
+            </span>
+          )}
         </span>
 
         {/* Last contact */}
@@ -268,6 +282,23 @@ function QueueRow({
           {item.owner}
         </span>
       </Link>
+      {/* Quick-action buttons — visible on row hover */}
+      <span className="hidden md:flex items-center gap-1 pr-3 opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity">
+        <Link
+          to={msgHref}
+          aria-label={`Send text to ${item.customerName}`}
+          className="flex items-center justify-center w-7 h-7 rounded border border-border bg-panel text-muted hover:text-copper hover:border-copper focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-copper transition-colors"
+        >
+          <Icon name="message" size={14} aria-hidden />
+        </Link>
+        <Link
+          to={logHref}
+          aria-label={`Log call for ${item.customerName}`}
+          className="flex items-center justify-center w-7 h-7 rounded border border-border bg-panel text-muted hover:text-copper hover:border-copper focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-copper transition-colors"
+        >
+          <Icon name="note" size={14} aria-hidden />
+        </Link>
+      </span>
     </div>
   );
 }
@@ -427,6 +458,34 @@ export function WorkQueue({
   const selectedCases = items.filter((i) => selected.has(i.caseId));
   const eligibleCount = partitionEligibility(selectedCases).eligible.length;
 
+  // j/k/x keyboard navigation
+  const navigate = useNavigate();
+  const handleQueueKey = useCallback((key: QueueKey) => {
+    const currentIdx = selectedCaseId
+      ? items.findIndex((i) => i.caseId === selectedCaseId)
+      : -1;
+    if (key === "j") {
+      const next = currentIdx < items.length - 1 ? currentIdx + 1 : currentIdx;
+      const target = items[next === -1 ? 0 : next];
+      if (target) {
+        const p = new URLSearchParams({ case: target.caseId, view, sort, ...(search ? { q: search } : {}) });
+        navigate(`?${p.toString()}`);
+      }
+    } else if (key === "k") {
+      if (currentIdx > 0) {
+        const target = items[currentIdx - 1];
+        if (target) {
+          const p = new URLSearchParams({ case: target.caseId, view, sort, ...(search ? { q: search } : {}) });
+          navigate(`?${p.toString()}`);
+        }
+      }
+    } else if (key === "x" && selectedCaseId) {
+      toggle(selectedCaseId);
+    }
+  }, [items, selectedCaseId, view, sort, search, navigate, toggle]);
+
+  useQueueKeys({ enabled: true, onAction: handleQueueKey });
+
   return (
     <section className="flex flex-col min-h-0" aria-labelledby="work-queue-title">
       {/* Header + toolbar (single band) */}
@@ -440,6 +499,9 @@ export function WorkQueue({
           </h2>
           <p className="font-sans text-xs text-muted">
             {items.length} matching · {totalCount} open
+          </p>
+          <p className="hidden md:block font-mono text-[10px] text-muted/60">
+            <kbd className="px-0.5">j</kbd>/<kbd className="px-0.5">k</kbd> move · <kbd className="px-0.5">x</kbd> select
           </p>
         </div>
 
