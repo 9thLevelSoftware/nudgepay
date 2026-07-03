@@ -69,3 +69,25 @@ test("loadOrgConfig reflects stored workflow knobs", async () => {
   const cfg = await loadOrgConfig(svc, orgId);
   expect(cfg.workflow).toEqual({ comingDueDays: 14, dueSoonBusinessDays: 5, smsBatchLimit: 100 });
 });
+
+test("loadOrgConfig defaults quiet hours (8-21) for an org with no settings row", async () => {
+  const { data: org } = await svc.from("organizations").insert({ name: "C7 quiet hours defaults" }).select("id").single();
+  const orgId = org!.id as string;
+  const cfg = await loadOrgConfig(svc, orgId);
+  expect(cfg.quietHours).toEqual({ startHour: 8, endHour: 21 });
+});
+
+test("loadOrgConfig reflects a stored quiet-hours window", async () => {
+  const { data: org } = await svc.from("organizations").insert({ name: "C7 quiet hours custom" }).select("id").single();
+  const orgId = org!.id as string;
+  await svc.from("org_settings").insert({ org_id: orgId, sms_send_start_hour: 9, sms_send_end_hour: 18 });
+  const cfg = await loadOrgConfig(svc, orgId);
+  expect(cfg.quietHours).toEqual({ startHour: 9, endHour: 18 });
+});
+
+test("org_settings rejects an invalid quiet-hours window (start >= end)", async () => {
+  const { data: org } = await svc.from("organizations").insert({ name: "C7 quiet hours invalid" }).select("id").single();
+  const orgId = org!.id as string;
+  const { error } = await svc.from("org_settings").insert({ org_id: orgId, sms_send_start_hour: 15, sms_send_end_hour: 9 });
+  expect(error).not.toBeNull();
+});

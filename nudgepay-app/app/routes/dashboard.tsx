@@ -267,7 +267,7 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
   const {
     cases, invoicesInput, comingDueInvoices, customersInput,
     lastContactsInput, promisesInput, recentByCase, presenceRows,
-    roster, ownerLabels, orgConfig, smsEnabled, templates,
+    roster, ownerLabels, orgConfig, smsEnabled, smsQuietNow, quietHoursLabel, templates,
   } = src;
 
   const orgCompany = orgRow?.name ?? "";
@@ -413,6 +413,8 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
       selectedPromiseId,
       sms,
       smsEnabled,
+      smsQuietNow,
+      quietHoursLabel,
       emailEnabled,
       emailMessages: selectedEmailMessages,
       customerEmail: selectedCustomerEmail,
@@ -468,6 +470,8 @@ export default function Dashboard() {
     selectedPromiseId,
     sms,
     smsEnabled,
+    smsQuietNow,
+    quietHoursLabel,
     emailEnabled,
     emailMessages,
     customerEmail,
@@ -548,6 +552,11 @@ export default function Dashboard() {
           Bulk text not sent — text messaging is turned off for this workspace.
         </div>
       ) : null}
+      {bulkSms === "quiet" ? (
+        <div className="px-6 py-2 bg-warm/10 border-b border-warm/30 text-sm font-sans font-medium text-warm" role="alert">
+          Bulk text not sent — outside quiet hours ({quietHoursLabel}).
+        </div>
+      ) : null}
       {bulkSms === "error" ? (
         <div className="px-6 py-2 bg-hot/10 border-b border-hot/30 text-sm font-sans font-medium text-hot" role="alert">
           Could not send the bulk text — please try again.
@@ -584,6 +593,8 @@ export default function Dashboard() {
                 returnTo={`/dashboard?${new URLSearchParams({ view, sort, ...(q ? { q } : {}) }).toString()}`}
                 collisions={collisions}
                 smsEnabled={smsEnabled}
+                smsQuietNow={smsQuietNow}
+                quietHoursLabel={quietHoursLabel}
                 comingDueGroups={comingDueGroups}
                 smsTemplates={smsTemplates}
                 orgCompany={orgCompany}
@@ -609,6 +620,8 @@ export default function Dashboard() {
                   roster={roster}
                   sms={sms}
                   smsEnabled={smsEnabled}
+                  smsQuietNow={smsQuietNow}
+                  quietHoursLabel={quietHoursLabel}
                   emailEnabled={emailEnabled}
                   emailMessages={emailMessages}
                   customerEmail={customerEmail}

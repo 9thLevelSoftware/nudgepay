@@ -6,6 +6,7 @@ import { listOrgMembers } from "../lib/orgs.server";
 import { resolveCommPrefs } from "../lib/comm-prefs";
 import { isContactBlocked } from "../lib/exceptions";
 import { resolveChannelSettings } from "../lib/channel-settings";
+import { isWithinSendWindow, quietHoursWindowLabel } from "../lib/quiet-hours";
 import { resolveEmailSettings } from "../lib/email-settings";
 import { loadOrgConfig } from "../lib/org-config.server";
 import { loadTemplates } from "../lib/message-templates.server";
@@ -236,6 +237,9 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
   const { data: mcfg } = await supabase.from("messaging_config")
     .select("sms_enabled").eq("org_id", org.org_id).maybeSingle();
   const smsEnabled = resolveChannelSettings(mcfg as { sms_enabled?: boolean | null } | null).smsEnabled;
+  const { startHour, endHour } = orgConfig.quietHours;
+  const smsQuietNow = !isWithinSendWindow(new Date(), orgConfig.companyProfile.timezone, startHour, endHour);
+  const quietHoursLabel = quietHoursWindowLabel(startHour, endHour);
 
   const { data: ecfg } = await supabase.from("email_config")
     .select("email_enabled, from_address, from_name").eq("org_id", org.org_id).maybeSingle();
@@ -249,7 +253,7 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
       channel, channelCounts, emailEnabled,
       selected, selectedMessages, selectedEmailMessages,
       selectedConsent, selectedPhone, selectedEmail,
-      selectedVars, sms, smsEnabled,
+      selectedVars, sms, smsEnabled, smsQuietNow, quietHoursLabel,
       smsTemplates: templates.sms,
       emailTemplates: templates.email,
     },
@@ -292,6 +296,8 @@ export default function Messages() {
             vars={d.selectedVars}
             sms={d.sms}
             smsEnabled={d.smsEnabled}
+            smsQuietNow={d.smsQuietNow}
+            quietHoursLabel={d.quietHoursLabel}
             emailEnabled={d.emailEnabled}
             selectedEmail={d.selectedEmail}
             tab={d.tab}

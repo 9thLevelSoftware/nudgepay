@@ -136,6 +136,8 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
     scope,
     timelines,
     smsEnabled: src.smsEnabled,
+    smsQuietNow: src.smsQuietNow,
+    quietHoursLabel: src.quietHoursLabel,
     currentUserId: user.id,
     today,
     smsTemplates: src.templates.sms,
@@ -151,7 +153,7 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
 
 export default function FocusMode() {
   const {
-    queue, scope, timelines, smsEnabled, today,
+    queue, scope, timelines, smsEnabled, smsQuietNow, quietHoursLabel, today,
     smsTemplates, orgCompany, orgPhone, orgPaymentLink,
   } = useLoaderData<typeof loader>();
 
@@ -384,6 +386,8 @@ export default function FocusMode() {
                 <SendTextMiniForm
                   item={currentItem}
                   smsEnabled={smsEnabled}
+                  smsQuietNow={smsQuietNow}
+                  quietHoursLabel={quietHoursLabel}
                   onDone={() => dispatch({ type: "resolve", result: "texted" })}
                   onCancel={() => setOpenForm(null)}
                   onError={(code) => addToast(`Text failed: ${code}`)}

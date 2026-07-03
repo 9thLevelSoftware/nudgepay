@@ -5,6 +5,7 @@ import { requireUser, resolveOrg } from "../lib/session.server";
 import { sendInvoiceText, type MessagingDeps } from "../lib/twilio-messaging.server";
 import type { TwilioSender } from "../lib/twilio-client.server";
 import { safeReturnTo, withSms } from "../lib/return-to";
+import { smsSendReason } from "../lib/sms-send-reason";
 
 function envSender(t: { TWILIO_MESSAGING_SERVICE_SID: string | null; TWILIO_FROM_NUMBER: string | null }): TwilioSender {
   if (t.TWILIO_MESSAGING_SERVICE_SID) return { messagingServiceSid: t.TWILIO_MESSAGING_SERVICE_SID };
@@ -49,12 +50,7 @@ export async function action({ request, context }: ActionFunctionArgs) {
     return respond("sent");
   } catch (err) {
     const msg = err instanceof Error ? err.message : "";
-    const reason = /disabled/i.test(msg) ? "disabled"
-      : /blocked/i.test(msg) ? "blocked"
-      : /opted out/i.test(msg) ? "optout"
-      : /consent/i.test(msg) ? "noconsent"
-      : "error";
-    return respond(reason);
+    return respond(smsSendReason(msg));
   }
 }
 

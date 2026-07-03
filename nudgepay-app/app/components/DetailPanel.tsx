@@ -96,6 +96,7 @@ const SMS_BANNER: Record<string, { text: string; tone: string }> = {
   error:     { text: "Could not send the text.",                                      tone: "text-hot" },
   blocked:   { text: "Not sent — this case is marked do-not-contact / legal.",        tone: "text-hot" },
   disabled:  { text: "Not sent — text messaging is turned off for this workspace.",   tone: "text-hot" },
+  quiet:     { text: "Not sent — outside quiet hours.",                              tone: "text-warm" },
 };
 
 const EMAIL_BANNER: Record<string, { text: string; tone: string }> = {
@@ -113,7 +114,8 @@ const PROMISE_ERROR_TEXT: Record<string, string> = {
 };
 
 function MessagesTab({
-  selected, repInvoiceId, messages, consent, prefs, phone, sms, smsEnabled, view, sort, q, collision,
+  selected, repInvoiceId, messages, consent, prefs, phone, sms, smsEnabled, smsQuietNow, quietHoursLabel,
+  view, sort, q, collision,
   smsTemplates, orgCompany, orgPhone, orgPaymentLink,
 }: {
   selected: CaseItem;
@@ -124,6 +126,8 @@ function MessagesTab({
   phone: string | null;
   sms: string | null;
   smsEnabled: boolean;
+  smsQuietNow: boolean;
+  quietHoursLabel: string;
   view: string;
   sort: string;
   q: string;
@@ -242,6 +246,14 @@ function MessagesTab({
 
       {/* Templates + composer */}
       <div className="border-t border-border px-5 py-3 shrink-0">
+        {smsQuietNow && (
+          <p
+            className="mb-2 rounded-md border border-warm/30 bg-warm/10 px-3 py-2 text-xs font-sans font-medium text-warm"
+            role="status"
+          >
+            Outside quiet hours ({quietHoursLabel}) — sends are blocked until the window reopens. The button stays enabled in case this page is stale.
+          </p>
+        )}
         {smsGate && (
           <p
             className={`mb-2 rounded-md px-3 py-2 text-xs font-sans font-medium ${
@@ -543,6 +555,8 @@ export function DetailPanel({
   phone,
   sms,
   smsEnabled,
+  smsQuietNow,
+  quietHoursLabel,
   emailEnabled,
   emailMessages,
   customerEmail,
@@ -569,6 +583,8 @@ export function DetailPanel({
   phone: string | null;
   sms: string | null;
   smsEnabled: boolean;
+  smsQuietNow: boolean;
+  quietHoursLabel: string;
   emailEnabled?: boolean;
   emailMessages?: EmailMessageEntry[];
   customerEmail?: string | null;
@@ -1130,6 +1146,8 @@ export function DetailPanel({
           phone={phone}
           sms={sms}
           smsEnabled={smsEnabled}
+          smsQuietNow={smsQuietNow}
+          quietHoursLabel={quietHoursLabel}
           view={view}
           sort={sort}
           q={q}

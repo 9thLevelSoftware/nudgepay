@@ -18,8 +18,18 @@ function withBatchLimit(limit: number): OrgConfig {
 function jsonResponse(body: unknown, status = 201) {
   return new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json" } });
 }
+// Fixed "now" inside the default quiet-hours window (8-21, America/New York)
+// so these tests are deterministic regardless of wall-clock time — mirrors
+// the api.bulk-sms.tsx production path, which threads a pre-fetched window
+// through deps.quietHoursWindow (set explicitly here too, to also cover the
+// no-repeat-read behavior the route relies on for a ≤50-case batch).
+const DAYTIME_NOW = new Date("2026-06-15T18:00:00Z");
 function deps(fetchFn: any): MessagingDeps {
-  return { fetchFn, service: svc, twilio: { accountSid: "AC1", authToken: "tok" }, defaultSender: { from: "+15005550006" }, statusCallback: null };
+  return {
+    fetchFn, service: svc, twilio: { accountSid: "AC1", authToken: "tok" }, defaultSender: { from: "+15005550006" },
+    statusCallback: null, now: DAYTIME_NOW,
+    quietHoursWindow: { timezone: "America/New_York", startHour: 8, endHour: 21 },
+  };
 }
 async function seedCase(orgId: string, o: { name: string; phone: string | null; consent: boolean; doc: string; due: string; balance: number }) {
   const { data: cust } = await svc.from("customers")
@@ -99,6 +109,34 @@ test("runBulkSms clamps to MAX_BATCH (50) when given 51 eligible cases", async (
   expect(res.sent).toBe(MAX_BATCH);
   expect(res.sent + res.failed + res.skipped).toBe(MAX_BATCH);
   expect(fetchFn).toHaveBeenCalledTimes(MAX_BATCH);
+});
+
+// ---------------------------------------------------------------------------
+// Quiet hours (Phase 7) — bulk path
+// ---------------------------------------------------------------------------
+
+// The route-level fast-fail (api.bulk-sms.tsx redirects with bulkSms=quiet
+// before calling runBulkSms) uses the same isWithinSendWindow gate covered by
+// quiet-hours.test.ts. This test instead proves the DEFENSE IN DEPTH: even if
+// the route's pre-check were ever bypassed, sendInvoiceText's own quiet-hours
+// gate (which runBulkSms sends every case through) still blocks — no case
+// silently sends outside the window.
+test("runBulkSms tallies every case as failed when outside quiet hours, even though eligible", async () => {
+  const { data: org } = await svc.from("organizations").insert({ name: "Bulk Quiet Hours Org" }).select("id").single();
+  const orgId = org!.id as string;
+  const a = await seedCase(orgId, { name: "Quiet A", phone: "+12295550210", consent: true, doc: "q001", due: "2026-05-01", balance: 100 });
+  const b = await seedCase(orgId, { name: "Quiet B", phone: "+12295550211", consent: true, doc: "q002", due: "2026-05-01", balance: 100 });
+
+  const fetchFn = vi.fn(async () => jsonResponse({ sid: "SM-SHOULD-NOT-SEND", status: "queued" }));
+  const outsideDeps: MessagingDeps = {
+    ...deps(fetchFn),
+    now: new Date("2026-06-15T04:00:00Z"), // midnight America/New_York — outside 8-21
+  };
+  const res = await runBulkSms(outsideDeps, {
+    orgId, userId, caseIds: [a.caseId, b.caseId], today, templateBody: "Hi {customer}", orgConfig: DEFAULT_ORG_CONFIG,
+  });
+  expect(res).toEqual({ sent: 0, failed: 2, skipped: 0 });
+  expect(fetchFn).not.toHaveBeenCalled();
 });
 
 // Server/client batch-limit drift guard (Phase 5): both MUST source the same

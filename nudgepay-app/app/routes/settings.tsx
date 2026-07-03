@@ -11,6 +11,7 @@ import { EmailSettingsSection } from "../components/EmailSettingsSection";
 import { LateFeesForm } from "../components/LateFeesForm";
 import { PriorityThresholdsForm } from "../components/PriorityThresholdsForm";
 import { WorkflowSettingsForm } from "../components/WorkflowSettingsForm";
+import { QuietHoursForm } from "../components/QuietHoursForm";
 import { NotificationPrefsForm } from "../components/NotificationPrefsForm";
 import { CompanyProfileForm } from "../components/CompanyProfileForm";
 import { TemplateEditor } from "../components/TemplateEditor";
@@ -106,6 +107,7 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
     lateFee: config.lateFee,
     companyProfile: config.companyProfile,
     digestHourLocal: config.digestHourLocal,
+    quietHours: config.quietHours,
     priority: config.priority,
     workflow: config.workflow,
     smsTemplates: templates.sms,
@@ -314,6 +316,7 @@ export default function Settings() {
                 resendWebhook={ps.webhookUrls.resendWebhook}
                 returnTo={returnTo}
               />
+              {d.isOwner && <QuietHoursForm key={d.orgId} quietHours={d.quietHours} returnTo={returnTo} />}
             </>
           )}
 

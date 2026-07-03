@@ -8,7 +8,7 @@ export async function loadOrgConfig(client: SupabaseClient, orgId: string): Prom
   const [settingsRes, holidaysRes] = await Promise.all([
     client
       .from("org_settings")
-      .select("promise_grace_days, working_days, cadence_critical, cadence_high, cadence_medium, cadence_low, late_fee_enabled, late_fee_grace_days, late_fee_monthly_percent, late_fee_flat_amount, company_website, company_phone, payment_portal_url, timezone, high_value_threshold, priority_critical_min, priority_high_min, priority_medium_min, coming_due_days, due_soon_business_days, sms_batch_limit, digest_hour_local")
+      .select("promise_grace_days, working_days, cadence_critical, cadence_high, cadence_medium, cadence_low, late_fee_enabled, late_fee_grace_days, late_fee_monthly_percent, late_fee_flat_amount, company_website, company_phone, payment_portal_url, timezone, high_value_threshold, priority_critical_min, priority_high_min, priority_medium_min, coming_due_days, due_soon_business_days, sms_batch_limit, digest_hour_local, sms_send_start_hour, sms_send_end_hour")
       .eq("org_id", orgId)
       .maybeSingle(),
     client.from("org_holidays").select("holiday_date").eq("org_id", orgId),

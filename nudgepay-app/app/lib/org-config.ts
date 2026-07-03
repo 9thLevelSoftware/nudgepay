@@ -14,6 +14,7 @@ import { HIGH_VALUE_THRESHOLD } from "./worklist";
 import { COMING_DUE_DAYS } from "./coming-due";
 import { DUE_SOON_BUSINESS_DAYS } from "./promise-ledger";
 import { MAX_BATCH } from "./bulk";
+import { resolveQuietHours, DEFAULT_QUIET_HOURS, type QuietHours } from "./quiet-hours";
 
 export type PriorityConfig = {
   highValue: number;
@@ -43,6 +44,8 @@ export type OrgConfig = {
   workflow: WorkflowConfig;
   /** Org-local hour (0-23) the daily digest cron gate fires at (Phase 6). */
   digestHourLocal: number;
+  /** Org-local SMS send window (Phase 7) — same-day [startHour, endHour). */
+  quietHours: QuietHours;
 };
 
 // Nullable to match a SELECT against optional columns / an absent row.
@@ -73,6 +76,9 @@ export type OrgSettingsRow = {
   sms_batch_limit: number | null;
   // Digest schedule (Phase 6)
   digest_hour_local: number | null;
+  // Quiet hours / SMS send window (Phase 7)
+  sms_send_start_hour: number | null;
+  sms_send_end_hour: number | null;
 };
 
 export const DEFAULT_PRIORITY_CONFIG: PriorityConfig = Object.freeze({
@@ -101,6 +107,7 @@ export const DEFAULT_ORG_CONFIG: OrgConfig = Object.freeze({
   priority: DEFAULT_PRIORITY_CONFIG,
   workflow: DEFAULT_WORKFLOW_CONFIG,
   digestHourLocal: DEFAULT_DIGEST_HOUR_LOCAL,
+  quietHours: DEFAULT_QUIET_HOURS,
 });
 
 export function resolveOrgConfig(
@@ -144,5 +151,6 @@ export function resolveOrgConfig(
       smsBatchLimit: settings.sms_batch_limit ?? DEFAULT_WORKFLOW_CONFIG.smsBatchLimit,
     },
     digestHourLocal: settings.digest_hour_local ?? DEFAULT_DIGEST_HOUR_LOCAL,
+    quietHours: resolveQuietHours(settings),
   };
 }

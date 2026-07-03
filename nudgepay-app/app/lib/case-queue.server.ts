@@ -19,6 +19,7 @@ import { listOrgMembers, type OrgMember } from "./orgs.server";
 import { loadOrgConfig } from "./org-config.server";
 import { resolveCommPrefs } from "./comm-prefs";
 import { resolveChannelSettings } from "./channel-settings";
+import { isWithinSendWindow, quietHoursWindowLabel } from "./quiet-hours";
 import { readPresence } from "./presence.server";
 import type { RecentContactInput } from "./collision";
 import { loadTemplates } from "./message-templates.server";
@@ -82,6 +83,10 @@ export type CaseQueueSource = {
   ownerLabels: Map<string, string>;
   orgConfig: OrgConfig;
   smsEnabled: boolean;
+  /** True when the org's SMS send window (quiet hours) currently excludes "now". */
+  smsQuietNow: boolean;
+  /** Human-readable send-window label, e.g. "8:00 AM – 9:00 PM", for the quiet-hours notice. */
+  quietHoursLabel: string;
   templates: OrgTemplates;
 };
 
@@ -260,6 +265,9 @@ export async function loadCaseQueueSource(args: LoadCaseQueueArgs): Promise<Case
 
   const ownerLabels = new Map(roster.map((m) => [m.userId, m.label]));
   const smsEnabled = resolveChannelSettings(mcfg as { sms_enabled?: boolean | null } | null).smsEnabled;
+  const { startHour, endHour } = orgConfig.quietHours;
+  const smsQuietNow = !isWithinSendWindow(new Date(), orgConfig.companyProfile.timezone, startHour, endHour);
+  const quietHoursLabel = quietHoursWindowLabel(startHour, endHour);
 
   return {
     cases,
@@ -274,6 +282,8 @@ export async function loadCaseQueueSource(args: LoadCaseQueueArgs): Promise<Case
     ownerLabels,
     orgConfig,
     smsEnabled,
+    smsQuietNow,
+    quietHoursLabel,
     templates,
   };
 }

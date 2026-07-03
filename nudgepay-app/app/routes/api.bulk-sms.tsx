@@ -9,6 +9,7 @@ import { runBulkSms } from "../lib/bulk-send.server";
 import { clampBatch } from "../lib/bulk";
 import { loadOrgConfig } from "../lib/org-config.server";
 import { todayInTz } from "../lib/tz";
+import { isWithinSendWindow } from "../lib/quiet-hours";
 
 function envSender(t: { TWILIO_MESSAGING_SERVICE_SID: string | null; TWILIO_FROM_NUMBER: string | null }): TwilioSender {
   if (t.TWILIO_MESSAGING_SERVICE_SID) return { messagingServiceSid: t.TWILIO_MESSAGING_SERVICE_SID };
@@ -56,6 +57,19 @@ export async function action({ request, context }: ActionFunctionArgs) {
     return redirect(withParams(returnTo, { bulkSms: "disabled" }), { headers });
   }
 
+  // Quiet-hours fast-fail: pre-check once (mirroring the sms_enabled pre-check
+  // above) rather than letting the loop discover it on the first case, and
+  // thread the resolved window through deps so sendInvoiceText doesn't re-read
+  // org_settings for each of the (up to smsBatchLimit) cases below.
+  const quietHoursWindow = {
+    timezone: orgConfig.companyProfile.timezone,
+    startHour: orgConfig.quietHours.startHour,
+    endHour: orgConfig.quietHours.endHour,
+  };
+  if (!isWithinSendWindow(new Date(), quietHoursWindow.timezone, quietHoursWindow.startHour, quietHoursWindow.endHour)) {
+    return redirect(withParams(returnTo, { bulkSms: "quiet" }), { headers });
+  }
+
   const statusCallback = twilio.TWILIO_PUBLIC_BASE_URL
     ? `${twilio.TWILIO_PUBLIC_BASE_URL}/webhooks/twilio/status` : null;
   const deps: MessagingDeps = {
@@ -64,6 +78,7 @@ export async function action({ request, context }: ActionFunctionArgs) {
     twilio: { accountSid: twilio.TWILIO_ACCOUNT_SID, authToken: twilio.TWILIO_AUTH_TOKEN },
     defaultSender: envSender(twilio),
     statusCallback,
+    quietHoursWindow,
   };
   const today = todayInTz(orgConfig.companyProfile.timezone);
   const { sent, failed, skipped } = await runBulkSms(deps, {

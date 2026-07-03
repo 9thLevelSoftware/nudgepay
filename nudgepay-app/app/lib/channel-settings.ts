@@ -64,3 +64,32 @@ export function parseSmsSenderUpdate(form: FormData): SmsSenderUpdate {
 
   return { ok: true, value: { sender, messaging_service_sid: sid } };
 }
+
+// ---------------------------------------------------------------------------
+// Quiet hours (Phase 7): org-configurable SMS send window. Ranges mirror the
+// DB CHECKs in migration 0030 (start 0-23, end 1-24, start < end — same-day
+// windows only).
+// ---------------------------------------------------------------------------
+
+export type QuietHoursPatch = { sms_send_start_hour: number; sms_send_end_hour: number };
+
+export type QuietHoursUpdate =
+  | { ok: true; patch: QuietHoursPatch }
+  | { ok: false; error: "quiet_hours" };
+
+function hourField(form: FormData, name: string): number | null {
+  const raw = form.get(name);
+  if (typeof raw !== "string" || raw.trim() === "") return null;
+  const n = Number(raw);
+  return Number.isInteger(n) ? n : null;
+}
+
+export function parseQuietHoursUpdate(form: FormData): QuietHoursUpdate {
+  const start = hourField(form, "sms_send_start_hour");
+  const end = hourField(form, "sms_send_end_hour");
+  if (start === null || end === null) return { ok: false, error: "quiet_hours" };
+  if (start < 0 || start > 23) return { ok: false, error: "quiet_hours" };
+  if (end < 1 || end > 24) return { ok: false, error: "quiet_hours" };
+  if (start >= end) return { ok: false, error: "quiet_hours" };
+  return { ok: true, patch: { sms_send_start_hour: start, sms_send_end_hour: end } };
+}

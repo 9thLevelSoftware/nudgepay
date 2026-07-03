@@ -8,6 +8,7 @@ test("DEFAULT_ORG_CONFIG carries the canonical defaults", () => {
   expect(DEFAULT_ORG_CONFIG.cadenceDays).toEqual({ Critical: 2, High: 3, Medium: 7, Low: 14 });
   expect(DEFAULT_ORG_CONFIG.priority).toEqual({ highValue: 5000, criticalMin: 80, highMin: 50, mediumMin: 25 });
   expect(DEFAULT_ORG_CONFIG.workflow).toEqual({ comingDueDays: 7, dueSoonBusinessDays: 3, smsBatchLimit: 50 });
+  expect(DEFAULT_ORG_CONFIG.quietHours).toEqual({ startHour: 8, endHour: 21 });
 });
 
 test("resolveOrgConfig with null settings returns defaults plus holiday set", () => {
@@ -18,6 +19,29 @@ test("resolveOrgConfig with null settings returns defaults plus holiday set", ()
   expect(cfg.cadenceDays).toEqual({ Critical: 2, High: 3, Medium: 7, Low: 14 });
   expect(cfg.priority).toEqual({ highValue: 5000, criticalMin: 80, highMin: 50, mediumMin: 25 });
   expect(cfg.workflow).toEqual({ comingDueDays: 7, dueSoonBusinessDays: 3, smsBatchLimit: 50 });
+  expect(cfg.quietHours).toEqual({ startHour: 8, endHour: 21 });
+});
+
+test("resolveOrgConfig applies quiet-hours row overrides", () => {
+  const cfg = resolveOrgConfig({
+    promise_grace_days: 2,
+    working_days: [1, 2, 3, 4, 5],
+    cadence_critical: 2, cadence_high: 3, cadence_medium: 7, cadence_low: 14,
+    sms_send_start_hour: 9,
+    sms_send_end_hour: 17,
+  } as any, []);
+  expect(cfg.quietHours).toEqual({ startHour: 9, endHour: 17 });
+});
+
+test("resolveOrgConfig falls back to quiet-hours defaults when the columns are null", () => {
+  const cfg = resolveOrgConfig({
+    promise_grace_days: 2,
+    working_days: [1, 2, 3, 4, 5],
+    cadence_critical: 2, cadence_high: 3, cadence_medium: 7, cadence_low: 14,
+    sms_send_start_hour: null,
+    sms_send_end_hour: null,
+  } as any, []);
+  expect(cfg.quietHours).toEqual({ startHour: 8, endHour: 21 });
 });
 
 test("resolveOrgConfig applies workflow knob row overrides", () => {

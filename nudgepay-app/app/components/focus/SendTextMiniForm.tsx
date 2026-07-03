@@ -14,6 +14,8 @@ import { formatDate } from "../../lib/dates";
 interface SendTextMiniFormProps {
   item: CaseItem;
   smsEnabled: boolean;
+  smsQuietNow: boolean;
+  quietHoursLabel: string;
   onDone: () => void;
   onCancel: () => void;
   /** Called when the send fails — parent shows a toast with the error code. */
@@ -25,7 +27,7 @@ interface SendTextMiniFormProps {
 }
 
 export function SendTextMiniForm({
-  item, smsEnabled, onDone, onCancel, onError,
+  item, smsEnabled, smsQuietNow, quietHoursLabel, onDone, onCancel, onError,
   smsTemplates, orgCompany, orgPhone, orgPaymentLink,
 }: SendTextMiniFormProps) {
   const firstInvoice = item.invoices[0] ?? null;
@@ -128,6 +130,11 @@ export function SendTextMiniForm({
         </p>
       ) : (
         <>
+          {smsQuietNow && (
+            <div className="rounded-lg border border-warm/30 bg-warm/5 px-3 py-2 text-xs text-warm mb-3" role="status">
+              Outside quiet hours ({quietHoursLabel}) — sending is blocked until the window reopens.
+            </div>
+          )}
           {/* Template chips */}
           <div className="flex flex-wrap gap-2 mb-3">
             {smsTemplates.map((t) => (

@@ -143,6 +143,8 @@ interface WorkQueueProps {
   returnTo: string;
   collisions: Record<string, Collision>;
   smsEnabled: boolean;
+  smsQuietNow: boolean;
+  quietHoursLabel: string;
   comingDueGroups: ComingDueGroup[];
   smsTemplates: MessageTemplateRow[];
   orgCompany: string;
@@ -395,6 +397,8 @@ export function WorkQueue({
   returnTo,
   collisions,
   smsEnabled,
+  smsQuietNow,
+  quietHoursLabel,
   comingDueGroups,
   smsTemplates,
   orgCompany,
@@ -697,6 +701,8 @@ export function WorkQueue({
         cases={selectedCases}
         returnTo={returnTo}
         smsEnabled={smsEnabled}
+        smsQuietNow={smsQuietNow}
+        quietHoursLabel={quietHoursLabel}
         smsTemplates={smsTemplates}
         orgCompany={orgCompany}
         orgPhone={orgPhone}

@@ -24,6 +24,8 @@ export function BulkSmsDrawer({
   cases,
   returnTo,
   smsEnabled,
+  smsQuietNow,
+  quietHoursLabel,
   smsTemplates,
   orgCompany,
   orgPhone,
@@ -35,6 +37,8 @@ export function BulkSmsDrawer({
   cases: DrawerCase[];
   returnTo: string;
   smsEnabled: boolean;
+  smsQuietNow: boolean;
+  quietHoursLabel: string;
   smsTemplates: MessageTemplateRow[];
   orgCompany: string;
   orgPhone: string;
@@ -94,6 +98,10 @@ export function BulkSmsDrawer({
         </p>
         {!smsEnabled ? (
           <p className="text-xs font-sans font-medium text-hot mb-3">Text messaging is turned off for this workspace.</p>
+        ) : smsQuietNow ? (
+          <p className="text-xs font-sans font-medium text-warm mb-3" role="status">
+            Outside quiet hours ({quietHoursLabel}) — sends will be blocked until the window reopens.
+          </p>
         ) : null}
 
         {!confirming ? (

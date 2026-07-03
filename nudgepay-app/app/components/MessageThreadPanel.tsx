@@ -18,6 +18,7 @@ const SMS_BANNER: Record<string, { text: string; tone: string }> = {
   error: { text: "Could not send the text.", tone: "text-hot" },
   blocked: { text: "Not sent — this case is marked do-not-contact / legal.", tone: "text-hot" },
   disabled: { text: "Not sent — text messaging is turned off for this workspace.", tone: "text-hot" },
+  quiet: { text: "Not sent — outside quiet hours.", tone: "text-warm" },
 };
 
 const EMAIL_BANNER: Record<string, { text: string; tone: string }> = {
@@ -37,6 +38,8 @@ interface Props {
   vars: TemplateVars;
   sms: string | null;
   smsEnabled: boolean;
+  smsQuietNow: boolean;
+  quietHoursLabel: string;
   emailEnabled: boolean;
   selectedEmail: string | null;
   tab: string;
@@ -48,6 +51,7 @@ interface Props {
 
 export function MessageThreadPanel({
   thread, messages, emailMessages, consent, phone, vars, sms, smsEnabled,
+  smsQuietNow, quietHoursLabel,
   emailEnabled, selectedEmail, tab, sort, q, smsTemplates, emailTemplates,
 }: Props) {
   const [body, setBody] = useState("");
@@ -249,6 +253,14 @@ export function MessageThreadPanel({
         </div>
       ) : (
         <div className="border-t border-border px-4 py-3">
+          {smsQuietNow && (
+            <p
+              className="mb-2 rounded-md px-3 py-2 text-xs font-medium bg-warm/10 border border-warm/30 text-warm"
+              role="status"
+            >
+              Outside quiet hours ({quietHoursLabel}) — sends are blocked until the window reopens. The button stays enabled in case this page is stale.
+            </p>
+          )}
           {smsSendDisabled && (
             <p
               className={`mb-2 rounded-md px-3 py-2 text-xs font-sans font-medium ${
