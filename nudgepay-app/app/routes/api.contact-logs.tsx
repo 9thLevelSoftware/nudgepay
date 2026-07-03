@@ -59,6 +59,12 @@ export async function action({ request, context }: ActionFunctionArgs) {
     if (!res.ok) return data({ ok: false as const, error: "save-failed" }, { status: 400, headers });
   }
 
+  // Focus Mode (and future fetcher callers) opt into a JSON response so the
+  // page can stay mounted and advance client-side.
+  if (form.get("respond") === "json") {
+    return data({ ok: true as const }, { headers });
+  }
+
   const sep = returnTo.includes("?") ? "&" : "?";
   return redirect(`${returnTo}${sep}saved=1`, { headers });
 }

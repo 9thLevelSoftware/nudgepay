@@ -1,4 +1,4 @@
-import { redirect, type ActionFunctionArgs } from "react-router";
+import { data, redirect, type ActionFunctionArgs } from "react-router";
 import { getEnv, getTwilioEnv } from "../lib/env.server";
 import { createSupabaseServiceClient } from "../lib/supabase.server";
 import { requireUser, resolveOrg } from "../lib/session.server";
@@ -20,11 +20,19 @@ export async function action({ request, context }: ActionFunctionArgs) {
 
   const form = await request.formData();
   const returnTo = safeReturnTo(form.get("returnTo"));
+  const respondJson = form.get("respond") === "json";
   const raw = form.get("invoiceId");
   const invoiceId = typeof raw === "string" ? raw : "";
   const bodyRaw = form.get("body");
   const body = typeof bodyRaw === "string" ? bodyRaw.trim() : "";
-  if (!invoiceId || !body) return redirect(withSms(returnTo, "error"), { headers });
+
+  // Helper: respond with the SMS result code, either as JSON (Focus Mode) or
+  // as a redirect with the code in a query parameter (existing dashboard flow).
+  const respond = (code: string) => respondJson
+    ? data({ ok: code === "sent", sms: code }, { headers })
+    : redirect(withSms(returnTo, code), { headers });
+
+  if (!invoiceId || !body) return respond("error");
 
   const service = createSupabaseServiceClient(env);
   const statusCallback = twilio.TWILIO_PUBLIC_BASE_URL
@@ -38,7 +46,7 @@ export async function action({ request, context }: ActionFunctionArgs) {
   };
   try {
     await sendInvoiceText(deps, { orgId: org.org_id, invoiceId, userId: user.id, body });
-    return redirect(withSms(returnTo, "sent"), { headers });
+    return respond("sent");
   } catch (err) {
     const msg = err instanceof Error ? err.message : "";
     const reason = /disabled/i.test(msg) ? "disabled"
@@ -46,7 +54,7 @@ export async function action({ request, context }: ActionFunctionArgs) {
       : /opted out/i.test(msg) ? "optout"
       : /consent/i.test(msg) ? "noconsent"
       : "error";
-    return redirect(withSms(returnTo, reason), { headers });
+    return respond(reason);
   }
 }
 
