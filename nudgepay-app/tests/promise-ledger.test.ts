@@ -1,10 +1,19 @@
 import { expect, test } from "vitest";
 import {
   buildPromiseRows, isDueSoon, applyPromiseTab, sortPromiseRows, computePromiseMetrics,
-  PROMISE_TABS, PROMISE_SORTS, type PromiseInput,
+  PROMISE_TABS, PROMISE_SORTS, DUE_SOON_BUSINESS_DAYS, type PromiseInput, type DayConfig,
 } from "../app/lib/promise-ledger";
+import { DEFAULT_WORKING_DAYS, NO_HOLIDAYS } from "../app/lib/business-days";
 
 const TODAY = "2026-06-22"; // Monday; addBusinessDays(+3) = Thu 2026-06-25
+
+// Required org-config subset every isDueSoon/applyPromiseTab/computePromiseMetrics
+// call must now pass explicitly (no more implicit defaults).
+const DAY_CONFIG: DayConfig = {
+  workingDays: DEFAULT_WORKING_DAYS,
+  holidays: NO_HOLIDAYS,
+  dueSoonBusinessDays: DUE_SOON_BUSINESS_DAYS,
+};
 
 // p1 due-soon (06-24, within window), p2 active-not-due-soon (07-10),
 // p3 due-soon + awaiting-evaluation (past grace), p4 broken, p5 kept,
@@ -44,20 +53,30 @@ test("buildPromiseRows resolves owner label, outstanding, superseded, awaitingEv
 test("isDueSoon: pending within 3 business days or already past; never for resolved", () => {
   const rows = buildPromiseRows(PROMISES, TODAY, LABELS);
   const byId = new Map(rows.map((r) => [r.promiseId, r]));
-  expect(isDueSoon(byId.get("p1")!, TODAY)).toBe(true);  // 06-24 <= 06-25 threshold
-  expect(isDueSoon(byId.get("p3")!, TODAY)).toBe(true);  // past due, still pending
-  expect(isDueSoon(byId.get("p2")!, TODAY)).toBe(false); // 07-10 far future
-  expect(isDueSoon(byId.get("p4")!, TODAY)).toBe(false); // broken, not pending
+  expect(isDueSoon(byId.get("p1")!, TODAY, DAY_CONFIG)).toBe(true);  // 06-24 <= 06-25 threshold
+  expect(isDueSoon(byId.get("p3")!, TODAY, DAY_CONFIG)).toBe(true);  // past due, still pending
+  expect(isDueSoon(byId.get("p2")!, TODAY, DAY_CONFIG)).toBe(false); // 07-10 far future
+  expect(isDueSoon(byId.get("p4")!, TODAY, DAY_CONFIG)).toBe(false); // broken, not pending
+});
+
+test("isDueSoon: a custom (org-configured) due-soon window changes the threshold", () => {
+  const rows = buildPromiseRows(PROMISES, TODAY, LABELS);
+  const byId = new Map(rows.map((r) => [r.promiseId, r]));
+  // p2 promised 2026-07-10 — far outside the default 3-business-day window,
+  // but well within a 30-business-day org-configured window.
+  const wideConfig: DayConfig = { ...DAY_CONFIG, dueSoonBusinessDays: 30 };
+  expect(isDueSoon(byId.get("p2")!, TODAY, wideConfig)).toBe(true);
+  expect(isDueSoon(byId.get("p2")!, TODAY, DAY_CONFIG)).toBe(false);
 });
 
 test("applyPromiseTab partitions by lifecycle", () => {
   const rows = buildPromiseRows(PROMISES, TODAY, LABELS);
-  const ids = (tab: any) => applyPromiseTab(rows, tab, TODAY).map((r) => r.promiseId).sort();
+  const ids = (tab: any) => applyPromiseTab(rows, tab, TODAY, DAY_CONFIG).map((r) => r.promiseId).sort();
   expect(ids("active")).toEqual(["p1", "p2", "p3"]);
   expect(ids("due-soon")).toEqual(["p1", "p3"]);
   expect(ids("broken")).toEqual(["p4"]);
   expect(ids("kept")).toEqual(["p5", "p6"]);          // kept + partially_kept
-  expect(applyPromiseTab(rows, "all", TODAY).length).toBe(8);
+  expect(applyPromiseTab(rows, "all", TODAY, DAY_CONFIG).length).toBe(8);
 });
 
 test("sortPromiseRows: due-date asc, amount desc, customer asc", () => {
@@ -69,7 +88,7 @@ test("sortPromiseRows: due-date asc, amount desc, customer asc", () => {
 
 test("computePromiseMetrics: counts, dollars, and null-safe strict kept rate", () => {
   const rows = buildPromiseRows(PROMISES, TODAY, LABELS);
-  const m = computePromiseMetrics(rows, TODAY);
+  const m = computePromiseMetrics(rows, TODAY, DAY_CONFIG);
   expect(m.activeCount).toBe(3);
   expect(m.activeAmount).toBe(1800);        // 500 + 1000 + 300
   expect(m.dueSoonCount).toBe(2);
@@ -81,7 +100,7 @@ test("computePromiseMetrics: counts, dollars, and null-safe strict kept rate", (
 
 test("computePromiseMetrics: kept rate is null when nothing is resolved", () => {
   const onlyPending = buildPromiseRows(PROMISES.filter((p) => p.status === "pending"), TODAY, LABELS);
-  expect(computePromiseMetrics(onlyPending, TODAY).keptRate).toBeNull();
+  expect(computePromiseMetrics(onlyPending, TODAY, DAY_CONFIG).keptRate).toBeNull();
 });
 
 test("buildPromiseRows: pending received is derived live from linked balance; terminal stays persisted", () => {

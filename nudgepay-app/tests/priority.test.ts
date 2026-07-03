@@ -87,3 +87,57 @@ test("overrideToLevel maps lowercase enum to PascalCase, null passes through", (
   expect(overrideToLevel("low")).toBe("Low");
   expect(overrideToLevel(null)).toBe(null);
 });
+
+// --- org-configurable thresholds (Phase 4) ---
+test("scorePriority with no opts keeps the existing 25/50/80 defaults", () => {
+  const low = scorePriority({ ageDays: 1, balance: 0, brokenPromise: false, daysSinceContact: 0, followUpDue: false }); // 8
+  expect(low.level).toBe("Low");
+  const medium = scorePriority({ ageDays: 30, balance: 1000, brokenPromise: false, daysSinceContact: 0, followUpDue: false }); // 26
+  expect(medium.level).toBe("Medium");
+  const high = scorePriority({ ageDays: 90, balance: 0, brokenPromise: false, daysSinceContact: 7, followUpDue: false }); // 50
+  expect(high.level).toBe("High");
+  const critical = scorePriority({ ageDays: 90, balance: 10000, brokenPromise: true, daysSinceContact: 0, followUpDue: false }); // 88
+  expect(critical.level).toBe("Critical");
+});
+
+test("custom thresholds shift levels: a score of 26 becomes Low when medium is raised above it", () => {
+  const s = scorePriority(
+    { ageDays: 30, balance: 1000, brokenPromise: false, daysSinceContact: 0, followUpDue: false }, // score 26
+    { thresholds: { criticalMin: 80, highMin: 50, mediumMin: 30 } },
+  );
+  expect(s.score).toBe(26);
+  expect(s.level).toBe("Low");
+});
+
+test("custom thresholds shift levels: lowering criticalMin promotes a High score to Critical", () => {
+  const s = scorePriority(
+    { ageDays: 90, balance: 0, brokenPromise: false, daysSinceContact: 7, followUpDue: false }, // score 50
+    { thresholds: { criticalMin: 50, highMin: 30, mediumMin: 10 } },
+  );
+  expect(s.score).toBe(50);
+  expect(s.level).toBe("Critical");
+});
+
+test("custom highValueThreshold shifts the 12-point balance tier", () => {
+  const at5k = scorePriority({ ageDays: 0, balance: 5000, brokenPromise: false, daysSinceContact: 0, followUpDue: false });
+  expect(at5k.factors.find((f) => f.key === "balance")?.points).toBe(12); // default org threshold (5000)
+
+  const custom = scorePriority(
+    { ageDays: 0, balance: 5000, brokenPromise: false, daysSinceContact: 0, followUpDue: false },
+    { highValueThreshold: 8000 },
+  );
+  expect(custom.factors.find((f) => f.key === "balance")?.points).toBe(6); // below the raised org threshold, falls to the 1k tier
+
+  const custom2 = scorePriority(
+    { ageDays: 0, balance: 8000, brokenPromise: false, daysSinceContact: 0, followUpDue: false },
+    { highValueThreshold: 8000 },
+  );
+  expect(custom2.factors.find((f) => f.key === "balance")?.points).toBe(12); // exactly at the raised threshold
+
+  // 25k/10k/1k tiers stay fixed regardless of the org's high-value threshold.
+  const unaffected = scorePriority(
+    { ageDays: 0, balance: 25000, brokenPromise: false, daysSinceContact: 0, followUpDue: false },
+    { highValueThreshold: 100 },
+  );
+  expect(unaffected.factors.find((f) => f.key === "balance")?.points).toBe(25);
+});

@@ -1,6 +1,13 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { sendSms, type TwilioConfig, type TwilioSender } from "./twilio-client.server";
 import { isContactBlocked, type ExceptionState } from "./exceptions";
+import { isWithinSendWindow, resolveQuietHours, quietHoursWindowLabel } from "./quiet-hours";
+import { DEFAULT_COMPANY_PROFILE } from "./org-profile";
+
+// Pre-resolved quiet-hours window, threaded through from the caller's already
+// -loaded org config (bulk path) to avoid a repeat org_settings read per case
+// (runBulkSms sends ≤50 cases through this same function per Phase 7 plan).
+export type QuietHoursWindow = { timezone: string; startHour: number; endHour: number };
 
 export type MessagingDeps = {
   fetchFn: typeof fetch;
@@ -8,7 +15,23 @@ export type MessagingDeps = {
   twilio: TwilioConfig;
   defaultSender: TwilioSender;
   statusCallback?: string | null;
+  /** Pre-fetched quiet-hours window; when absent, sendInvoiceText reads org_settings itself. */
+  quietHoursWindow?: QuietHoursWindow;
+  /** Injectable "now" for the quiet-hours check — defaults to `new Date()`. Test-only override. */
+  now?: Date;
 };
+
+async function loadQuietHoursWindow(service: SupabaseClient, orgId: string): Promise<QuietHoursWindow> {
+  const { data, error } = await service.from("org_settings")
+    .select("timezone, sms_send_start_hour, sms_send_end_hour").eq("org_id", orgId).maybeSingle();
+  if (error) throw error;
+  const { startHour, endHour } = resolveQuietHours(data as { sms_send_start_hour?: number | null; sms_send_end_hour?: number | null } | null);
+  return {
+    timezone: (data?.timezone as string | null) || DEFAULT_COMPANY_PROFILE.timezone,
+    startHour,
+    endHour,
+  };
+}
 
 // US-oriented: compare on the last 10 digits. (A normalized phone column is a
 // future optimization if multi-country support is added.)
@@ -75,6 +98,15 @@ export async function sendInvoiceText(
   // org switch on this critical send path. Surface it like the other reads above.
   if (mcErr) throw mcErr;
   if (mc && mc.sms_enabled === false) throw new Error("SMS disabled for this workspace");
+
+  // Quiet hours (Phase 7): org-configurable SMS send window, org-local time.
+  // The bulk path threads a pre-fetched window through deps to avoid a repeat
+  // org_settings read per case; the single-send path reads it here.
+  const window = deps.quietHoursWindow ?? await loadQuietHoursWindow(deps.service, args.orgId);
+  const now = deps.now ?? new Date();
+  if (!isWithinSendWindow(now, window.timezone, window.startHour, window.endHour)) {
+    throw new Error(`Quiet hours: texts can be sent only between ${quietHoursWindowLabel(window.startHour, window.endHour)} (${window.timezone})`);
+  }
 
   if (!cust.sms_consent) throw new Error("Customer has not consented to SMS");
 

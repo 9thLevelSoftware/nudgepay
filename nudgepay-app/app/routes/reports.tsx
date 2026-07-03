@@ -3,6 +3,8 @@ import { getEnv } from "../lib/env.server";
 import { loadWorkspaceChrome } from "../lib/workspace.server";
 import { listOrgMembers } from "../lib/orgs.server";
 import { addCalendarDays } from "../lib/business-days";
+import { loadOrgConfig } from "../lib/org-config.server";
+import { todayInTz } from "../lib/tz";
 import { AppShell } from "../components/AppShell";
 import {
   buildTeamReport, REPORT_RANGES, activeBrokenCaseIds, type ReportRange,
@@ -29,7 +31,8 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
   const url = new URL(request.url);
   const rawRange = Number(url.searchParams.get("range"));
   const range: ReportRange = (REPORT_RANGES as readonly number[]).includes(rawRange) ? (rawRange as ReportRange) : 30;
-  const today = new Date().toISOString().slice(0, 10);
+  const orgConfig = await loadOrgConfig(supabase, org.org_id);
+  const today = todayInTz(orgConfig.companyProfile.timezone);
   const windowStart = addCalendarDays(today, -range);
 
   // Roster

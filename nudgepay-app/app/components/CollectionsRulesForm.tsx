@@ -11,7 +11,7 @@ export function CollectionsRulesForm({
   grace: number;
   workingDays: number[];
   cadence: { Critical: number; High: number; Medium: number; Low: number };
-  holidays: string[];
+  holidays: Array<{ date: string; label: string | null }>;
   isOwner: boolean;
   returnTo?: string;
 }) {
@@ -80,12 +80,13 @@ export function CollectionsRulesForm({
         <ul className="mt-2 flex flex-col gap-1" role="list">
           {holidays.length === 0 ? <li className="text-sm text-muted">No holidays configured.</li> : null}
           {holidays.map((h) => (
-            <li key={h} className="flex items-center gap-3 text-sm text-text">
-              <span className="tabular-nums">{h}</span>
+            <li key={h.date} className="flex items-center gap-3 text-sm text-text">
+              <span className="tabular-nums">{h.date}</span>
+              {h.label ? <span className="text-muted">{h.label}</span> : null}
               {isOwner ? (
                 <Form method="post" action="/api/org-settings">
                   <input type="hidden" name="intent" value="remove_holiday" />
-                  <input type="hidden" name="holiday_date" value={h} />
+                  <input type="hidden" name="holiday_date" value={h.date} />
                   <input type="hidden" name="returnTo" value={returnTo} />
                   <button type="submit" disabled={intentBusy("remove_holiday")} className="text-xs text-hot hover:underline disabled:opacity-60 disabled:cursor-not-allowed">
                     {intentBusy("remove_holiday") ? "Removing…" : "Remove"}
@@ -101,6 +102,9 @@ export function CollectionsRulesForm({
             <input type="hidden" name="returnTo" value={returnTo} />
             <label className="sr-only" htmlFor="holiday-date-input">Holiday date</label>
             <input id="holiday-date-input" type="date" name="holiday_date" required
+              className="rounded-md border border-border bg-surface px-2 py-1.5 text-sm text-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-copper" />
+            <label className="sr-only" htmlFor="holiday-label-input">Holiday label</label>
+            <input id="holiday-label-input" type="text" name="holiday_label" maxLength={80} placeholder="Label (optional)"
               className="rounded-md border border-border bg-surface px-2 py-1.5 text-sm text-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-copper" />
             <button type="submit" disabled={intentBusy("add_holiday")} className="rounded-md border border-border px-3 py-1.5 text-xs font-medium text-text hover:border-copper disabled:opacity-60 disabled:cursor-not-allowed">
               {intentBusy("add_holiday") ? "Adding…" : "Add holiday"}

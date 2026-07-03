@@ -24,13 +24,14 @@ export type ComingDueGroup = {
 };
 
 /**
- * Is this invoice coming due (due today through +7 days)?
+ * Is this invoice coming due (due today through +`days` days)?
  * `ageInDays(dueDate, today)` returns negative when `dueDate` is in the future.
- * Coming due = `ageInDays` in [-7, 0] — i.e. due today (0) through 7 days away (-7).
+ * Coming due = `ageInDays` in [-days, 0] — i.e. due today (0) through `days`
+ * days away. `days` defaults to COMING_DUE_DAYS but org config may override it.
  */
-export function isComingDue(dueDate: string, today: string): boolean {
+export function isComingDue(dueDate: string, today: string, days: number = COMING_DUE_DAYS): boolean {
   const age = ageInDays(dueDate, today);
-  return age >= -COMING_DUE_DAYS && age <= 0;
+  return age >= -days && age <= 0;
 }
 
 /**
@@ -38,18 +39,21 @@ export function isComingDue(dueDate: string, today: string): boolean {
  * Filters to `balance > 0 && dueDate != null && isComingDue(...)`.
  * Groups by customer (id → group), sorts groups by nextDueDate asc then name,
  * invoices within each group by daysUntilDue asc (soonest first).
+ * `comingDueDays` (default COMING_DUE_DAYS) sizes the lookahead window — pass
+ * the org-configured value so the display window matches the query window.
  */
 export function buildComingDueGroups(
   invoices: InvoiceInput[],
   customers: CustomerInput[],
   today: string,
+  comingDueDays: number = COMING_DUE_DAYS,
 ): ComingDueGroup[] {
   const custById = new Map(customers.map((c) => [c.id, c]));
   const grouped = new Map<string, { cust: CustomerInput; invs: ComingDueInvoice[] }>();
 
   for (const inv of invoices) {
     if (!inv.customer_id || !inv.due_date || inv.balance <= 0) continue;
-    if (!isComingDue(inv.due_date, today)) continue;
+    if (!isComingDue(inv.due_date, today, comingDueDays)) continue;
 
     const daysUntilDue = -ageInDays(inv.due_date, today); // positive = future
     const cdi: ComingDueInvoice = {

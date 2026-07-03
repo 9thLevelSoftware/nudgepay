@@ -4,8 +4,9 @@ import { Form, Link, useNavigation, useSearchParams } from "react-router";
 import type { ThreadRow } from "../lib/message-inbox";
 import type { MessageEntry, EmailMessageEntry } from "~/routes/dashboard";
 import { MessageBubbles } from "./MessageBubbles";
-import { SMS_TEMPLATES, applyTemplate, type TemplateVars } from "../lib/sms-templates";
-import { EMAIL_TEMPLATES, applyEmailTemplate } from "../lib/email-templates";
+import { applyTemplate, type TemplateVars } from "../lib/sms-templates";
+import { applyEmailTemplate } from "../lib/email-templates";
+import type { MessageTemplateRow } from "../lib/message-templates";
 import { formatDate } from "../lib/dates";
 import { emailFailureLabel, isHardBounce } from "../lib/labels";
 import { Icon } from "./Icons";
@@ -17,6 +18,7 @@ const SMS_BANNER: Record<string, { text: string; tone: string }> = {
   error: { text: "Could not send the text.", tone: "text-hot" },
   blocked: { text: "Not sent — this case is marked do-not-contact / legal.", tone: "text-hot" },
   disabled: { text: "Not sent — text messaging is turned off for this workspace.", tone: "text-hot" },
+  quiet: { text: "Not sent — outside quiet hours.", tone: "text-warm" },
 };
 
 const EMAIL_BANNER: Record<string, { text: string; tone: string }> = {
@@ -36,16 +38,21 @@ interface Props {
   vars: TemplateVars;
   sms: string | null;
   smsEnabled: boolean;
+  smsQuietNow: boolean;
+  quietHoursLabel: string;
   emailEnabled: boolean;
   selectedEmail: string | null;
   tab: string;
   sort: string;
   q: string;
+  smsTemplates: MessageTemplateRow[];
+  emailTemplates: MessageTemplateRow[];
 }
 
 export function MessageThreadPanel({
   thread, messages, emailMessages, consent, phone, vars, sms, smsEnabled,
-  emailEnabled, selectedEmail, tab, sort, q,
+  smsQuietNow, quietHoursLabel,
+  emailEnabled, selectedEmail, tab, sort, q, smsTemplates, emailTemplates,
 }: Props) {
   const [body, setBody] = useState("");
   const [subject, setSubject] = useState("");
@@ -186,9 +193,9 @@ export function MessageThreadPanel({
             defaultValue=""
             disabled={!emailEnabled || !thread.canReply}
             onChange={(e) => {
-              const tmpl = EMAIL_TEMPLATES.find((t) => t.id === e.target.value);
+              const tmpl = emailTemplates.find((t) => t.id === e.target.value);
               if (tmpl) {
-                setSubject(applyEmailTemplate(tmpl.subject, vars));
+                setSubject(applyEmailTemplate(tmpl.subject ?? "", vars));
                 setBody(applyEmailTemplate(tmpl.body, vars));
               }
             }}
@@ -196,7 +203,7 @@ export function MessageThreadPanel({
             aria-label="Email template"
           >
             <option value="" disabled>Pick a template…</option>
-            {EMAIL_TEMPLATES.map((t) => (
+            {emailTemplates.map((t) => (
               <option key={t.id} value={t.id}>{t.label}</option>
             ))}
           </select>
@@ -246,6 +253,14 @@ export function MessageThreadPanel({
         </div>
       ) : (
         <div className="border-t border-border px-4 py-3">
+          {smsQuietNow && (
+            <p
+              className="mb-2 rounded-md px-3 py-2 text-xs font-medium bg-warm/10 border border-warm/30 text-warm"
+              role="status"
+            >
+              Outside quiet hours ({quietHoursLabel}) — sends are blocked until the window reopens. The button stays enabled in case this page is stale.
+            </p>
+          )}
           {smsSendDisabled && (
             <p
               className={`mb-2 rounded-md px-3 py-2 text-xs font-sans font-medium ${
@@ -259,7 +274,7 @@ export function MessageThreadPanel({
             </p>
           )}
           <div className="flex flex-wrap gap-1.5 mb-2" role="group" aria-label="Message templates">
-            {SMS_TEMPLATES.map((t) => (
+            {smsTemplates.map((t) => (
               <button
                 key={t.id} type="button" disabled={smsSendDisabled} onClick={() => setBody(applyTemplate(t.body, vars))}
                 className="text-xs text-muted border border-border rounded-md px-2 py-1 hover:text-copper hover:border-copper focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-copper transition-colors disabled:opacity-40 disabled:cursor-not-allowed"

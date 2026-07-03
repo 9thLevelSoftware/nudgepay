@@ -57,3 +57,10 @@ test("clampBatch caps a bulk-assign id list at MAX_BATCH", () => {
   const ids = Array.from({ length: MAX_BATCH + 10 }, (_, i) => `case-${i}`);
   expect(clampBatch(ids)).toHaveLength(MAX_BATCH);
 });
+
+test("clampBatch caps a bulk-assign id list at an org-configured limit", () => {
+  const ids = Array.from({ length: MAX_BATCH + 10 }, (_, i) => `case-${i}`);
+  // The route reads orgConfig.workflow.smsBatchLimit and passes it here —
+  // same clamp helper as api.bulk-sms.tsx, so both bulk routes agree.
+  expect(clampBatch(ids, 10)).toHaveLength(10);
+});

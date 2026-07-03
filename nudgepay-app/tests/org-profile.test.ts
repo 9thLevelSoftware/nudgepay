@@ -131,4 +131,34 @@ describe("parseCompanyProfileUpdate", () => {
     expect(result.ok).toBe(true);
     if (result.ok) expect(result.patch.company_phone).toBeNull();
   });
+
+  it("defaults digest_hour_local to 8 when omitted", () => {
+    const result = parseCompanyProfileUpdate(form(validBase));
+    expect(result.ok).toBe(true);
+    if (result.ok) expect(result.patch.digest_hour_local).toBe(8);
+  });
+
+  it("accepts a valid digest_hour_local", () => {
+    const result = parseCompanyProfileUpdate(form({ ...validBase, digest_hour_local: "14" }));
+    expect(result.ok).toBe(true);
+    if (result.ok) expect(result.patch.digest_hour_local).toBe(14);
+  });
+
+  it("rejects digest_hour_local out of range", () => {
+    const result = parseCompanyProfileUpdate(form({ ...validBase, digest_hour_local: "24" }));
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.error).toBe("digest_hour");
+  });
+
+  it("rejects negative digest_hour_local", () => {
+    const result = parseCompanyProfileUpdate(form({ ...validBase, digest_hour_local: "-1" }));
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.error).toBe("digest_hour");
+  });
+
+  it("rejects non-integer digest_hour_local", () => {
+    const result = parseCompanyProfileUpdate(form({ ...validBase, digest_hour_local: "8.5" }));
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.error).toBe("digest_hour");
+  });
 });

@@ -9,11 +9,17 @@ import { CollectionsRulesForm } from "../components/CollectionsRulesForm";
 import { SmsSettingsSection } from "../components/SmsSettingsSection";
 import { EmailSettingsSection } from "../components/EmailSettingsSection";
 import { LateFeesForm } from "../components/LateFeesForm";
+import { PriorityThresholdsForm } from "../components/PriorityThresholdsForm";
+import { WorkflowSettingsForm } from "../components/WorkflowSettingsForm";
+import { QuietHoursForm } from "../components/QuietHoursForm";
 import { NotificationPrefsForm } from "../components/NotificationPrefsForm";
 import { CompanyProfileForm } from "../components/CompanyProfileForm";
+import { TemplateEditor } from "../components/TemplateEditor";
 import { resolveChannelSettings, resolveSmsSenderSettings } from "../lib/channel-settings";
 import { resolveEmailSettings } from "../lib/email-settings";
 import { deriveWebhookUrls } from "../lib/provider-status";
+import { loadTemplates } from "../lib/message-templates.server";
+import { resolveTemplates } from "../lib/message-templates";
 import { pageTitle } from "../lib/meta";
 import type { Route } from "./+types/settings";
 
@@ -46,6 +52,13 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
 
   const config = await loadOrgConfig(supabase, org.org_id);
 
+  // Display-only holiday rows (date + label). resolveOrgConfig's holidays Set
+  // (used for business-day math) only needs the dates, so this is a separate,
+  // lightweight read rather than threading label through OrgConfig.
+  const { data: holidayRows, error: holidayErr } = await supabase.from("org_holidays")
+    .select("holiday_date, label").eq("org_id", org.org_id).order("holiday_date", { ascending: true });
+  if (holidayErr) throw holidayErr;
+
   const displayName = (user.user_metadata?.display_name as string | undefined) ?? "";
 
   // Notification prefs (user client → RLS enforces self-only)
@@ -64,7 +77,7 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
   const webhookUrls = deriveWebhookUrls(twilioBaseUrl, appBaseUrl);
 
   const since = new Date(Date.now() - 7 * 86_400_000).toISOString();
-  const [smsLast, smsFailures, emailLast, emailFailures] = await Promise.all([
+  const [smsLast, smsFailures, emailLast, emailFailures, templates] = await Promise.all([
     supabase.from("text_messages")
       .select("created_at, status").eq("org_id", org.org_id).eq("direction", "outbound")
       .order("created_at", { ascending: false }).limit(1).maybeSingle(),
@@ -77,6 +90,7 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
     supabase.from("email_messages")
       .select("id", { count: "exact", head: true }).eq("org_id", org.org_id).eq("direction", "outbound")
       .in("status", ["bounced", "complained"]).gte("created_at", since),
+    loadTemplates(supabase, org.org_id).catch(() => resolveTemplates([])),
   ]);
 
   return data({
@@ -96,10 +110,17 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
       grace: config.promiseGraceDays,
       workingDays: [...config.workingDays],
       cadence: config.cadenceDays,
-      holidays: [...config.holidays].sort(),
+      holidays: ((holidayRows as { holiday_date: string; label: string | null }[] | null) ?? [])
+        .map((h) => ({ date: h.holiday_date, label: h.label ?? null })),
     },
     lateFee: config.lateFee,
     companyProfile: config.companyProfile,
+    digestHourLocal: config.digestHourLocal,
+    quietHours: config.quietHours,
+    priority: config.priority,
+    workflow: config.workflow,
+    smsTemplates: templates.sms,
+    emailTemplates: templates.email,
     notificationPrefs: {
       brokenPromiseEmail: notifPrefs?.broken_promise_email ?? true,
       dailyDigestEmail: notifPrefs?.daily_digest_email ?? true,
@@ -182,6 +203,7 @@ export default function Settings() {
                 key={d.orgId}
                 orgName={d.orgName}
                 profile={d.companyProfile}
+                digestHourLocal={d.digestHourLocal}
                 isOwner={d.isOwner}
                 returnTo={returnTo}
               />
@@ -303,17 +325,20 @@ export default function Settings() {
                 resendWebhook={ps.webhookUrls.resendWebhook}
                 returnTo={returnTo}
               />
+              {d.isOwner && <QuietHoursForm key={d.orgId} quietHours={d.quietHours} returnTo={returnTo} />}
             </>
           )}
 
           {/* ── Templates tab ────────────────────────────────────── */}
           {tab === "templates" && (
-            <section className="rounded-lg border border-border bg-surface p-5">
-              <h2 className="font-display text-base font-semibold text-text">Message templates</h2>
-              <p className="mt-1 text-xs text-muted">
-                Template editor coming soon — customize SMS and email templates for your organization.
-              </p>
-            </section>
+            <TemplateEditor
+              key={d.orgId}
+              smsTemplates={d.smsTemplates}
+              emailTemplates={d.emailTemplates}
+              isOwner={d.isOwner}
+              returnTo={returnTo}
+              orgId={d.orgId}
+            />
           )}
 
           {/* ── Collections tab ──────────────────────────────────── */}
@@ -328,6 +353,8 @@ export default function Settings() {
                 returnTo={returnTo}
               />
               {d.isOwner && <LateFeesForm key={d.orgId} lateFee={d.lateFee} returnTo={returnTo} />}
+              {d.isOwner && <PriorityThresholdsForm key={d.orgId} priority={d.priority} returnTo={returnTo} />}
+              {d.isOwner && <WorkflowSettingsForm key={d.orgId} workflow={d.workflow} returnTo={returnTo} />}
             </>
           )}
         </div>

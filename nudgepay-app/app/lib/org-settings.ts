@@ -100,6 +100,94 @@ export function parseLateFeeSettingsUpdate(form: FormData): LateFeeParseResult {
   };
 }
 
+// ---------------------------------------------------------------------------
+// Priority thresholds (Phase 4): org-configurable high-value + level cutoffs.
+// Mirrors the pattern above. Ordering mirrors the DB CHECK in migration 0027:
+// critical > high > medium > 0; high_value_threshold > 0.
+// ---------------------------------------------------------------------------
+
+export type PriorityThresholdsPatch = {
+  high_value_threshold: number;
+  priority_critical_min: number;
+  priority_high_min: number;
+  priority_medium_min: number;
+};
+
+export type PriorityThresholdsParseResult =
+  | { ok: true; patch: PriorityThresholdsPatch }
+  | { ok: false; error: string };
+
+export function parsePriorityThresholdsUpdate(form: FormData): PriorityThresholdsParseResult {
+  const rawHighValue = form.get("high_value_threshold");
+  const highValue = typeof rawHighValue === "string" ? Number(rawHighValue) : NaN;
+  // Floor of $1,000 prevents the configurable high-value tier from shadowing
+  // the fixed $1,000 / $0 balance tiers in priority.ts:balancePoints.
+  if (!Number.isFinite(highValue) || highValue < 1_000) return { ok: false, error: "high_value_threshold" };
+
+  const critical = intField(form, "priority_critical_min");
+  const high = intField(form, "priority_high_min");
+  const medium = intField(form, "priority_medium_min");
+  if (critical === null || high === null || medium === null) {
+    return { ok: false, error: "priority_thresholds" };
+  }
+  // Bounds: each level 1–200, strictly ordered with a minimum gap of 5 so
+  // scoring bands remain meaningful.
+  if (critical > 200 || high > 200 || medium > 200) {
+    return { ok: false, error: "priority_thresholds_range" };
+  }
+  if (!(critical > high && high > medium && medium > 0)) {
+    return { ok: false, error: "priority_thresholds_order" };
+  }
+  if (critical - high < 5 || high - medium < 5) {
+    return { ok: false, error: "priority_thresholds_range" };
+  }
+
+  return {
+    ok: true,
+    patch: {
+      high_value_threshold: Math.round(highValue * 100) / 100, // up to 2dp
+      priority_critical_min: critical,
+      priority_high_min: high,
+      priority_medium_min: medium,
+    },
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Workflow knobs (Phase 5): coming-due lookahead, promise due-soon window, and
+// bulk-op batch-size cap. Ranges mirror the DB CHECKs in migration 0028.
+// ---------------------------------------------------------------------------
+
+export type WorkflowKnobsPatch = {
+  coming_due_days: number;
+  due_soon_business_days: number;
+  sms_batch_limit: number;
+};
+
+export type WorkflowKnobsParseResult =
+  | { ok: true; patch: WorkflowKnobsPatch }
+  | { ok: false; error: string };
+
+export function parseWorkflowKnobsUpdate(form: FormData): WorkflowKnobsParseResult {
+  const comingDue = intField(form, "coming_due_days");
+  if (comingDue === null || comingDue < 1 || comingDue > 60) return { ok: false, error: "coming_due_days" };
+
+  const dueSoon = intField(form, "due_soon_business_days");
+  if (dueSoon === null || dueSoon < 1 || dueSoon > 30) return { ok: false, error: "due_soon_business_days" };
+
+  const batchLimit = intField(form, "sms_batch_limit");
+  if (batchLimit === null || batchLimit < 1 || batchLimit > 200) return { ok: false, error: "sms_batch_limit" };
+
+  return {
+    ok: true,
+    patch: {
+      coming_due_days: comingDue,
+      due_soon_business_days: dueSoon,
+      sms_batch_limit: batchLimit,
+    },
+  };
+}
+
 // Validates a single YYYY-MM-DD holiday date (for add/remove). Returns the
 // normalized string, or null when malformed or not a real calendar day.
 export function parseHolidayDate(value: FormDataEntryValue | null): string | null {
@@ -108,4 +196,13 @@ export function parseHolidayDate(value: FormDataEntryValue | null): string | nul
   const d = new Date(value + "T00:00:00Z");
   if (Number.isNaN(d.getTime())) return null;
   return d.toISOString().slice(0, 10) === value ? value : null; // round-trip rejects 2026-02-31
+}
+
+// Validates an optional holiday label (display-only; org_holidays.label from
+// migration 0016). Trims whitespace, clamps to 80 chars (mirrors the form's
+// maxLength as a server-side backstop), and normalizes blank input to null.
+export function parseHolidayLabel(value: FormDataEntryValue | null): string | null {
+  if (typeof value !== "string") return null;
+  const trimmed = value.trim().slice(0, 80);
+  return trimmed === "" ? null : trimmed;
 }

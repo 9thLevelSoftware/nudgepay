@@ -1,5 +1,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { displayLabel } from "./names";
+import { DEFAULT_SMS_TEMPLATES } from "./sms-templates";
+import { DEFAULT_EMAIL_TEMPLATES } from "./email-templates";
 
 export async function acceptInvite(
   service: SupabaseClient,
@@ -42,6 +44,25 @@ export async function createOrgForUser(
     await service.from("organizations").delete().eq("id", org.id); // compensate
     throw memErr;
   }
+
+  // Seed default message templates. Best-effort — if this fails, resolveTemplates
+  // falls back to the hardcoded defaults, so a failure here is never fatal.
+  const templateRows = [
+    ...DEFAULT_SMS_TEMPLATES.map((t, i) => ({
+      org_id: org.id, channel: "sms", slug: t.id, label: t.label,
+      subject: null, body: t.body, sort: i,
+    })),
+    ...DEFAULT_EMAIL_TEMPLATES.map((t, i) => ({
+      org_id: org.id, channel: "email", slug: t.id, label: t.label,
+      subject: t.subject, body: t.body, sort: i,
+    })),
+  ];
+  try {
+    await service.from("message_templates").insert(templateRows);
+  } catch {
+    // best-effort — resolveTemplates() falls back to defaults if this row set is missing
+  }
+
   return org.id as string;
 }
 

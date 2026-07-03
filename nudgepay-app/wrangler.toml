@@ -15,8 +15,9 @@ QBO_SANDBOX = "true"
 # RESEND_API_KEY, RESEND_WEBHOOK_SECRET, UNSUBSCRIBE_SECRET, APP_PUBLIC_BASE_URL
 
 [triggers]
-# CDC catch-up every 30 min + daily digest at 1pm UTC (≈8am ET).
-crons = ["*/30 * * * *", "0 13 * * *"]
+# CDC catch-up every 30 min + hourly digest gate (fires per-org once local
+# time reaches each org's configured digest_hour_local — see digest-cron.server.ts).
+crons = ["*/30 * * * *", "0 * * * *"]
 
 # --- Production environment ---------------------------------------------------
 # Deploy with: npx wrangler deploy --env production
@@ -27,7 +28,7 @@ QBO_SANDBOX = "false"   # production QBO: gates ONLY the Data API base URL
 
 # [env.production.triggers] mirrors the top-level crons.
 [env.production.triggers]
-crons = ["*/30 * * * *", "0 13 * * *"]
+crons = ["*/30 * * * *", "0 * * * *"]
 
 # Secrets required in production (set each: `npx wrangler secret put <NAME> --env production`):
 #   SUPABASE_ANON_KEY            Supabase anon/publishable key

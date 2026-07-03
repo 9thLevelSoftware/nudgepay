@@ -52,3 +52,42 @@ test("loadOrgConfig reflects stored settings and holidays", async () => {
   expect(cfg.holidays.has("2026-12-25")).toBe(true);
   expect(cfg.cadenceDays.Critical).toBe(1);
 });
+
+test("loadOrgConfig defaults the Phase 5 workflow knobs for an org with no settings row", async () => {
+  const { data: org } = await svc.from("organizations").insert({ name: "C7 workflow defaults" }).select("id").single();
+  const orgId = org!.id as string;
+  const cfg = await loadOrgConfig(svc, orgId);
+  expect(cfg.workflow).toEqual({ comingDueDays: 7, dueSoonBusinessDays: 3, smsBatchLimit: 50 });
+});
+
+test("loadOrgConfig reflects stored workflow knobs", async () => {
+  const { data: org } = await svc.from("organizations").insert({ name: "C7 workflow custom" }).select("id").single();
+  const orgId = org!.id as string;
+  await svc.from("org_settings").insert({
+    org_id: orgId, coming_due_days: 14, due_soon_business_days: 5, sms_batch_limit: 100,
+  });
+  const cfg = await loadOrgConfig(svc, orgId);
+  expect(cfg.workflow).toEqual({ comingDueDays: 14, dueSoonBusinessDays: 5, smsBatchLimit: 100 });
+});
+
+test("loadOrgConfig defaults quiet hours (8-21) for an org with no settings row", async () => {
+  const { data: org } = await svc.from("organizations").insert({ name: "C7 quiet hours defaults" }).select("id").single();
+  const orgId = org!.id as string;
+  const cfg = await loadOrgConfig(svc, orgId);
+  expect(cfg.quietHours).toEqual({ startHour: 8, endHour: 21 });
+});
+
+test("loadOrgConfig reflects a stored quiet-hours window", async () => {
+  const { data: org } = await svc.from("organizations").insert({ name: "C7 quiet hours custom" }).select("id").single();
+  const orgId = org!.id as string;
+  await svc.from("org_settings").insert({ org_id: orgId, sms_send_start_hour: 9, sms_send_end_hour: 18 });
+  const cfg = await loadOrgConfig(svc, orgId);
+  expect(cfg.quietHours).toEqual({ startHour: 9, endHour: 18 });
+});
+
+test("org_settings rejects an invalid quiet-hours window (start >= end)", async () => {
+  const { data: org } = await svc.from("organizations").insert({ name: "C7 quiet hours invalid" }).select("id").single();
+  const orgId = org!.id as string;
+  const { error } = await svc.from("org_settings").insert({ org_id: orgId, sms_send_start_hour: 15, sms_send_end_hour: 9 });
+  expect(error).not.toBeNull();
+});

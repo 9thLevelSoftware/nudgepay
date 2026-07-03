@@ -4,8 +4,9 @@ import { HEARTBEAT_INTERVAL_MS, type Collision } from "~/lib/collision";
 import { type CaseItem } from "~/lib/cases";
 import { Icon } from "~/components/Icons";
 import { MessageBubbles } from "~/components/MessageBubbles";
-import { SMS_TEMPLATES, applyTemplate, type TemplateVars } from "~/lib/sms-templates";
-import { EMAIL_TEMPLATES, applyEmailTemplate } from "~/lib/email-templates";
+import { applyTemplate, type TemplateVars } from "~/lib/sms-templates";
+import { applyEmailTemplate } from "~/lib/email-templates";
+import type { MessageTemplateRow } from "~/lib/message-templates";
 import { formatDate } from "~/lib/dates";
 import { STATUS_LABEL, EXCEPTION_REASON_LABEL, formatUSD } from "~/lib/format";
 import { isContactBlocked, isTerminal, exceptionLabel } from "~/lib/exceptions";
@@ -95,6 +96,7 @@ const SMS_BANNER: Record<string, { text: string; tone: string }> = {
   error:     { text: "Could not send the text.",                                      tone: "text-hot" },
   blocked:   { text: "Not sent — this case is marked do-not-contact / legal.",        tone: "text-hot" },
   disabled:  { text: "Not sent — text messaging is turned off for this workspace.",   tone: "text-hot" },
+  quiet:     { text: "Not sent — outside quiet hours.",                              tone: "text-warm" },
 };
 
 const EMAIL_BANNER: Record<string, { text: string; tone: string }> = {
@@ -112,7 +114,9 @@ const PROMISE_ERROR_TEXT: Record<string, string> = {
 };
 
 function MessagesTab({
-  selected, repInvoiceId, messages, consent, prefs, phone, sms, smsEnabled, view, sort, q, collision,
+  selected, repInvoiceId, messages, consent, prefs, phone, sms, smsEnabled, smsQuietNow, quietHoursLabel,
+  view, sort, q, collision,
+  smsTemplates, orgCompany, orgPhone, orgPaymentLink,
 }: {
   selected: CaseItem;
   repInvoiceId: string | null;
@@ -122,10 +126,16 @@ function MessagesTab({
   phone: string | null;
   sms: string | null;
   smsEnabled: boolean;
+  smsQuietNow: boolean;
+  quietHoursLabel: string;
   view: string;
   sort: string;
   q: string;
   collision: Collision | null;
+  smsTemplates: MessageTemplateRow[];
+  orgCompany: string;
+  orgPhone: string;
+  orgPaymentLink: string;
 }) {
   const returnTo = `/dashboard?${new URLSearchParams({
     case: selected.caseId, tab: "messages", view, sort, ...(q ? { q } : {}),
@@ -141,6 +151,9 @@ function MessagesTab({
     invoice:  repInvoice?.docNumber ?? selected.customerName,
     balance:  formatUSD(selected.totalOverdue),
     dueDate:  formatDate(repInvoice?.dueDate ?? null),
+    company: orgCompany,
+    phone: orgPhone,
+    paymentLink: orgPaymentLink,
   };
 
   const [body, setBody] = useState("");
@@ -233,6 +246,14 @@ function MessagesTab({
 
       {/* Templates + composer */}
       <div className="border-t border-border px-5 py-3 shrink-0">
+        {smsQuietNow && (
+          <p
+            className="mb-2 rounded-md border border-warm/30 bg-warm/10 px-3 py-2 text-xs font-sans font-medium text-warm"
+            role="status"
+          >
+            Outside quiet hours ({quietHoursLabel}) — sends are blocked until the window reopens. The button stays enabled in case this page is stale.
+          </p>
+        )}
         {smsGate && (
           <p
             className={`mb-2 rounded-md px-3 py-2 text-xs font-sans font-medium ${
@@ -246,7 +267,7 @@ function MessagesTab({
           </p>
         )}
         <div className="flex flex-wrap gap-1.5 mb-2" role="group" aria-label="Message templates">
-          {SMS_TEMPLATES.map((t) => (
+          {smsTemplates.map((t) => (
             <button
               key={t.id}
               type="button"
@@ -308,7 +329,7 @@ function MessagesTab({
 
 function EmailTab({
   selected, repInvoiceId, emailMessages, prefs, customerEmail, emailEnabled,
-  view, sort, q,
+  view, sort, q, emailTemplates, orgCompany, orgPhone, orgPaymentLink,
 }: {
   selected: CaseItem;
   repInvoiceId: string | null;
@@ -319,6 +340,10 @@ function EmailTab({
   view: string;
   sort: string;
   q: string;
+  emailTemplates: MessageTemplateRow[];
+  orgCompany: string;
+  orgPhone: string;
+  orgPaymentLink: string;
 }) {
   const [searchParams] = useSearchParams();
   const emailResult = searchParams.get("email");
@@ -337,6 +362,9 @@ function EmailTab({
     invoice:  repInvoice?.docNumber ?? selected.customerName,
     balance:  formatUSD(selected.totalOverdue),
     dueDate:  formatDate(repInvoice?.dueDate ?? null),
+    company: orgCompany,
+    phone: orgPhone,
+    paymentLink: orgPaymentLink,
   };
 
   const [subject, setSubject] = useState("");
@@ -427,9 +455,9 @@ function EmailTab({
           defaultValue=""
           disabled={sendDisabled}
           onChange={(e) => {
-            const tmpl = EMAIL_TEMPLATES.find((t) => t.id === e.target.value);
+            const tmpl = emailTemplates.find((t) => t.id === e.target.value);
             if (tmpl) {
-              setSubject(applyEmailTemplate(tmpl.subject, vars));
+              setSubject(applyEmailTemplate(tmpl.subject ?? "", vars));
               setBody(applyEmailTemplate(tmpl.body, vars));
             }
           }}
@@ -437,7 +465,7 @@ function EmailTab({
           aria-label="Email template"
         >
           <option value="" disabled>Pick a template…</option>
-          {EMAIL_TEMPLATES.map((t) => (
+          {emailTemplates.map((t) => (
             <option key={t.id} value={t.id}>{t.label}</option>
           ))}
         </select>
@@ -527,6 +555,8 @@ export function DetailPanel({
   phone,
   sms,
   smsEnabled,
+  smsQuietNow,
+  quietHoursLabel,
   emailEnabled,
   emailMessages,
   customerEmail,
@@ -537,6 +567,11 @@ export function DetailPanel({
   q,
   selectedPromiseId,
   collision,
+  smsTemplates,
+  emailTemplates,
+  orgCompany,
+  orgPhone,
+  orgPaymentLink,
 }: {
   selected: CaseItem | null;
   repInvoiceId: string | null;
@@ -548,6 +583,8 @@ export function DetailPanel({
   phone: string | null;
   sms: string | null;
   smsEnabled: boolean;
+  smsQuietNow: boolean;
+  quietHoursLabel: string;
   emailEnabled?: boolean;
   emailMessages?: EmailMessageEntry[];
   customerEmail?: string | null;
@@ -558,6 +595,11 @@ export function DetailPanel({
   q: string;
   selectedPromiseId: string | null;
   collision: Collision | null;
+  smsTemplates: MessageTemplateRow[];
+  emailTemplates: MessageTemplateRow[];
+  orgCompany: string;
+  orgPhone: string;
+  orgPaymentLink: string;
 }) {
   // ── Hooks (must be unconditional, before any early return) ─────────────────
   // Keep the latest revalidate fn in a ref so the heartbeat effect depends ONLY
@@ -1104,10 +1146,16 @@ export function DetailPanel({
           phone={phone}
           sms={sms}
           smsEnabled={smsEnabled}
+          smsQuietNow={smsQuietNow}
+          quietHoursLabel={quietHoursLabel}
           view={view}
           sort={sort}
           q={q}
           collision={collision}
+          smsTemplates={smsTemplates}
+          orgCompany={orgCompany}
+          orgPhone={orgPhone}
+          orgPaymentLink={orgPaymentLink}
         />
       ) : null}
 
@@ -1123,6 +1171,10 @@ export function DetailPanel({
           view={view}
           sort={sort}
           q={q}
+          emailTemplates={emailTemplates}
+          orgCompany={orgCompany}
+          orgPhone={orgPhone}
+          orgPaymentLink={orgPaymentLink}
         />
       ) : null}
     </aside>

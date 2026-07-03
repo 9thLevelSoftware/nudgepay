@@ -5,10 +5,33 @@
 // this module composes them, so there is a single source of default truth.
 
 import type { PriorityLevel } from "./priority";
+import { DEFAULT_PRIORITY_THRESHOLDS } from "./priority";
 import { CADENCE_DAYS } from "./follow-up-cadence";
 import { GRACE_BUSINESS_DAYS, DEFAULT_WORKING_DAYS, NO_HOLIDAYS } from "./business-days";
 import { DEFAULT_LATE_FEE_CONFIG, type LateFeeConfig } from "./late-fees";
 import { resolveCompanyProfile, DEFAULT_COMPANY_PROFILE, type CompanyProfile } from "./org-profile";
+import { HIGH_VALUE_THRESHOLD } from "./worklist";
+import { COMING_DUE_DAYS } from "./coming-due";
+import { DUE_SOON_BUSINESS_DAYS } from "./promise-ledger";
+import { MAX_BATCH } from "./bulk";
+import { resolveQuietHours, DEFAULT_QUIET_HOURS, type QuietHours } from "./quiet-hours";
+
+export type PriorityConfig = {
+  highValue: number;
+  criticalMin: number;
+  highMin: number;
+  mediumMin: number;
+};
+
+// Phase 5 workflow knobs: coming-due lookahead window, the promise due-soon
+// business-day window, and the bulk-op batch-size cap. Grouped like the other
+// sections (lateFee, companyProfile, priority) rather than flattened onto
+// OrgConfig directly.
+export type WorkflowConfig = {
+  comingDueDays: number;
+  dueSoonBusinessDays: number;
+  smsBatchLimit: number;
+};
 
 export type OrgConfig = {
   promiseGraceDays: number;
@@ -17,6 +40,12 @@ export type OrgConfig = {
   cadenceDays: Readonly<Record<PriorityLevel, number>>;
   lateFee: LateFeeConfig;
   companyProfile: CompanyProfile;
+  priority: PriorityConfig;
+  workflow: WorkflowConfig;
+  /** Org-local hour (0-23) the daily digest cron gate fires at (Phase 6). */
+  digestHourLocal: number;
+  /** Org-local SMS send window (Phase 7) — same-day [startHour, endHour). */
+  quietHours: QuietHours;
 };
 
 // Nullable to match a SELECT against optional columns / an absent row.
@@ -36,7 +65,37 @@ export type OrgSettingsRow = {
   company_phone: string | null;
   payment_portal_url: string | null;
   timezone: string | null;
+  // Priority thresholds (Phase 4)
+  high_value_threshold: number | null;
+  priority_critical_min: number | null;
+  priority_high_min: number | null;
+  priority_medium_min: number | null;
+  // Workflow knobs (Phase 5)
+  coming_due_days: number | null;
+  due_soon_business_days: number | null;
+  sms_batch_limit: number | null;
+  // Digest schedule (Phase 6)
+  digest_hour_local: number | null;
+  // Quiet hours / SMS send window (Phase 7)
+  sms_send_start_hour: number | null;
+  sms_send_end_hour: number | null;
 };
+
+export const DEFAULT_PRIORITY_CONFIG: PriorityConfig = Object.freeze({
+  highValue: HIGH_VALUE_THRESHOLD,
+  criticalMin: DEFAULT_PRIORITY_THRESHOLDS.criticalMin,
+  highMin: DEFAULT_PRIORITY_THRESHOLDS.highMin,
+  mediumMin: DEFAULT_PRIORITY_THRESHOLDS.mediumMin,
+});
+
+export const DEFAULT_WORKFLOW_CONFIG: WorkflowConfig = Object.freeze({
+  comingDueDays: COMING_DUE_DAYS,
+  dueSoonBusinessDays: DUE_SOON_BUSINESS_DAYS,
+  smsBatchLimit: MAX_BATCH,
+});
+
+// Matches org_settings.digest_hour_local's column default (0029 migration).
+export const DEFAULT_DIGEST_HOUR_LOCAL = 8;
 
 export const DEFAULT_ORG_CONFIG: OrgConfig = Object.freeze({
   promiseGraceDays: GRACE_BUSINESS_DAYS,
@@ -45,6 +104,10 @@ export const DEFAULT_ORG_CONFIG: OrgConfig = Object.freeze({
   cadenceDays: CADENCE_DAYS,
   lateFee: DEFAULT_LATE_FEE_CONFIG,
   companyProfile: DEFAULT_COMPANY_PROFILE,
+  priority: DEFAULT_PRIORITY_CONFIG,
+  workflow: DEFAULT_WORKFLOW_CONFIG,
+  digestHourLocal: DEFAULT_DIGEST_HOUR_LOCAL,
+  quietHours: DEFAULT_QUIET_HOURS,
 });
 
 export function resolveOrgConfig(
@@ -76,5 +139,18 @@ export function resolveOrgConfig(
       flatAmount: Number(settings.late_fee_flat_amount ?? DEFAULT_LATE_FEE_CONFIG.flatAmount),
     },
     companyProfile: resolveCompanyProfile(settings),
+    priority: {
+      highValue: Number(settings.high_value_threshold ?? DEFAULT_PRIORITY_CONFIG.highValue),
+      criticalMin: settings.priority_critical_min ?? DEFAULT_PRIORITY_CONFIG.criticalMin,
+      highMin: settings.priority_high_min ?? DEFAULT_PRIORITY_CONFIG.highMin,
+      mediumMin: settings.priority_medium_min ?? DEFAULT_PRIORITY_CONFIG.mediumMin,
+    },
+    workflow: {
+      comingDueDays: settings.coming_due_days ?? DEFAULT_WORKFLOW_CONFIG.comingDueDays,
+      dueSoonBusinessDays: settings.due_soon_business_days ?? DEFAULT_WORKFLOW_CONFIG.dueSoonBusinessDays,
+      smsBatchLimit: settings.sms_batch_limit ?? DEFAULT_WORKFLOW_CONFIG.smsBatchLimit,
+    },
+    digestHourLocal: settings.digest_hour_local ?? DEFAULT_DIGEST_HOUR_LOCAL,
+    quietHours: resolveQuietHours(settings),
   };
 }

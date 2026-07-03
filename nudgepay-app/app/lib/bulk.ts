@@ -48,17 +48,26 @@ export function partitionEligibility<T extends TextableCase>(cases: T[]): Eligib
 // Render one personalized body using case totals + the oldest overdue invoice
 // (invoices[0], caller-sorted oldest-first) as the representative. Unknown
 // {tokens} pass through (applyTemplate only replaces known keys).
-export function renderCaseBody(templateBody: string, c: RenderableCase): string {
+export function renderCaseBody(
+  templateBody: string,
+  c: RenderableCase,
+  orgVars?: { company: string; phone: string; paymentLink: string },
+): string {
   const oldest = c.invoices[0] ?? null;
   return applyTemplate(templateBody, {
     customer: c.customerName,
     invoice: oldest?.docNumber ?? "your account",
     balance: formatUSD(c.totalOverdue),
     dueDate: oldest?.dueDate ? formatDate(oldest.dueDate) : "",
+    company: orgVars?.company ?? "",
+    phone: orgVars?.phone ?? "",
+    paymentLink: orgVars?.paymentLink ?? "",
   });
 }
 
 // Shared clamp so client select-all and server routes agree on the cap.
-export function clampBatch<T>(ids: T[]): T[] {
-  return ids.slice(0, MAX_BATCH);
+// `max` defaults to MAX_BATCH but the org-configured sms_batch_limit should be
+// threaded through everywhere it is available so client and server agree.
+export function clampBatch<T>(ids: T[], max: number = MAX_BATCH): T[] {
+  return ids.slice(0, max);
 }

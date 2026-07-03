@@ -21,8 +21,12 @@ async function seed(consent: boolean, phone: string | null) {
 function jsonResponse(body: unknown, status = 201) {
   return new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json" } });
 }
+// Fixed "now" well inside the default quiet-hours window (8-21, America/New
+// York — DEFAULT_QUIET_HOURS via the default org_settings row) so tests are
+// deterministic regardless of wall-clock time. 18:00 UTC = 14:00 EDT in June.
+const DAYTIME_NOW = new Date("2026-06-15T18:00:00Z");
 function deps(fetchFn: any, defaultSender: any = { from: "+15005550006" }): MessagingDeps {
-  return { fetchFn, service: svc, twilio, defaultSender, statusCallback: null };
+  return { fetchFn, service: svc, twilio, defaultSender, statusCallback: null, now: DAYTIME_NOW };
 }
 
 test("normalizePhone reduces to the last 10 digits", () => {
@@ -160,4 +164,70 @@ test("sendInvoiceText sends when sms_enabled is true", async () => {
   const res = await sendInvoiceText(deps(fetchFn), { orgId, invoiceId, userId, body: "ok" });
   expect(res.sid).toBe("SM-ON");
   expect(fetchFn).toHaveBeenCalledOnce();
+});
+
+// ---------------------------------------------------------------------------
+// Quiet hours (Phase 7)
+// ---------------------------------------------------------------------------
+
+test("sendInvoiceText blocks a send outside the default quiet-hours window (absent org_settings row)", async () => {
+  const { orgId, customerId, invoiceId } = await seed(true, "+12295550188");
+  // 2026-06-15T04:00:00Z = midnight America/New_York (EDT, UTC-4) — outside
+  // the default 8-21 window. No org_settings row exists, so this exercises
+  // the absent-row default (America/New_York, 8-21) end to end.
+  const outsideNow = new Date("2026-06-15T04:00:00Z");
+  const fetchFn = vi.fn();
+  await expect(sendInvoiceText({ ...deps(fetchFn), now: outsideNow }, { orgId, invoiceId, userId, body: "x" }))
+    .rejects.toThrow(/quiet hours/i);
+  expect(fetchFn).not.toHaveBeenCalled();
+  const { data: rows } = await svc.from("text_messages").select("id").eq("customer_id", customerId);
+  expect(rows ?? []).toHaveLength(0);
+});
+
+test("sendInvoiceText allows a send inside the default quiet-hours window (absent org_settings row)", async () => {
+  const { orgId, invoiceId } = await seed(true, "+12295550199");
+  // 2026-06-15T18:00:00Z = 14:00 EDT — inside the default 8-21 window.
+  const insideNow = new Date("2026-06-15T18:00:00Z");
+  const fetchFn = vi.fn(async () => jsonResponse({ sid: "SM-QUIET-OK", status: "queued" }));
+  const res = await sendInvoiceText({ ...deps(fetchFn), now: insideNow }, { orgId, invoiceId, userId, body: "ok" });
+  expect(res.sid).toBe("SM-QUIET-OK");
+  expect(fetchFn).toHaveBeenCalledOnce();
+});
+
+test("sendInvoiceText respects an org-configured quiet-hours window (narrower than the default)", async () => {
+  const { orgId, customerId, invoiceId } = await seed(true, "+12295550200");
+  await svc.from("org_settings").insert({
+    org_id: orgId, timezone: "America/New_York", sms_send_start_hour: 9, sms_send_end_hour: 17,
+  });
+  // 20:00 EDT is inside the org's DEFAULT 8-21 window but outside its
+  // configured 9-17 window — proves the org override is actually read.
+  const eveningNow = new Date("2026-06-16T00:00:00Z"); // 20:00 EDT
+  const fetchFn = vi.fn();
+  await expect(sendInvoiceText({ ...deps(fetchFn), now: eveningNow }, { orgId, invoiceId, userId, body: "x" }))
+    .rejects.toThrow(/quiet hours/i);
+  expect(fetchFn).not.toHaveBeenCalled();
+  const { data: rows } = await svc.from("text_messages").select("id").eq("customer_id", customerId);
+  expect(rows ?? []).toHaveLength(0);
+
+  // 10:00 EDT is inside the configured 9-17 window.
+  const morningNow = new Date("2026-06-15T14:00:00Z"); // 10:00 EDT
+  const fetchFn2 = vi.fn(async () => jsonResponse({ sid: "SM-CONFIGURED-OK", status: "queued" }));
+  const res = await sendInvoiceText({ ...deps(fetchFn2), now: morningNow }, { orgId, invoiceId, userId, body: "ok" });
+  expect(res.sid).toBe("SM-CONFIGURED-OK");
+});
+
+test("sendInvoiceText uses a pre-fetched quietHoursWindow instead of re-reading org_settings", async () => {
+  const { orgId, invoiceId } = await seed(true, "+12295550211");
+  // A configured window that would BLOCK if org_settings were (mistakenly) re-read,
+  // proves the pre-fetched window on deps is what's actually consulted.
+  await svc.from("org_settings").insert({
+    org_id: orgId, timezone: "America/New_York", sms_send_start_hour: 9, sms_send_end_hour: 17,
+  });
+  const eveningNow = new Date("2026-06-16T00:00:00Z"); // 20:00 EDT — outside 9-17, inside a wider pre-fetched window
+  const fetchFn = vi.fn(async () => jsonResponse({ sid: "SM-PREFETCH-OK", status: "queued" }));
+  const res = await sendInvoiceText(
+    { ...deps(fetchFn), now: eveningNow, quietHoursWindow: { timezone: "America/New_York", startHour: 0, endHour: 24 } },
+    { orgId, invoiceId, userId, body: "ok" },
+  );
+  expect(res.sid).toBe("SM-PREFETCH-OK");
 });

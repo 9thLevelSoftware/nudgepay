@@ -1,6 +1,5 @@
 import { useState } from "react";
 import { Form, useNavigation } from "react-router";
-import { MAX_BATCH } from "../lib/bulk";
 
 // Roster prop kept minimal (no .server import in a client component).
 type RosterOption = { userId: string; label: string };
@@ -12,6 +11,7 @@ export function BulkActionBar({
   returnTo,
   onClear,
   onOpenSms,
+  maxBatch,
 }: {
   selectedCaseIds: string[];
   eligibleCount: number;
@@ -19,6 +19,8 @@ export function BulkActionBar({
   returnTo: string;
   onClear: () => void;
   onOpenSms: () => void;
+  /** Org-configured max cases per bulk action — must match the server clamp. */
+  maxBatch: number;
 }) {
   const nav = useNavigation();
   const busy = nav.state !== "idle";
@@ -30,7 +32,7 @@ export function BulkActionBar({
       <span className="font-sans text-sm text-text font-medium">
         {n} selected
         <span className="text-muted"> · {eligibleCount} can be texted</span>
-        {n >= MAX_BATCH ? <span className="text-muted"> · max {MAX_BATCH} per batch</span> : null}
+        {n >= maxBatch ? <span className="text-muted"> · max {maxBatch} per batch</span> : null}
       </span>
 
       <Form method="post" action="/api/bulk-assign" className="flex items-center gap-2 ml-auto">

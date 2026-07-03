@@ -9,6 +9,9 @@ import { requireOrgUser } from "../lib/session.server";
 import { getConnectionStatus } from "../lib/qbo-connection.server";
 import { createSupabaseServiceClient } from "../lib/supabase.server";
 import { loadCaseQueueSource } from "../lib/case-queue.server";
+import { loadOrgConfig } from "../lib/org-config.server";
+import { DEFAULT_ORG_CONFIG } from "../lib/org-config";
+import { todayInTz } from "../lib/tz";
 import { buildCaseItems, type CaseItem } from "../lib/cases";
 import { buildFocusQueue, type FocusScope } from "../lib/focus-queue";
 import {
@@ -47,12 +50,17 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
   const conn = await getConnectionStatus(service, org.org_id);
   if (conn?.status !== "connected") throw redirect("/settings?tab=integrations", { headers });
 
-  const today = new Date().toISOString().slice(0, 10);
-  const plus7 = new Date(Date.now() + 7 * 86_400_000).toISOString().slice(0, 10);
+  const orgConfigForToday = await loadOrgConfig(supabase, org.org_id).catch(() => DEFAULT_ORG_CONFIG);
+  const today = todayInTz(orgConfigForToday.companyProfile.timezone);
 
-  const src = await loadCaseQueueSource({
-    supabase, service, orgId: org.org_id, today, plus7, includePresence: false,
-  });
+  const [src, { data: orgRow, error: orgErr }] = await Promise.all([
+    loadCaseQueueSource({
+      supabase, service, orgId: org.org_id, today, includePresence: false, orgConfig: orgConfigForToday,
+    }),
+    supabase.from("organizations").select("name").eq("id", org.org_id).single(),
+  ]);
+  if (orgErr) throw orgErr;
+  const orgName = orgRow?.name ?? "";
 
   const allItems = buildCaseItems(
     src.cases, src.invoicesInput, src.customersInput,
@@ -129,8 +137,14 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
     scope,
     timelines,
     smsEnabled: src.smsEnabled,
+    smsQuietNow: src.smsQuietNow,
+    quietHoursLabel: src.quietHoursLabel,
     currentUserId: user.id,
     today,
+    smsTemplates: src.templates.sms,
+    orgCompany: orgName,
+    orgPhone: src.orgConfig.companyProfile.phone ?? "",
+    orgPaymentLink: src.orgConfig.companyProfile.paymentPortalUrl ?? "",
   }, { headers });
 }
 
@@ -139,7 +153,10 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
 // ---------------------------------------------------------------------------
 
 export default function FocusMode() {
-  const { queue, scope, timelines, smsEnabled, today } = useLoaderData<typeof loader>();
+  const {
+    queue, scope, timelines, smsEnabled, smsQuietNow, quietHoursLabel, today,
+    smsTemplates, orgCompany, orgPhone, orgPaymentLink,
+  } = useLoaderData<typeof loader>();
 
   // Session state
   const [session, dispatch] = useReducer(
@@ -370,9 +387,15 @@ export default function FocusMode() {
                 <SendTextMiniForm
                   item={currentItem}
                   smsEnabled={smsEnabled}
+                  smsQuietNow={smsQuietNow}
+                  quietHoursLabel={quietHoursLabel}
                   onDone={() => dispatch({ type: "resolve", result: "texted" })}
                   onCancel={() => setOpenForm(null)}
                   onError={(code) => addToast(`Text failed: ${code}`)}
+                  smsTemplates={smsTemplates}
+                  orgCompany={orgCompany}
+                  orgPhone={orgPhone}
+                  orgPaymentLink={orgPaymentLink}
                 />
               )}
             </div>

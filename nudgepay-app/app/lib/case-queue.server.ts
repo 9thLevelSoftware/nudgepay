@@ -19,8 +19,11 @@ import { listOrgMembers, type OrgMember } from "./orgs.server";
 import { loadOrgConfig } from "./org-config.server";
 import { resolveCommPrefs } from "./comm-prefs";
 import { resolveChannelSettings } from "./channel-settings";
+import { isWithinSendWindow, quietHoursWindowLabel } from "./quiet-hours";
 import { readPresence } from "./presence.server";
 import type { RecentContactInput } from "./collision";
+import { loadTemplates } from "./message-templates.server";
+import { resolveTemplates, type OrgTemplates } from "./message-templates";
 
 // ---------------------------------------------------------------------------
 // Row shapes returned by the Supabase queries (internal)
@@ -80,6 +83,11 @@ export type CaseQueueSource = {
   ownerLabels: Map<string, string>;
   orgConfig: OrgConfig;
   smsEnabled: boolean;
+  /** True when the org's SMS send window (quiet hours) currently excludes "now". */
+  smsQuietNow: boolean;
+  /** Human-readable send-window label, e.g. "8:00 AM – 9:00 PM", for the quiet-hours notice. */
+  quietHoursLabel: string;
+  templates: OrgTemplates;
 };
 
 export type LoadCaseQueueArgs = {
@@ -87,10 +95,14 @@ export type LoadCaseQueueArgs = {
   service: SupabaseClient;
   orgId: string;
   today: string;
-  /** Upper bound for the invoice lookahead (typically today + 7 days). */
-  plus7: string;
   /** When true, reads presence heartbeats (C1 collision detection). */
   includePresence: boolean;
+  /**
+   * Pre-loaded org config, when the caller already fetched it (e.g. to derive
+   * org-local `today` via todayInTz before calling this function). Skips the
+   * internal org_settings read when provided.
+   */
+  orgConfig?: OrgConfig;
 };
 
 // ---------------------------------------------------------------------------
@@ -98,7 +110,20 @@ export type LoadCaseQueueArgs = {
 // ---------------------------------------------------------------------------
 
 export async function loadCaseQueueSource(args: LoadCaseQueueArgs): Promise<CaseQueueSource> {
-  const { supabase, service, orgId, today, plus7, includePresence } = args;
+  const { supabase, service, orgId, today, includePresence } = args;
+
+  // Org config is loaded first (one org_settings read) because the invoice
+  // query's lookahead window is sized from orgConfig.workflow.comingDueDays —
+  // it must be known before the invoices query below can be built. Callers
+  // that already loaded it (e.g. to derive org-local `today`) pass it through
+  // to avoid a second org_settings read.
+  const orgConfig = args.orgConfig ?? await loadOrgConfig(supabase, orgId).catch(() => DEFAULT_ORG_CONFIG);
+  // Derive the lookahead upper bound from the org-local today (passed in by the
+  // caller) rather than UTC Date.now(). This keeps the invoice query window
+  // consistent with the org's calendar day — otherwise an east-of-UTC org whose
+  // local date has already advanced would miss invoices due on the final day.
+  const todayMs = new Date(today + "T00:00:00Z").getTime();
+  const plus7 = new Date(todayMs + orgConfig.workflow.comingDueDays * 86_400_000).toISOString().slice(0, 10);
 
   // Stage 1 — everything that needs only orgId. PostgREST builders resolve
   // with { data, error } (never reject), so Promise.all won't short-circuit.
@@ -106,8 +131,8 @@ export async function loadCaseQueueSource(args: LoadCaseQueueArgs): Promise<Case
     { data: invRows },
     { data: caseRows },
     roster,
-    orgConfig,
     { data: mcfg },
+    templates,
   ] = await Promise.all([
     supabase
       .from("invoices")
@@ -121,8 +146,8 @@ export async function loadCaseQueueSource(args: LoadCaseQueueArgs): Promise<Case
       .eq("org_id", orgId)
       .is("closed_at", null),
     listOrgMembers(service, orgId).catch(() => [] as OrgMember[]),
-    loadOrgConfig(supabase, orgId).catch(() => DEFAULT_ORG_CONFIG),
     supabase.from("messaging_config").select("sms_enabled").eq("org_id", orgId).maybeSingle(),
+    loadTemplates(supabase, orgId).catch(() => resolveTemplates([])),
   ]);
 
   // Map raw invoice rows → InvoiceInput, split overdue / coming-due.
@@ -245,6 +270,9 @@ export async function loadCaseQueueSource(args: LoadCaseQueueArgs): Promise<Case
 
   const ownerLabels = new Map(roster.map((m) => [m.userId, m.label]));
   const smsEnabled = resolveChannelSettings(mcfg as { sms_enabled?: boolean | null } | null).smsEnabled;
+  const { startHour, endHour } = orgConfig.quietHours;
+  const smsQuietNow = !isWithinSendWindow(new Date(), orgConfig.companyProfile.timezone, startHour, endHour);
+  const quietHoursLabel = quietHoursWindowLabel(startHour, endHour);
 
   return {
     cases,
@@ -259,5 +287,8 @@ export async function loadCaseQueueSource(args: LoadCaseQueueArgs): Promise<Case
     ownerLabels,
     orgConfig,
     smsEnabled,
+    smsQuietNow,
+    quietHoursLabel,
+    templates,
   };
 }

@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { Form, useNavigation } from "react-router";
-import { SMS_TEMPLATES } from "../lib/sms-templates";
-import { partitionEligibility, renderCaseBody, type SkipReason, type TextableCase, type RenderableCase } from "../lib/bulk";
+import type { MessageTemplateRow } from "../lib/message-templates";
+import { partitionEligibility, renderCaseBody, clampBatch, type SkipReason, type TextableCase, type RenderableCase } from "../lib/bulk";
 import { plural } from "../lib/labels";
 import { useDialog } from "../lib/use-dialog";
 
@@ -24,36 +24,55 @@ export function BulkSmsDrawer({
   cases,
   returnTo,
   smsEnabled,
+  smsQuietNow,
+  quietHoursLabel,
+  smsTemplates,
+  orgCompany,
+  orgPhone,
+  orgPaymentLink,
+  maxBatch,
 }: {
   open: boolean;
   onClose: () => void;
   cases: DrawerCase[];
   returnTo: string;
   smsEnabled: boolean;
+  smsQuietNow: boolean;
+  quietHoursLabel: string;
+  smsTemplates: MessageTemplateRow[];
+  orgCompany: string;
+  orgPhone: string;
+  orgPaymentLink: string;
+  /** Org-configured max cases per bulk action — must match the server clamp. */
+  maxBatch: number;
 }) {
   const nav = useNavigation();
   const busy = nav.state !== "idle";
-  const [templateId, setTemplateId] = useState(SMS_TEMPLATES[0]?.id ?? "");
-  const [body, setBody] = useState(SMS_TEMPLATES[0]?.body ?? "");
+  const [templateId, setTemplateId] = useState(smsTemplates[0]?.id ?? "");
+  const [body, setBody] = useState(smsTemplates[0]?.body ?? "");
   const [confirming, setConfirming] = useState(false);
   const { panelRef } = useDialog({ onClose, enabled: open });
 
   useEffect(() => {
     if (!open) {
       setConfirming(false);
-      const defaultTemplate = SMS_TEMPLATES[0];
+      const defaultTemplate = smsTemplates[0];
       setTemplateId(defaultTemplate?.id ?? "");
       setBody(defaultTemplate?.body ?? "");
     }
-  }, [open]);
+  }, [open, smsTemplates]);
 
   if (!open) return null;
-  const { eligible, skipped } = partitionEligibility(cases);
-  const sample = eligible[0] ? renderCaseBody(body, eligible[0]) : "";
+  // Defensive — selection is already capped upstream (WorkQueue), but this
+  // keeps the drawer correct on its own if ever opened with a larger set.
+  const cappedCases = clampBatch(cases, maxBatch);
+  const { eligible, skipped } = partitionEligibility(cappedCases);
+  const orgVars = { company: orgCompany, phone: orgPhone, paymentLink: orgPaymentLink };
+  const sample = eligible[0] ? renderCaseBody(body, eligible[0], orgVars) : "";
 
   function pickTemplate(id: string) {
     setTemplateId(id);
-    const t = SMS_TEMPLATES.find((x) => x.id === id);
+    const t = smsTemplates.find((x) => x.id === id);
     if (t) setBody(t.body);
   }
 
@@ -74,11 +93,15 @@ export function BulkSmsDrawer({
           Send SMS to {plural(eligible.length, "customer")}
         </h2>
         <p className="text-xs font-sans text-muted mb-3">
-          {eligible.length} of {cases.length} eligible
+          {eligible.length} of {cappedCases.length} eligible
           {skipped.length ? ` · ${skipped.length} skipped (${skippedSummary(skipped)})` : ""}
         </p>
         {!smsEnabled ? (
           <p className="text-xs font-sans font-medium text-hot mb-3">Text messaging is turned off for this workspace.</p>
+        ) : smsQuietNow ? (
+          <p className="text-xs font-sans font-medium text-warm mb-3" role="status">
+            Outside quiet hours ({quietHoursLabel}) — sends will be blocked until the window reopens.
+          </p>
         ) : null}
 
         {!confirming ? (
@@ -90,7 +113,7 @@ export function BulkSmsDrawer({
               onChange={(e) => pickTemplate(e.target.value)}
               className="w-full rounded-md border border-border bg-panel px-2.5 h-9 text-sm text-text mb-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-copper"
             >
-              {SMS_TEMPLATES.map((t) => <option key={t.id} value={t.id}>{t.label}</option>)}
+              {smsTemplates.map((t) => <option key={t.id} value={t.id}>{t.label}</option>)}
             </select>
             <label htmlFor="bulk-body" className="block text-xs font-sans text-muted mb-1">Message</label>
             <textarea
@@ -121,7 +144,7 @@ export function BulkSmsDrawer({
           </>
         ) : (
           <Form method="post" action="/api/bulk-sms" aria-describedby="bulk-sms-confirm-desc">
-            <input type="hidden" name="caseIds" value={cases.map((c) => c.caseId).join(",")} />
+            <input type="hidden" name="caseIds" value={cappedCases.map((c) => c.caseId).join(",")} />
             <input type="hidden" name="body" value={body} />
             <input type="hidden" name="returnTo" value={returnTo} />
             <p id="bulk-sms-confirm-desc" className="text-sm font-sans text-text mb-3">

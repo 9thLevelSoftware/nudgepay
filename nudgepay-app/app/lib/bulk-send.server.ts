@@ -1,6 +1,7 @@
 import { sendInvoiceText, type MessagingDeps } from "./twilio-messaging.server";
 import { partitionEligibility, renderCaseBody, clampBatch, type TextableCase, type RenderableCase } from "./bulk";
 import { isContactBlocked, type ExceptionState } from "./exceptions";
+import type { OrgConfig } from "./org-config";
 
 export type BulkSmsResult = { sent: number; failed: number; skipped: number };
 
@@ -12,17 +13,33 @@ type InvoiceRow = { id: string; qbo_doc_number: string | null; due_date: string 
 // Load selected open cases (org-scoped), build per-case totals + oldest-invoice,
 // partition eligibility, and send sequentially via sendInvoiceText (each send
 // records its own text_messages row, so a mid-loop failure keeps prior sends).
+//
+// `orgConfig` must be the caller's already-resolved org config (single
+// org_settings read per request) — it sources both the batch-size clamp
+// (orgConfig.workflow.smsBatchLimit, which MUST match the client's cap) and
+// the message template vars (company/phone/paymentLink).
 export async function runBulkSms(
   deps: MessagingDeps,
-  args: { orgId: string; userId: string; caseIds: string[]; today: string; templateBody: string },
+  args: { orgId: string; userId: string; caseIds: string[]; today: string; templateBody: string; orgConfig: OrgConfig },
 ): Promise<BulkSmsResult> {
-  const ids = clampBatch(args.caseIds);
+  const ids = clampBatch(args.caseIds, args.orgConfig.workflow.smsBatchLimit);
   if (ids.length === 0) return { sent: 0, failed: 0, skipped: 0 };
   const svc = deps.service;
 
-  const { data: caseRows, error: caseErr } = await svc.from("collection_cases")
-    .select("id, customer_id, exception_reason").eq("org_id", args.orgId).in("id", ids).is("closed_at", null);
+  // Org token values (company name, phone, payment link) — loaded ONCE per
+  // batch, not per case, then reused across every renderCaseBody call below.
+  const [{ data: caseRows, error: caseErr }, { data: orgRow, error: orgErr }] = await Promise.all([
+    svc.from("collection_cases")
+      .select("id, customer_id, exception_reason").eq("org_id", args.orgId).in("id", ids).is("closed_at", null),
+    svc.from("organizations").select("name").eq("id", args.orgId).maybeSingle(),
+  ]);
   if (caseErr) throw caseErr;
+  if (orgErr) throw orgErr;
+  const orgVars = {
+    company: (orgRow?.name as string | null) ?? "",
+    phone: args.orgConfig.companyProfile.phone ?? "",
+    paymentLink: args.orgConfig.companyProfile.paymentPortalUrl ?? "",
+  };
   const cases = ((caseRows as { id: string; customer_id: string; exception_reason: ExceptionState | null }[]) ?? []);
   const customerIds = [...new Set(cases.map((c) => c.customer_id).filter(Boolean))];
   if (customerIds.length === 0) return { sent: 0, failed: 0, skipped: 0 };
@@ -74,7 +91,7 @@ export async function runBulkSms(
         orgId: args.orgId,
         invoiceId: c.representativeInvoiceId,
         userId: args.userId,
-        body: renderCaseBody(args.templateBody, c),
+        body: renderCaseBody(args.templateBody, c, orgVars),
       });
       sent++;
     } catch {

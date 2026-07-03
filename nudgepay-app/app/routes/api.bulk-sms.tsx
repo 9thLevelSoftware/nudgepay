@@ -7,6 +7,9 @@ import type { TwilioSender } from "../lib/twilio-client.server";
 import { safeReturnTo } from "../lib/return-to";
 import { runBulkSms } from "../lib/bulk-send.server";
 import { clampBatch } from "../lib/bulk";
+import { loadOrgConfig } from "../lib/org-config.server";
+import { todayInTz } from "../lib/tz";
+import { isWithinSendWindow } from "../lib/quiet-hours";
 
 function envSender(t: { TWILIO_MESSAGING_SERVICE_SID: string | null; TWILIO_FROM_NUMBER: string | null }): TwilioSender {
   if (t.TWILIO_MESSAGING_SERVICE_SID) return { messagingServiceSid: t.TWILIO_MESSAGING_SERVICE_SID };
@@ -34,12 +37,16 @@ export async function action({ request, context }: ActionFunctionArgs) {
 
   const form = await request.formData();
   const returnTo = safeReturnTo(form.get("returnTo"));
-  const caseIds = clampBatch(parseIds(form));
+
+  const service = createSupabaseServiceClient(env);
+  // One org_settings read: sources both the batch-size clamp below and the
+  // message vars (company/phone/paymentLink) inside runBulkSms — the client
+  // cap in BulkActionBar/BulkSmsDrawer MUST source this same value.
+  const orgConfig = await loadOrgConfig(service, org.org_id);
+  const caseIds = clampBatch(parseIds(form), orgConfig.workflow.smsBatchLimit);
   const bodyRaw = form.get("body");
   const templateBody = typeof bodyRaw === "string" ? bodyRaw.trim() : "";
   if (caseIds.length === 0 || templateBody === "") return redirect(returnTo, { headers });
-
-  const service = createSupabaseServiceClient(env);
 
   const { data: mc, error: mcErr } = await service.from("messaging_config")
     .select("sms_enabled").eq("org_id", org.org_id).maybeSingle();
@@ -50,6 +57,19 @@ export async function action({ request, context }: ActionFunctionArgs) {
     return redirect(withParams(returnTo, { bulkSms: "disabled" }), { headers });
   }
 
+  // Quiet-hours fast-fail: pre-check once (mirroring the sms_enabled pre-check
+  // above) rather than letting the loop discover it on the first case, and
+  // thread the resolved window through deps so sendInvoiceText doesn't re-read
+  // org_settings for each of the (up to smsBatchLimit) cases below.
+  const quietHoursWindow = {
+    timezone: orgConfig.companyProfile.timezone,
+    startHour: orgConfig.quietHours.startHour,
+    endHour: orgConfig.quietHours.endHour,
+  };
+  if (!isWithinSendWindow(new Date(), quietHoursWindow.timezone, quietHoursWindow.startHour, quietHoursWindow.endHour)) {
+    return redirect(withParams(returnTo, { bulkSms: "quiet" }), { headers });
+  }
+
   const statusCallback = twilio.TWILIO_PUBLIC_BASE_URL
     ? `${twilio.TWILIO_PUBLIC_BASE_URL}/webhooks/twilio/status` : null;
   const deps: MessagingDeps = {
@@ -58,10 +78,11 @@ export async function action({ request, context }: ActionFunctionArgs) {
     twilio: { accountSid: twilio.TWILIO_ACCOUNT_SID, authToken: twilio.TWILIO_AUTH_TOKEN },
     defaultSender: envSender(twilio),
     statusCallback,
+    quietHoursWindow,
   };
-  const today = new Date().toISOString().slice(0, 10);
+  const today = todayInTz(orgConfig.companyProfile.timezone);
   const { sent, failed, skipped } = await runBulkSms(deps, {
-    orgId: org.org_id, userId: user.id, caseIds, today, templateBody,
+    orgId: org.org_id, userId: user.id, caseIds, today, templateBody, orgConfig,
   });
 
   return redirect(

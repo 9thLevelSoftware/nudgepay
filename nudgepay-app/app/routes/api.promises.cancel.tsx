@@ -3,6 +3,8 @@ import { getEnv } from "../lib/env.server";
 import { requireUser, resolveOrg } from "../lib/session.server";
 import { safeReturnTo } from "../lib/return-to";
 import { cancelPromise } from "../lib/promise-cancel.server";
+import { loadOrgConfig } from "../lib/org-config.server";
+import { todayInTz } from "../lib/tz";
 
 function withError(returnTo: string, code: string): string {
   const sep = returnTo.includes("?") ? "&" : "?";
@@ -22,7 +24,8 @@ export async function action({ request, context }: ActionFunctionArgs) {
     return redirect(withError(returnTo, "missing-promise"), { headers });
   }
 
-  const today = new Date().toISOString().slice(0, 10);
+  const orgConfig = await loadOrgConfig(supabase, org.org_id);
+  const today = todayInTz(orgConfig.companyProfile.timezone);
   const res = await cancelPromise(supabase, promiseId, today);
   if (!res.ok) return redirect(withError(returnTo, "cancel-failed"), { headers });
   return redirect(returnTo, { headers });

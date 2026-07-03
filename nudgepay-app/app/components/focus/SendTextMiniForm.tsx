@@ -6,20 +6,30 @@ import { useEffect, useRef, useState } from "react";
 import { useFetcher } from "react-router";
 import type { CaseItem } from "../../lib/cases";
 import { smsGateFor } from "../../lib/sms-gate";
-import { SMS_TEMPLATES, applyTemplate, type TemplateVars } from "../../lib/sms-templates";
+import { applyTemplate, type TemplateVars } from "../../lib/sms-templates";
+import type { MessageTemplateRow } from "../../lib/message-templates";
 import { formatUSD } from "../../lib/format";
 import { formatDate } from "../../lib/dates";
 
 interface SendTextMiniFormProps {
   item: CaseItem;
   smsEnabled: boolean;
+  smsQuietNow: boolean;
+  quietHoursLabel: string;
   onDone: () => void;
   onCancel: () => void;
   /** Called when the send fails — parent shows a toast with the error code. */
   onError: (code: string) => void;
+  smsTemplates: MessageTemplateRow[];
+  orgCompany: string;
+  orgPhone: string;
+  orgPaymentLink: string;
 }
 
-export function SendTextMiniForm({ item, smsEnabled, onDone, onCancel, onError }: SendTextMiniFormProps) {
+export function SendTextMiniForm({
+  item, smsEnabled, smsQuietNow, quietHoursLabel, onDone, onCancel, onError,
+  smsTemplates, orgCompany, orgPhone, orgPaymentLink,
+}: SendTextMiniFormProps) {
   const firstInvoice = item.invoices[0] ?? null;
 
   const gate = smsGateFor({
@@ -37,6 +47,9 @@ export function SendTextMiniForm({ item, smsEnabled, onDone, onCancel, onError }
     invoice: firstInvoice?.docNumber ?? item.customerName,
     balance: formatUSD(item.totalOverdue),
     dueDate: formatDate(firstInvoice?.dueDate ?? null),
+    company: orgCompany,
+    phone: orgPhone,
+    paymentLink: orgPaymentLink,
   };
 
   const [body, setBody] = useState("");
@@ -117,9 +130,14 @@ export function SendTextMiniForm({ item, smsEnabled, onDone, onCancel, onError }
         </p>
       ) : (
         <>
+          {smsQuietNow && (
+            <div className="rounded-lg border border-warm/30 bg-warm/5 px-3 py-2 text-xs text-warm mb-3" role="status">
+              Outside quiet hours ({quietHoursLabel}) — sending is blocked until the window reopens.
+            </div>
+          )}
           {/* Template chips */}
           <div className="flex flex-wrap gap-2 mb-3">
-            {SMS_TEMPLATES.map((t) => (
+            {smsTemplates.map((t) => (
               <button
                 key={t.id}
                 type="button"

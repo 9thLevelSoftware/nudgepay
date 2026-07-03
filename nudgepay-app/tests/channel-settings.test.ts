@@ -2,6 +2,7 @@ import { expect, test } from "vitest";
 import {
   resolveChannelSettings, parseChannelSettingsUpdate,
   resolveSmsSenderSettings, parseSmsSenderUpdate,
+  parseQuietHoursUpdate,
 } from "../app/lib/channel-settings";
 
 function fd(entries: Array<[string, string]>): FormData {
@@ -90,4 +91,47 @@ test("parseSmsSenderUpdate: rejects SID with too few hex chars", () => {
 test("parseSmsSenderUpdate: rejects SID with non-hex chars", () => {
   const result = parseSmsSenderUpdate(fd([["messaging_service_sid", "MG" + "g".repeat(32)]]));
   expect(result).toEqual({ ok: false, error: "sms_sid" });
+});
+
+// ---------------------------------------------------------------------------
+// parseQuietHoursUpdate — ranges mirror migration 0030's CHECKs
+// ---------------------------------------------------------------------------
+
+test("parseQuietHoursUpdate: accepts a valid window", () => {
+  const result = parseQuietHoursUpdate(fd([["sms_send_start_hour", "8"], ["sms_send_end_hour", "21"]]));
+  expect(result).toEqual({ ok: true, patch: { sms_send_start_hour: 8, sms_send_end_hour: 21 } });
+});
+
+test("parseQuietHoursUpdate: accepts the boundary values (start=0, end=24)", () => {
+  const result = parseQuietHoursUpdate(fd([["sms_send_start_hour", "0"], ["sms_send_end_hour", "24"]]));
+  expect(result).toEqual({ ok: true, patch: { sms_send_start_hour: 0, sms_send_end_hour: 24 } });
+});
+
+test("parseQuietHoursUpdate: rejects start >= end", () => {
+  expect(parseQuietHoursUpdate(fd([["sms_send_start_hour", "12"], ["sms_send_end_hour", "12"]])))
+    .toEqual({ ok: false, error: "quiet_hours" });
+  expect(parseQuietHoursUpdate(fd([["sms_send_start_hour", "15"], ["sms_send_end_hour", "9"]])))
+    .toEqual({ ok: false, error: "quiet_hours" });
+});
+
+test("parseQuietHoursUpdate: rejects start out of 0-23 range", () => {
+  expect(parseQuietHoursUpdate(fd([["sms_send_start_hour", "-1"], ["sms_send_end_hour", "21"]])))
+    .toEqual({ ok: false, error: "quiet_hours" });
+  expect(parseQuietHoursUpdate(fd([["sms_send_start_hour", "24"], ["sms_send_end_hour", "21"]])))
+    .toEqual({ ok: false, error: "quiet_hours" });
+});
+
+test("parseQuietHoursUpdate: rejects end out of 1-24 range", () => {
+  expect(parseQuietHoursUpdate(fd([["sms_send_start_hour", "8"], ["sms_send_end_hour", "0"]])))
+    .toEqual({ ok: false, error: "quiet_hours" });
+  expect(parseQuietHoursUpdate(fd([["sms_send_start_hour", "8"], ["sms_send_end_hour", "25"]])))
+    .toEqual({ ok: false, error: "quiet_hours" });
+});
+
+test("parseQuietHoursUpdate: rejects missing or non-integer fields", () => {
+  expect(parseQuietHoursUpdate(fd([]))).toEqual({ ok: false, error: "quiet_hours" });
+  expect(parseQuietHoursUpdate(fd([["sms_send_start_hour", "8.5"], ["sms_send_end_hour", "21"]])))
+    .toEqual({ ok: false, error: "quiet_hours" });
+  expect(parseQuietHoursUpdate(fd([["sms_send_start_hour", "abc"], ["sms_send_end_hour", "21"]])))
+    .toEqual({ ok: false, error: "quiet_hours" });
 });

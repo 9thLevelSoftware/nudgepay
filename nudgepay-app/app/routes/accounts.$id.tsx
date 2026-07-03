@@ -6,6 +6,8 @@ import { requireUser, resolveOrg } from "../lib/session.server";
 import { getConnectionStatus } from "../lib/qbo-connection.server";
 import { createSupabaseServiceClient } from "../lib/supabase.server";
 import { listOrgMembers } from "../lib/orgs.server";
+import { loadOrgConfig } from "../lib/org-config.server";
+import { todayInTz } from "../lib/tz";
 import { buildTimeline, type TimelineLogInput, type TimelineSmsInput } from "../lib/timeline";
 import { resolveCommPrefs } from "../lib/comm-prefs";
 import { isCaseSuppressed, type ExceptionState } from "../lib/exceptions";
@@ -122,7 +124,8 @@ export async function loader({ request, params, context }: LoaderFunctionArgs) {
   }
 
   const isOwner = org.role === "owner";
-  const today = new Date().toISOString().slice(0, 10);
+  const orgConfig = await loadOrgConfig(supabase, org.org_id);
+  const today = todayInTz(orgConfig.companyProfile.timezone);
   const customerId = params.id as string;
 
   // ---------------------------------------------------------------------------

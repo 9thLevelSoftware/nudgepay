@@ -3,7 +3,7 @@
 // I/O, no node:*, no .server — imported by the route loader, the ledger/panel
 // components (type-only), and tests. Mirrors app/lib/accounts.ts in shape.
 
-import { addBusinessDays, DEFAULT_WORKING_DAYS, NO_HOLIDAYS } from "./business-days";
+import { addBusinessDays } from "./business-days";
 
 export type PromiseDbStatus =
   | "pending" | "kept" | "partially_kept" | "broken" | "renegotiated" | "cancelled";
@@ -43,7 +43,14 @@ export type PromiseRow = PromiseInput & {
   caseOpen: boolean;           // case still open (closed cases can't be deep-linked into Collections)
 };
 
-type DayConfig = { workingDays?: ReadonlySet<number>; holidays?: ReadonlySet<string> };
+// Required — callers must pass their resolved org config (working days,
+// holidays, and the due-soon business-day window) so this module can never
+// silently fall back to hardcoded defaults and drift from the org's settings.
+export type DayConfig = {
+  workingDays: ReadonlySet<number>;
+  holidays: ReadonlySet<string>;
+  dueSoonBusinessDays: number;
+};
 
 export type BuildPromiseRowsOpts = {
   // Current summed balance of each pending promise's linked invoices. The
@@ -83,19 +90,19 @@ export function buildPromiseRows(
 }
 
 // A pending promise is "due soon" when its promised date falls within
-// DUE_SOON_BUSINESS_DAYS business days of today — which also captures any
+// config.dueSoonBusinessDays business days of today — which also captures any
 // promised date already in the past (proactive + overdue watch list).
-export function isDueSoon(row: PromiseRow, today: string, config: DayConfig = {}): boolean {
+export function isDueSoon(row: PromiseRow, today: string, config: DayConfig): boolean {
   if (row.status !== "pending") return false;
-  const threshold = addBusinessDays(today, DUE_SOON_BUSINESS_DAYS, {
-    workingDays: config.workingDays ?? DEFAULT_WORKING_DAYS,
-    holidays: config.holidays ?? NO_HOLIDAYS,
+  const threshold = addBusinessDays(today, config.dueSoonBusinessDays, {
+    workingDays: config.workingDays,
+    holidays: config.holidays,
   });
   return row.promisedDate <= threshold;
 }
 
 export function applyPromiseTab(
-  rows: PromiseRow[], tab: PromiseTab, today: string, config: DayConfig = {},
+  rows: PromiseRow[], tab: PromiseTab, today: string, config: DayConfig,
 ): PromiseRow[] {
   if (tab === "active") return rows.filter((r) => r.status === "pending");
   if (tab === "due-soon") return rows.filter((r) => isDueSoon(r, today, config));
@@ -128,7 +135,7 @@ export type PromiseMetrics = {
 };
 
 export function computePromiseMetrics(
-  rows: PromiseRow[], today: string, config: DayConfig = {},
+  rows: PromiseRow[], today: string, config: DayConfig,
 ): PromiseMetrics {
   const active = rows.filter((r) => r.status === "pending");
   const dueSoon = rows.filter((r) => isDueSoon(r, today, config));

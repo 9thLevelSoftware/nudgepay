@@ -5,6 +5,8 @@ import { requireOrgUser } from "../lib/session.server";
 import { getConnectionStatus } from "../lib/qbo-connection.server";
 import { createSupabaseServiceClient } from "../lib/supabase.server";
 import { loadCaseQueueSource } from "../lib/case-queue.server";
+import { loadOrgConfig } from "../lib/org-config.server";
+import { todayInTz } from "../lib/tz";
 import type { OrgMember } from "../lib/orgs.server";
 // worklist.ts is pure (no I/O, no node:*, no secrets) so it is safe in both the
 // client bundle and the server — buildCaseData is exported from this route
@@ -31,6 +33,7 @@ import { buildTimeline, type TimelineEntry, type TimelineLogInput, type Timeline
 import { collisionState, type Collision } from "../lib/collision";
 import { resolveCommPrefs, DEFAULT_COMM_PREFS, type CommPrefs } from "../lib/comm-prefs";
 import type { OrgConfig } from "../lib/org-config";
+import { DEFAULT_ORG_CONFIG } from "../lib/org-config";
 import { resolveEmailSettings } from "../lib/email-settings";
 import { plural } from "../lib/labels";
 import { pageTitle } from "../lib/meta";
@@ -82,12 +85,13 @@ export function buildCaseData(
   comingDueInvoices: InvoiceInput[] = [],
 ): DashboardData {
   const { view, sort, q, caseId } = params;
+  const highValue = config.priority.highValue;
   const allItems = buildCaseItems(cases, invoices, customers, lastContacts, promises, today, ownerLabels, config);
   const searched = q.trim() === "" ? allItems : allItems.filter((i) => i.searchText.includes(q.toLowerCase()));
-  const metrics = computeCaseMetrics(searched, today);
+  const metrics = computeCaseMetrics(searched, today, highValue);
 
   // Coming-due groups: built from the separate non-overdue invoice set
-  const allComingDueGroups = buildComingDueGroups(comingDueInvoices, customers, today);
+  const allComingDueGroups = buildComingDueGroups(comingDueInvoices, customers, today, config.workflow.comingDueDays);
   const lowerQ = q.trim().toLowerCase();
   const filteredComingDue = lowerQ === ""
     ? allComingDueGroups
@@ -100,10 +104,10 @@ export function buildCaseData(
   const viewCounts = Object.fromEntries(
     ALL_VIEWS.map((v) => {
       if (v === "coming-due") return [v, filteredComingDue.length];
-      return [v, applyCaseView(searched, v, today, currentUserId).length];
+      return [v, applyCaseView(searched, v, today, currentUserId, highValue).length];
     }),
   ) as Record<ViewId, number>;
-  const items = sortCaseItems(applyCaseView(searched, view, today, currentUserId), sort);
+  const items = sortCaseItems(applyCaseView(searched, view, today, currentUserId, highValue), sort);
   const selected = caseId != null ? (searched.find((i) => i.caseId === caseId) ?? null) : null;
   return { items, metrics, viewCounts, selected, comingDueGroups: filteredComingDue };
 }
@@ -162,12 +166,14 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
   const userLabel = displayLabel(user.user_metadata?.display_name, user.email, user.id);
   const initials = initialsFrom(userLabel);
 
-  const today = new Date().toISOString().slice(0, 10);
-  // 7-day lookahead for "Coming Due" invoices
-  const plus7 = new Date(Date.now() + 7 * 86_400_000).toISOString().slice(0, 10);
-
   // Service client for connection-status + roster (no RLS needed)
   const service = createSupabaseServiceClient(env);
+
+  // Org config loaded up front so "today" is the org's local calendar day
+  // (not UTC's) — passed into loadCaseQueueSource below to avoid a second
+  // org_settings read.
+  const orgConfigForToday = await loadOrgConfig(supabase, org.org_id).catch(() => DEFAULT_ORG_CONFIG);
+  const today = todayInTz(orgConfigForToday.companyProfile.timezone);
 
   // Batch A: shared queue source + dashboard-only queries in parallel.
   // Disconnected orgs pay a few wasted queries (redirect gate runs right
@@ -180,7 +186,7 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
     { data: ecfg },
   ] = await Promise.all([
     loadCaseQueueSource({
-      supabase, service, orgId: org.org_id, today, plus7, includePresence: true,
+      supabase, service, orgId: org.org_id, today, includePresence: true, orgConfig: orgConfigForToday,
     }),
     supabase.from("organizations").select("name").eq("id", org.org_id).single(),
     getConnectionStatus(service, org.org_id),
@@ -261,8 +267,12 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
   const {
     cases, invoicesInput, comingDueInvoices, customersInput,
     lastContactsInput, promisesInput, recentByCase, presenceRows,
-    roster, ownerLabels, orgConfig, smsEnabled,
+    roster, ownerLabels, orgConfig, smsEnabled, smsQuietNow, quietHoursLabel, templates,
   } = src;
+
+  const orgCompany = orgRow?.name ?? "";
+  const orgPhone = orgConfig.companyProfile.phone ?? "";
+  const orgPaymentLink = orgConfig.companyProfile.paymentPortalUrl ?? "";
 
   // Per-customer presence map → per-case collision (self-excluded).
   const presenceByCustomer = new Map<string, { userId: string; lastSeenAt: string }[]>();
@@ -403,6 +413,8 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
       selectedPromiseId,
       sms,
       smsEnabled,
+      smsQuietNow,
+      quietHoursLabel,
       emailEnabled,
       emailMessages: selectedEmailMessages,
       customerEmail: selectedCustomerEmail,
@@ -419,6 +431,12 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
       roster,
       collisions,
       currentUserId: user.id,
+      smsTemplates: templates.sms,
+      emailTemplates: templates.email,
+      orgCompany,
+      orgPhone,
+      orgPaymentLink,
+      maxBatch: orgConfig.workflow.smsBatchLimit,
       ...dashboardData,
     },
     { headers },
@@ -452,6 +470,8 @@ export default function Dashboard() {
     selectedPromiseId,
     sms,
     smsEnabled,
+    smsQuietNow,
+    quietHoursLabel,
     emailEnabled,
     emailMessages,
     customerEmail,
@@ -472,6 +492,12 @@ export default function Dashboard() {
     selected,
     comingDueGroups,
     repInvoiceId,
+    smsTemplates,
+    emailTemplates,
+    orgCompany,
+    orgPhone,
+    orgPaymentLink,
+    maxBatch,
   } = useLoaderData<typeof loader>();
 
   useFlashCleanup();
@@ -526,6 +552,11 @@ export default function Dashboard() {
           Bulk text not sent — text messaging is turned off for this workspace.
         </div>
       ) : null}
+      {bulkSms === "quiet" ? (
+        <div className="px-6 py-2 bg-warm/10 border-b border-warm/30 text-sm font-sans font-medium text-warm" role="alert">
+          Bulk text not sent — outside quiet hours ({quietHoursLabel}).
+        </div>
+      ) : null}
       {bulkSms === "error" ? (
         <div className="px-6 py-2 bg-hot/10 border-b border-hot/30 text-sm font-sans font-medium text-hot" role="alert">
           Could not send the bulk text — please try again.
@@ -562,7 +593,14 @@ export default function Dashboard() {
                 returnTo={`/dashboard?${new URLSearchParams({ view, sort, ...(q ? { q } : {}) }).toString()}`}
                 collisions={collisions}
                 smsEnabled={smsEnabled}
+                smsQuietNow={smsQuietNow}
+                quietHoursLabel={quietHoursLabel}
                 comingDueGroups={comingDueGroups}
+                smsTemplates={smsTemplates}
+                orgCompany={orgCompany}
+                orgPhone={orgPhone}
+                orgPaymentLink={orgPaymentLink}
+                maxBatch={maxBatch}
               />
             </div>
 
@@ -582,6 +620,8 @@ export default function Dashboard() {
                   roster={roster}
                   sms={sms}
                   smsEnabled={smsEnabled}
+                  smsQuietNow={smsQuietNow}
+                  quietHoursLabel={quietHoursLabel}
                   emailEnabled={emailEnabled}
                   emailMessages={emailMessages}
                   customerEmail={customerEmail}
@@ -590,6 +630,11 @@ export default function Dashboard() {
                   sort={sort}
                   q={q}
                   collision={selected ? (collisions[selected.caseId] ?? null) : null}
+                  smsTemplates={smsTemplates}
+                  emailTemplates={emailTemplates}
+                  orgCompany={orgCompany}
+                  orgPhone={orgPhone}
+                  orgPaymentLink={orgPaymentLink}
                 />
               </div>
             ) : null}
