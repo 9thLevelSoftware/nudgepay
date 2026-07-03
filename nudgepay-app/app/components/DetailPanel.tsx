@@ -9,6 +9,7 @@ import { EMAIL_TEMPLATES, applyEmailTemplate } from "~/lib/email-templates";
 import { formatDate } from "~/lib/dates";
 import { STATUS_LABEL, EXCEPTION_REASON_LABEL, formatUSD } from "~/lib/format";
 import { isContactBlocked, isTerminal, exceptionLabel } from "~/lib/exceptions";
+import { smsGateFor } from "~/lib/sms-gate";
 import { nextActionLabel, emailFailureLabel, isHardBounce, plural } from "~/lib/labels";
 import type { MessageEntry, EmailMessageEntry, RosterMember } from "~/routes/dashboard";
 import type { TimelineEntry } from "~/lib/timeline";
@@ -157,23 +158,16 @@ function MessagesTab({
     setBody("");
   }, [selected.caseId]);
 
-  // Derive the first gate reason that applies.
-  // Severity: "hard" = compliance-sensitive (red), "soft" = routine informational (amber).
-  // Order: workspace → blocked → opted-out → no-invoice → no-consent → no-phone.
-  // doNotText MUST precede !consent so agents never see "mark consent" when a customer opted out.
-  const smsGate: { reason: string; severity: "hard" | "soft" } | null = !smsEnabled
-    ? { reason: "Text messaging is turned off for this workspace.", severity: "hard" }
-    : contactBlocked
-      ? { reason: `Messaging blocked — ${exceptionLabel(selected.exceptionReason)}.`, severity: "hard" }
-      : prefs.doNotText
-        ? { reason: "Customer opted out of texts.", severity: "hard" }
-        : noInvoice
-          ? { reason: "No invoice to reference.", severity: "soft" }
-          : !consent
-            ? { reason: "Mark consent to enable sending.", severity: "soft" }
-            : !phone
-              ? { reason: "Customer has no phone number.", severity: "soft" }
-              : null;
+  // Gate ladder — shared with Focus Mode via sms-gate.ts.
+  const smsGate = smsGateFor({
+    smsEnabled,
+    contactBlocked,
+    exceptionReason: selected.exceptionReason,
+    doNotText: prefs.doNotText,
+    hasInvoice: !noInvoice,
+    consent,
+    phone,
+  });
   const smsGateReason = smsGate?.reason ?? null;
   const smsSendDisabled = smsGateReason !== null;
 
