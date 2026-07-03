@@ -21,7 +21,8 @@ import {
 import type { PriorityOverrideLevel } from "../lib/priority";
 import type { ExceptionReason } from "../lib/contact-log";
 import { AppShell } from "../components/AppShell";
-import { MetricsStrip } from "../components/MetricsStrip";
+import { KpiBand } from "../components/KpiBand";
+import { TriageStrip } from "../components/TriageStrip";
 import { WorkQueue } from "../components/WorkQueue";
 import { DetailPanel } from "../components/DetailPanel";
 import { LogContactDrawer } from "../components/LogContactDrawer";
@@ -537,10 +538,13 @@ export default function Dashboard() {
       ) : null}
 
       <div className="flex flex-col h-full">
-          {/* Metrics strip */}
+          {/* KPI band */}
           <div className="px-6 py-3 border-b border-border bg-panel shrink-0">
-            <MetricsStrip metrics={metrics} view={view} sort={sort} search={q} scopeLabel={scopeLabel} clearHref={clearHref} />
+            <KpiBand metrics={metrics} view={view} sort={sort} search={q} scopeLabel={scopeLabel} clearHref={clearHref} />
           </div>
+
+          {/* Triage strip — top-3 actionable cases */}
+          <TriageStrip items={items} view={view} sort={sort} search={q} />
 
           {/* Workspace: queue full-width until a case is selected, then two-pane */}
           <div className="flex flex-1 overflow-hidden">
