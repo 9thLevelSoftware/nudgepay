@@ -10,6 +10,7 @@ import { formatDate } from "~/lib/dates";
 import { STATUS_LABEL, EXCEPTION_REASON_LABEL, formatUSD } from "~/lib/format";
 import { isContactBlocked, isTerminal, exceptionLabel } from "~/lib/exceptions";
 import { smsGateFor } from "~/lib/sms-gate";
+import { whyNow } from "~/lib/next-best-action";
 import { nextActionLabel, emailFailureLabel, isHardBounce, plural } from "~/lib/labels";
 import type { MessageEntry, EmailMessageEntry, RosterMember } from "~/routes/dashboard";
 import type { TimelineEntry } from "~/lib/timeline";
@@ -735,6 +736,9 @@ export function DetailPanel({
         </Link>
       </div>
 
+      {/* ── Next best action card ─────────────────────────────────────────── */}
+      <NbaCard selected={selected} smsEnabled={smsEnabled} prefs={prefs} phone={phone} view={view} sort={sort} q={q} logHref={logHref} />
+
       {/* ── Tab bar ─────────────────────────────────────────────────────────── */}
       <nav
         aria-label="Selected account sections"
@@ -957,6 +961,14 @@ export function DetailPanel({
                     <span className="font-mono text-sm text-text">{formatUSD(selected.promise.amount)}</span>
                   ) : null}
                 </div>
+                {selected.promise && selected.amountReceived != null && selected.promise.amount > 0 ? (
+                  <div className="mt-2 h-1.5 w-full rounded-full bg-border/50 overflow-hidden">
+                    <div
+                      className={`h-full rounded-full ${accent === "hot" ? "bg-hot" : "bg-cool"}`}
+                      style={{ width: `${Math.min(100, (selected.amountReceived / selected.promise.amount) * 100)}%` }}
+                    />
+                  </div>
+                ) : null}
                 {selected.promise ? (
                   <p className="mt-1 text-xs text-muted">
                     Promised by {formatDate(selected.promise.date)}
@@ -1114,5 +1126,74 @@ export function DetailPanel({
         />
       ) : null}
     </aside>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// NbaCard — "Next best action" callout between action tiles and tab bar
+// ---------------------------------------------------------------------------
+
+function NbaCard({
+  selected, smsEnabled, prefs, phone, view, sort, q, logHref,
+}: {
+  selected: CaseItem;
+  smsEnabled: boolean;
+  prefs: CommPrefs;
+  phone: string | null;
+  view: string;
+  sort: string;
+  q: string;
+  logHref: string;
+}) {
+  const nba = whyNow(selected);
+
+  // Determine primary action: prefer text tab if sendable, else log call
+  const gate = smsGateFor({
+    smsEnabled,
+    contactBlocked: selected.contactBlocked,
+    exceptionReason: selected.exceptionReason,
+    doNotText: prefs.doNotText ?? false,
+    hasInvoice: selected.invoices.length > 0,
+    consent: selected.smsConsent,
+    phone,
+  });
+  const canText = gate === null;
+  const textHref = `?${new URLSearchParams({ case: selected.caseId, tab: "messages", view, sort, ...(q ? { q } : {}) }).toString()}`;
+
+  return (
+    <div className="mx-4 my-3 rounded-lg border border-copper/30 bg-copper/5 px-4 py-3">
+      <p className="text-[10px] font-mono font-semibold uppercase tracking-wider text-copper mb-1">
+        Next best action
+      </p>
+      <p className="text-sm font-sans font-semibold text-text leading-snug">{nba.headline}</p>
+      {nba.reason && (
+        <p className="mt-0.5 text-xs text-muted leading-relaxed">{nba.reason}</p>
+      )}
+      <div className="mt-2.5 flex items-center gap-2">
+        {canText ? (
+          <Link
+            to={textHref}
+            className="inline-flex items-center gap-1.5 rounded-md bg-copper px-3 py-1.5 text-xs font-semibold text-surface hover:bg-copper/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-copper transition-colors"
+          >
+            <Icon name="message" size={13} aria-hidden />
+            Send text
+          </Link>
+        ) : (
+          <Link
+            to={logHref}
+            className="inline-flex items-center gap-1.5 rounded-md bg-copper px-3 py-1.5 text-xs font-semibold text-surface hover:bg-copper/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-copper transition-colors"
+          >
+            <Icon name="phone" size={13} aria-hidden />
+            Log call
+          </Link>
+        )}
+        <Link
+          to={logHref}
+          className="text-xs font-sans font-medium text-copper hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-copper rounded"
+        >
+          Log contact
+        </Link>
+      </div>
+    </div>
   );
 }
