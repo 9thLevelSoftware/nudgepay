@@ -8,6 +8,7 @@ import type { PriorityLevel } from "./priority";
 import { CADENCE_DAYS } from "./follow-up-cadence";
 import { GRACE_BUSINESS_DAYS, DEFAULT_WORKING_DAYS, NO_HOLIDAYS } from "./business-days";
 import { DEFAULT_LATE_FEE_CONFIG, type LateFeeConfig } from "./late-fees";
+import { resolveCompanyProfile, DEFAULT_COMPANY_PROFILE, type CompanyProfile } from "./org-profile";
 
 export type OrgConfig = {
   promiseGraceDays: number;
@@ -15,6 +16,7 @@ export type OrgConfig = {
   holidays: ReadonlySet<string>;
   cadenceDays: Readonly<Record<PriorityLevel, number>>;
   lateFee: LateFeeConfig;
+  companyProfile: CompanyProfile;
 };
 
 // Nullable to match a SELECT against optional columns / an absent row.
@@ -29,6 +31,11 @@ export type OrgSettingsRow = {
   late_fee_grace_days: number | null;
   late_fee_monthly_percent: number | null;
   late_fee_flat_amount: number | null;
+  // Company profile (Phase 2)
+  company_website: string | null;
+  company_phone: string | null;
+  payment_portal_url: string | null;
+  timezone: string | null;
 };
 
 export const DEFAULT_ORG_CONFIG: OrgConfig = Object.freeze({
@@ -37,6 +44,7 @@ export const DEFAULT_ORG_CONFIG: OrgConfig = Object.freeze({
   holidays: NO_HOLIDAYS,
   cadenceDays: CADENCE_DAYS,
   lateFee: DEFAULT_LATE_FEE_CONFIG,
+  companyProfile: DEFAULT_COMPANY_PROFILE,
 });
 
 export function resolveOrgConfig(
@@ -45,7 +53,7 @@ export function resolveOrgConfig(
 ): OrgConfig {
   const holidaySet: ReadonlySet<string> = new Set(holidays.map((h) => h.holiday_date));
   if (!settings) {
-    return { ...DEFAULT_ORG_CONFIG, holidays: holidaySet };
+    return { ...DEFAULT_ORG_CONFIG, holidays: holidaySet, companyProfile: DEFAULT_COMPANY_PROFILE };
   }
   const workingDays: ReadonlySet<number> =
     settings.working_days && settings.working_days.length > 0
@@ -67,5 +75,6 @@ export function resolveOrgConfig(
       monthlyPercent: Number(settings.late_fee_monthly_percent ?? DEFAULT_LATE_FEE_CONFIG.monthlyPercent),
       flatAmount: Number(settings.late_fee_flat_amount ?? DEFAULT_LATE_FEE_CONFIG.flatAmount),
     },
+    companyProfile: resolveCompanyProfile(settings),
   };
 }

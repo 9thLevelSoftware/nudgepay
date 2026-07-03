@@ -5,6 +5,7 @@ import { safeReturnTo } from "../lib/return-to";
 import { parseOrgSettingsUpdate, parseHolidayDate, parseLateFeeSettingsUpdate } from "../lib/org-settings";
 import { parseChannelSettingsUpdate, parseSmsSenderUpdate } from "../lib/channel-settings";
 import { parseEmailSettingsUpdate } from "../lib/email-settings";
+import { parseCompanyProfileUpdate } from "../lib/org-profile";
 
 function flag(returnTo: string, key: string, val: string): string {
   return `${returnTo}${returnTo.includes("?") ? "&" : "?"}${key}=${val}`;
@@ -22,6 +23,20 @@ export async function action({ request, context }: ActionFunctionArgs) {
   if (org.role !== "owner") return redirect(returnTo, { headers });
 
   const intent = form.get("intent");
+
+  if (intent === "save_company_profile") {
+    const parsed = parseCompanyProfileUpdate(form);
+    if (!parsed.ok) return redirect(flag(returnTo, "error", parsed.error), { headers });
+    // Rename the org (user client → org_owner_update RLS is the real boundary)
+    const { error: nameErr } = await supabase.from("organizations")
+      .update({ name: parsed.name }).eq("id", org.org_id);
+    if (nameErr) return redirect(flag(returnTo, "error", "save"), { headers });
+    // Upsert profile columns into org_settings
+    const { error } = await supabase.from("org_settings")
+      .upsert({ org_id: org.org_id, ...parsed.patch }, { onConflict: "org_id" });
+    if (error) return redirect(flag(returnTo, "error", "save"), { headers });
+    return redirect(flag(returnTo, "saved", "profile"), { headers });
+  }
 
   if (intent === "save_channels") {
     const { sms_enabled } = parseChannelSettingsUpdate(form);
