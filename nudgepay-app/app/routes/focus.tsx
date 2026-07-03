@@ -162,6 +162,12 @@ export default function FocusMode() {
     }, 4000);
   }, []);
 
+  // Current case — must be declared before any effect that references it
+  const currentId = session.order[session.index];
+  const currentItem = currentId ? queue.find((c) => c.caseId === currentId) : null;
+  const currentTimeline = currentId ? timelines[currentId] ?? [] : [];
+  const done = isDone(session);
+
   // Snooze fetcher
   const snoozeFetcher = useFetcher();
   const snoozeHandledRef = useRef<unknown>(null);
@@ -189,12 +195,6 @@ export default function FocusMode() {
   useEffect(() => {
     setOpenForm(null);
   }, [session.index]);
-
-  // Current case
-  const currentId = session.order[session.index];
-  const currentItem = currentId ? queue.find((c) => c.caseId === currentId) : null;
-  const currentTimeline = currentId ? timelines[currentId] ?? [] : [];
-  const done = isDone(session);
 
   // If current case vanished after revalidation, auto-skip
   useEffect(() => {
@@ -234,7 +234,7 @@ export default function FocusMode() {
     }
   }, [done, currentItem, snoozeFetcher, addToast]);
 
-  useFocusKeys({ enabled: openForm === null && !done, onAction: handleKey });
+  useFocusKeys({ enabled: openForm === null && !done && snoozeFetcher.state === "idle", onAction: handleKey });
 
   // Presence heartbeat for current case
   useEffect(() => {
