@@ -43,9 +43,24 @@ export function SendTextMiniForm({ item, smsEnabled, onDone, onCancel, onError }
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fetcher = useFetcher();
 
+  // Autofocus the textarea on mount
+  useEffect(() => {
+    textareaRef.current?.focus();
+  }, []);
+
+  // Track which fetcher response we've already handled — prevents re-fire
+  // if callbacks change identity on parent re-render before unmount.
+  const handledRef = useRef<unknown>(null);
+
   // Handle fetcher response
   useEffect(() => {
-    if (fetcher.data && typeof fetcher.data === "object" && "ok" in fetcher.data) {
+    if (
+      fetcher.data &&
+      fetcher.data !== handledRef.current &&
+      typeof fetcher.data === "object" &&
+      "ok" in fetcher.data
+    ) {
+      handledRef.current = fetcher.data;
       if ((fetcher.data as { ok: boolean }).ok) {
         onDone();
       } else {
@@ -66,6 +81,9 @@ export function SendTextMiniForm({ item, smsEnabled, onDone, onCancel, onError }
 
   const sending = fetcher.state !== "idle";
   const isHardGate = gate?.severity === "hard";
+  // Block the form for ALL gates — soft gates (no invoice, no consent) will
+  // also fail server-side, and Focus Mode has no UI to resolve them inline.
+  const gated = gate !== null;
 
   return (
     <div className="mx-auto w-full max-w-2xl mt-3 rounded-lg border border-white/10 bg-white/5 p-4">
@@ -92,8 +110,8 @@ export function SendTextMiniForm({ item, smsEnabled, onDone, onCancel, onError }
         </div>
       )}
 
-      {/* Hard gate blocks the form */}
-      {isHardGate ? (
+      {/* Any gate blocks the form — soft gates can't be resolved in Focus Mode */}
+      {gated ? (
         <p className="text-xs text-muted">
           Texting is not available for this customer. Press <kbd className="rounded border border-white/10 bg-white/5 px-1 py-0.5 font-mono text-[9px]">esc</kbd> to go back.
         </p>

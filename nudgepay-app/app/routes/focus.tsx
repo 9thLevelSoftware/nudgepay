@@ -164,6 +164,26 @@ export default function FocusMode() {
 
   // Snooze fetcher
   const snoozeFetcher = useFetcher();
+  const snoozeHandledRef = useRef<unknown>(null);
+
+  // Wait for server confirmation before advancing on snooze
+  useEffect(() => {
+    if (
+      snoozeFetcher.data &&
+      snoozeFetcher.data !== snoozeHandledRef.current &&
+      typeof snoozeFetcher.data === "object" &&
+      "ok" in snoozeFetcher.data
+    ) {
+      snoozeHandledRef.current = snoozeFetcher.data;
+      if ((snoozeFetcher.data as { ok: boolean }).ok) {
+        addToast(`Snoozed — follow up ${formatDate(currentItem?.suggestedFollowUpAt ?? null)}`);
+        dispatch({ type: "resolve", result: "snoozed" });
+      } else {
+        const msg = (snoozeFetcher.data as { error?: string }).error ?? "Snooze failed";
+        addToast(msg);
+      }
+    }
+  }, [snoozeFetcher.data, addToast, currentItem?.suggestedFollowUpAt]);
 
   // Reset form when advancing
   useEffect(() => {
@@ -195,7 +215,8 @@ export default function FocusMode() {
         setOpenForm((prev) => prev === "text" ? null : "text");
         break;
       case "3": {
-        // Snooze = log a follow-up-requested note
+        // Snooze = log a follow-up-requested note (advance deferred to
+        // the snooze confirmation effect — no optimistic dispatch).
         const fd = new FormData();
         fd.set("caseId", currentItem.caseId);
         fd.set("customerId", currentItem.customerId);
@@ -205,8 +226,6 @@ export default function FocusMode() {
         fd.set("followUpAt", currentItem.suggestedFollowUpAt);
         fd.set("respond", "json");
         snoozeFetcher.submit(fd, { method: "post", action: "/api/contact-logs" });
-        addToast(`Snoozed — follow up ${formatDate(currentItem.suggestedFollowUpAt)}`);
-        dispatch({ type: "resolve", result: "snoozed" });
         break;
       }
       case "space":
@@ -218,10 +237,8 @@ export default function FocusMode() {
   useFocusKeys({ enabled: openForm === null && !done, onAction: handleKey });
 
   // Presence heartbeat for current case
-  const customerIdRef = useRef<string | null>(null);
   useEffect(() => {
     const cid = currentItem?.customerId ?? null;
-    customerIdRef.current = cid;
     if (!cid) return;
     let cancelled = false;
     const beat = () => {

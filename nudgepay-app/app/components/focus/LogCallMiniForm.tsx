@@ -27,9 +27,20 @@ export function LogCallMiniForm({ item, onDone, onCancel }: LogCallMiniFormProps
   const [notes, setNotes] = useState("");
   const formRef = useRef<HTMLFormElement>(null);
 
+  // Track which fetcher response we've already handled — prevents re-fire
+  // when React re-renders before the parent unmounts this component.
+  const handledRef = useRef<unknown>(null);
+
   // Advance on success
   useEffect(() => {
-    if (fetcher.data && "ok" in fetcher.data && fetcher.data.ok) {
+    if (
+      fetcher.data &&
+      fetcher.data !== handledRef.current &&
+      typeof fetcher.data === "object" &&
+      "ok" in fetcher.data &&
+      fetcher.data.ok
+    ) {
+      handledRef.current = fetcher.data;
       onDone();
     }
   }, [fetcher.data, onDone]);
@@ -44,9 +55,10 @@ export function LogCallMiniForm({ item, onDone, onCancel }: LogCallMiniFormProps
   }, [onCancel]);
 
   const saving = fetcher.state !== "idle";
-  const error = fetcher.data && "ok" in fetcher.data && !fetcher.data.ok
-    ? (fetcher.data as { ok: false; error: string }).error
-    : null;
+  const error =
+    fetcher.data && typeof fetcher.data === "object" && "ok" in fetcher.data && !fetcher.data.ok
+      ? (fetcher.data as { ok: false; error: string }).error
+      : null;
 
   return (
     <div className="mx-auto w-full max-w-2xl mt-3 rounded-lg border border-white/10 bg-white/5 p-4">
