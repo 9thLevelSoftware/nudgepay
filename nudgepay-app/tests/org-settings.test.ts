@@ -1,5 +1,5 @@
 import { expect, test } from "vitest";
-import { parseOrgSettingsUpdate, parseHolidayDate, parsePriorityThresholdsUpdate, parseWorkflowKnobsUpdate } from "../app/lib/org-settings";
+import { parseOrgSettingsUpdate, parseHolidayDate, parseHolidayLabel, parsePriorityThresholdsUpdate, parseWorkflowKnobsUpdate } from "../app/lib/org-settings";
 
 function fd(entries: Array<[string, string]>): FormData {
   const f = new FormData();
@@ -47,6 +47,16 @@ test("parseHolidayDate accepts a real YYYY-MM-DD and rejects junk", () => {
   expect(parseHolidayDate("07/04/2026")).toBe(null);
   expect(parseHolidayDate("")).toBe(null);
   expect(parseHolidayDate(null)).toBe(null);
+});
+
+test("parseHolidayLabel trims, clamps to 80 chars, and normalizes blank to null", () => {
+  expect(parseHolidayLabel("Independence Day")).toBe("Independence Day");
+  expect(parseHolidayLabel("  Christmas  ")).toBe("Christmas");
+  expect(parseHolidayLabel("")).toBe(null);
+  expect(parseHolidayLabel("   ")).toBe(null);
+  expect(parseHolidayLabel(null)).toBe(null);
+  const long = "x".repeat(100);
+  expect(parseHolidayLabel(long)).toBe("x".repeat(80));
 });
 
 // --- parsePriorityThresholdsUpdate (Phase 4) ---

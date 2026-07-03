@@ -2,7 +2,7 @@ import { redirect, type ActionFunctionArgs } from "react-router";
 import { getEnv } from "../lib/env.server";
 import { requireUser, resolveOrg } from "../lib/session.server";
 import { safeReturnTo } from "../lib/return-to";
-import { parseOrgSettingsUpdate, parseHolidayDate, parseLateFeeSettingsUpdate, parsePriorityThresholdsUpdate, parseWorkflowKnobsUpdate } from "../lib/org-settings";
+import { parseOrgSettingsUpdate, parseHolidayDate, parseHolidayLabel, parseLateFeeSettingsUpdate, parsePriorityThresholdsUpdate, parseWorkflowKnobsUpdate } from "../lib/org-settings";
 import { parseChannelSettingsUpdate, parseSmsSenderUpdate, parseQuietHoursUpdate } from "../lib/channel-settings";
 import { parseEmailSettingsUpdate } from "../lib/email-settings";
 import { parseCompanyProfileUpdate } from "../lib/org-profile";
@@ -83,8 +83,9 @@ export async function action({ request, context }: ActionFunctionArgs) {
   if (intent === "add_holiday") {
     const date = parseHolidayDate(form.get("holiday_date"));
     if (!date) return redirect(flag(returnTo, "error", "holiday"), { headers });
+    const label = parseHolidayLabel(form.get("holiday_label"));
     const { error } = await supabase.from("org_holidays")
-      .upsert({ org_id: org.org_id, holiday_date: date }, { onConflict: "org_id,holiday_date" });
+      .upsert({ org_id: org.org_id, holiday_date: date, label }, { onConflict: "org_id,holiday_date" });
     if (error) return redirect(flag(returnTo, "error", "holiday"), { headers });
     return redirect(flag(returnTo, "saved", "1"), { headers });
   }

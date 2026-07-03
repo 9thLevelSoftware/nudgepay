@@ -51,6 +51,12 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
 
   const config = await loadOrgConfig(supabase, org.org_id);
 
+  // Display-only holiday rows (date + label). resolveOrgConfig's holidays Set
+  // (used for business-day math) only needs the dates, so this is a separate,
+  // lightweight read rather than threading label through OrgConfig.
+  const { data: holidayRows } = await supabase.from("org_holidays")
+    .select("holiday_date, label").eq("org_id", org.org_id).order("holiday_date", { ascending: true });
+
   const displayName = (user.user_metadata?.display_name as string | undefined) ?? "";
 
   // Notification prefs (user client → RLS enforces self-only)
@@ -102,7 +108,8 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
       grace: config.promiseGraceDays,
       workingDays: [...config.workingDays],
       cadence: config.cadenceDays,
-      holidays: [...config.holidays].sort(),
+      holidays: ((holidayRows as { holiday_date: string; label: string | null }[] | null) ?? [])
+        .map((h) => ({ date: h.holiday_date, label: h.label ?? null })),
     },
     lateFee: config.lateFee,
     companyProfile: config.companyProfile,

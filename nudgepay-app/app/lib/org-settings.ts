@@ -187,3 +187,12 @@ export function parseHolidayDate(value: FormDataEntryValue | null): string | nul
   if (Number.isNaN(d.getTime())) return null;
   return d.toISOString().slice(0, 10) === value ? value : null; // round-trip rejects 2026-02-31
 }
+
+// Validates an optional holiday label (display-only; org_holidays.label from
+// migration 0016). Trims whitespace, clamps to 80 chars (mirrors the form's
+// maxLength as a server-side backstop), and normalizes blank input to null.
+export function parseHolidayLabel(value: FormDataEntryValue | null): string | null {
+  if (typeof value !== "string") return null;
+  const trimmed = value.trim().slice(0, 80);
+  return trimmed === "" ? null : trimmed;
+}
