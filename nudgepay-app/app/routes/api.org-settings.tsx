@@ -165,8 +165,9 @@ export async function action({ request, context }: ActionFunctionArgs) {
     const channel = (form.get("channel") as string ?? "").trim();
     if (channel !== "sms" && channel !== "email") return redirect(flag(returnTo, "error", "channel"), { headers });
     // Delete existing
-    await supabase.from("message_templates")
+    const { error: deleteErr } = await supabase.from("message_templates")
       .delete().eq("org_id", org.org_id).eq("channel", channel);
+    if (deleteErr) return redirect(flag(returnTo, "error", "save"), { headers });
     // Re-insert defaults
     const defaults = channel === "sms" ? DEFAULT_SMS_TEMPLATES : DEFAULT_EMAIL_TEMPLATES;
     const rows = defaults.map((t, i) => ({

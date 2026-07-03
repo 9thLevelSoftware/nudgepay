@@ -54,22 +54,29 @@ export async function runScheduledDigest(
       // Org-local "today" — runDailyDigest's follow-up-due comparison
       // (next_action_at <= today) must use the org's calendar day, not UTC's.
       const today = todayInTz(tz, now);
+
+      // Atomically claim the digest slot: update last_digest_date only if it
+      // hasn't already been set to today. A concurrent cron tick that races past
+      // shouldSendDigestNow will find zero rows updated and skip the send.
+      // notification_log member-level dedupe remains as belt-and-braces.
+      const { data: claimed, error: claimErr } = await service
+        .from("org_settings")
+        .update({ last_digest_date: today }, { count: "exact" })
+        .eq("org_id", orgId)
+        .or(`last_digest_date.is.null,last_digest_date.neq.${today}`)
+        .select("org_id");
+      if (claimErr) {
+        console.error(`[digest] failed to claim last_digest_date for org ${orgId}:`, claimErr);
+        continue;
+      }
+      if (!claimed || (Array.isArray(claimed) && claimed.length === 0)) continue; // already sent today
+
       await runDailyDigest(
         { fetchFn: fetch, service, email: { apiKey: emailEnv.RESEND_API_KEY }, appUrl: emailEnv.APP_PUBLIC_BASE_URL ?? "" },
         orgId,
         today,
       );
       sent += 1;
-
-      // Record after a successful run so a mid-run crash leaves last_digest_date
-      // unset and the next hourly tick retries (notification_log dedupe still
-      // protects against any partial-send double-charge to members already sent).
-      const { error: updateErr } = await service
-        .from("org_settings")
-        .upsert({ org_id: orgId, last_digest_date: today }, { onConflict: "org_id" });
-      if (updateErr) {
-        console.error(`[digest] failed to record last_digest_date for org ${orgId}:`, updateErr);
-      }
     } catch (err) {
       console.error(`[digest] daily digest failed for org ${orgId}:`, err);
       await recordSyncError(service, {

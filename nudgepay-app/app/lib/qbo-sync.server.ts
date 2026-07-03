@@ -151,7 +151,8 @@ export async function syncOverdueInvoices(
 
   // Coming-due invoices (awareness only — org-configured lookahead window,
   // separate capped query).
-  const plus7 = new Date(Date.now() + orgConfig.workflow.comingDueDays * 86_400_000).toISOString().slice(0, 10);
+  const todayMs = new Date(today + "T00:00:00Z").getTime();
+  const plus7 = new Date(todayMs + orgConfig.workflow.comingDueDays * 86_400_000).toISOString().slice(0, 10);
   const comingDueInvoices = await qboQuery(
     deps.fetchFn, deps.api, accessToken, realmId,
     `select * from Invoice where Balance > '0' and DueDate >= '${today}' and DueDate <= '${plus7}' startposition 1 maxresults ${QUERY_LIMIT}`,

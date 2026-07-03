@@ -127,6 +127,40 @@ test("ordering violation: medium <= 0 is rejected", () => {
   ))).toEqual({ ok: false, error: "priority_thresholds_order" });
 });
 
+test("high_value_threshold below $1,000 floor is rejected", () => {
+  expect(parsePriorityThresholdsUpdate(priorityFd(
+    validPriority.map(([k, v]) => k === "high_value_threshold" ? [k, "999"] : [k, v]),
+  ))).toEqual({ ok: false, error: "high_value_threshold" });
+  // exactly $1,000 is accepted
+  const r = parsePriorityThresholdsUpdate(priorityFd(
+    validPriority.map(([k, v]) => k === "high_value_threshold" ? [k, "1000"] : [k, v]),
+  ));
+  expect(r.ok).toBe(true);
+});
+
+test("level thresholds above 200 are rejected", () => {
+  expect(parsePriorityThresholdsUpdate(priorityFd(
+    validPriority.map(([k, v]) => k === "priority_critical_min" ? [k, "201"] : [k, v]),
+  ))).toEqual({ ok: false, error: "priority_thresholds_range" });
+});
+
+test("level thresholds with gap < 5 are rejected", () => {
+  // critical=54, high=50, medium=25 — gap between critical and high is 4
+  expect(parsePriorityThresholdsUpdate(priorityFd([
+    ["high_value_threshold", "5000"],
+    ["priority_critical_min", "54"],
+    ["priority_high_min", "50"],
+    ["priority_medium_min", "25"],
+  ]))).toEqual({ ok: false, error: "priority_thresholds_range" });
+  // critical=80, high=29, medium=25 — gap between high and medium is 4
+  expect(parsePriorityThresholdsUpdate(priorityFd([
+    ["high_value_threshold", "5000"],
+    ["priority_critical_min", "80"],
+    ["priority_high_min", "29"],
+    ["priority_medium_min", "25"],
+  ]))).toEqual({ ok: false, error: "priority_thresholds_range" });
+});
+
 // --- parseWorkflowKnobsUpdate (Phase 5) ---
 
 const workflowFd = (entries: Array<[string, string]>): FormData => {

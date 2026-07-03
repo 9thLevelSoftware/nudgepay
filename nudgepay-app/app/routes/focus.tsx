@@ -53,12 +53,13 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
   const orgConfigForToday = await loadOrgConfig(supabase, org.org_id).catch(() => DEFAULT_ORG_CONFIG);
   const today = todayInTz(orgConfigForToday.companyProfile.timezone);
 
-  const [src, { data: orgRow }] = await Promise.all([
+  const [src, { data: orgRow, error: orgErr }] = await Promise.all([
     loadCaseQueueSource({
       supabase, service, orgId: org.org_id, today, includePresence: false, orgConfig: orgConfigForToday,
     }),
     supabase.from("organizations").select("name").eq("id", org.org_id).single(),
   ]);
+  if (orgErr) throw orgErr;
   const orgName = orgRow?.name ?? "";
 
   const allItems = buildCaseItems(

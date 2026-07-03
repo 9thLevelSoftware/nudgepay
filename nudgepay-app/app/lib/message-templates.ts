@@ -19,22 +19,42 @@ export type OrgTemplates = {
   email: MessageTemplateRow[];
 };
 
-// Resolve templates: if the org has DB rows for a channel, use them;
-// otherwise fall back to defaults (covers orgs created between migration and deploy).
+// Resolve templates for a channel: merge DB rows with defaults so that editing
+// one template doesn't cause the others to disappear. DB rows win by slug;
+// missing defaults are appended. When no DB rows exist at all, pure defaults
+// are returned (covers orgs created between migration and deploy).
+function resolveChannel(
+  dbRows: MessageTemplateRow[],
+  defaults: readonly { id: string; label: string; body: string; subject?: string }[],
+  channel: "sms" | "email",
+): MessageTemplateRow[] {
+  if (dbRows.length === 0) {
+    return defaults.map((t, i) => ({
+      id: t.id, channel, slug: t.id, label: t.label,
+      subject: "subject" in t ? (t.subject ?? null) : null,
+      body: t.body, sort: i,
+    }));
+  }
+  // DB rows present — merge: keep all DB rows, append any default slugs missing from DB.
+  const dbSlugs = new Set(dbRows.map(r => r.slug));
+  const missing = defaults
+    .filter(t => !dbSlugs.has(t.id))
+    .map((t, i) => ({
+      id: t.id, channel, slug: t.id, label: t.label,
+      subject: "subject" in t ? (t.subject ?? null) : null,
+      body: t.body, sort: dbRows.length + i,
+    }));
+  return [...dbRows, ...missing].sort((a, b) => a.sort - b.sort);
+}
+
 export function resolveTemplates(
   rows: MessageTemplateRow[],
 ): OrgTemplates {
   const sms = rows.filter(r => r.channel === "sms").sort((a, b) => a.sort - b.sort);
   const email = rows.filter(r => r.channel === "email").sort((a, b) => a.sort - b.sort);
   return {
-    sms: sms.length > 0 ? sms : DEFAULT_SMS_TEMPLATES.map((t, i) => ({
-      id: t.id, channel: "sms" as const, slug: t.id, label: t.label,
-      subject: null, body: t.body, sort: i,
-    })),
-    email: email.length > 0 ? email : DEFAULT_EMAIL_TEMPLATES.map((t, i) => ({
-      id: t.id, channel: "email" as const, slug: t.id, label: t.label,
-      subject: t.subject, body: t.body, sort: i,
-    })),
+    sms: resolveChannel(sms, DEFAULT_SMS_TEMPLATES, "sms"),
+    email: resolveChannel(email, DEFAULT_EMAIL_TEMPLATES, "email"),
   };
 }
 
@@ -64,7 +84,8 @@ export function parseTemplateUpsert(form: FormData): TemplateUpsertResult {
   const subject = channel === "email" ? (form.get("subject") as string ?? "").trim() || null : null;
 
   const sortRaw = form.get("sort");
-  const sort = sortRaw != null ? Number(sortRaw) : 0;
+  const parsedSort = sortRaw != null ? Number(sortRaw) : 0;
+  const sort = Number.isInteger(parsedSort) ? parsedSort : 0;
 
   return { ok: true, value: { channel, slug, label, subject, body, sort } };
 }

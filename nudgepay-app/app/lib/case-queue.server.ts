@@ -118,7 +118,12 @@ export async function loadCaseQueueSource(args: LoadCaseQueueArgs): Promise<Case
   // that already loaded it (e.g. to derive org-local `today`) pass it through
   // to avoid a second org_settings read.
   const orgConfig = args.orgConfig ?? await loadOrgConfig(supabase, orgId).catch(() => DEFAULT_ORG_CONFIG);
-  const plus7 = new Date(Date.now() + orgConfig.workflow.comingDueDays * 86_400_000).toISOString().slice(0, 10);
+  // Derive the lookahead upper bound from the org-local today (passed in by the
+  // caller) rather than UTC Date.now(). This keeps the invoice query window
+  // consistent with the org's calendar day — otherwise an east-of-UTC org whose
+  // local date has already advanced would miss invoices due on the final day.
+  const todayMs = new Date(today + "T00:00:00Z").getTime();
+  const plus7 = new Date(todayMs + orgConfig.workflow.comingDueDays * 86_400_000).toISOString().slice(0, 10);
 
   // Stage 1 — everything that needs only orgId. PostgREST builders resolve
   // with { data, error } (never reject), so Promise.all won't short-circuit.

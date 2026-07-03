@@ -23,27 +23,49 @@ describe("resolveTemplates", () => {
       { id: "1", channel: "sms", slug: "custom", label: "Custom", subject: null, body: "Hi {customer}", sort: 0 },
     ];
     const result = resolveTemplates(rows);
-    expect(result.sms).toHaveLength(1);
+    // SMS: DB row + missing defaults merged in
     expect(result.sms[0].slug).toBe("custom");
+    expect(result.sms.length).toBeGreaterThan(1);
+    // Email: no DB rows → pure defaults
     expect(result.email).toHaveLength(DEFAULT_EMAIL_TEMPLATES.length);
   });
 
-  it("uses DB rows when present, sorted by sort", () => {
+  it("merges missing defaults when DB rows exist (edit-one-keep-rest)", () => {
+    // Editing "friendly-reminder" slug should not drop the other 3 default templates
     const rows: MessageTemplateRow[] = [
-      { id: "2", channel: "sms", slug: "second", label: "Second", subject: null, body: "b", sort: 1 },
-      { id: "1", channel: "sms", slug: "first", label: "First", subject: null, body: "a", sort: 0 },
+      { id: "1", channel: "sms", slug: "friendly-reminder", label: "My Reminder", subject: null, body: "Custom body", sort: 0 },
     ];
     const result = resolveTemplates(rows);
-    expect(result.sms.map((t) => t.slug)).toEqual(["first", "second"]);
+    const slugs = result.sms.map((t) => t.slug);
+    expect(slugs).toContain("friendly-reminder");
+    expect(slugs).toContain("past-due");
+    expect(slugs).toContain("final-notice");
+    expect(slugs).toContain("payment-received");
+    // The DB version wins for "friendly-reminder"
+    expect(result.sms.find(t => t.slug === "friendly-reminder")!.body).toBe("Custom body");
+  });
+
+  it("uses DB rows when present, sorted by sort", () => {
+    // Use all 4 default slugs so no defaults are appended
+    const rows: MessageTemplateRow[] = [
+      { id: "2", channel: "sms", slug: "past-due", label: "Second", subject: null, body: "b", sort: 1 },
+      { id: "1", channel: "sms", slug: "friendly-reminder", label: "First", subject: null, body: "a", sort: 0 },
+      { id: "3", channel: "sms", slug: "final-notice", label: "Third", subject: null, body: "c", sort: 2 },
+      { id: "4", channel: "sms", slug: "payment-received", label: "Fourth", subject: null, body: "d", sort: 3 },
+    ];
+    const result = resolveTemplates(rows);
+    expect(result.sms.map((t) => t.slug)).toEqual(["friendly-reminder", "past-due", "final-notice", "payment-received"]);
   });
 
   it("sorts email rows by sort", () => {
     const rows: MessageTemplateRow[] = [
-      { id: "2", channel: "email", slug: "second", label: "Second", subject: "S2", body: "b", sort: 3 },
-      { id: "1", channel: "email", slug: "first", label: "First", subject: "S1", body: "a", sort: 1 },
+      { id: "2", channel: "email", slug: "past-due", label: "Second", subject: "S2", body: "b", sort: 3 },
+      { id: "1", channel: "email", slug: "friendly-reminder", label: "First", subject: "S1", body: "a", sort: 1 },
+      { id: "3", channel: "email", slug: "final-notice", label: "Third", subject: "S3", body: "c", sort: 5 },
+      { id: "4", channel: "email", slug: "payment-received", label: "Fourth", subject: "S4", body: "d", sort: 7 },
     ];
     const result = resolveTemplates(rows);
-    expect(result.email.map((t) => t.slug)).toEqual(["first", "second"]);
+    expect(result.email.map((t) => t.slug)).toEqual(["friendly-reminder", "past-due", "final-notice", "payment-received"]);
   });
 });
 

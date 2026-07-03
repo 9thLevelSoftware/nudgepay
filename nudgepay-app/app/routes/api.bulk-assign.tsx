@@ -4,6 +4,7 @@ import { requireUser, resolveOrg } from "../lib/session.server";
 import { safeReturnTo } from "../lib/return-to";
 import { clampBatch } from "../lib/bulk";
 import { loadOrgConfig } from "../lib/org-config.server";
+import { DEFAULT_ORG_CONFIG } from "../lib/org-config";
 
 function parseIds(form: FormData): string[] {
   const raw = form.get("caseIds");
@@ -26,7 +27,7 @@ export async function action({ request, context }: ActionFunctionArgs) {
   const form = await request.formData();
   const returnTo = safeReturnTo(form.get("returnTo"));
   // Same org value as api.bulk-sms.tsx / the client cap — one org_settings read.
-  const orgConfig = await loadOrgConfig(supabase, org.org_id);
+  const orgConfig = await loadOrgConfig(supabase, org.org_id).catch(() => DEFAULT_ORG_CONFIG);
   const caseIds = clampBatch(parseIds(form), orgConfig.workflow.smsBatchLimit);
   const ownerRaw = form.get("ownerId");
   const choice = typeof ownerRaw === "string" ? ownerRaw : "";

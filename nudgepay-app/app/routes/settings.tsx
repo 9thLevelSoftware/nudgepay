@@ -19,6 +19,7 @@ import { resolveChannelSettings, resolveSmsSenderSettings } from "../lib/channel
 import { resolveEmailSettings } from "../lib/email-settings";
 import { deriveWebhookUrls } from "../lib/provider-status";
 import { loadTemplates } from "../lib/message-templates.server";
+import { resolveTemplates } from "../lib/message-templates";
 import { pageTitle } from "../lib/meta";
 import type { Route } from "./+types/settings";
 
@@ -54,8 +55,9 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
   // Display-only holiday rows (date + label). resolveOrgConfig's holidays Set
   // (used for business-day math) only needs the dates, so this is a separate,
   // lightweight read rather than threading label through OrgConfig.
-  const { data: holidayRows } = await supabase.from("org_holidays")
+  const { data: holidayRows, error: holidayErr } = await supabase.from("org_holidays")
     .select("holiday_date, label").eq("org_id", org.org_id).order("holiday_date", { ascending: true });
+  if (holidayErr) throw holidayErr;
 
   const displayName = (user.user_metadata?.display_name as string | undefined) ?? "";
 
@@ -88,7 +90,7 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
     supabase.from("email_messages")
       .select("id", { count: "exact", head: true }).eq("org_id", org.org_id).eq("direction", "outbound")
       .in("status", ["bounced", "complained"]).gte("created_at", since),
-    loadTemplates(supabase, org.org_id),
+    loadTemplates(supabase, org.org_id).catch(() => resolveTemplates([])),
   ]);
 
   return data({

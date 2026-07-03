@@ -28,12 +28,13 @@ export async function runBulkSms(
 
   // Org token values (company name, phone, payment link) — loaded ONCE per
   // batch, not per case, then reused across every renderCaseBody call below.
-  const [{ data: caseRows, error: caseErr }, { data: orgRow }] = await Promise.all([
+  const [{ data: caseRows, error: caseErr }, { data: orgRow, error: orgErr }] = await Promise.all([
     svc.from("collection_cases")
       .select("id, customer_id, exception_reason").eq("org_id", args.orgId).in("id", ids).is("closed_at", null),
     svc.from("organizations").select("name").eq("id", args.orgId).maybeSingle(),
   ]);
   if (caseErr) throw caseErr;
+  if (orgErr) throw orgErr;
   const orgVars = {
     company: (orgRow?.name as string | null) ?? "",
     phone: args.orgConfig.companyProfile.phone ?? "",

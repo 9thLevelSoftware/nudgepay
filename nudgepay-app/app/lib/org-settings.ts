@@ -120,7 +120,9 @@ export type PriorityThresholdsParseResult =
 export function parsePriorityThresholdsUpdate(form: FormData): PriorityThresholdsParseResult {
   const rawHighValue = form.get("high_value_threshold");
   const highValue = typeof rawHighValue === "string" ? Number(rawHighValue) : NaN;
-  if (!Number.isFinite(highValue) || highValue <= 0) return { ok: false, error: "high_value_threshold" };
+  // Floor of $1,000 prevents the configurable high-value tier from shadowing
+  // the fixed $1,000 / $0 balance tiers in priority.ts:balancePoints.
+  if (!Number.isFinite(highValue) || highValue < 1_000) return { ok: false, error: "high_value_threshold" };
 
   const critical = intField(form, "priority_critical_min");
   const high = intField(form, "priority_high_min");
@@ -128,8 +130,16 @@ export function parsePriorityThresholdsUpdate(form: FormData): PriorityThreshold
   if (critical === null || high === null || medium === null) {
     return { ok: false, error: "priority_thresholds" };
   }
+  // Bounds: each level 1–200, strictly ordered with a minimum gap of 5 so
+  // scoring bands remain meaningful.
+  if (critical > 200 || high > 200 || medium > 200) {
+    return { ok: false, error: "priority_thresholds_range" };
+  }
   if (!(critical > high && high > medium && medium > 0)) {
     return { ok: false, error: "priority_thresholds_order" };
+  }
+  if (critical - high < 5 || high - medium < 5) {
+    return { ok: false, error: "priority_thresholds_range" };
   }
 
   return {
