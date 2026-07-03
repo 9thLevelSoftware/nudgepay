@@ -10,6 +10,7 @@ import { applyCaseReconciliation } from "./case-lifecycle.server";
 import { applyPromiseEvaluation, type BrokenPromiseDetail } from "./promise-evaluation.server";
 import { loadOrgConfig } from "./org-config.server";
 import { DEFAULT_ORG_CONFIG } from "./org-config";
+import { todayInTz } from "./tz";
 
 export type NotifyFn = (orgId: string, brokenDetails: BrokenPromiseDetail[], today: string) => Promise<void>;
 
@@ -125,7 +126,8 @@ export async function applyPaymentWebhook(
   const raw = await qboReadEntity(deps.fetchFn, deps.api, accessToken, realmId, entity, qboId);
   if (!raw) return;
 
-  const today = new Date().toISOString().slice(0, 10);
+  const orgConfig = await loadOrgConfig(deps.service, orgId).catch(() => DEFAULT_ORG_CONFIG);
+  const today = todayInTz(orgConfig.companyProfile.timezone);
   await applyPaymentsAndEvaluate(deps, orgId, accessToken, realmId, [{ raw, type }], today, new Date());
 }
 
@@ -135,7 +137,9 @@ export async function syncOverdueInvoices(
   const { accessToken, realmId } = await getValidAccessToken(
     deps.fetchFn, deps.service, deps.cfg, deps.key, orgId,
   );
-  const today = new Date().toISOString().slice(0, 10);
+  // Org config loaded once (org-local "today" + comingDueDays lookahead window).
+  const orgConfig = await loadOrgConfig(deps.service, orgId).catch(() => DEFAULT_ORG_CONFIG);
+  const today = todayInTz(orgConfig.companyProfile.timezone);
 
   // Overdue invoices (critical path — feeds case pipeline). Separate query
   // so coming-due rows can never displace overdue rows at the cap.
@@ -147,7 +151,6 @@ export async function syncOverdueInvoices(
 
   // Coming-due invoices (awareness only — org-configured lookahead window,
   // separate capped query).
-  const orgConfig = await loadOrgConfig(deps.service, orgId).catch(() => DEFAULT_ORG_CONFIG);
   const plus7 = new Date(Date.now() + orgConfig.workflow.comingDueDays * 86_400_000).toISOString().slice(0, 10);
   const comingDueInvoices = await qboQuery(
     deps.fetchFn, deps.api, accessToken, realmId,
@@ -205,9 +208,10 @@ export async function syncOverdueInvoices(
   );
   await upsertInvoices(deps.service, invoiceRows);
 
-  const reconcileToday = new Date().toISOString().slice(0, 10);
+  // Reuse the org-local `today` computed above (same calendar day as the
+  // overdue-invoice query) rather than recomputing from a fresh UTC Date.
   try {
-    await applyPaymentsAndEvaluate(deps, orgId, accessToken, realmId, [], reconcileToday, now);
+    await applyPaymentsAndEvaluate(deps, orgId, accessToken, realmId, [], today, now);
   } catch (e) {
     console.error("[6b] payments/eval failed; cron will re-converge", e);
   }
@@ -257,7 +261,8 @@ export async function applyInvoiceWebhook(
   const now = new Date();
   await upsertInvoices(deps.service, [mapQboInvoice(inv, orgId, customerId, now)]);
 
-  const reconcileToday = now.toISOString().slice(0, 10);
+  const orgConfig = await loadOrgConfig(deps.service, orgId).catch(() => DEFAULT_ORG_CONFIG);
+  const reconcileToday = todayInTz(orgConfig.companyProfile.timezone, now);
   try {
     await applyPaymentsAndEvaluate(deps, orgId, accessToken, realmId, [], reconcileToday, now);
   } catch (e) {
@@ -299,7 +304,8 @@ export async function runCdcCatchup(
   );
   await upsertInvoices(deps.service, invoiceRows);
 
-  const reconcileToday = new Date().toISOString().slice(0, 10);
+  const orgConfig = await loadOrgConfig(deps.service, orgId).catch(() => DEFAULT_ORG_CONFIG);
+  const reconcileToday = todayInTz(orgConfig.companyProfile.timezone, now);
   const paymentRaws = [
     ...payments.map((p) => ({ raw: p, type: "payment" as const })),
     ...creditMemos.map((c) => ({ raw: c, type: "credit_memo" as const })),

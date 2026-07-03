@@ -5,6 +5,8 @@ import { requireOrgUser } from "../lib/session.server";
 import { getConnectionStatus } from "../lib/qbo-connection.server";
 import { createSupabaseServiceClient } from "../lib/supabase.server";
 import { loadCaseQueueSource } from "../lib/case-queue.server";
+import { loadOrgConfig } from "../lib/org-config.server";
+import { todayInTz } from "../lib/tz";
 import type { OrgMember } from "../lib/orgs.server";
 // worklist.ts is pure (no I/O, no node:*, no secrets) so it is safe in both the
 // client bundle and the server — buildCaseData is exported from this route
@@ -31,6 +33,7 @@ import { buildTimeline, type TimelineEntry, type TimelineLogInput, type Timeline
 import { collisionState, type Collision } from "../lib/collision";
 import { resolveCommPrefs, DEFAULT_COMM_PREFS, type CommPrefs } from "../lib/comm-prefs";
 import type { OrgConfig } from "../lib/org-config";
+import { DEFAULT_ORG_CONFIG } from "../lib/org-config";
 import { resolveEmailSettings } from "../lib/email-settings";
 import { plural } from "../lib/labels";
 import { pageTitle } from "../lib/meta";
@@ -163,10 +166,14 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
   const userLabel = displayLabel(user.user_metadata?.display_name, user.email, user.id);
   const initials = initialsFrom(userLabel);
 
-  const today = new Date().toISOString().slice(0, 10);
-
   // Service client for connection-status + roster (no RLS needed)
   const service = createSupabaseServiceClient(env);
+
+  // Org config loaded up front so "today" is the org's local calendar day
+  // (not UTC's) — passed into loadCaseQueueSource below to avoid a second
+  // org_settings read.
+  const orgConfigForToday = await loadOrgConfig(supabase, org.org_id).catch(() => DEFAULT_ORG_CONFIG);
+  const today = todayInTz(orgConfigForToday.companyProfile.timezone);
 
   // Batch A: shared queue source + dashboard-only queries in parallel.
   // Disconnected orgs pay a few wasted queries (redirect gate runs right
@@ -179,7 +186,7 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
     { data: ecfg },
   ] = await Promise.all([
     loadCaseQueueSource({
-      supabase, service, orgId: org.org_id, today, includePresence: true,
+      supabase, service, orgId: org.org_id, today, includePresence: true, orgConfig: orgConfigForToday,
     }),
     supabase.from("organizations").select("name").eq("id", org.org_id).single(),
     getConnectionStatus(service, org.org_id),

@@ -3,6 +3,7 @@ import { getEnv } from "../lib/env.server";
 import { loadWorkspaceChrome } from "../lib/workspace.server";
 import { listOrgMembers } from "../lib/orgs.server";
 import { loadOrgConfig } from "../lib/org-config.server";
+import { todayInTz } from "../lib/tz";
 import {
   buildPromiseRows,
   applyPromiseTab,
@@ -44,10 +45,9 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
     : "due-date";
   const promiseId = sp.get("promiseId");
 
-  const today = new Date().toISOString().slice(0, 10);
-
-  // --- Org config for the due-soon business-day window ---
+  // --- Org config for the due-soon business-day window + org-local "today" ---
   const orgConfig = await loadOrgConfig(supabase, org.org_id);
+  const today = todayInTz(orgConfig.companyProfile.timezone);
   const config: DayConfig = {
     workingDays: orgConfig.workingDays,
     holidays: orgConfig.holidays,

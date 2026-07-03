@@ -41,6 +41,8 @@ export type OrgConfig = {
   companyProfile: CompanyProfile;
   priority: PriorityConfig;
   workflow: WorkflowConfig;
+  /** Org-local hour (0-23) the daily digest cron gate fires at (Phase 6). */
+  digestHourLocal: number;
 };
 
 // Nullable to match a SELECT against optional columns / an absent row.
@@ -69,6 +71,8 @@ export type OrgSettingsRow = {
   coming_due_days: number | null;
   due_soon_business_days: number | null;
   sms_batch_limit: number | null;
+  // Digest schedule (Phase 6)
+  digest_hour_local: number | null;
 };
 
 export const DEFAULT_PRIORITY_CONFIG: PriorityConfig = Object.freeze({
@@ -84,6 +88,9 @@ export const DEFAULT_WORKFLOW_CONFIG: WorkflowConfig = Object.freeze({
   smsBatchLimit: MAX_BATCH,
 });
 
+// Matches org_settings.digest_hour_local's column default (0029 migration).
+export const DEFAULT_DIGEST_HOUR_LOCAL = 8;
+
 export const DEFAULT_ORG_CONFIG: OrgConfig = Object.freeze({
   promiseGraceDays: GRACE_BUSINESS_DAYS,
   workingDays: DEFAULT_WORKING_DAYS,
@@ -93,6 +100,7 @@ export const DEFAULT_ORG_CONFIG: OrgConfig = Object.freeze({
   companyProfile: DEFAULT_COMPANY_PROFILE,
   priority: DEFAULT_PRIORITY_CONFIG,
   workflow: DEFAULT_WORKFLOW_CONFIG,
+  digestHourLocal: DEFAULT_DIGEST_HOUR_LOCAL,
 });
 
 export function resolveOrgConfig(
@@ -135,5 +143,6 @@ export function resolveOrgConfig(
       dueSoonBusinessDays: settings.due_soon_business_days ?? DEFAULT_WORKFLOW_CONFIG.dueSoonBusinessDays,
       smsBatchLimit: settings.sms_batch_limit ?? DEFAULT_WORKFLOW_CONFIG.smsBatchLimit,
     },
+    digestHourLocal: settings.digest_hour_local ?? DEFAULT_DIGEST_HOUR_LOCAL,
   };
 }

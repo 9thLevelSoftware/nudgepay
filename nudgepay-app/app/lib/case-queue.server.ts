@@ -92,6 +92,12 @@ export type LoadCaseQueueArgs = {
   today: string;
   /** When true, reads presence heartbeats (C1 collision detection). */
   includePresence: boolean;
+  /**
+   * Pre-loaded org config, when the caller already fetched it (e.g. to derive
+   * org-local `today` via todayInTz before calling this function). Skips the
+   * internal org_settings read when provided.
+   */
+  orgConfig?: OrgConfig;
 };
 
 // ---------------------------------------------------------------------------
@@ -103,8 +109,10 @@ export async function loadCaseQueueSource(args: LoadCaseQueueArgs): Promise<Case
 
   // Org config is loaded first (one org_settings read) because the invoice
   // query's lookahead window is sized from orgConfig.workflow.comingDueDays —
-  // it must be known before the invoices query below can be built.
-  const orgConfig = await loadOrgConfig(supabase, orgId).catch(() => DEFAULT_ORG_CONFIG);
+  // it must be known before the invoices query below can be built. Callers
+  // that already loaded it (e.g. to derive org-local `today`) pass it through
+  // to avoid a second org_settings read.
+  const orgConfig = args.orgConfig ?? await loadOrgConfig(supabase, orgId).catch(() => DEFAULT_ORG_CONFIG);
   const plus7 = new Date(Date.now() + orgConfig.workflow.comingDueDays * 86_400_000).toISOString().slice(0, 10);
 
   // Stage 1 — everything that needs only orgId. PostgREST builders resolve

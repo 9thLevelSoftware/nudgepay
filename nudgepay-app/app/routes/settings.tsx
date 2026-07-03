@@ -105,6 +105,7 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
     },
     lateFee: config.lateFee,
     companyProfile: config.companyProfile,
+    digestHourLocal: config.digestHourLocal,
     priority: config.priority,
     workflow: config.workflow,
     smsTemplates: templates.sms,
@@ -191,6 +192,7 @@ export default function Settings() {
                 key={d.orgId}
                 orgName={d.orgName}
                 profile={d.companyProfile}
+                digestHourLocal={d.digestHourLocal}
                 isOwner={d.isOwner}
                 returnTo={returnTo}
               />

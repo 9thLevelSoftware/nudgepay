@@ -5,14 +5,23 @@ import { Form, useNavigation, useSearchParams } from "react-router";
 import { TIMEZONE_GROUPS, ALL_TIMEZONE_VALUES } from "../lib/timezones";
 import type { CompanyProfile } from "../lib/org-profile";
 
+// 12-hour labels for the digest-hour select (0-23 local hour values).
+const DIGEST_HOUR_OPTIONS: { value: number; label: string }[] = Array.from({ length: 24 }, (_, h) => {
+  const period = h < 12 ? "AM" : "PM";
+  const twelve = h % 12 === 0 ? 12 : h % 12;
+  return { value: h, label: `${twelve}:00 ${period}` };
+});
+
 export function CompanyProfileForm({
   orgName,
   profile,
+  digestHourLocal,
   isOwner,
   returnTo,
 }: {
   orgName: string;
   profile: CompanyProfile;
+  digestHourLocal: number;
   isOwner: boolean;
   returnTo: string;
 }) {
@@ -35,6 +44,7 @@ export function CompanyProfileForm({
           {profile.phone && <div className="flex gap-2"><dt className="text-muted w-28">Phone</dt><dd className="text-text">{profile.phone}</dd></div>}
           {profile.paymentPortalUrl && <div className="flex gap-2"><dt className="text-muted w-28">Payment portal</dt><dd className="text-text truncate">{profile.paymentPortalUrl}</dd></div>}
           <div className="flex gap-2"><dt className="text-muted w-28">Timezone</dt><dd className="text-text">{profile.timezone}</dd></div>
+          <div className="flex gap-2"><dt className="text-muted w-28">Digest sent at</dt><dd className="text-text">{DIGEST_HOUR_OPTIONS[digestHourLocal]?.label ?? "8:00 AM"}</dd></div>
         </dl>
         <p className="mt-2 text-xs text-muted">Only an owner can edit these settings.</p>
       </section>
@@ -117,6 +127,20 @@ export function CompanyProfileForm({
           </select>
           {errorCode === "timezone" && <p className="text-xs text-hot" role="alert">Select a valid timezone.</p>}
           <span className="text-xs text-muted font-normal">Used for digest scheduling and quiet-hours enforcement.</span>
+        </label>
+
+        <label className="flex flex-col gap-1 text-sm font-medium text-text">
+          Daily digest send time
+          <select
+            name="digest_hour_local" defaultValue={digestHourLocal}
+            className="h-9 rounded-md border border-border bg-panel px-2 text-sm text-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-copper"
+          >
+            {DIGEST_HOUR_OPTIONS.map((h) => (
+              <option key={h.value} value={h.value}>{h.label}</option>
+            ))}
+          </select>
+          {errorCode === "digest_hour" && <p className="text-xs text-hot" role="alert">Select a valid send time.</p>}
+          <span className="text-xs text-muted font-normal">The follow-ups-due digest email sends at this local time each day.</span>
         </label>
 
         <div className="flex items-center gap-3">

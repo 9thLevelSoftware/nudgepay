@@ -32,7 +32,17 @@ export function resolveCompanyProfile(
 // ── Form parsing ────────────────────────────────────────────────────
 
 type ParseResult =
-  | { ok: true; name: string; patch: { company_website: string | null; company_phone: string | null; payment_portal_url: string | null; timezone: string } }
+  | {
+      ok: true;
+      name: string;
+      patch: {
+        company_website: string | null;
+        company_phone: string | null;
+        payment_portal_url: string | null;
+        timezone: string;
+        digest_hour_local: number;
+      };
+    }
   | { ok: false; error: string };
 
 type UrlResult = { valid: true; url: string | null } | { valid: false };
@@ -80,6 +90,15 @@ export function parseCompanyProfileUpdate(form: FormData): ParseResult {
     return { ok: false, error: "timezone" };
   }
 
+  // Default 8 mirrors org_settings.digest_hour_local's column default and
+  // org-config.ts's DEFAULT_DIGEST_HOUR_LOCAL (not imported here to avoid a
+  // circular import — org-config.ts already imports resolveCompanyProfile).
+  const digestHourRaw = (form.get("digest_hour_local") as string ?? "").trim();
+  const digestHourLocal = digestHourRaw === "" ? 8 : Number(digestHourRaw);
+  if (!Number.isInteger(digestHourLocal) || digestHourLocal < 0 || digestHourLocal > 23) {
+    return { ok: false, error: "digest_hour" };
+  }
+
   return {
     ok: true,
     name,
@@ -88,6 +107,7 @@ export function parseCompanyProfileUpdate(form: FormData): ParseResult {
       company_phone: phone,
       payment_portal_url: portalResult.url,
       timezone,
+      digest_hour_local: digestHourLocal,
     },
   };
 }

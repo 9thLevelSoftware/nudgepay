@@ -8,6 +8,7 @@ import { safeReturnTo } from "../lib/return-to";
 import { runBulkSms } from "../lib/bulk-send.server";
 import { clampBatch } from "../lib/bulk";
 import { loadOrgConfig } from "../lib/org-config.server";
+import { todayInTz } from "../lib/tz";
 
 function envSender(t: { TWILIO_MESSAGING_SERVICE_SID: string | null; TWILIO_FROM_NUMBER: string | null }): TwilioSender {
   if (t.TWILIO_MESSAGING_SERVICE_SID) return { messagingServiceSid: t.TWILIO_MESSAGING_SERVICE_SID };
@@ -64,7 +65,7 @@ export async function action({ request, context }: ActionFunctionArgs) {
     defaultSender: envSender(twilio),
     statusCallback,
   };
-  const today = new Date().toISOString().slice(0, 10);
+  const today = todayInTz(orgConfig.companyProfile.timezone);
   const { sent, failed, skipped } = await runBulkSms(deps, {
     orgId: org.org_id, userId: user.id, caseIds, today, templateBody, orgConfig,
   });

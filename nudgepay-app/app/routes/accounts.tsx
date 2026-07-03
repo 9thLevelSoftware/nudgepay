@@ -2,6 +2,8 @@ import { useLoaderData, data, type LoaderFunctionArgs } from "react-router";
 import { getEnv } from "../lib/env.server";
 import { loadWorkspaceChrome } from "../lib/workspace.server";
 import { listOrgMembers } from "../lib/orgs.server";
+import { loadOrgConfig } from "../lib/org-config.server";
+import { todayInTz } from "../lib/tz";
 import { isCaseSuppressed, type ExceptionState } from "../lib/exceptions";
 import { resolveCommPrefs } from "../lib/comm-prefs";
 import {
@@ -50,7 +52,8 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
   const q = sp.get("q") ?? "";
   const customerId = sp.get("customerId");
 
-  const today = new Date().toISOString().slice(0, 10);
+  const orgConfig = await loadOrgConfig(supabase, org.org_id);
+  const today = todayInTz(orgConfig.companyProfile.timezone);
 
   // --- Data loading (USER client, explicit org_id scope) ---
 

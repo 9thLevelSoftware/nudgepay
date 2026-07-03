@@ -24,8 +24,9 @@ export default {
 	},
 	scheduled(controller, env, ctx) {
 		const envRecord = env as unknown as Record<string, string>;
-		if (controller.cron === "0 13 * * *") {
-			// Daily digest — 1pm UTC ≈ 8am ET
+		if (controller.cron === "0 * * * *") {
+			// Hourly digest gate — each org fires once local time reaches its
+			// configured digest_hour_local (see digest-cron.server.ts).
 			ctx.waitUntil(runScheduledDigest(envRecord));
 		} else {
 			// Default: bounded CDC catch-up for all connected orgs.

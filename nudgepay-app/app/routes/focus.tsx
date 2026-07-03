@@ -9,6 +9,9 @@ import { requireOrgUser } from "../lib/session.server";
 import { getConnectionStatus } from "../lib/qbo-connection.server";
 import { createSupabaseServiceClient } from "../lib/supabase.server";
 import { loadCaseQueueSource } from "../lib/case-queue.server";
+import { loadOrgConfig } from "../lib/org-config.server";
+import { DEFAULT_ORG_CONFIG } from "../lib/org-config";
+import { todayInTz } from "../lib/tz";
 import { buildCaseItems, type CaseItem } from "../lib/cases";
 import { buildFocusQueue, type FocusScope } from "../lib/focus-queue";
 import {
@@ -47,11 +50,12 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
   const conn = await getConnectionStatus(service, org.org_id);
   if (conn?.status !== "connected") throw redirect("/settings?tab=integrations", { headers });
 
-  const today = new Date().toISOString().slice(0, 10);
+  const orgConfigForToday = await loadOrgConfig(supabase, org.org_id).catch(() => DEFAULT_ORG_CONFIG);
+  const today = todayInTz(orgConfigForToday.companyProfile.timezone);
 
   const [src, { data: orgRow }] = await Promise.all([
     loadCaseQueueSource({
-      supabase, service, orgId: org.org_id, today, includePresence: false,
+      supabase, service, orgId: org.org_id, today, includePresence: false, orgConfig: orgConfigForToday,
     }),
     supabase.from("organizations").select("name").eq("id", org.org_id).single(),
   ]);
