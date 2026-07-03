@@ -45,8 +45,8 @@ export function CompanyProfileForm({
     <section className="rounded-lg border border-border bg-surface p-5">
       <h2 className="font-display text-base font-semibold text-text">Company</h2>
       <p className="mt-1 text-xs text-muted">
-        Your company identity — available in message templates as the <code className="rounded bg-panel px-1 py-0.5 font-mono text-[11px]">{"{company}"}</code> token
-        once the template editor is enabled, and for timezone-aware scheduling.
+        Your company identity — will be available in message templates as the <code className="rounded bg-panel px-1 py-0.5 font-mono text-[11px]">{"{company}"}</code> token,
+        and for timezone-aware scheduling.
       </p>
       {errorCode === "save" && (
         <p className="mt-2 rounded-md border border-hot/30 bg-hot/10 px-3 py-2 text-xs text-hot" role="alert">
