@@ -1180,7 +1180,7 @@ function NbaCard({
           </Link>
         ) : (
           <Link
-            to={logHref}
+            to={"?" + new URLSearchParams({ case: selected.caseId, tab: "activity", view, sort, ...(q ? { q } : {}), log: "1", method: "call" }).toString()}
             className="inline-flex items-center gap-1.5 rounded-md bg-copper px-3 py-1.5 text-xs font-semibold text-surface hover:bg-copper/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-copper transition-colors"
           >
             <Icon name="phone" size={13} aria-hidden />

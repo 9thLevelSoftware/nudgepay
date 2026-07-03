@@ -283,7 +283,7 @@ function QueueRow({
         </span>
       </Link>
       {/* Quick-action buttons — visible on row hover */}
-      <span className="hidden md:flex items-center gap-1 pr-3 opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity">
+      <span className="hidden md:flex items-center gap-1 pr-3 opacity-0 group-hover:opacity-100 focus-within:opacity-100 pointer-events-none group-hover:pointer-events-auto focus-within:pointer-events-auto transition-opacity">
         <Link
           to={msgHref}
           aria-label={`Send text to ${item.customerName}`}
@@ -296,7 +296,7 @@ function QueueRow({
           aria-label={`Log call for ${item.customerName}`}
           className="flex items-center justify-center w-7 h-7 rounded border border-border bg-panel text-muted hover:text-copper hover:border-copper focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-copper transition-colors"
         >
-          <Icon name="note" size={14} aria-hidden />
+          <Icon name="phone" size={14} aria-hidden />
         </Link>
       </span>
     </div>

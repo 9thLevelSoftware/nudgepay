@@ -20,6 +20,7 @@ export function useQueueKeys(opts: {
       const tag = (e.target as HTMLElement)?.tagName;
       if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;
       if ((e.target as HTMLElement)?.isContentEditable) return;
+      if ((e.target as HTMLElement)?.closest('[role="dialog"], [role="alertdialog"]')) return;
 
       if (e.key === "j") onAction("j");
       else if (e.key === "k") onAction("k");
