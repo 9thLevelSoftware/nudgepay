@@ -75,3 +75,13 @@ test("parseTestSmsDestination: too short → null", () => {
 test("parseTestSmsDestination: letters → null", () => {
   expect(parseTestSmsDestination("abcdefghij")).toBeNull();
 });
+
+test("parseTestSmsDestination: rejects 10-digit with leading 0 or 1", () => {
+  expect(parseTestSmsDestination("0123456789")).toBeNull();
+  expect(parseTestSmsDestination("1234567890")).toBeNull();
+});
+
+test("parseTestSmsDestination: rejects 11-digit 1+0xx area code", () => {
+  expect(parseTestSmsDestination("10123456789")).toBeNull();
+  expect(parseTestSmsDestination("11234567890")).toBeNull();
+});

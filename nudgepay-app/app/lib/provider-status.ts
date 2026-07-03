@@ -25,7 +25,7 @@ export function deriveWebhookUrls(
 }
 
 const E164_RE = /^\+[1-9]\d{1,14}$/;
-const US_10_RE = /^\d{10}$/;
+const US_10_RE = /^[2-9]\d{9}$/;
 
 /**
  * Parse and normalise a phone number for test SMS delivery.
@@ -38,7 +38,7 @@ export function parseTestSmsDestination(raw: FormDataEntryValue | null): string 
   if (s === "") return null;
   if (E164_RE.test(s)) return s;
   // Strip leading "1" from 11-digit US numbers (e.g. 15551234567)
-  if (/^1\d{10}$/.test(s)) return `+${s}`;
+  if (/^1[2-9]\d{9}$/.test(s)) return `+${s}`;
   if (US_10_RE.test(s)) return `+1${s}`;
   return null;
 }
