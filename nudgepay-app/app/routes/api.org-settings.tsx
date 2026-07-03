@@ -3,7 +3,7 @@ import { getEnv } from "../lib/env.server";
 import { requireUser, resolveOrg } from "../lib/session.server";
 import { safeReturnTo } from "../lib/return-to";
 import { parseOrgSettingsUpdate, parseHolidayDate, parseLateFeeSettingsUpdate } from "../lib/org-settings";
-import { parseChannelSettingsUpdate } from "../lib/channel-settings";
+import { parseChannelSettingsUpdate, parseSmsSenderUpdate } from "../lib/channel-settings";
 import { parseEmailSettingsUpdate } from "../lib/email-settings";
 
 function flag(returnTo: string, key: string, val: string): string {
@@ -31,6 +31,15 @@ export async function action({ request, context }: ActionFunctionArgs) {
       .upsert({ org_id: org.org_id, sms_enabled }, { onConflict: "org_id" });
     if (error) return redirect(flag(returnTo, "error", "save"), { headers });
     return redirect(flag(returnTo, "saved", "1"), { headers });
+  }
+
+  if (intent === "save_sms_sender") {
+    const parsed = parseSmsSenderUpdate(form);
+    if (!parsed.ok) return redirect(flag(returnTo, "error", parsed.error), { headers });
+    const { error } = await supabase.from("messaging_config")
+      .upsert({ org_id: org.org_id, ...parsed.value }, { onConflict: "org_id" });
+    if (error) return redirect(flag(returnTo, "error", "save"), { headers });
+    return redirect(flag(returnTo, "sms_saved", "1"), { headers });
   }
 
   if (intent === "save_rules") {
