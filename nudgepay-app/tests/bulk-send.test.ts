@@ -3,12 +3,17 @@ import { serviceClient, makeUserClient } from "./helpers";
 import { runBulkSms } from "../app/lib/bulk-send.server";
 import type { MessagingDeps } from "../app/lib/twilio-messaging.server";
 import { MAX_BATCH } from "../app/lib/bulk";
+import { DEFAULT_ORG_CONFIG, type OrgConfig } from "../app/lib/org-config";
 
 let userId: string;
 beforeAll(async () => { ({ userId } = await makeUserClient("bulk-sms@example.com")); });
 
 const svc = serviceClient();
 const today = "2026-06-25";
+
+function withBatchLimit(limit: number): OrgConfig {
+  return { ...DEFAULT_ORG_CONFIG, workflow: { ...DEFAULT_ORG_CONFIG.workflow, smsBatchLimit: limit } };
+}
 
 function jsonResponse(body: unknown, status = 201) {
   return new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json" } });
@@ -36,7 +41,7 @@ test("runBulkSms sends to eligible cases, skips no-consent/no-phone, records one
   const fetchFn = vi.fn(async () => jsonResponse({ sid: "SM-BULK", status: "queued" }));
   const res = await runBulkSms(deps(fetchFn), {
     orgId, userId, caseIds: [yes.caseId, noConsent.caseId, noPhone.caseId], today,
-    templateBody: "Hi {customer}, you owe {balance}.",
+    templateBody: "Hi {customer}, you owe {balance}.", orgConfig: DEFAULT_ORG_CONFIG,
   });
 
   expect(res).toEqual({ sent: 1, failed: 0, skipped: 2 });
@@ -56,7 +61,7 @@ test("runBulkSms tallies a failed send without aborting siblings", async () => {
   const b = await seedCase(orgId, { name: "B Co", phone: "+12295550111", consent: true, doc: "2002", due: "2026-05-01", balance: 100 });
   let n = 0;
   const fetchFn = vi.fn(async () => { n++; if (n === 1) throw new Error("twilio down"); return jsonResponse({ sid: "SM-OK", status: "queued" }); });
-  const res = await runBulkSms(deps(fetchFn), { orgId, userId, caseIds: [a.caseId, b.caseId], today, templateBody: "Hi {customer}" });
+  const res = await runBulkSms(deps(fetchFn), { orgId, userId, caseIds: [a.caseId, b.caseId], today, templateBody: "Hi {customer}", orgConfig: DEFAULT_ORG_CONFIG });
   expect(res.sent).toBe(1);
   expect(res.failed).toBe(1);
   expect(res.skipped).toBe(0);
@@ -68,7 +73,7 @@ test("runBulkSms ignores a foreign-org case id (org-scoped reads drop it)", asyn
   const inB = await seedCase(orgB!.id as string, { name: "B Only", phone: "+12295550120", consent: true, doc: "3001", due: "2026-05-01", balance: 100 });
   const fetchFn = vi.fn(async () => jsonResponse({ sid: "SM-X", status: "queued" }));
   // Caller resolved to org A but passes org B's case id.
-  const res = await runBulkSms(deps(fetchFn), { orgId: orgA!.id as string, userId, caseIds: [inB.caseId], today, templateBody: "Hi {customer}" });
+  const res = await runBulkSms(deps(fetchFn), { orgId: orgA!.id as string, userId, caseIds: [inB.caseId], today, templateBody: "Hi {customer}", orgConfig: DEFAULT_ORG_CONFIG });
   expect(res).toEqual({ sent: 0, failed: 0, skipped: 0 });
   expect(fetchFn).not.toHaveBeenCalled();
 });
@@ -90,8 +95,37 @@ test("runBulkSms clamps to MAX_BATCH (50) when given 51 eligible cases", async (
     caseIds.push(caseId);
   }
   const fetchFn = vi.fn(async () => jsonResponse({ sid: "SM-CAP", status: "queued" }));
-  const res = await runBulkSms(deps(fetchFn), { orgId, userId, caseIds, today, templateBody: "Hi {customer}" });
+  const res = await runBulkSms(deps(fetchFn), { orgId, userId, caseIds, today, templateBody: "Hi {customer}", orgConfig: DEFAULT_ORG_CONFIG });
   expect(res.sent).toBe(MAX_BATCH);
   expect(res.sent + res.failed + res.skipped).toBe(MAX_BATCH);
   expect(fetchFn).toHaveBeenCalledTimes(MAX_BATCH);
+});
+
+// Server/client batch-limit drift guard (Phase 5): both MUST source the same
+// org value. This proves the server clamp actually uses orgConfig.workflow
+// .smsBatchLimit rather than a hardcoded MAX_BATCH — a non-default limit (5,
+// well below MAX_BATCH's 50) sends to only the first 5 eligible cases.
+test("runBulkSms clamps to the org-configured smsBatchLimit, not the hardcoded MAX_BATCH default", async () => {
+  const { data: org } = await svc.from("organizations").insert({ name: "Bulk Custom Limit Org" }).select("id").single();
+  const orgId = org!.id as string;
+  const caseIds: string[] = [];
+  for (let i = 0; i < 10; i++) {
+    const idx = String(i).padStart(3, "0");
+    const { caseId } = await seedCase(orgId, {
+      name: `LimitCo ${idx}`,
+      phone: `+1229556${idx.padStart(4, "0")}`,
+      consent: true,
+      doc: `lim-${idx}`,
+      due: "2026-05-01",
+      balance: 100,
+    });
+    caseIds.push(caseId);
+  }
+  const fetchFn = vi.fn(async () => jsonResponse({ sid: "SM-LIM", status: "queued" }));
+  const res = await runBulkSms(deps(fetchFn), {
+    orgId, userId, caseIds, today, templateBody: "Hi {customer}", orgConfig: withBatchLimit(5),
+  });
+  expect(res.sent).toBe(5);
+  expect(res.sent + res.failed + res.skipped).toBe(5);
+  expect(fetchFn).toHaveBeenCalledTimes(5);
 });

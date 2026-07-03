@@ -7,7 +7,7 @@ import type { MessageTemplateRow } from "../lib/message-templates";
 import { formatDate } from "../lib/dates";
 import { STATUS_LABEL, formatUSD } from "../lib/format";
 import { exceptionLabel } from "../lib/exceptions";
-import { partitionEligibility, clampBatch, MAX_BATCH } from "../lib/bulk";
+import { partitionEligibility, clampBatch } from "../lib/bulk";
 import { plural } from "../lib/labels";
 import { BulkActionBar } from "./BulkActionBar";
 import { useQueueKeys, type QueueKey } from "../lib/use-queue-keys";
@@ -148,6 +148,8 @@ interface WorkQueueProps {
   orgCompany: string;
   orgPhone: string;
   orgPaymentLink: string;
+  /** Org-configured max cases per bulk action (assign / SMS). */
+  maxBatch: number;
 }
 
 // ---------------------------------------------------------------------------
@@ -398,6 +400,7 @@ export function WorkQueue({
   orgCompany,
   orgPhone,
   orgPaymentLink,
+  maxBatch,
 }: WorkQueueProps) {
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [smsOpen, setSmsOpen] = useState(false);
@@ -447,11 +450,11 @@ export function WorkQueue({
     setSelected((prev) => {
       const next = new Set(prev);
       if (next.has(id)) next.delete(id);
-      else if (next.size < MAX_BATCH) next.add(id);
+      else if (next.size < maxBatch) next.add(id);
       return next;
     });
 
-  const allVisibleIds = clampBatch(items.map((i) => i.caseId));
+  const allVisibleIds = clampBatch(items.map((i) => i.caseId), maxBatch);
   const allSelected = allVisibleIds.length > 0 && allVisibleIds.every((id) => selected.has(id));
   const toggleAll = () =>
     setSelected((prev) => (allSelected ? new Set() : new Set(allVisibleIds)));
@@ -463,7 +466,7 @@ export function WorkQueue({
     }
   }, [allSelected, allVisibleIds, selected]);
 
-  const capReached = selected.size >= MAX_BATCH;
+  const capReached = selected.size >= maxBatch;
   const selectedCases = items.filter((i) => selected.has(i.caseId));
   const eligibleCount = partitionEligibility(selectedCases).eligible.length;
 
@@ -685,6 +688,7 @@ export function WorkQueue({
           returnTo={returnTo}
           onClear={() => setSelected(new Set())}
           onOpenSms={() => setSmsOpen(true)}
+          maxBatch={maxBatch}
         />
       ) : null}
       <BulkSmsDrawer
@@ -697,6 +701,7 @@ export function WorkQueue({
         orgCompany={orgCompany}
         orgPhone={orgPhone}
         orgPaymentLink={orgPaymentLink}
+        maxBatch={maxBatch}
       />
     </section>
   );

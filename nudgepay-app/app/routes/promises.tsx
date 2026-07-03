@@ -14,6 +14,7 @@ import {
   type PromiseSort,
   type PromiseInput,
   type PromiseLinkedInvoice,
+  type DayConfig,
 } from "../lib/promise-ledger";
 import { AppShell } from "../components/AppShell";
 import { PromisesMetrics } from "../components/PromisesMetrics";
@@ -46,7 +47,12 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
   const today = new Date().toISOString().slice(0, 10);
 
   // --- Org config for the due-soon business-day window ---
-  const config = await loadOrgConfig(supabase, org.org_id);
+  const orgConfig = await loadOrgConfig(supabase, org.org_id);
+  const config: DayConfig = {
+    workingDays: orgConfig.workingDays,
+    holidays: orgConfig.holidays,
+    dueSoonBusinessDays: orgConfig.workflow.dueSoonBusinessDays,
+  };
 
   // --- Data loading (USER client, explicit org_id scope) ---
   const { data: promiseRows } = await supabase

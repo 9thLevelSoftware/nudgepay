@@ -143,6 +143,41 @@ export function parsePriorityThresholdsUpdate(form: FormData): PriorityThreshold
   };
 }
 
+// ---------------------------------------------------------------------------
+// Workflow knobs (Phase 5): coming-due lookahead, promise due-soon window, and
+// bulk-op batch-size cap. Ranges mirror the DB CHECKs in migration 0028.
+// ---------------------------------------------------------------------------
+
+export type WorkflowKnobsPatch = {
+  coming_due_days: number;
+  due_soon_business_days: number;
+  sms_batch_limit: number;
+};
+
+export type WorkflowKnobsParseResult =
+  | { ok: true; patch: WorkflowKnobsPatch }
+  | { ok: false; error: string };
+
+export function parseWorkflowKnobsUpdate(form: FormData): WorkflowKnobsParseResult {
+  const comingDue = intField(form, "coming_due_days");
+  if (comingDue === null || comingDue < 1 || comingDue > 60) return { ok: false, error: "coming_due_days" };
+
+  const dueSoon = intField(form, "due_soon_business_days");
+  if (dueSoon === null || dueSoon < 1 || dueSoon > 30) return { ok: false, error: "due_soon_business_days" };
+
+  const batchLimit = intField(form, "sms_batch_limit");
+  if (batchLimit === null || batchLimit < 1 || batchLimit > 200) return { ok: false, error: "sms_batch_limit" };
+
+  return {
+    ok: true,
+    patch: {
+      coming_due_days: comingDue,
+      due_soon_business_days: dueSoon,
+      sms_batch_limit: batchLimit,
+    },
+  };
+}
+
 // Validates a single YYYY-MM-DD holiday date (for add/remove). Returns the
 // normalized string, or null when malformed or not a real calendar day.
 export function parseHolidayDate(value: FormDataEntryValue | null): string | null {

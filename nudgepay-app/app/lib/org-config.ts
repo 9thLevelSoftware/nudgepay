@@ -11,12 +11,25 @@ import { GRACE_BUSINESS_DAYS, DEFAULT_WORKING_DAYS, NO_HOLIDAYS } from "./busine
 import { DEFAULT_LATE_FEE_CONFIG, type LateFeeConfig } from "./late-fees";
 import { resolveCompanyProfile, DEFAULT_COMPANY_PROFILE, type CompanyProfile } from "./org-profile";
 import { HIGH_VALUE_THRESHOLD } from "./worklist";
+import { COMING_DUE_DAYS } from "./coming-due";
+import { DUE_SOON_BUSINESS_DAYS } from "./promise-ledger";
+import { MAX_BATCH } from "./bulk";
 
 export type PriorityConfig = {
   highValue: number;
   criticalMin: number;
   highMin: number;
   mediumMin: number;
+};
+
+// Phase 5 workflow knobs: coming-due lookahead window, the promise due-soon
+// business-day window, and the bulk-op batch-size cap. Grouped like the other
+// sections (lateFee, companyProfile, priority) rather than flattened onto
+// OrgConfig directly.
+export type WorkflowConfig = {
+  comingDueDays: number;
+  dueSoonBusinessDays: number;
+  smsBatchLimit: number;
 };
 
 export type OrgConfig = {
@@ -27,6 +40,7 @@ export type OrgConfig = {
   lateFee: LateFeeConfig;
   companyProfile: CompanyProfile;
   priority: PriorityConfig;
+  workflow: WorkflowConfig;
 };
 
 // Nullable to match a SELECT against optional columns / an absent row.
@@ -51,6 +65,10 @@ export type OrgSettingsRow = {
   priority_critical_min: number | null;
   priority_high_min: number | null;
   priority_medium_min: number | null;
+  // Workflow knobs (Phase 5)
+  coming_due_days: number | null;
+  due_soon_business_days: number | null;
+  sms_batch_limit: number | null;
 };
 
 export const DEFAULT_PRIORITY_CONFIG: PriorityConfig = Object.freeze({
@@ -58,6 +76,12 @@ export const DEFAULT_PRIORITY_CONFIG: PriorityConfig = Object.freeze({
   criticalMin: DEFAULT_PRIORITY_THRESHOLDS.criticalMin,
   highMin: DEFAULT_PRIORITY_THRESHOLDS.highMin,
   mediumMin: DEFAULT_PRIORITY_THRESHOLDS.mediumMin,
+});
+
+export const DEFAULT_WORKFLOW_CONFIG: WorkflowConfig = Object.freeze({
+  comingDueDays: COMING_DUE_DAYS,
+  dueSoonBusinessDays: DUE_SOON_BUSINESS_DAYS,
+  smsBatchLimit: MAX_BATCH,
 });
 
 export const DEFAULT_ORG_CONFIG: OrgConfig = Object.freeze({
@@ -68,6 +92,7 @@ export const DEFAULT_ORG_CONFIG: OrgConfig = Object.freeze({
   lateFee: DEFAULT_LATE_FEE_CONFIG,
   companyProfile: DEFAULT_COMPANY_PROFILE,
   priority: DEFAULT_PRIORITY_CONFIG,
+  workflow: DEFAULT_WORKFLOW_CONFIG,
 });
 
 export function resolveOrgConfig(
@@ -104,6 +129,11 @@ export function resolveOrgConfig(
       criticalMin: settings.priority_critical_min ?? DEFAULT_PRIORITY_CONFIG.criticalMin,
       highMin: settings.priority_high_min ?? DEFAULT_PRIORITY_CONFIG.highMin,
       mediumMin: settings.priority_medium_min ?? DEFAULT_PRIORITY_CONFIG.mediumMin,
+    },
+    workflow: {
+      comingDueDays: settings.coming_due_days ?? DEFAULT_WORKFLOW_CONFIG.comingDueDays,
+      dueSoonBusinessDays: settings.due_soon_business_days ?? DEFAULT_WORKFLOW_CONFIG.dueSoonBusinessDays,
+      smsBatchLimit: settings.sms_batch_limit ?? DEFAULT_WORKFLOW_CONFIG.smsBatchLimit,
     },
   };
 }

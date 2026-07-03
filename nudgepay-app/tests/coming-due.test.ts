@@ -28,6 +28,16 @@ test("far future is NOT coming due", () => {
   expect(isComingDue("2026-08-01", today)).toBe(false);
 });
 
+test("a custom (org-configured) window widens or narrows the boundary", () => {
+  // Default window (7d) excludes day 10; a 14-day org-configured window includes it.
+  expect(isComingDue("2026-07-10", today, 14)).toBe(true);
+  // 18 days out is beyond even the 14-day window.
+  expect(isComingDue("2026-07-20", today, 14)).toBe(false);
+  // 4 days out: a narrower window (3d) excludes it; the default (7d) includes it.
+  expect(isComingDue("2026-07-06", today, 3)).toBe(false);
+  expect(isComingDue("2026-07-06", today, 7)).toBe(true);
+});
+
 // ---------------------------------------------------------------------------
 // buildComingDueGroups
 // ---------------------------------------------------------------------------
@@ -83,6 +93,18 @@ test("excludes invoices beyond 7 days", () => {
     { id: "i1", qbo_doc_number: "1001", customer_id: "c1", balance: 500, due_date: "2026-07-10" },
   ];
   expect(buildComingDueGroups(invoices, customers, today)).toHaveLength(0);
+});
+
+test("buildComingDueGroups honors an org-configured comingDueDays window", () => {
+  const invoices: InvoiceInput[] = [
+    { id: "i1", qbo_doc_number: "1001", customer_id: "c1", balance: 500, due_date: "2026-07-10" },
+  ];
+  // Beyond the default 7-day window...
+  expect(buildComingDueGroups(invoices, customers, today)).toHaveLength(0);
+  // ...but within a 14-day org-configured window.
+  const groups = buildComingDueGroups(invoices, customers, today, 14);
+  expect(groups).toHaveLength(1);
+  expect(groups[0].invoices[0].docNumber).toBe("1001");
 });
 
 // ---------------------------------------------------------------------------

@@ -48,11 +48,10 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
   if (conn?.status !== "connected") throw redirect("/settings?tab=integrations", { headers });
 
   const today = new Date().toISOString().slice(0, 10);
-  const plus7 = new Date(Date.now() + 7 * 86_400_000).toISOString().slice(0, 10);
 
   const [src, { data: orgRow }] = await Promise.all([
     loadCaseQueueSource({
-      supabase, service, orgId: org.org_id, today, plus7, includePresence: false,
+      supabase, service, orgId: org.org_id, today, includePresence: false,
     }),
     supabase.from("organizations").select("name").eq("id", org.org_id).single(),
   ]);

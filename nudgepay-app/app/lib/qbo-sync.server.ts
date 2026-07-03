@@ -8,6 +8,8 @@ import {
 import type { QboHttpConfig } from "./qbo-client.server";
 import { applyCaseReconciliation } from "./case-lifecycle.server";
 import { applyPromiseEvaluation, type BrokenPromiseDetail } from "./promise-evaluation.server";
+import { loadOrgConfig } from "./org-config.server";
+import { DEFAULT_ORG_CONFIG } from "./org-config";
 
 export type NotifyFn = (orgId: string, brokenDetails: BrokenPromiseDetail[], today: string) => Promise<void>;
 
@@ -143,8 +145,10 @@ export async function syncOverdueInvoices(
     "Invoice",
   );
 
-  // Coming-due invoices (awareness only — 7-day window, separate capped query).
-  const plus7 = new Date(Date.now() + 7 * 86_400_000).toISOString().slice(0, 10);
+  // Coming-due invoices (awareness only — org-configured lookahead window,
+  // separate capped query).
+  const orgConfig = await loadOrgConfig(deps.service, orgId).catch(() => DEFAULT_ORG_CONFIG);
+  const plus7 = new Date(Date.now() + orgConfig.workflow.comingDueDays * 86_400_000).toISOString().slice(0, 10);
   const comingDueInvoices = await qboQuery(
     deps.fetchFn, deps.api, accessToken, realmId,
     `select * from Invoice where Balance > '0' and DueDate >= '${today}' and DueDate <= '${plus7}' startposition 1 maxresults ${QUERY_LIMIT}`,

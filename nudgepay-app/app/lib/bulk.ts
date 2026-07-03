@@ -66,6 +66,8 @@ export function renderCaseBody(
 }
 
 // Shared clamp so client select-all and server routes agree on the cap.
-export function clampBatch<T>(ids: T[]): T[] {
-  return ids.slice(0, MAX_BATCH);
+// `max` defaults to MAX_BATCH but the org-configured sms_batch_limit should be
+// threaded through everywhere it is available so client and server agree.
+export function clampBatch<T>(ids: T[], max: number = MAX_BATCH): T[] {
+  return ids.slice(0, max);
 }

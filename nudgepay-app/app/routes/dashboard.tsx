@@ -88,7 +88,7 @@ export function buildCaseData(
   const metrics = computeCaseMetrics(searched, today, highValue);
 
   // Coming-due groups: built from the separate non-overdue invoice set
-  const allComingDueGroups = buildComingDueGroups(comingDueInvoices, customers, today);
+  const allComingDueGroups = buildComingDueGroups(comingDueInvoices, customers, today, config.workflow.comingDueDays);
   const lowerQ = q.trim().toLowerCase();
   const filteredComingDue = lowerQ === ""
     ? allComingDueGroups
@@ -164,8 +164,6 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
   const initials = initialsFrom(userLabel);
 
   const today = new Date().toISOString().slice(0, 10);
-  // 7-day lookahead for "Coming Due" invoices
-  const plus7 = new Date(Date.now() + 7 * 86_400_000).toISOString().slice(0, 10);
 
   // Service client for connection-status + roster (no RLS needed)
   const service = createSupabaseServiceClient(env);
@@ -181,7 +179,7 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
     { data: ecfg },
   ] = await Promise.all([
     loadCaseQueueSource({
-      supabase, service, orgId: org.org_id, today, plus7, includePresence: true,
+      supabase, service, orgId: org.org_id, today, includePresence: true,
     }),
     supabase.from("organizations").select("name").eq("id", org.org_id).single(),
     getConnectionStatus(service, org.org_id),
@@ -429,6 +427,7 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
       orgCompany,
       orgPhone,
       orgPaymentLink,
+      maxBatch: orgConfig.workflow.smsBatchLimit,
       ...dashboardData,
     },
     { headers },
@@ -487,6 +486,7 @@ export default function Dashboard() {
     orgCompany,
     orgPhone,
     orgPaymentLink,
+    maxBatch,
   } = useLoaderData<typeof loader>();
 
   useFlashCleanup();
@@ -582,6 +582,7 @@ export default function Dashboard() {
                 orgCompany={orgCompany}
                 orgPhone={orgPhone}
                 orgPaymentLink={orgPaymentLink}
+                maxBatch={maxBatch}
               />
             </div>
 

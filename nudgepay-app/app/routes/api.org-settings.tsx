@@ -2,7 +2,7 @@ import { redirect, type ActionFunctionArgs } from "react-router";
 import { getEnv } from "../lib/env.server";
 import { requireUser, resolveOrg } from "../lib/session.server";
 import { safeReturnTo } from "../lib/return-to";
-import { parseOrgSettingsUpdate, parseHolidayDate, parseLateFeeSettingsUpdate, parsePriorityThresholdsUpdate } from "../lib/org-settings";
+import { parseOrgSettingsUpdate, parseHolidayDate, parseLateFeeSettingsUpdate, parsePriorityThresholdsUpdate, parseWorkflowKnobsUpdate } from "../lib/org-settings";
 import { parseChannelSettingsUpdate, parseSmsSenderUpdate } from "../lib/channel-settings";
 import { parseEmailSettingsUpdate } from "../lib/email-settings";
 import { parseCompanyProfileUpdate } from "../lib/org-profile";
@@ -100,6 +100,15 @@ export async function action({ request, context }: ActionFunctionArgs) {
 
   if (intent === "save_priority_thresholds") {
     const parsed = parsePriorityThresholdsUpdate(form);
+    if (!parsed.ok) return redirect(flag(returnTo, "error", parsed.error), { headers });
+    const { error } = await supabase.from("org_settings")
+      .upsert({ org_id: org.org_id, ...parsed.patch }, { onConflict: "org_id" });
+    if (error) return redirect(flag(returnTo, "error", "save"), { headers });
+    return redirect(flag(returnTo, "saved", "1"), { headers });
+  }
+
+  if (intent === "save_workflow") {
+    const parsed = parseWorkflowKnobsUpdate(form);
     if (!parsed.ok) return redirect(flag(returnTo, "error", parsed.error), { headers });
     const { error } = await supabase.from("org_settings")
       .upsert({ org_id: org.org_id, ...parsed.patch }, { onConflict: "org_id" });

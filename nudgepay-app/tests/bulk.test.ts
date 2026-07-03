@@ -52,6 +52,14 @@ test("clampBatch truncates to MAX_BATCH, leaves short lists alone", () => {
   expect(clampBatch(["a", "b"])).toEqual(["a", "b"]);
 });
 
+test("clampBatch accepts an org-configured max that overrides MAX_BATCH", () => {
+  const ids = Array.from({ length: 20 }, (_, i) => String(i));
+  // Narrower than MAX_BATCH — org configured a stricter cap.
+  expect(clampBatch(ids, 5)).toEqual(["0", "1", "2", "3", "4"]);
+  // Wider than MAX_BATCH — org configured a looser cap (sms_batch_limit up to 200).
+  expect(clampBatch(ids, 100)).toHaveLength(20);
+});
+
 test("partitionEligibility skips a contact-blocked case ahead of phone/consent", () => {
   const { eligible, skipped } = partitionEligibility([
     { caseId: "c1", customerName: "OK", phone: "+12295550100", smsConsent: true, doNotText: false },

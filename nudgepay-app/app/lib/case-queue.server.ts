@@ -90,8 +90,6 @@ export type LoadCaseQueueArgs = {
   service: SupabaseClient;
   orgId: string;
   today: string;
-  /** Upper bound for the invoice lookahead (typically today + 7 days). */
-  plus7: string;
   /** When true, reads presence heartbeats (C1 collision detection). */
   includePresence: boolean;
 };
@@ -101,7 +99,13 @@ export type LoadCaseQueueArgs = {
 // ---------------------------------------------------------------------------
 
 export async function loadCaseQueueSource(args: LoadCaseQueueArgs): Promise<CaseQueueSource> {
-  const { supabase, service, orgId, today, plus7, includePresence } = args;
+  const { supabase, service, orgId, today, includePresence } = args;
+
+  // Org config is loaded first (one org_settings read) because the invoice
+  // query's lookahead window is sized from orgConfig.workflow.comingDueDays —
+  // it must be known before the invoices query below can be built.
+  const orgConfig = await loadOrgConfig(supabase, orgId).catch(() => DEFAULT_ORG_CONFIG);
+  const plus7 = new Date(Date.now() + orgConfig.workflow.comingDueDays * 86_400_000).toISOString().slice(0, 10);
 
   // Stage 1 — everything that needs only orgId. PostgREST builders resolve
   // with { data, error } (never reject), so Promise.all won't short-circuit.
@@ -109,7 +113,6 @@ export async function loadCaseQueueSource(args: LoadCaseQueueArgs): Promise<Case
     { data: invRows },
     { data: caseRows },
     roster,
-    orgConfig,
     { data: mcfg },
     templates,
   ] = await Promise.all([
@@ -125,7 +128,6 @@ export async function loadCaseQueueSource(args: LoadCaseQueueArgs): Promise<Case
       .eq("org_id", orgId)
       .is("closed_at", null),
     listOrgMembers(service, orgId).catch(() => [] as OrgMember[]),
-    loadOrgConfig(supabase, orgId).catch(() => DEFAULT_ORG_CONFIG),
     supabase.from("messaging_config").select("sms_enabled").eq("org_id", orgId).maybeSingle(),
     loadTemplates(supabase, orgId).catch(() => resolveTemplates([])),
   ]);

@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { Form, useNavigation } from "react-router";
 import type { MessageTemplateRow } from "../lib/message-templates";
-import { partitionEligibility, renderCaseBody, type SkipReason, type TextableCase, type RenderableCase } from "../lib/bulk";
+import { partitionEligibility, renderCaseBody, clampBatch, type SkipReason, type TextableCase, type RenderableCase } from "../lib/bulk";
 import { plural } from "../lib/labels";
 import { useDialog } from "../lib/use-dialog";
 
@@ -28,6 +28,7 @@ export function BulkSmsDrawer({
   orgCompany,
   orgPhone,
   orgPaymentLink,
+  maxBatch,
 }: {
   open: boolean;
   onClose: () => void;
@@ -38,6 +39,8 @@ export function BulkSmsDrawer({
   orgCompany: string;
   orgPhone: string;
   orgPaymentLink: string;
+  /** Org-configured max cases per bulk action — must match the server clamp. */
+  maxBatch: number;
 }) {
   const nav = useNavigation();
   const busy = nav.state !== "idle";
@@ -56,7 +59,10 @@ export function BulkSmsDrawer({
   }, [open, smsTemplates]);
 
   if (!open) return null;
-  const { eligible, skipped } = partitionEligibility(cases);
+  // Defensive — selection is already capped upstream (WorkQueue), but this
+  // keeps the drawer correct on its own if ever opened with a larger set.
+  const cappedCases = clampBatch(cases, maxBatch);
+  const { eligible, skipped } = partitionEligibility(cappedCases);
   const orgVars = { company: orgCompany, phone: orgPhone, paymentLink: orgPaymentLink };
   const sample = eligible[0] ? renderCaseBody(body, eligible[0], orgVars) : "";
 
@@ -83,7 +89,7 @@ export function BulkSmsDrawer({
           Send SMS to {plural(eligible.length, "customer")}
         </h2>
         <p className="text-xs font-sans text-muted mb-3">
-          {eligible.length} of {cases.length} eligible
+          {eligible.length} of {cappedCases.length} eligible
           {skipped.length ? ` · ${skipped.length} skipped (${skippedSummary(skipped)})` : ""}
         </p>
         {!smsEnabled ? (
@@ -130,7 +136,7 @@ export function BulkSmsDrawer({
           </>
         ) : (
           <Form method="post" action="/api/bulk-sms" aria-describedby="bulk-sms-confirm-desc">
-            <input type="hidden" name="caseIds" value={cases.map((c) => c.caseId).join(",")} />
+            <input type="hidden" name="caseIds" value={cappedCases.map((c) => c.caseId).join(",")} />
             <input type="hidden" name="body" value={body} />
             <input type="hidden" name="returnTo" value={returnTo} />
             <p id="bulk-sms-confirm-desc" className="text-sm font-sans text-text mb-3">

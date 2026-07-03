@@ -1,5 +1,5 @@
 import { expect, test } from "vitest";
-import { parseOrgSettingsUpdate, parseHolidayDate, parsePriorityThresholdsUpdate } from "../app/lib/org-settings";
+import { parseOrgSettingsUpdate, parseHolidayDate, parsePriorityThresholdsUpdate, parseWorkflowKnobsUpdate } from "../app/lib/org-settings";
 
 function fd(entries: Array<[string, string]>): FormData {
   const f = new FormData();
@@ -115,4 +115,71 @@ test("ordering violation: medium <= 0 is rejected", () => {
   expect(parsePriorityThresholdsUpdate(priorityFd(
     validPriority.map(([k, v]) => k === "priority_medium_min" ? [k, "0"] : [k, v]),
   ))).toEqual({ ok: false, error: "priority_thresholds_order" });
+});
+
+// --- parseWorkflowKnobsUpdate (Phase 5) ---
+
+const workflowFd = (entries: Array<[string, string]>): FormData => {
+  const f = new FormData();
+  for (const [k, v] of entries) f.append(k, v);
+  return f;
+};
+
+const validWorkflow: Array<[string, string]> = [
+  ["coming_due_days", "7"],
+  ["due_soon_business_days", "3"],
+  ["sms_batch_limit", "50"],
+];
+
+test("parseWorkflowKnobsUpdate accepts a valid form", () => {
+  const r = parseWorkflowKnobsUpdate(workflowFd(validWorkflow));
+  expect(r).toEqual({
+    ok: true,
+    patch: { coming_due_days: 7, due_soon_business_days: 3, sms_batch_limit: 50 },
+  });
+});
+
+test("parseWorkflowKnobsUpdate accepts the extreme ends of each range", () => {
+  expect(parseWorkflowKnobsUpdate(workflowFd([
+    ["coming_due_days", "1"], ["due_soon_business_days", "1"], ["sms_batch_limit", "1"],
+  ]))).toMatchObject({ ok: true });
+  expect(parseWorkflowKnobsUpdate(workflowFd([
+    ["coming_due_days", "60"], ["due_soon_business_days", "30"], ["sms_batch_limit", "200"],
+  ]))).toMatchObject({ ok: true });
+});
+
+test("coming_due_days outside 1-60 is rejected", () => {
+  expect(parseWorkflowKnobsUpdate(workflowFd(
+    validWorkflow.map(([k, v]) => k === "coming_due_days" ? [k, "0"] : [k, v]),
+  ))).toEqual({ ok: false, error: "coming_due_days" });
+  expect(parseWorkflowKnobsUpdate(workflowFd(
+    validWorkflow.map(([k, v]) => k === "coming_due_days" ? [k, "61"] : [k, v]),
+  ))).toEqual({ ok: false, error: "coming_due_days" });
+});
+
+test("due_soon_business_days outside 1-30 is rejected", () => {
+  expect(parseWorkflowKnobsUpdate(workflowFd(
+    validWorkflow.map(([k, v]) => k === "due_soon_business_days" ? [k, "0"] : [k, v]),
+  ))).toEqual({ ok: false, error: "due_soon_business_days" });
+  expect(parseWorkflowKnobsUpdate(workflowFd(
+    validWorkflow.map(([k, v]) => k === "due_soon_business_days" ? [k, "31"] : [k, v]),
+  ))).toEqual({ ok: false, error: "due_soon_business_days" });
+});
+
+test("sms_batch_limit outside 1-200 is rejected", () => {
+  expect(parseWorkflowKnobsUpdate(workflowFd(
+    validWorkflow.map(([k, v]) => k === "sms_batch_limit" ? [k, "0"] : [k, v]),
+  ))).toEqual({ ok: false, error: "sms_batch_limit" });
+  expect(parseWorkflowKnobsUpdate(workflowFd(
+    validWorkflow.map(([k, v]) => k === "sms_batch_limit" ? [k, "201"] : [k, v]),
+  ))).toEqual({ ok: false, error: "sms_batch_limit" });
+});
+
+test("non-integer or missing workflow knobs are rejected", () => {
+  expect(parseWorkflowKnobsUpdate(workflowFd(
+    validWorkflow.filter(([k]) => k !== "coming_due_days"),
+  ))).toEqual({ ok: false, error: "coming_due_days" });
+  expect(parseWorkflowKnobsUpdate(workflowFd(
+    validWorkflow.map(([k, v]) => k === "sms_batch_limit" ? [k, "50.5"] : [k, v]),
+  ))).toEqual({ ok: false, error: "sms_batch_limit" });
 });
