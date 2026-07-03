@@ -4,8 +4,9 @@ import { Form, Link, useNavigation, useSearchParams } from "react-router";
 import type { ThreadRow } from "../lib/message-inbox";
 import type { MessageEntry, EmailMessageEntry } from "~/routes/dashboard";
 import { MessageBubbles } from "./MessageBubbles";
-import { DEFAULT_SMS_TEMPLATES, applyTemplate, type TemplateVars } from "../lib/sms-templates";
-import { DEFAULT_EMAIL_TEMPLATES, applyEmailTemplate } from "../lib/email-templates";
+import { applyTemplate, type TemplateVars } from "../lib/sms-templates";
+import { applyEmailTemplate } from "../lib/email-templates";
+import type { MessageTemplateRow } from "../lib/message-templates";
 import { formatDate } from "../lib/dates";
 import { emailFailureLabel, isHardBounce } from "../lib/labels";
 import { Icon } from "./Icons";
@@ -41,11 +42,13 @@ interface Props {
   tab: string;
   sort: string;
   q: string;
+  smsTemplates: MessageTemplateRow[];
+  emailTemplates: MessageTemplateRow[];
 }
 
 export function MessageThreadPanel({
   thread, messages, emailMessages, consent, phone, vars, sms, smsEnabled,
-  emailEnabled, selectedEmail, tab, sort, q,
+  emailEnabled, selectedEmail, tab, sort, q, smsTemplates, emailTemplates,
 }: Props) {
   const [body, setBody] = useState("");
   const [subject, setSubject] = useState("");
@@ -186,9 +189,9 @@ export function MessageThreadPanel({
             defaultValue=""
             disabled={!emailEnabled || !thread.canReply}
             onChange={(e) => {
-              const tmpl = DEFAULT_EMAIL_TEMPLATES.find((t) => t.id === e.target.value);
+              const tmpl = emailTemplates.find((t) => t.id === e.target.value);
               if (tmpl) {
-                setSubject(applyEmailTemplate(tmpl.subject, vars));
+                setSubject(applyEmailTemplate(tmpl.subject ?? "", vars));
                 setBody(applyEmailTemplate(tmpl.body, vars));
               }
             }}
@@ -196,7 +199,7 @@ export function MessageThreadPanel({
             aria-label="Email template"
           >
             <option value="" disabled>Pick a template…</option>
-            {DEFAULT_EMAIL_TEMPLATES.map((t) => (
+            {emailTemplates.map((t) => (
               <option key={t.id} value={t.id}>{t.label}</option>
             ))}
           </select>
@@ -259,7 +262,7 @@ export function MessageThreadPanel({
             </p>
           )}
           <div className="flex flex-wrap gap-1.5 mb-2" role="group" aria-label="Message templates">
-            {DEFAULT_SMS_TEMPLATES.map((t) => (
+            {smsTemplates.map((t) => (
               <button
                 key={t.id} type="button" disabled={smsSendDisabled} onClick={() => setBody(applyTemplate(t.body, vars))}
                 className="text-xs text-muted border border-border rounded-md px-2 py-1 hover:text-copper hover:border-copper focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-copper transition-colors disabled:opacity-40 disabled:cursor-not-allowed"

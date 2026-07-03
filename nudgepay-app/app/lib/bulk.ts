@@ -48,16 +48,20 @@ export function partitionEligibility<T extends TextableCase>(cases: T[]): Eligib
 // Render one personalized body using case totals + the oldest overdue invoice
 // (invoices[0], caller-sorted oldest-first) as the representative. Unknown
 // {tokens} pass through (applyTemplate only replaces known keys).
-export function renderCaseBody(templateBody: string, c: RenderableCase): string {
+export function renderCaseBody(
+  templateBody: string,
+  c: RenderableCase,
+  orgVars?: { company: string; phone: string; paymentLink: string },
+): string {
   const oldest = c.invoices[0] ?? null;
   return applyTemplate(templateBody, {
     customer: c.customerName,
     invoice: oldest?.docNumber ?? "your account",
     balance: formatUSD(c.totalOverdue),
     dueDate: oldest?.dueDate ? formatDate(oldest.dueDate) : "",
-    company: "",
-    phone: "",
-    paymentLink: "",
+    company: orgVars?.company ?? "",
+    phone: orgVars?.phone ?? "",
+    paymentLink: orgVars?.paymentLink ?? "",
   });
 }
 

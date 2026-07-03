@@ -261,8 +261,12 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
   const {
     cases, invoicesInput, comingDueInvoices, customersInput,
     lastContactsInput, promisesInput, recentByCase, presenceRows,
-    roster, ownerLabels, orgConfig, smsEnabled,
+    roster, ownerLabels, orgConfig, smsEnabled, templates,
   } = src;
+
+  const orgCompany = orgRow?.name ?? "";
+  const orgPhone = orgConfig.companyProfile.phone ?? "";
+  const orgPaymentLink = orgConfig.companyProfile.paymentPortalUrl ?? "";
 
   // Per-customer presence map → per-case collision (self-excluded).
   const presenceByCustomer = new Map<string, { userId: string; lastSeenAt: string }[]>();
@@ -419,6 +423,11 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
       roster,
       collisions,
       currentUserId: user.id,
+      smsTemplates: templates.sms,
+      emailTemplates: templates.email,
+      orgCompany,
+      orgPhone,
+      orgPaymentLink,
       ...dashboardData,
     },
     { headers },
@@ -472,6 +481,11 @@ export default function Dashboard() {
     selected,
     comingDueGroups,
     repInvoiceId,
+    smsTemplates,
+    emailTemplates,
+    orgCompany,
+    orgPhone,
+    orgPaymentLink,
   } = useLoaderData<typeof loader>();
 
   useFlashCleanup();
@@ -563,6 +577,10 @@ export default function Dashboard() {
                 collisions={collisions}
                 smsEnabled={smsEnabled}
                 comingDueGroups={comingDueGroups}
+                smsTemplates={smsTemplates}
+                orgCompany={orgCompany}
+                orgPhone={orgPhone}
+                orgPaymentLink={orgPaymentLink}
               />
             </div>
 
@@ -590,6 +608,11 @@ export default function Dashboard() {
                   sort={sort}
                   q={q}
                   collision={selected ? (collisions[selected.caseId] ?? null) : null}
+                  smsTemplates={smsTemplates}
+                  emailTemplates={emailTemplates}
+                  orgCompany={orgCompany}
+                  orgPhone={orgPhone}
+                  orgPaymentLink={orgPaymentLink}
                 />
               </div>
             ) : null}

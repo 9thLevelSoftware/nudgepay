@@ -7,6 +7,8 @@ import { resolveCommPrefs } from "../lib/comm-prefs";
 import { isContactBlocked } from "../lib/exceptions";
 import { resolveChannelSettings } from "../lib/channel-settings";
 import { resolveEmailSettings } from "../lib/email-settings";
+import { loadOrgConfig } from "../lib/org-config.server";
+import { loadTemplates } from "../lib/message-templates.server";
 import {
   buildThreadRows, applyMessageTab, sortThreadRows, computeMessageMetrics,
   applyChannelFilter,
@@ -151,8 +153,17 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
     contactBlocked: blockedByCustomer.get(c.id as string) ?? false,
   }));
 
-  const roster = await listOrgMembers(service, org.org_id);
+  const [roster, orgConfig, templates] = await Promise.all([
+    listOrgMembers(service, org.org_id),
+    loadOrgConfig(supabase, org.org_id),
+    loadTemplates(supabase, org.org_id),
+  ]);
   const ownerLabels = new Map(roster.map((m) => [m.userId, m.label]));
+  const orgVars = {
+    company: orgName,
+    phone: orgConfig.companyProfile.phone ?? "",
+    paymentLink: orgConfig.companyProfile.paymentPortalUrl ?? "",
+  };
 
   const allRows = buildThreadRows(customersInput, messagesInput, ownerLabels);
   const query = q.trim().toLowerCase();
@@ -218,9 +229,7 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
       invoice: anchor?.docNumber ?? selected.customerName, // mirrors the dashboard composer fallback
       balance: formatUSD(anchor?.balance ?? 0),
       dueDate: formatDate(anchor?.dueDate ?? null),
-      company: "",
-      phone: "",
-      paymentLink: "",
+      ...orgVars,
     };
   }
 
@@ -241,6 +250,8 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
       selected, selectedMessages, selectedEmailMessages,
       selectedConsent, selectedPhone, selectedEmail,
       selectedVars, sms, smsEnabled,
+      smsTemplates: templates.sms,
+      emailTemplates: templates.email,
     },
     { headers },
   );
@@ -286,6 +297,8 @@ export default function Messages() {
             tab={d.tab}
             sort={d.sort}
             q={d.q}
+            smsTemplates={d.smsTemplates}
+            emailTemplates={d.emailTemplates}
           />
         </div>
       </div>

@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Form, useNavigation } from "react-router";
-import { DEFAULT_SMS_TEMPLATES } from "../lib/sms-templates";
+import type { MessageTemplateRow } from "../lib/message-templates";
 import { partitionEligibility, renderCaseBody, type SkipReason, type TextableCase, type RenderableCase } from "../lib/bulk";
 import { plural } from "../lib/labels";
 import { useDialog } from "../lib/use-dialog";
@@ -24,36 +24,45 @@ export function BulkSmsDrawer({
   cases,
   returnTo,
   smsEnabled,
+  smsTemplates,
+  orgCompany,
+  orgPhone,
+  orgPaymentLink,
 }: {
   open: boolean;
   onClose: () => void;
   cases: DrawerCase[];
   returnTo: string;
   smsEnabled: boolean;
+  smsTemplates: MessageTemplateRow[];
+  orgCompany: string;
+  orgPhone: string;
+  orgPaymentLink: string;
 }) {
   const nav = useNavigation();
   const busy = nav.state !== "idle";
-  const [templateId, setTemplateId] = useState(DEFAULT_SMS_TEMPLATES[0]?.id ?? "");
-  const [body, setBody] = useState(DEFAULT_SMS_TEMPLATES[0]?.body ?? "");
+  const [templateId, setTemplateId] = useState(smsTemplates[0]?.id ?? "");
+  const [body, setBody] = useState(smsTemplates[0]?.body ?? "");
   const [confirming, setConfirming] = useState(false);
   const { panelRef } = useDialog({ onClose, enabled: open });
 
   useEffect(() => {
     if (!open) {
       setConfirming(false);
-      const defaultTemplate = DEFAULT_SMS_TEMPLATES[0];
+      const defaultTemplate = smsTemplates[0];
       setTemplateId(defaultTemplate?.id ?? "");
       setBody(defaultTemplate?.body ?? "");
     }
-  }, [open]);
+  }, [open, smsTemplates]);
 
   if (!open) return null;
   const { eligible, skipped } = partitionEligibility(cases);
-  const sample = eligible[0] ? renderCaseBody(body, eligible[0]) : "";
+  const orgVars = { company: orgCompany, phone: orgPhone, paymentLink: orgPaymentLink };
+  const sample = eligible[0] ? renderCaseBody(body, eligible[0], orgVars) : "";
 
   function pickTemplate(id: string) {
     setTemplateId(id);
-    const t = DEFAULT_SMS_TEMPLATES.find((x) => x.id === id);
+    const t = smsTemplates.find((x) => x.id === id);
     if (t) setBody(t.body);
   }
 
@@ -90,7 +99,7 @@ export function BulkSmsDrawer({
               onChange={(e) => pickTemplate(e.target.value)}
               className="w-full rounded-md border border-border bg-panel px-2.5 h-9 text-sm text-text mb-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-copper"
             >
-              {DEFAULT_SMS_TEMPLATES.map((t) => <option key={t.id} value={t.id}>{t.label}</option>)}
+              {smsTemplates.map((t) => <option key={t.id} value={t.id}>{t.label}</option>)}
             </select>
             <label htmlFor="bulk-body" className="block text-xs font-sans text-muted mb-1">Message</label>
             <textarea

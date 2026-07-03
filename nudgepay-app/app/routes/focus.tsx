@@ -50,9 +50,13 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
   const today = new Date().toISOString().slice(0, 10);
   const plus7 = new Date(Date.now() + 7 * 86_400_000).toISOString().slice(0, 10);
 
-  const src = await loadCaseQueueSource({
-    supabase, service, orgId: org.org_id, today, plus7, includePresence: false,
-  });
+  const [src, { data: orgRow }] = await Promise.all([
+    loadCaseQueueSource({
+      supabase, service, orgId: org.org_id, today, plus7, includePresence: false,
+    }),
+    supabase.from("organizations").select("name").eq("id", org.org_id).single(),
+  ]);
+  const orgName = orgRow?.name ?? "";
 
   const allItems = buildCaseItems(
     src.cases, src.invoicesInput, src.customersInput,
@@ -131,6 +135,10 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
     smsEnabled: src.smsEnabled,
     currentUserId: user.id,
     today,
+    smsTemplates: src.templates.sms,
+    orgCompany: orgName,
+    orgPhone: src.orgConfig.companyProfile.phone ?? "",
+    orgPaymentLink: src.orgConfig.companyProfile.paymentPortalUrl ?? "",
   }, { headers });
 }
 
@@ -139,7 +147,10 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
 // ---------------------------------------------------------------------------
 
 export default function FocusMode() {
-  const { queue, scope, timelines, smsEnabled, today } = useLoaderData<typeof loader>();
+  const {
+    queue, scope, timelines, smsEnabled, today,
+    smsTemplates, orgCompany, orgPhone, orgPaymentLink,
+  } = useLoaderData<typeof loader>();
 
   // Session state
   const [session, dispatch] = useReducer(
@@ -373,6 +384,10 @@ export default function FocusMode() {
                   onDone={() => dispatch({ type: "resolve", result: "texted" })}
                   onCancel={() => setOpenForm(null)}
                   onError={(code) => addToast(`Text failed: ${code}`)}
+                  smsTemplates={smsTemplates}
+                  orgCompany={orgCompany}
+                  orgPhone={orgPhone}
+                  orgPaymentLink={orgPaymentLink}
                 />
               )}
             </div>

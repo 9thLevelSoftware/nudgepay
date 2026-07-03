@@ -21,6 +21,8 @@ import { resolveCommPrefs } from "./comm-prefs";
 import { resolveChannelSettings } from "./channel-settings";
 import { readPresence } from "./presence.server";
 import type { RecentContactInput } from "./collision";
+import { loadTemplates } from "./message-templates.server";
+import { resolveTemplates, type OrgTemplates } from "./message-templates";
 
 // ---------------------------------------------------------------------------
 // Row shapes returned by the Supabase queries (internal)
@@ -80,6 +82,7 @@ export type CaseQueueSource = {
   ownerLabels: Map<string, string>;
   orgConfig: OrgConfig;
   smsEnabled: boolean;
+  templates: OrgTemplates;
 };
 
 export type LoadCaseQueueArgs = {
@@ -108,6 +111,7 @@ export async function loadCaseQueueSource(args: LoadCaseQueueArgs): Promise<Case
     roster,
     orgConfig,
     { data: mcfg },
+    templates,
   ] = await Promise.all([
     supabase
       .from("invoices")
@@ -123,6 +127,7 @@ export async function loadCaseQueueSource(args: LoadCaseQueueArgs): Promise<Case
     listOrgMembers(service, orgId).catch(() => [] as OrgMember[]),
     loadOrgConfig(supabase, orgId).catch(() => DEFAULT_ORG_CONFIG),
     supabase.from("messaging_config").select("sms_enabled").eq("org_id", orgId).maybeSingle(),
+    loadTemplates(supabase, orgId).catch(() => resolveTemplates([])),
   ]);
 
   // Map raw invoice rows → InvoiceInput, split overdue / coming-due.
@@ -259,5 +264,6 @@ export async function loadCaseQueueSource(args: LoadCaseQueueArgs): Promise<Case
     ownerLabels,
     orgConfig,
     smsEnabled,
+    templates,
   };
 }

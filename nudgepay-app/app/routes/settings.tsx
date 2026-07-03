@@ -11,9 +11,11 @@ import { EmailSettingsSection } from "../components/EmailSettingsSection";
 import { LateFeesForm } from "../components/LateFeesForm";
 import { NotificationPrefsForm } from "../components/NotificationPrefsForm";
 import { CompanyProfileForm } from "../components/CompanyProfileForm";
+import { TemplateEditor } from "../components/TemplateEditor";
 import { resolveChannelSettings, resolveSmsSenderSettings } from "../lib/channel-settings";
 import { resolveEmailSettings } from "../lib/email-settings";
 import { deriveWebhookUrls } from "../lib/provider-status";
+import { loadTemplates } from "../lib/message-templates.server";
 import { pageTitle } from "../lib/meta";
 import type { Route } from "./+types/settings";
 
@@ -64,7 +66,7 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
   const webhookUrls = deriveWebhookUrls(twilioBaseUrl, appBaseUrl);
 
   const since = new Date(Date.now() - 7 * 86_400_000).toISOString();
-  const [smsLast, smsFailures, emailLast, emailFailures] = await Promise.all([
+  const [smsLast, smsFailures, emailLast, emailFailures, templates] = await Promise.all([
     supabase.from("text_messages")
       .select("created_at, status").eq("org_id", org.org_id).eq("direction", "outbound")
       .order("created_at", { ascending: false }).limit(1).maybeSingle(),
@@ -77,6 +79,7 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
     supabase.from("email_messages")
       .select("id", { count: "exact", head: true }).eq("org_id", org.org_id).eq("direction", "outbound")
       .in("status", ["bounced", "complained"]).gte("created_at", since),
+    loadTemplates(supabase, org.org_id),
   ]);
 
   return data({
@@ -100,6 +103,8 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
     },
     lateFee: config.lateFee,
     companyProfile: config.companyProfile,
+    smsTemplates: templates.sms,
+    emailTemplates: templates.email,
     notificationPrefs: {
       brokenPromiseEmail: notifPrefs?.broken_promise_email ?? true,
       dailyDigestEmail: notifPrefs?.daily_digest_email ?? true,
@@ -308,12 +313,14 @@ export default function Settings() {
 
           {/* ── Templates tab ────────────────────────────────────── */}
           {tab === "templates" && (
-            <section className="rounded-lg border border-border bg-surface p-5">
-              <h2 className="font-display text-base font-semibold text-text">Message templates</h2>
-              <p className="mt-1 text-xs text-muted">
-                Template editor coming soon — customize SMS and email templates for your organization.
-              </p>
-            </section>
+            <TemplateEditor
+              key={d.orgId}
+              smsTemplates={d.smsTemplates}
+              emailTemplates={d.emailTemplates}
+              isOwner={d.isOwner}
+              returnTo={returnTo}
+              orgId={d.orgId}
+            />
           )}
 
           {/* ── Collections tab ──────────────────────────────────── */}

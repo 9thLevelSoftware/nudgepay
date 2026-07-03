@@ -1,6 +1,8 @@
 import { sendInvoiceText, type MessagingDeps } from "./twilio-messaging.server";
 import { partitionEligibility, renderCaseBody, clampBatch, type TextableCase, type RenderableCase } from "./bulk";
 import { isContactBlocked, type ExceptionState } from "./exceptions";
+import { loadOrgConfig } from "./org-config.server";
+import { DEFAULT_ORG_CONFIG } from "./org-config";
 
 export type BulkSmsResult = { sent: number; failed: number; skipped: number };
 
@@ -20,9 +22,20 @@ export async function runBulkSms(
   if (ids.length === 0) return { sent: 0, failed: 0, skipped: 0 };
   const svc = deps.service;
 
-  const { data: caseRows, error: caseErr } = await svc.from("collection_cases")
-    .select("id, customer_id, exception_reason").eq("org_id", args.orgId).in("id", ids).is("closed_at", null);
+  // Org token values (company name, phone, payment link) — loaded ONCE per
+  // batch, not per case, then reused across every renderCaseBody call below.
+  const [{ data: caseRows, error: caseErr }, { data: orgRow }, orgConfig] = await Promise.all([
+    svc.from("collection_cases")
+      .select("id, customer_id, exception_reason").eq("org_id", args.orgId).in("id", ids).is("closed_at", null),
+    svc.from("organizations").select("name").eq("id", args.orgId).maybeSingle(),
+    loadOrgConfig(svc, args.orgId).catch(() => DEFAULT_ORG_CONFIG),
+  ]);
   if (caseErr) throw caseErr;
+  const orgVars = {
+    company: (orgRow?.name as string | null) ?? "",
+    phone: orgConfig.companyProfile.phone ?? "",
+    paymentLink: orgConfig.companyProfile.paymentPortalUrl ?? "",
+  };
   const cases = ((caseRows as { id: string; customer_id: string; exception_reason: ExceptionState | null }[]) ?? []);
   const customerIds = [...new Set(cases.map((c) => c.customer_id).filter(Boolean))];
   if (customerIds.length === 0) return { sent: 0, failed: 0, skipped: 0 };
@@ -74,7 +87,7 @@ export async function runBulkSms(
         orgId: args.orgId,
         invoiceId: c.representativeInvoiceId,
         userId: args.userId,
-        body: renderCaseBody(args.templateBody, c),
+        body: renderCaseBody(args.templateBody, c, orgVars),
       });
       sent++;
     } catch {

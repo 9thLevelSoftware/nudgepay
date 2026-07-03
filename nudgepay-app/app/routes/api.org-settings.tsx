@@ -6,6 +6,9 @@ import { parseOrgSettingsUpdate, parseHolidayDate, parseLateFeeSettingsUpdate } 
 import { parseChannelSettingsUpdate, parseSmsSenderUpdate } from "../lib/channel-settings";
 import { parseEmailSettingsUpdate } from "../lib/email-settings";
 import { parseCompanyProfileUpdate } from "../lib/org-profile";
+import { parseTemplateUpsert, parseTemplateDelete } from "../lib/message-templates";
+import { DEFAULT_SMS_TEMPLATES } from "../lib/sms-templates";
+import { DEFAULT_EMAIL_TEMPLATES } from "../lib/email-templates";
 
 function flag(returnTo: string, key: string, val: string): string {
   return `${returnTo}${returnTo.includes("?") ? "&" : "?"}${key}=${val}`;
@@ -104,6 +107,48 @@ export async function action({ request, context }: ActionFunctionArgs) {
     // Distinct success marker so the email panel's "Saved." banner does not light
     // up after unrelated settings saves (save_channels/save_rules also use ?saved=1).
     return redirect(flag(returnTo, "email_saved", "1"), { headers });
+  }
+
+  if (intent === "save_template") {
+    const parsed = parseTemplateUpsert(form);
+    if (!parsed.ok) return redirect(flag(returnTo, "error", parsed.error), { headers });
+    const { error } = await supabase.from("message_templates")
+      .upsert(
+        { org_id: org.org_id, ...parsed.value },
+        { onConflict: "org_id,channel,slug" },
+      );
+    if (error) return redirect(flag(returnTo, "error", "save"), { headers });
+    return redirect(flag(returnTo, "saved", "template"), { headers });
+  }
+
+  if (intent === "delete_template") {
+    const parsed = parseTemplateDelete(form);
+    if (!parsed.ok) return redirect(flag(returnTo, "error", parsed.error), { headers });
+    const { error } = await supabase.from("message_templates")
+      .delete()
+      .eq("org_id", org.org_id)
+      .eq("channel", parsed.value.channel)
+      .eq("slug", parsed.value.slug);
+    if (error) return redirect(flag(returnTo, "error", "delete"), { headers });
+    return redirect(flag(returnTo, "saved", "template"), { headers });
+  }
+
+  if (intent === "reset_templates") {
+    const channel = (form.get("channel") as string ?? "").trim();
+    if (channel !== "sms" && channel !== "email") return redirect(flag(returnTo, "error", "channel"), { headers });
+    // Delete existing
+    await supabase.from("message_templates")
+      .delete().eq("org_id", org.org_id).eq("channel", channel);
+    // Re-insert defaults
+    const defaults = channel === "sms" ? DEFAULT_SMS_TEMPLATES : DEFAULT_EMAIL_TEMPLATES;
+    const rows = defaults.map((t, i) => ({
+      org_id: org.org_id, channel, slug: t.id, label: t.label,
+      subject: channel === "email" ? (t as any).subject : null,
+      body: t.body, sort: i,
+    }));
+    const { error } = await supabase.from("message_templates").insert(rows);
+    if (error) return redirect(flag(returnTo, "error", "save"), { headers });
+    return redirect(flag(returnTo, "saved", "template"), { headers });
   }
 
   return redirect(returnTo, { headers });

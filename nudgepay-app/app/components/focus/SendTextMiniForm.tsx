@@ -6,7 +6,8 @@ import { useEffect, useRef, useState } from "react";
 import { useFetcher } from "react-router";
 import type { CaseItem } from "../../lib/cases";
 import { smsGateFor } from "../../lib/sms-gate";
-import { DEFAULT_SMS_TEMPLATES, applyTemplate, type TemplateVars } from "../../lib/sms-templates";
+import { applyTemplate, type TemplateVars } from "../../lib/sms-templates";
+import type { MessageTemplateRow } from "../../lib/message-templates";
 import { formatUSD } from "../../lib/format";
 import { formatDate } from "../../lib/dates";
 
@@ -17,9 +18,16 @@ interface SendTextMiniFormProps {
   onCancel: () => void;
   /** Called when the send fails — parent shows a toast with the error code. */
   onError: (code: string) => void;
+  smsTemplates: MessageTemplateRow[];
+  orgCompany: string;
+  orgPhone: string;
+  orgPaymentLink: string;
 }
 
-export function SendTextMiniForm({ item, smsEnabled, onDone, onCancel, onError }: SendTextMiniFormProps) {
+export function SendTextMiniForm({
+  item, smsEnabled, onDone, onCancel, onError,
+  smsTemplates, orgCompany, orgPhone, orgPaymentLink,
+}: SendTextMiniFormProps) {
   const firstInvoice = item.invoices[0] ?? null;
 
   const gate = smsGateFor({
@@ -37,9 +45,9 @@ export function SendTextMiniForm({ item, smsEnabled, onDone, onCancel, onError }
     invoice: firstInvoice?.docNumber ?? item.customerName,
     balance: formatUSD(item.totalOverdue),
     dueDate: formatDate(firstInvoice?.dueDate ?? null),
-    company: "",
-    phone: "",
-    paymentLink: "",
+    company: orgCompany,
+    phone: orgPhone,
+    paymentLink: orgPaymentLink,
   };
 
   const [body, setBody] = useState("");
@@ -122,7 +130,7 @@ export function SendTextMiniForm({ item, smsEnabled, onDone, onCancel, onError }
         <>
           {/* Template chips */}
           <div className="flex flex-wrap gap-2 mb-3">
-            {DEFAULT_SMS_TEMPLATES.map((t) => (
+            {smsTemplates.map((t) => (
               <button
                 key={t.id}
                 type="button"

@@ -3,6 +3,7 @@ import { Form, Link, useNavigate, useNavigation } from "react-router";
 import type { ViewId, SortId } from "../lib/worklist";
 import type { CaseItem } from "../lib/cases";
 import type { Collision } from "../lib/collision";
+import type { MessageTemplateRow } from "../lib/message-templates";
 import { formatDate } from "../lib/dates";
 import { STATUS_LABEL, formatUSD } from "../lib/format";
 import { exceptionLabel } from "../lib/exceptions";
@@ -143,6 +144,10 @@ interface WorkQueueProps {
   collisions: Record<string, Collision>;
   smsEnabled: boolean;
   comingDueGroups: ComingDueGroup[];
+  smsTemplates: MessageTemplateRow[];
+  orgCompany: string;
+  orgPhone: string;
+  orgPaymentLink: string;
 }
 
 // ---------------------------------------------------------------------------
@@ -389,6 +394,10 @@ export function WorkQueue({
   collisions,
   smsEnabled,
   comingDueGroups,
+  smsTemplates,
+  orgCompany,
+  orgPhone,
+  orgPaymentLink,
 }: WorkQueueProps) {
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [smsOpen, setSmsOpen] = useState(false);
@@ -684,6 +693,10 @@ export function WorkQueue({
         cases={selectedCases}
         returnTo={returnTo}
         smsEnabled={smsEnabled}
+        smsTemplates={smsTemplates}
+        orgCompany={orgCompany}
+        orgPhone={orgPhone}
+        orgPaymentLink={orgPaymentLink}
       />
     </section>
   );
