@@ -1,12 +1,15 @@
 import { useLoaderData, useNavigation, useSearchParams, Form, data, type LoaderFunctionArgs } from "react-router";
 import { useFlashCleanup } from "../lib/use-flash-cleanup";
-import { getEnv } from "../lib/env.server";
+import { getEnv, getTwilioEnvOrNull, getEmailEnvOrNull, getPublicBaseUrls } from "../lib/env.server";
 import { loadWorkspaceChrome } from "../lib/workspace.server";
 import { loadOrgConfig } from "../lib/org-config.server";
 import { AppShell } from "../components/AppShell";
 import { CollectionsRulesForm } from "../components/CollectionsRulesForm";
-import { resolveChannelSettings } from "../lib/channel-settings";
+import { SmsSettingsSection } from "../components/SmsSettingsSection";
+import { EmailSettingsSection } from "../components/EmailSettingsSection";
+import { resolveChannelSettings, resolveSmsSenderSettings } from "../lib/channel-settings";
 import { resolveEmailSettings } from "../lib/email-settings";
+import { deriveWebhookUrls } from "../lib/provider-status";
 import { pageTitle } from "../lib/meta";
 import type { Route } from "./+types/settings";
 
@@ -29,7 +32,7 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
 
   const { data: msg } = await supabase.from("messaging_config")
     .select("sender, messaging_service_sid, sms_enabled").eq("org_id", org.org_id).maybeSingle();
-  const sender = (msg?.sender as string | null) ?? null;
+  const senderSettings = resolveSmsSenderSettings(msg as any);
   const messagingConfigured = Boolean(msg?.messaging_service_sid || msg?.sender);
   const smsEnabled = resolveChannelSettings(msg as { sms_enabled?: boolean | null } | null).smsEnabled;
 
@@ -49,12 +52,42 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
     .eq("user_id", user.id)
     .maybeSingle();
 
+  // Provider status: env booleans (NEVER leak secret values), webhook URLs,
+  // last-sent timestamps, and failure counts for the status panels.
+  const twilioConfigured = getTwilioEnvOrNull(context as any) !== null;
+  const resendConfigured = getEmailEnvOrNull(context as any) !== null;
+  const webhookUrls = deriveWebhookUrls(
+    ...Object.values(getPublicBaseUrls(context as any)) as [string | null, string | null],
+  );
+
+  const since = new Date(Date.now() - 7 * 86_400_000).toISOString();
+  const [smsLast, smsFailures, emailLast, emailFailures] = await Promise.all([
+    supabase.from("text_messages")
+      .select("created_at, status").eq("org_id", org.org_id).eq("direction", "outbound")
+      .order("created_at", { ascending: false }).limit(1).maybeSingle(),
+    supabase.from("text_messages")
+      .select("id", { count: "exact", head: true }).eq("org_id", org.org_id).eq("direction", "outbound")
+      .in("status", ["failed", "undelivered"]).gte("created_at", since),
+    supabase.from("email_messages")
+      .select("created_at, status").eq("org_id", org.org_id).eq("direction", "outbound")
+      .order("created_at", { ascending: false }).limit(1).maybeSingle(),
+    supabase.from("email_messages")
+      .select("id", { count: "exact", head: true }).eq("org_id", org.org_id).eq("direction", "outbound")
+      .in("status", ["bounced", "complained"]).gte("created_at", since),
+  ]);
+
   return data({
     orgName,
     orgId: org.org_id,
     displayName,
+    ownerEmail: user.email ?? "",
     initials, isOwner, connected, lastSyncAt, syncIssues,
-    messaging: { sender, configured: messagingConfigured, smsEnabled },
+    messaging: {
+      sender: senderSettings.sender,
+      messagingServiceSid: senderSettings.messagingServiceSid,
+      configured: messagingConfigured,
+      smsEnabled,
+    },
     emailSettings,
     rules: {
       grace: config.promiseGraceDays,
@@ -66,6 +99,21 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
     notificationPrefs: {
       brokenPromiseEmail: notifPrefs?.broken_promise_email ?? true,
       dailyDigestEmail: notifPrefs?.daily_digest_email ?? true,
+    },
+    providerStatus: {
+      twilioConfigured,
+      resendConfigured,
+      webhookUrls,
+      sms: {
+        lastSentAt: (smsLast.data?.created_at as string | null) ?? null,
+        lastStatus: (smsLast.data?.status as string | null) ?? null,
+        failures7d: smsFailures.count ?? 0,
+      },
+      email: {
+        lastSentAt: (emailLast.data?.created_at as string | null) ?? null,
+        lastStatus: (emailLast.data?.status as string | null) ?? null,
+        failures7d: emailFailures.count ?? 0,
+      },
     },
   }, { headers });
 }
@@ -82,8 +130,6 @@ function relTime(iso: string | null): string {
 export default function Settings() {
   const d = useLoaderData<typeof loader>();
   const [sp] = useSearchParams();
-  const saved = sp.get("email_saved") === "1";
-  const errorCode = sp.get("error");
   const syncLabel = d.connected ? `Synced ${relTime(d.lastSyncAt)}` : "Not connected";
   const navigation = useNavigation();
   const formBusy = (action: string) => navigation.state !== "idle" && navigation.formAction === action;
@@ -93,6 +139,8 @@ export default function Settings() {
     navigation.formData?.get("intent") === intent;
 
   useFlashCleanup();
+
+  const ps = d.providerStatus;
 
   return (
     <AppShell orgName={d.orgName} userInitials={d.initials} syncLabel={syncLabel} connected={d.connected} isOwner={d.isOwner} activeNav="settings">
@@ -192,117 +240,35 @@ export default function Settings() {
             </ul>
           </section>
 
-          {/* Text messaging (G2 sender read-only; Phase 14 SMS toggle) */}
-          <section className="rounded-lg border border-border bg-surface p-5">
-            <div className="flex items-center justify-between">
-              <h2 className="font-display text-base font-semibold text-text">Text messaging</h2>
-              {d.isOwner ? (
-                <Form method="post" action="/api/org-settings">
-                  <input type="hidden" name="intent" value="save_channels" />
-                  <input type="hidden" name="returnTo" value="/settings" />
-                  <label className="sr-only" htmlFor="sms-enabled">SMS enabled</label>
-                  <select
-                    id="sms-enabled" name="sms_enabled" defaultValue={d.messaging.smsEnabled ? "true" : "false"}
-                    onChange={(e) => e.currentTarget.form?.requestSubmit()}
-                    disabled={intentBusy("save_channels")}
-                    className="h-8 rounded-md border border-border bg-panel px-2 text-sm text-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-copper disabled:opacity-60 disabled:cursor-not-allowed"
-                  >
-                    <option value="true">On</option>
-                    <option value="false">Off</option>
-                  </select>
-                </Form>
-              ) : (
-                <span className={`text-xs font-medium ${d.messaging.smsEnabled ? "text-cool" : "text-muted"}`}>
-                  {d.messaging.smsEnabled ? "On" : "Off"}
-                </span>
-              )}
-            </div>
-            <dl className="mt-2 flex flex-col gap-1 text-sm">
-              <div className="flex gap-2"><dt className="text-muted w-28">From</dt><dd className="text-text tabular-nums">{d.messaging.sender ?? "Not yet assigned"}</dd></div>
-              <div className="flex gap-2"><dt className="text-muted w-28">Status</dt><dd className={d.messaging.configured ? "text-cool" : "text-muted"}>{d.messaging.configured ? "Set up" : "Setup in progress — managed by NudgePay"}</dd></div>
-            </dl>
-            <p className="mt-2 text-xs text-muted">Text-message carrier registration is managed by NudgePay.</p>
-            {d.messaging.smsEnabled && !d.messaging.configured ? (
-              <p className="mt-1 text-xs text-muted">Texting turns on automatically once your number is assigned.</p>
-            ) : null}
-            {!d.messaging.smsEnabled ? (
-              <p className="mt-1 text-xs text-hot">Outbound texts are turned off — composers are disabled and sends are blocked.</p>
-            ) : null}
-          </section>
+          {/* Text messaging */}
+          <SmsSettingsSection
+            isOwner={d.isOwner}
+            smsEnabled={d.messaging.smsEnabled}
+            sender={d.messaging.sender}
+            messagingServiceSid={d.messaging.messagingServiceSid}
+            configured={d.messaging.configured}
+            twilioConfigured={ps.twilioConfigured}
+            lastSentAt={relTime(ps.sms.lastSentAt)}
+            lastStatus={ps.sms.lastStatus}
+            failures7d={ps.sms.failures7d}
+            twilioInbound={ps.webhookUrls.twilioInbound}
+            twilioStatus={ps.webhookUrls.twilioStatus}
+          />
 
-          {/* Email (Phase 15) */}
-          <section className="rounded-lg border border-border bg-surface p-5">
-            <div className="flex items-center justify-between">
-              <h2 className="font-display text-base font-semibold text-text">Email</h2>
-              <span className={`text-xs font-medium ${d.emailSettings.emailEnabled ? "text-cool" : "text-muted"}`}>
-                {d.emailSettings.emailEnabled ? "On" : "Off"}
-              </span>
-            </div>
-            {d.isOwner ? (
-              <Form method="post" action="/api/org-settings" className="mt-3 flex flex-col gap-3">
-                <input type="hidden" name="intent" value="save_email" />
-                <input type="hidden" name="returnTo" value="/settings" />
-                <label className="flex items-center gap-2 text-sm text-text">
-                  <input
-                    type="checkbox"
-                    name="email_enabled"
-                    value="true"
-                    defaultChecked={d.emailSettings.emailEnabled}
-                    className="h-4 w-4 rounded border-border accent-copper"
-                  />
-                  Enable email
-                </label>
-                <div className="flex flex-col gap-1">
-                  <label htmlFor="from-address" className="text-xs font-medium text-muted">From address</label>
-                  <input
-                    id="from-address"
-                    type="email"
-                    name="from_address"
-                    defaultValue={d.emailSettings.fromAddress}
-                    placeholder="billing@yourdomain.com"
-                    className="h-8 rounded-md border border-border bg-panel px-2 text-sm text-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-copper"
-                  />
-                  <p className="text-xs text-muted">Must be on a domain you've verified with Resend (SPF/DKIM)</p>
-                  {errorCode === "email" ? (
-                    <p className="text-xs text-hot" role="alert">Enter a valid from address</p>
-                  ) : null}
-                </div>
-                <div className="flex flex-col gap-1">
-                  <label htmlFor="from-name" className="text-xs font-medium text-muted">From name</label>
-                  <input
-                    id="from-name"
-                    name="from_name"
-                    defaultValue={d.emailSettings.fromName}
-                    placeholder="Your business name"
-                    className="h-8 rounded-md border border-border bg-panel px-2 text-sm text-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-copper"
-                  />
-                </div>
-                <div className="flex flex-col gap-1">
-                  <label htmlFor="postal-address" className="text-xs font-medium text-muted">Business mailing address</label>
-                  <textarea
-                    id="postal-address"
-                    name="postal_address"
-                    defaultValue={d.emailSettings.postalAddress}
-                    placeholder="123 Main St, Suite 100, City, ST 00000"
-                    rows={2}
-                    className="rounded-md border border-border bg-panel px-2 py-1 text-sm text-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-copper"
-                  />
-                  <p className="text-xs text-muted">Required by CAN-SPAM — appended to every email's footer.</p>
-                </div>
-                <div className="flex items-center gap-3">
-                  <button type="submit" disabled={intentBusy("save_email")} className="rounded-md bg-copper px-3 py-1.5 text-xs font-semibold text-ink hover:bg-copper/90 disabled:opacity-60 disabled:cursor-not-allowed">
-                    {intentBusy("save_email") ? "Saving…" : "Save"}
-                  </button>
-                  {saved ? <span className="text-xs text-cool" role="status">Saved.</span> : null}
-                </div>
-              </Form>
-            ) : (
-              <dl className="mt-2 flex flex-col gap-1 text-sm">
-                <div className="flex gap-2"><dt className="text-muted w-28">Status</dt><dd className={d.emailSettings.emailEnabled ? "text-cool" : "text-muted"}>{d.emailSettings.emailEnabled ? "On" : "Off"}</dd></div>
-                <div className="flex gap-2"><dt className="text-muted w-28">From</dt><dd className="text-text">{d.emailSettings.fromAddress || "Not configured"}</dd></div>
-              </dl>
-            )}
-          </section>
+          {/* Email */}
+          <EmailSettingsSection
+            isOwner={d.isOwner}
+            emailEnabled={d.emailSettings.emailEnabled}
+            fromAddress={d.emailSettings.fromAddress}
+            fromName={d.emailSettings.fromName}
+            postalAddress={d.emailSettings.postalAddress}
+            ownerEmail={d.ownerEmail}
+            resendConfigured={ps.resendConfigured}
+            lastSentAt={relTime(ps.email.lastSentAt)}
+            lastStatus={ps.email.lastStatus}
+            failures7d={ps.email.failures7d}
+            resendWebhook={ps.webhookUrls.resendWebhook}
+          />
 
           {/* Collections rules (C7) */}
           <CollectionsRulesForm grace={d.rules.grace} workingDays={d.rules.workingDays} cadence={d.rules.cadence} holidays={d.rules.holidays} isOwner={d.isOwner} />

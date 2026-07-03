@@ -101,6 +101,43 @@ export type TwilioEnv = {
   TWILIO_PUBLIC_BASE_URL: string | null;        // public origin for webhook signature + StatusCallback
 };
 
+/**
+ * Like getTwilioEnv, but returns null when Twilio creds are absent instead of
+ * throwing. Used by the settings status panel and test-send route so they
+ * never 500 when env secrets are not yet configured.
+ */
+export function getTwilioEnvOrNull(
+  context: { cloudflare: { env: Record<string, string> } },
+): TwilioEnv | null {
+  const e = context.cloudflare.env;
+  if (!e.TWILIO_ACCOUNT_SID || !e.TWILIO_AUTH_TOKEN) return null;
+  const messagingServiceSid = e.TWILIO_MESSAGING_SERVICE_SID || null;
+  const fromNumber = e.TWILIO_FROM_NUMBER || null;
+  if (!messagingServiceSid && !fromNumber) return null;
+  return {
+    TWILIO_ACCOUNT_SID: e.TWILIO_ACCOUNT_SID,
+    TWILIO_AUTH_TOKEN: e.TWILIO_AUTH_TOKEN,
+    TWILIO_MESSAGING_SERVICE_SID: messagingServiceSid,
+    TWILIO_FROM_NUMBER: fromNumber,
+    TWILIO_PUBLIC_BASE_URL: e.TWILIO_PUBLIC_BASE_URL || null,
+  };
+}
+
+/**
+ * Non-throwing reader of public base URLs (for webhook URL display + StatusCallback).
+ * Returned even when send credentials are absent — that's exactly when the
+ * operator is setting up and needs to see the webhook URLs to paste into consoles.
+ */
+export function getPublicBaseUrls(
+  context: { cloudflare: { env: Record<string, string> } },
+): { twilioBaseUrl: string | null; appBaseUrl: string | null } {
+  const e = context.cloudflare.env;
+  return {
+    twilioBaseUrl: e.TWILIO_PUBLIC_BASE_URL || null,
+    appBaseUrl: e.APP_PUBLIC_BASE_URL || null,
+  };
+}
+
 export function getTwilioEnv(context: { cloudflare: { env: Record<string, string> } }): TwilioEnv {
   const e = context.cloudflare.env;
   for (const k of ["TWILIO_ACCOUNT_SID", "TWILIO_AUTH_TOKEN"]) {
