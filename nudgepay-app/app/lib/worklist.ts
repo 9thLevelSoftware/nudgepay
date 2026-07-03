@@ -153,9 +153,15 @@ export function isFollowUpDue(item: WorkItem, today: string): boolean {
   return item.followUpAt != null && item.followUpAt <= today;
 }
 
-export function applyView(items: WorkItem[], view: ViewId, today: string, currentUserId: string | null = null): WorkItem[] {
+export function applyView(
+  items: WorkItem[],
+  view: ViewId,
+  today: string,
+  currentUserId: string | null = null,
+  highValue: number = HIGH_VALUE_THRESHOLD,
+): WorkItem[] {
   if (view === "30-plus") return items.filter((i) => i.ageDays >= 30);
-  if (view === "high-value") return items.filter((i) => i.balance >= HIGH_VALUE_THRESHOLD);
+  if (view === "high-value") return items.filter((i) => i.balance >= highValue);
   if (view === "never-contacted") return items.filter((i) => i.lastContact === null);
   if (view === "follow-ups-due") return items.filter((i) => isFollowUpDue(i, today));
   if (view === "broken-promises") return items.filter((i) => isBrokenPromise(i, today));
@@ -172,14 +178,14 @@ export function sortItems(items: WorkItem[], sort: SortId): WorkItem[] {
   return copy.sort((a, b) => a.priority.rank - b.priority.rank || b.ageDays - a.ageDays || b.balance - a.balance);
 }
 
-export function computeMetrics(items: WorkItem[], today: string): Metrics {
+export function computeMetrics(items: WorkItem[], today: string, highValue: number = HIGH_VALUE_THRESHOLD): Metrics {
   const bucket = (pred: (i: WorkItem) => boolean): Metric => {
     const matched = items.filter(pred);
     return { count: matched.length, amount: matched.reduce((s, i) => s + i.balance, 0) };
   };
   return {
     thirtyPlus: bucket((i) => i.ageDays >= 30),
-    highValue: bucket((i) => i.balance >= HIGH_VALUE_THRESHOLD),
+    highValue: bucket((i) => i.balance >= highValue),
     neverContacted: bucket((i) => i.lastContact === null),
     allOpen: bucket(() => true),
     followUpsDue: bucket((i) => isFollowUpDue(i, today)),

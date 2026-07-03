@@ -100,6 +100,49 @@ export function parseLateFeeSettingsUpdate(form: FormData): LateFeeParseResult {
   };
 }
 
+// ---------------------------------------------------------------------------
+// Priority thresholds (Phase 4): org-configurable high-value + level cutoffs.
+// Mirrors the pattern above. Ordering mirrors the DB CHECK in migration 0027:
+// critical > high > medium > 0; high_value_threshold > 0.
+// ---------------------------------------------------------------------------
+
+export type PriorityThresholdsPatch = {
+  high_value_threshold: number;
+  priority_critical_min: number;
+  priority_high_min: number;
+  priority_medium_min: number;
+};
+
+export type PriorityThresholdsParseResult =
+  | { ok: true; patch: PriorityThresholdsPatch }
+  | { ok: false; error: string };
+
+export function parsePriorityThresholdsUpdate(form: FormData): PriorityThresholdsParseResult {
+  const rawHighValue = form.get("high_value_threshold");
+  const highValue = typeof rawHighValue === "string" ? Number(rawHighValue) : NaN;
+  if (!Number.isFinite(highValue) || highValue <= 0) return { ok: false, error: "high_value_threshold" };
+
+  const critical = intField(form, "priority_critical_min");
+  const high = intField(form, "priority_high_min");
+  const medium = intField(form, "priority_medium_min");
+  if (critical === null || high === null || medium === null) {
+    return { ok: false, error: "priority_thresholds" };
+  }
+  if (!(critical > high && high > medium && medium > 0)) {
+    return { ok: false, error: "priority_thresholds_order" };
+  }
+
+  return {
+    ok: true,
+    patch: {
+      high_value_threshold: Math.round(highValue * 100) / 100, // up to 2dp
+      priority_critical_min: critical,
+      priority_high_min: high,
+      priority_medium_min: medium,
+    },
+  };
+}
+
 // Validates a single YYYY-MM-DD holiday date (for add/remove). Returns the
 // normalized string, or null when malformed or not a real calendar day.
 export function parseHolidayDate(value: FormDataEntryValue | null): string | null {

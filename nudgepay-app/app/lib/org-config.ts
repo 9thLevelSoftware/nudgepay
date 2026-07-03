@@ -5,10 +5,19 @@
 // this module composes them, so there is a single source of default truth.
 
 import type { PriorityLevel } from "./priority";
+import { DEFAULT_PRIORITY_THRESHOLDS } from "./priority";
 import { CADENCE_DAYS } from "./follow-up-cadence";
 import { GRACE_BUSINESS_DAYS, DEFAULT_WORKING_DAYS, NO_HOLIDAYS } from "./business-days";
 import { DEFAULT_LATE_FEE_CONFIG, type LateFeeConfig } from "./late-fees";
 import { resolveCompanyProfile, DEFAULT_COMPANY_PROFILE, type CompanyProfile } from "./org-profile";
+import { HIGH_VALUE_THRESHOLD } from "./worklist";
+
+export type PriorityConfig = {
+  highValue: number;
+  criticalMin: number;
+  highMin: number;
+  mediumMin: number;
+};
 
 export type OrgConfig = {
   promiseGraceDays: number;
@@ -17,6 +26,7 @@ export type OrgConfig = {
   cadenceDays: Readonly<Record<PriorityLevel, number>>;
   lateFee: LateFeeConfig;
   companyProfile: CompanyProfile;
+  priority: PriorityConfig;
 };
 
 // Nullable to match a SELECT against optional columns / an absent row.
@@ -36,7 +46,19 @@ export type OrgSettingsRow = {
   company_phone: string | null;
   payment_portal_url: string | null;
   timezone: string | null;
+  // Priority thresholds (Phase 4)
+  high_value_threshold: number | null;
+  priority_critical_min: number | null;
+  priority_high_min: number | null;
+  priority_medium_min: number | null;
 };
+
+export const DEFAULT_PRIORITY_CONFIG: PriorityConfig = Object.freeze({
+  highValue: HIGH_VALUE_THRESHOLD,
+  criticalMin: DEFAULT_PRIORITY_THRESHOLDS.criticalMin,
+  highMin: DEFAULT_PRIORITY_THRESHOLDS.highMin,
+  mediumMin: DEFAULT_PRIORITY_THRESHOLDS.mediumMin,
+});
 
 export const DEFAULT_ORG_CONFIG: OrgConfig = Object.freeze({
   promiseGraceDays: GRACE_BUSINESS_DAYS,
@@ -45,6 +67,7 @@ export const DEFAULT_ORG_CONFIG: OrgConfig = Object.freeze({
   cadenceDays: CADENCE_DAYS,
   lateFee: DEFAULT_LATE_FEE_CONFIG,
   companyProfile: DEFAULT_COMPANY_PROFILE,
+  priority: DEFAULT_PRIORITY_CONFIG,
 });
 
 export function resolveOrgConfig(
@@ -76,5 +99,11 @@ export function resolveOrgConfig(
       flatAmount: Number(settings.late_fee_flat_amount ?? DEFAULT_LATE_FEE_CONFIG.flatAmount),
     },
     companyProfile: resolveCompanyProfile(settings),
+    priority: {
+      highValue: Number(settings.high_value_threshold ?? DEFAULT_PRIORITY_CONFIG.highValue),
+      criticalMin: settings.priority_critical_min ?? DEFAULT_PRIORITY_CONFIG.criticalMin,
+      highMin: settings.priority_high_min ?? DEFAULT_PRIORITY_CONFIG.highMin,
+      mediumMin: settings.priority_medium_min ?? DEFAULT_PRIORITY_CONFIG.mediumMin,
+    },
   };
 }

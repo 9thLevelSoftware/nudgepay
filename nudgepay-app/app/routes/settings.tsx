@@ -9,6 +9,7 @@ import { CollectionsRulesForm } from "../components/CollectionsRulesForm";
 import { SmsSettingsSection } from "../components/SmsSettingsSection";
 import { EmailSettingsSection } from "../components/EmailSettingsSection";
 import { LateFeesForm } from "../components/LateFeesForm";
+import { PriorityThresholdsForm } from "../components/PriorityThresholdsForm";
 import { NotificationPrefsForm } from "../components/NotificationPrefsForm";
 import { CompanyProfileForm } from "../components/CompanyProfileForm";
 import { TemplateEditor } from "../components/TemplateEditor";
@@ -103,6 +104,7 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
     },
     lateFee: config.lateFee,
     companyProfile: config.companyProfile,
+    priority: config.priority,
     smsTemplates: templates.sms,
     emailTemplates: templates.email,
     notificationPrefs: {
@@ -335,6 +337,7 @@ export default function Settings() {
                 returnTo={returnTo}
               />
               {d.isOwner && <LateFeesForm key={d.orgId} lateFee={d.lateFee} returnTo={returnTo} />}
+              {d.isOwner && <PriorityThresholdsForm key={d.orgId} priority={d.priority} returnTo={returnTo} />}
             </>
           )}
         </div>

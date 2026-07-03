@@ -33,10 +33,13 @@ function agePoints(ageDays: number): number {
   if (ageDays >= 1) return 8;
   return 0;
 }
-function balancePoints(balance: number): number {
+// The 12-point tier follows the org's high-value threshold (the org's own
+// definition of "high value"); the 25k/10k/1k tiers and point weights stay
+// fixed constants — only that one boundary is configurable.
+function balancePoints(balance: number, highValueThreshold: number = HIGH_VALUE_THRESHOLD): number {
   if (balance >= 25_000) return 25;
   if (balance >= 10_000) return 18;
-  if (balance >= HIGH_VALUE_THRESHOLD) return 12; // 5000
+  if (balance >= highValueThreshold) return 12;
   if (balance >= 1_000) return 6;
   if (balance > 0) return 2;
   return 0;
@@ -59,9 +62,18 @@ const LEVEL_META: Record<PriorityLevel, { tone: HeatBand; rank: number }> = {
   Low: { tone: "cool", rank: 3 },
 };
 
-function levelOf(score: number): { level: PriorityLevel; tone: HeatBand; rank: number } {
+export type PriorityThresholds = { criticalMin: number; highMin: number; mediumMin: number };
+export const DEFAULT_PRIORITY_THRESHOLDS: PriorityThresholds = { criticalMin: 80, highMin: 50, mediumMin: 25 };
+
+function levelOf(
+  score: number,
+  thresholds: PriorityThresholds = DEFAULT_PRIORITY_THRESHOLDS,
+): { level: PriorityLevel; tone: HeatBand; rank: number } {
   const level: PriorityLevel =
-    score >= 80 ? "Critical" : score >= 50 ? "High" : score >= 25 ? "Medium" : "Low";
+    score >= thresholds.criticalMin ? "Critical"
+    : score >= thresholds.highMin ? "High"
+    : score >= thresholds.mediumMin ? "Medium"
+    : "Low";
   return { level, ...LEVEL_META[level] };
 }
 
@@ -76,13 +88,18 @@ export function overrideToLevel(o: PriorityOverrideLevel | null): PriorityLevel 
   return o ? OVERRIDE_TO_LEVEL[o] : null;
 }
 
-export function scorePriority(input: PriorityFactorInput): ScoredPriority {
+export type ScorePriorityOpts = {
+  thresholds?: PriorityThresholds;
+  highValueThreshold?: number;
+};
+
+export function scorePriority(input: PriorityFactorInput, opts: ScorePriorityOpts = {}): ScoredPriority {
   const factors: PriorityFactor[] = [];
 
   const ageP = agePoints(input.ageDays);
   if (ageP > 0) factors.push({ key: "age", label: `${input.ageDays} days overdue`, points: ageP });
 
-  const balP = balancePoints(input.balance);
+  const balP = balancePoints(input.balance, opts.highValueThreshold);
   if (balP > 0) factors.push({ key: "balance", label: "Balance", points: balP });
 
   if (input.brokenPromise) factors.push({ key: "broken", label: "Broken promise", points: BROKEN_PROMISE_POINTS });
@@ -98,7 +115,7 @@ export function scorePriority(input: PriorityFactorInput): ScoredPriority {
 
   factors.sort((a, b) => b.points - a.points);
   const score = factors.reduce((s, f) => s + f.points, 0);
-  const { level, tone, rank } = levelOf(score);
+  const { level, tone, rank } = levelOf(score, opts.thresholds);
   const reason = factors.length ? factors.slice(0, 2).map((f) => f.label).join(", ") : "Not yet due";
   return { score, level, tone, rank, reason, factors };
 }

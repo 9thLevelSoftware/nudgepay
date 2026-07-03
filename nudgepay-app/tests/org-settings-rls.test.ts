@@ -48,6 +48,37 @@ test("an owner writes org_settings + org_holidays via RLS; a member cannot", asy
   expect(holidays ?? []).toHaveLength(0); // RLS blocked the insert
 });
 
+test("an owner writes priority thresholds via RLS; the ordering CHECK constraint rejects violations", async () => {
+  const svc = serviceClient();
+  const { data: org } = await svc.from("organizations").insert({ name: `OS-priority ${Math.random()}` }).select("id").single();
+  const orgId = org!.id as string;
+  const owner = await makeUserClient(`os-priority-owner-${Math.random()}@example.com`);
+  await svc.from("memberships").insert({ org_id: orgId, user_id: owner.userId, role: "owner" });
+
+  const { error: ownErr } = await owner.client.from("org_settings").upsert({
+    org_id: orgId, high_value_threshold: 8000,
+    priority_critical_min: 90, priority_high_min: 60, priority_medium_min: 30,
+  }, { onConflict: "org_id" });
+  expect(ownErr).toBeNull();
+  const { data: row } = await svc.from("org_settings")
+    .select("high_value_threshold, priority_critical_min, priority_high_min, priority_medium_min")
+    .eq("org_id", orgId).single();
+  expect(Number(row!.high_value_threshold)).toBe(8000);
+  expect(row!.priority_critical_min).toBe(90);
+  expect(row!.priority_high_min).toBe(60);
+  expect(row!.priority_medium_min).toBe(30);
+
+  // DB CHECK constraint rejects an ordering violation (critical <= high) even via service role.
+  const { error: orderErr } = await svc.from("org_settings")
+    .update({ priority_critical_min: 60, priority_high_min: 60 }).eq("org_id", orgId);
+  expect(orderErr).not.toBeNull();
+
+  // DB CHECK constraint rejects a non-positive high_value_threshold.
+  const { error: hvErr } = await svc.from("org_settings")
+    .update({ high_value_threshold: 0 }).eq("org_id", orgId);
+  expect(hvErr).not.toBeNull();
+});
+
 test("an outsider can neither read nor write another org's settings", async () => {
   const svc = serviceClient();
   const { data: org } = await svc.from("organizations").insert({ name: `OS-out ${Math.random()}` }).select("id").single();

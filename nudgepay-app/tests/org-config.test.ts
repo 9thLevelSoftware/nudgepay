@@ -6,6 +6,7 @@ test("DEFAULT_ORG_CONFIG carries the canonical defaults", () => {
   expect([...DEFAULT_ORG_CONFIG.workingDays].sort()).toEqual([1, 2, 3, 4, 5]);
   expect(DEFAULT_ORG_CONFIG.holidays.size).toBe(0);
   expect(DEFAULT_ORG_CONFIG.cadenceDays).toEqual({ Critical: 2, High: 3, Medium: 7, Low: 14 });
+  expect(DEFAULT_ORG_CONFIG.priority).toEqual({ highValue: 5000, criticalMin: 80, highMin: 50, mediumMin: 25 });
 });
 
 test("resolveOrgConfig with null settings returns defaults plus holiday set", () => {
@@ -14,6 +15,33 @@ test("resolveOrgConfig with null settings returns defaults plus holiday set", ()
   expect([...cfg.workingDays].sort()).toEqual([1, 2, 3, 4, 5]);
   expect(cfg.holidays.has("2026-12-25")).toBe(true);
   expect(cfg.cadenceDays).toEqual({ Critical: 2, High: 3, Medium: 7, Low: 14 });
+  expect(cfg.priority).toEqual({ highValue: 5000, criticalMin: 80, highMin: 50, mediumMin: 25 });
+});
+
+test("resolveOrgConfig applies priority threshold row overrides", () => {
+  const cfg = resolveOrgConfig({
+    promise_grace_days: 2,
+    working_days: [1, 2, 3, 4, 5],
+    cadence_critical: 2, cadence_high: 3, cadence_medium: 7, cadence_low: 14,
+    high_value_threshold: 8000,
+    priority_critical_min: 90,
+    priority_high_min: 60,
+    priority_medium_min: 30,
+  } as any, []);
+  expect(cfg.priority).toEqual({ highValue: 8000, criticalMin: 90, highMin: 60, mediumMin: 30 });
+});
+
+test("resolveOrgConfig falls back to priority defaults when the columns are null", () => {
+  const cfg = resolveOrgConfig({
+    promise_grace_days: 2,
+    working_days: [1, 2, 3, 4, 5],
+    cadence_critical: 2, cadence_high: 3, cadence_medium: 7, cadence_low: 14,
+    high_value_threshold: null,
+    priority_critical_min: null,
+    priority_high_min: null,
+    priority_medium_min: null,
+  } as any, []);
+  expect(cfg.priority).toEqual({ highValue: 5000, criticalMin: 80, highMin: 50, mediumMin: 25 });
 });
 
 test("resolveOrgConfig applies row overrides", () => {

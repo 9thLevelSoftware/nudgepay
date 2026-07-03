@@ -188,6 +188,13 @@ export function buildCaseItems(
       brokenPromise: prom?.status === "broken",
       daysSinceContact,
       followUpDue,
+    }, {
+      thresholds: {
+        criticalMin: config.priority.criticalMin,
+        highMin: config.priority.highMin,
+        mediumMin: config.priority.mediumMin,
+      },
+      highValueThreshold: config.priority.highValue,
     });
     const overrideLevel = overrideToLevel(cse.priorityOverride ?? null);
     const effectiveLevel = overrideLevel ?? scored.level;
@@ -242,9 +249,10 @@ export function buildCaseItems(
 
 export function applyCaseView(
   items: CaseItem[], view: ViewId, today: string, currentUserId: string | null,
+  highValue: number = HIGH_VALUE_THRESHOLD,
 ): CaseItem[] {
   if (view === "30-plus") return items.filter((i) => i.oldestAgeDays >= 30 && !i.suppressed);
-  if (view === "high-value") return items.filter((i) => i.totalOverdue >= HIGH_VALUE_THRESHOLD && !i.suppressed);
+  if (view === "high-value") return items.filter((i) => i.totalOverdue >= highValue && !i.suppressed);
   if (view === "never-contacted") return items.filter((i) => i.lastContact === null && !i.suppressed);
   if (view === "follow-ups-due") return items.filter((i) => i.nextActionAt != null && i.nextActionAt <= today && !i.suppressed);
   if (view === "broken-promises") return items.filter((i) => i.brokenPromise && !i.suppressed);
@@ -268,7 +276,7 @@ export function sortCaseItems(items: CaseItem[], sort: SortId): CaseItem[] {
     || b.totalOverdue - a.totalOverdue);
 }
 
-export function computeCaseMetrics(items: CaseItem[], today: string): Metrics {
+export function computeCaseMetrics(items: CaseItem[], today: string, highValue: number = HIGH_VALUE_THRESHOLD): Metrics {
   const active = items.filter((i) => !i.suppressed);
   const bucket = (source: CaseItem[], pred: (i: CaseItem) => boolean): Metric => {
     const matched = source.filter(pred);
@@ -276,7 +284,7 @@ export function computeCaseMetrics(items: CaseItem[], today: string): Metrics {
   };
   return {
     thirtyPlus: bucket(active, (i) => i.oldestAgeDays >= 30),
-    highValue: bucket(active, (i) => i.totalOverdue >= HIGH_VALUE_THRESHOLD),
+    highValue: bucket(active, (i) => i.totalOverdue >= highValue),
     neverContacted: bucket(active, (i) => i.lastContact === null),
     allOpen: bucket(active, () => true),
     followUpsDue: bucket(active, (i) => i.nextActionAt != null && i.nextActionAt <= today),

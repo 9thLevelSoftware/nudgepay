@@ -93,6 +93,27 @@ test("computeCaseMetrics counts cases and sums overdue", () => {
   expect(m.followUpsDue.amount).toBe(6300);
 });
 
+// --- org-configurable high-value threshold param plumbing (Phase 4) ---
+
+test("applyCaseView high-value defaults to 5000 with no highValue arg", () => {
+  const items = buildCaseItems(CASES, INVOICES, CUSTOMERS, [], [], TODAY, LABELS, DEFAULT_ORG_CONFIG);
+  expect(applyCaseView(items, "high-value", TODAY, null).map((c) => c.customerId)).toEqual(["c1"]);
+});
+
+test("applyCaseView high-value honors a custom highValue param", () => {
+  const items = buildCaseItems(CASES, INVOICES, CUSTOMERS, [], [], TODAY, LABELS, DEFAULT_ORG_CONFIG);
+  // c1 totalOverdue is 6300 — raising the org threshold above it excludes it.
+  expect(applyCaseView(items, "high-value", TODAY, null, 7000)).toEqual([]);
+  // lowering it pulls c2 (800) in too.
+  expect(applyCaseView(items, "high-value", TODAY, null, 500).map((c) => c.customerId).sort()).toEqual(["c1", "c2"]);
+});
+
+test("computeCaseMetrics highValue bucket honors a custom highValue param", () => {
+  const items = buildCaseItems(CASES, INVOICES, CUSTOMERS, [], [], TODAY, LABELS, DEFAULT_ORG_CONFIG);
+  expect(computeCaseMetrics(items, TODAY, 7000).highValue.count).toBe(0);
+  expect(computeCaseMetrics(items, TODAY, 500).highValue.count).toBe(2);
+});
+
 test("buildCaseItems sets lastContact from the most-recent contact per case and excludes it from never-contacted", () => {
   const lastContacts: CaseLastContactInput[] = [
     { caseId: "case-1", date: "2026-06-17T00:00:00Z", channel: "Email" },

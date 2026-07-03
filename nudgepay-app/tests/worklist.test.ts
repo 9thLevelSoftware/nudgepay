@@ -100,6 +100,22 @@ test("applyView high-value is inclusive at exactly the threshold (5000)", () => 
   expect(ids).not.toContain("below");
 });
 
+test("applyView high-value honors a custom highValue param", () => {
+  const items = buildWorkItems(
+    [
+      { id: "at", qbo_doc_number: "1", customer_id: "c", balance: 5000, due_date: "2026-03-01" },
+      { id: "below", qbo_doc_number: "2", customer_id: "c", balance: 4999, due_date: "2026-03-01" },
+    ],
+    [{ id: "c", name: "C", phone: null, email: null }],
+    [], [],
+    TODAY,
+  );
+  // raising the org threshold above both excludes both
+  expect(applyView(items, "high-value", TODAY, null, 5001)).toEqual([]);
+  // lowering it below both includes both
+  expect(applyView(items, "high-value", TODAY, null, 100).map((x) => x.invoiceId).sort()).toEqual(["at", "below"]);
+});
+
 test("sortItems orders by the chosen key", () => {
   const items = buildWorkItems(
     [
@@ -148,6 +164,19 @@ test("computeMetrics totals count and amount per bucket", () => {
   expect(m.thirtyPlus).toEqual({ count: 1, amount: 6000 });
   expect(m.highValue).toEqual({ count: 1, amount: 6000 });
   expect(m.neverContacted).toEqual({ count: 1, amount: 6000 });
+});
+
+test("computeMetrics highValue bucket honors a custom highValue param", () => {
+  const items = buildWorkItems(
+    [
+      { id: "a", qbo_doc_number: "1", customer_id: "c", balance: 6000, due_date: "2026-03-01" },
+      { id: "b", qbo_doc_number: "2", customer_id: "c", balance: 400, due_date: "2026-06-19" },
+    ],
+    [{ id: "c", name: "C", phone: null, email: null }],
+    [], [], TODAY,
+  );
+  expect(computeMetrics(items, TODAY, 7000).highValue).toEqual({ count: 0, amount: 0 });
+  expect(computeMetrics(items, TODAY, 100).highValue).toEqual({ count: 2, amount: 6400 });
 });
 
 const T = "2026-06-22";

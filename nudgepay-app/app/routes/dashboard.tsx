@@ -82,9 +82,10 @@ export function buildCaseData(
   comingDueInvoices: InvoiceInput[] = [],
 ): DashboardData {
   const { view, sort, q, caseId } = params;
+  const highValue = config.priority.highValue;
   const allItems = buildCaseItems(cases, invoices, customers, lastContacts, promises, today, ownerLabels, config);
   const searched = q.trim() === "" ? allItems : allItems.filter((i) => i.searchText.includes(q.toLowerCase()));
-  const metrics = computeCaseMetrics(searched, today);
+  const metrics = computeCaseMetrics(searched, today, highValue);
 
   // Coming-due groups: built from the separate non-overdue invoice set
   const allComingDueGroups = buildComingDueGroups(comingDueInvoices, customers, today);
@@ -100,10 +101,10 @@ export function buildCaseData(
   const viewCounts = Object.fromEntries(
     ALL_VIEWS.map((v) => {
       if (v === "coming-due") return [v, filteredComingDue.length];
-      return [v, applyCaseView(searched, v, today, currentUserId).length];
+      return [v, applyCaseView(searched, v, today, currentUserId, highValue).length];
     }),
   ) as Record<ViewId, number>;
-  const items = sortCaseItems(applyCaseView(searched, view, today, currentUserId), sort);
+  const items = sortCaseItems(applyCaseView(searched, view, today, currentUserId, highValue), sort);
   const selected = caseId != null ? (searched.find((i) => i.caseId === caseId) ?? null) : null;
   return { items, metrics, viewCounts, selected, comingDueGroups: filteredComingDue };
 }

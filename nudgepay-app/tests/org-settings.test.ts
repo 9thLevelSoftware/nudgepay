@@ -1,5 +1,5 @@
 import { expect, test } from "vitest";
-import { parseOrgSettingsUpdate, parseHolidayDate } from "../app/lib/org-settings";
+import { parseOrgSettingsUpdate, parseHolidayDate, parsePriorityThresholdsUpdate } from "../app/lib/org-settings";
 
 function fd(entries: Array<[string, string]>): FormData {
   const f = new FormData();
@@ -47,4 +47,72 @@ test("parseHolidayDate accepts a real YYYY-MM-DD and rejects junk", () => {
   expect(parseHolidayDate("07/04/2026")).toBe(null);
   expect(parseHolidayDate("")).toBe(null);
   expect(parseHolidayDate(null)).toBe(null);
+});
+
+// --- parsePriorityThresholdsUpdate (Phase 4) ---
+
+const priorityFd = (entries: Array<[string, string]>): FormData => {
+  const f = new FormData();
+  for (const [k, v] of entries) f.append(k, v);
+  return f;
+};
+
+const validPriority: Array<[string, string]> = [
+  ["high_value_threshold", "5000"],
+  ["priority_critical_min", "80"],
+  ["priority_high_min", "50"],
+  ["priority_medium_min", "25"],
+];
+
+test("parsePriorityThresholdsUpdate accepts a valid form", () => {
+  const r = parsePriorityThresholdsUpdate(priorityFd(validPriority));
+  expect(r).toEqual({
+    ok: true,
+    patch: { high_value_threshold: 5000, priority_critical_min: 80, priority_high_min: 50, priority_medium_min: 25 },
+  });
+});
+
+test("high_value_threshold of 0 or negative is rejected", () => {
+  expect(parsePriorityThresholdsUpdate(priorityFd(
+    validPriority.map(([k, v]) => k === "high_value_threshold" ? [k, "0"] : [k, v]),
+  ))).toEqual({ ok: false, error: "high_value_threshold" });
+  expect(parsePriorityThresholdsUpdate(priorityFd(
+    validPriority.map(([k, v]) => k === "high_value_threshold" ? [k, "-100"] : [k, v]),
+  ))).toEqual({ ok: false, error: "high_value_threshold" });
+});
+
+test("missing or non-numeric high_value_threshold is rejected", () => {
+  expect(parsePriorityThresholdsUpdate(priorityFd(
+    validPriority.filter(([k]) => k !== "high_value_threshold"),
+  ))).toEqual({ ok: false, error: "high_value_threshold" });
+  expect(parsePriorityThresholdsUpdate(priorityFd(
+    validPriority.map(([k, v]) => k === "high_value_threshold" ? [k, "abc"] : [k, v]),
+  ))).toEqual({ ok: false, error: "high_value_threshold" });
+});
+
+test("non-integer or missing level threshold is rejected", () => {
+  expect(parsePriorityThresholdsUpdate(priorityFd(
+    validPriority.filter(([k]) => k !== "priority_high_min"),
+  ))).toEqual({ ok: false, error: "priority_thresholds" });
+  expect(parsePriorityThresholdsUpdate(priorityFd(
+    validPriority.map(([k, v]) => k === "priority_critical_min" ? [k, "80.5"] : [k, v]),
+  ))).toEqual({ ok: false, error: "priority_thresholds" });
+});
+
+test("ordering violation: critical <= high is rejected", () => {
+  expect(parsePriorityThresholdsUpdate(priorityFd(
+    validPriority.map(([k, v]) => k === "priority_critical_min" ? [k, "50"] : [k, v]), // 50 == high
+  ))).toEqual({ ok: false, error: "priority_thresholds_order" });
+});
+
+test("ordering violation: high <= medium is rejected", () => {
+  expect(parsePriorityThresholdsUpdate(priorityFd(
+    validPriority.map(([k, v]) => k === "priority_high_min" ? [k, "20"] : [k, v]), // 20 < medium (25)
+  ))).toEqual({ ok: false, error: "priority_thresholds_order" });
+});
+
+test("ordering violation: medium <= 0 is rejected", () => {
+  expect(parsePriorityThresholdsUpdate(priorityFd(
+    validPriority.map(([k, v]) => k === "priority_medium_min" ? [k, "0"] : [k, v]),
+  ))).toEqual({ ok: false, error: "priority_thresholds_order" });
 });
