@@ -14,7 +14,8 @@ import { useSearchParams } from "react-router";
 const FLASH_PARAMS = [
   "saved", "sms", "email", "logError", "promiseError",
   "bulkAssign", "count", "bulkSms", "sent", "failed", "skipped",
-  "email_saved", "error", "denied",
+  "email_saved", "sms_saved", "test_sms", "test_email",
+  "error", "denied",
 ];
 
 // These params drive open UI when they have specific values; only strip if

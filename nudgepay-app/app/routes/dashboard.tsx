@@ -189,7 +189,7 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
   ]);
 
   const connected = conn?.status === "connected";
-  if (!connected) throw redirect("/settings", { headers });
+  if (!connected) throw redirect("/settings?tab=integrations", { headers });
 
   // Sync label from last_sync_at (connected is guaranteed true here — redirect above)
   const lastSyncAt = (connMeta?.last_sync_at as string | null) ?? null;

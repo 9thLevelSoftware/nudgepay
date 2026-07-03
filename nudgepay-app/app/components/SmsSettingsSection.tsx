@@ -15,6 +15,8 @@ export type SmsSettingsProps = {
   // Webhook URLs
   twilioInbound: string | null;
   twilioStatus: string | null;
+  // Return path for form submissions (preserves active tab)
+  returnTo?: string;
 };
 
 export function SmsSettingsSection(d: SmsSettingsProps) {
@@ -40,7 +42,7 @@ export function SmsSettingsSection(d: SmsSettingsProps) {
         {d.isOwner ? (
           <Form method="post" action="/api/org-settings">
             <input type="hidden" name="intent" value="save_channels" />
-            <input type="hidden" name="returnTo" value="/settings" />
+            <input type="hidden" name="returnTo" value={d.returnTo ?? "/settings"} />
             <label className="sr-only" htmlFor="sms-enabled">SMS enabled</label>
             <select
               id="sms-enabled" name="sms_enabled" defaultValue={d.smsEnabled ? "true" : "false"}
@@ -67,7 +69,7 @@ export function SmsSettingsSection(d: SmsSettingsProps) {
       {d.isOwner && (
         <Form method="post" action="/api/org-settings" className="mt-4 flex flex-col gap-3">
           <input type="hidden" name="intent" value="save_sms_sender" />
-          <input type="hidden" name="returnTo" value="/settings" />
+          <input type="hidden" name="returnTo" value={d.returnTo ?? "/settings"} />
           <h3 className="text-sm font-medium text-text">Sender configuration</h3>
           <div className="flex flex-col gap-1">
             <label htmlFor="sms-sender" className="text-xs font-medium text-muted">From number (E.164)</label>
@@ -112,7 +114,7 @@ export function SmsSettingsSection(d: SmsSettingsProps) {
       {d.isOwner && (
         <Form method="post" action="/api/test-message" className="mt-4 flex flex-col gap-2">
           <input type="hidden" name="intent" value="test_sms" />
-          <input type="hidden" name="returnTo" value="/settings" />
+          <input type="hidden" name="returnTo" value={d.returnTo ?? "/settings"} />
           <h3 className="text-sm font-medium text-text">Send test SMS</h3>
           <div className="flex items-end gap-2">
             <label className="flex-1 grid gap-1 text-xs font-medium text-muted">

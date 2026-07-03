@@ -15,6 +15,8 @@ export type EmailSettingsProps = {
   failures7d: number;
   // Webhook URL
   resendWebhook: string | null;
+  // Return path for form submissions (preserves active tab)
+  returnTo?: string;
 };
 
 export function EmailSettingsSection(d: EmailSettingsProps) {
@@ -44,7 +46,7 @@ export function EmailSettingsSection(d: EmailSettingsProps) {
       {d.isOwner ? (
         <Form method="post" action="/api/org-settings" className="mt-3 flex flex-col gap-3">
           <input type="hidden" name="intent" value="save_email" />
-          <input type="hidden" name="returnTo" value="/settings" />
+          <input type="hidden" name="returnTo" value={d.returnTo ?? "/settings"} />
           <label className="flex items-center gap-2 text-sm text-text">
             <input
               type="checkbox"
@@ -110,7 +112,7 @@ export function EmailSettingsSection(d: EmailSettingsProps) {
       {d.isOwner && (
         <Form method="post" action="/api/test-message" className="mt-4 flex flex-col gap-2">
           <input type="hidden" name="intent" value="test_email" />
-          <input type="hidden" name="returnTo" value="/settings" />
+          <input type="hidden" name="returnTo" value={d.returnTo ?? "/settings"} />
           <h3 className="text-sm font-medium text-text">Send test email</h3>
           <div className="flex items-center gap-2">
             <p className="text-xs text-muted">Sends to <span className="font-medium text-text">{d.ownerEmail || "your account email"}</span></p>
