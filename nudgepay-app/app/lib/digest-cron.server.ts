@@ -97,11 +97,14 @@ export async function runScheduledDigest(
         // notification_log member-level dedupe prevents re-sending to members
         // who already received the digest during this partial run.
         console.error(`[digest] daily digest failed for org ${orgId}, releasing claim:`, sendErr);
-        await service
-          .from("org_settings")
-          .update({ last_digest_date: null })
-          .eq("org_id", orgId)
-          .catch(() => {}); // best-effort reset
+        try {
+          await service
+            .from("org_settings")
+            .update({ last_digest_date: null })
+            .eq("org_id", orgId);
+        } catch {
+          // best-effort reset
+        }
         await recordSyncError(service, {
           orgId, source: "cron", scope: "digest",
           message: sendErr instanceof Error ? sendErr.message : String(sendErr),

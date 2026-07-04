@@ -26,7 +26,10 @@ export async function sendInvoiceEmail(
   if (!inv?.customer_id) throw new Error("Invoice has no linked customer");
 
   const { data: cust, error: custErr } = await deps.service.from("customers")
-    .select("id, email, do_not_email").eq("id", inv.customer_id as string).maybeSingle();
+    .select("id, email, do_not_email")
+    .eq("org_id", args.orgId)
+    .eq("id", inv.customer_id as string)
+    .maybeSingle();
   if (custErr) throw custErr;
   if (!cust?.email) throw new Error("Customer has no email address");
 
@@ -102,6 +105,7 @@ export async function updateEmailStatus(
     const { error: upErr } = await service
       .from("customers")
       .update({ do_not_email: true })
+      .eq("org_id", r.org_id as string)
       .eq("id", r.customer_id as string);
     if (upErr) throw upErr;
   }
@@ -131,19 +135,20 @@ export async function recordInboundEmail(
     if (dup) return { matched: true };
   }
 
-  // Resolve the org that owns the recipient (args.to) address.  This is the
+  // Resolve the org that owns the recipient (args.to) address. This is the
   // org's configured outbound from_address and identifies the tenant uniquely.
-  // ilike performs a case-insensitive exact match (no wildcards) so mixed-case
-  // stored addresses are handled correctly.  Zero or multiple matches are treated
-  // as unmatched to prevent cross-tenant disclosure: if the same from_address is
-  // registered in two orgs the correct recipient is ambiguous, so we drop it.
+  // Compare normalized strings in process instead of passing user-controlled
+  // input to an ILIKE pattern operator; zero or multiple matches are ambiguous.
   const { data: configs, error: configErr } = await service
     .from("email_config")
-    .select("org_id")
-    .ilike("from_address", toNorm);
+    .select("org_id, from_address")
+    .not("from_address", "is", null);
   if (configErr) throw configErr;
-  if (!configs || configs.length !== 1) return { matched: false };
-  const orgId = configs[0].org_id as string;
+  const matchingConfigs = (configs ?? []).filter(
+    (cfg) => normalizeEmail(cfg.from_address as string) === toNorm,
+  );
+  if (matchingConfigs.length !== 1) return { matched: false };
+  const orgId = matchingConfigs[0].org_id as string;
 
   // Scope the sender lookup to the resolved org only — never query across tenants.
   const { data: candidates, error: candErr } = await service

@@ -86,7 +86,10 @@ export async function sendInvoiceText(
   if (!inv?.customer_id) throw new Error("Invoice has no linked customer");
 
   const { data: cust, error: custErr } = await deps.service.from("customers")
-    .select("id, phone, sms_consent, do_not_text").eq("id", inv.customer_id as string).maybeSingle();
+    .select("id, phone, sms_consent, do_not_text")
+    .eq("org_id", args.orgId)
+    .eq("id", inv.customer_id as string)
+    .maybeSingle();
   if (custErr) throw custErr;
   if (!cust?.phone) throw new Error("Customer has no phone number");
 
@@ -148,17 +151,47 @@ export async function sendInvoiceText(
 const STOP_KEYWORDS = ["STOP", "STOPALL", "UNSUBSCRIBE", "CANCEL", "END", "QUIT"];
 const START_KEYWORDS = ["START", "YES", "UNSTOP"];
 
+async function resolveInboundOrgId(service: SupabaseClient, to: string): Promise<string | null> {
+  const toNorm = normalizePhone(to);
+  if (toNorm.length < 10) return null;
+  const { data: configs, error } = await service
+    .from("messaging_config")
+    .select("org_id, sender")
+    .not("sender", "is", null);
+  if (error) throw error;
+  const matches = (configs ?? []).filter((cfg) => normalizePhone(cfg.sender as string) === toNorm);
+  return matches.length === 1 ? matches[0].org_id as string : null;
+}
+
 export async function recordInboundMessage(
   service: SupabaseClient,
   args: { from: string; to: string; body: string; messageSid: string },
 ): Promise<{ matched: boolean; optOut: boolean }> {
+  if (args.messageSid) {
+    const { data: dup, error: dupErr } = await service
+      .from("text_messages")
+      .select("id")
+      .eq("twilio_message_sid", args.messageSid)
+      .eq("direction", "inbound")
+      .limit(1)
+      .maybeSingle();
+    if (dupErr) throw dupErr;
+    if (dup) return { matched: true, optOut: false };
+  }
+
+  const orgId = await resolveInboundOrgId(service, args.to);
+  if (!orgId) return { matched: false, optOut: false };
+
   const fromNorm = normalizePhone(args.from);
   if (fromNorm.length < 10) return { matched: false, optOut: false };
 
-  // Match the sender to a customer by normalized phone. At Chancey scale this
-  // in-memory match is fine; a normalized column would scale it later.
+  // Match the sender to a customer inside the org resolved from Twilio's To
+  // number. At Chancey scale this in-memory match is fine; a normalized column
+  // would scale it later.
   const { data: candidates, error: candErr } = await service.from("customers")
-    .select("id, org_id, phone").not("phone", "is", null);
+    .select("id, org_id, phone")
+    .eq("org_id", orgId)
+    .not("phone", "is", null);
   if (candErr) throw candErr;
   const match = (candidates ?? []).find((c) => normalizePhone(c.phone as string) === fromNorm);
   if (!match) return { matched: false, optOut: false };
@@ -166,25 +199,34 @@ export async function recordInboundMessage(
   const keyword = args.body.trim().toUpperCase();
   const optOut = STOP_KEYWORDS.includes(keyword);
   if (optOut) {
-    const { error } = await service.from("customers").update({ sms_consent: false }).eq("id", match.id as string);
+    const { error } = await service.from("customers")
+      .update({ sms_consent: false })
+      .eq("org_id", orgId)
+      .eq("id", match.id as string);
     if (error) throw error;
   } else if (START_KEYWORDS.includes(keyword)) {
-    const { error } = await service.from("customers").update({ sms_consent: true }).eq("id", match.id as string);
+    const { error } = await service.from("customers")
+      .update({ sms_consent: true })
+      .eq("org_id", orgId)
+      .eq("id", match.id as string);
     if (error) throw error;
   }
 
   // Thread to the customer's most recent outbound invoice, if any.
   const { data: lastOut, error: lastOutErr } = await service.from("text_messages")
-    .select("invoice_id").eq("customer_id", match.id as string).eq("direction", "outbound")
+    .select("invoice_id")
+    .eq("org_id", orgId)
+    .eq("customer_id", match.id as string)
+    .eq("direction", "outbound")
     .not("invoice_id", "is", null).order("created_at", { ascending: false }).limit(1).maybeSingle();
   // Fail loud: a swallowed read error would silently thread the inbound row with a
   // null invoice_id instead of surfacing the failure (matches the other reads here).
   if (lastOutErr) throw lastOutErr;
 
-  const caseId = await activeCaseId(service, match.org_id as string, match.id as string);
+  const caseId = await activeCaseId(service, orgId, match.id as string);
 
   const { error: insErr } = await service.from("text_messages").insert({
-    org_id: match.org_id as string,
+    org_id: orgId,
     customer_id: match.id as string,
     case_id: caseId,
     invoice_id: (lastOut?.invoice_id as string) ?? null,
@@ -194,7 +236,10 @@ export async function recordInboundMessage(
     to_number: args.to,
     body: args.body,
   });
-  if (insErr) throw insErr;
+  if (insErr) {
+    if ((insErr as { code?: string }).code === "23505") return { matched: true, optOut };
+    throw insErr;
+  }
 
   return { matched: true, optOut };
 }

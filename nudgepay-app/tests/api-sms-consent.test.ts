@@ -1,5 +1,46 @@
 import { expect, test } from "vitest";
-import { serviceClient, makeUserClient } from "./helpers";
+import { createClient } from "@supabase/supabase-js";
+import { serviceClient, makeUserClient, TEST_ENV } from "./helpers";
+import { action as smsConsentAction } from "../app/routes/api.sms-consent";
+
+function ctx() {
+  return { cloudflare: { env: TEST_ENV } } as any;
+}
+
+function sessionCookie(session: object): string {
+  const host = new URL(TEST_ENV.SUPABASE_URL).hostname.split(".")[0];
+  const json = JSON.stringify(session);
+  const b64url = Buffer.from(json, "utf8")
+    .toString("base64")
+    .replace(/\+/g, "-")
+    .replace(/\//g, "_")
+    .replace(/=+$/, "");
+  return `sb-${host}-auth-token=base64-${b64url}`;
+}
+
+async function signInSession(email: string): Promise<object> {
+  const anon = createClient(TEST_ENV.SUPABASE_URL, TEST_ENV.SUPABASE_ANON_KEY);
+  const { data, error } = await anon.auth.signInWithPassword({
+    email,
+    password: "test-pass-123",
+  });
+  if (error) throw error;
+  return data.session!;
+}
+
+async function postSmsConsent(cookie: string, fields: Record<string, string>): Promise<Response> {
+  const form = new FormData();
+  for (const [k, v] of Object.entries(fields)) form.set(k, v);
+  return smsConsentAction({
+    request: new Request("http://localhost/api/sms-consent", {
+      method: "POST",
+      headers: { Cookie: cookie, Origin: "http://localhost" },
+      body: form,
+    }),
+    context: ctx(),
+    params: {},
+  } as any) as Promise<Response>;
+}
 
 // Mirrors the RLS path the /api/sms-consent action relies on: a member updates
 // sms_consent on an own-org customer (resolved via an own-org invoice), and a
@@ -74,4 +115,46 @@ test("a member of another org cannot read the invoice or change consent", async 
   await outsider.client.from("customers").update({ sms_consent: false }).eq("id", cust!.id);
   const { data: after } = await svc.from("customers").select("sms_consent").eq("id", cust!.id).single();
   expect(after!.sms_consent).toBe(true); // unchanged — RLS blocked the update
+});
+
+test("action rejects a visible invoice from a non-active org for a multi-org user", async () => {
+  const svc = serviceClient();
+  const email = `consent-multi-${Math.random()}@example.com`;
+  const user = await makeUserClient(email);
+
+  const { data: orgA } = await svc.from("organizations").insert({ name: "Consent Active A" }).select("id").single();
+  await svc.from("memberships").insert({
+    org_id: orgA!.id,
+    user_id: user.userId,
+    role: "owner",
+    created_at: "2026-01-01T00:00:00Z",
+  });
+
+  const { data: orgB } = await svc.from("organizations").insert({ name: "Consent Visible B" }).select("id").single();
+  await svc.from("memberships").insert({
+    org_id: orgB!.id,
+    user_id: user.userId,
+    role: "member",
+    created_at: "2026-01-02T00:00:00Z",
+  });
+  const { data: custB } = await svc.from("customers")
+    .insert({ org_id: orgB!.id, qbo_id: `consent-b-${Math.random()}`, name: "Visible B", sms_consent: true })
+    .select("id")
+    .single();
+  const { data: invB } = await svc.from("invoices")
+    .insert({ org_id: orgB!.id, qbo_id: `consent-bi-${Math.random()}`, customer_id: custB!.id, balance: 100 })
+    .select("id")
+    .single();
+
+  const session = await signInSession(email);
+  const res = await postSmsConsent(sessionCookie(session), {
+    returnTo: "/dashboard",
+    invoiceId: invB!.id as string,
+    consent: "false",
+  });
+
+  expect(res.status).toBe(302);
+  expect(res.headers.get("Location") ?? "").toContain("sms=error");
+  const { data: after } = await svc.from("customers").select("sms_consent").eq("id", custB!.id).single();
+  expect(after!.sms_consent).toBe(true);
 });

@@ -25,7 +25,7 @@ async function seedCase(): Promise<string> {
 
 test("applyNextStep with a review-dated exception stores the review date", async () => {
   const caseId = await seedCase();
-  const res = await applyNextStep(client, caseId, {
+  const res = await applyNextStep(client, orgId, caseId, {
     nextStep: "exception", followUpAt: null, promisedAmount: null, promisedDate: null,
     reviewAt: "2026-09-01", exceptionReason: "disputed", exceptionNote: "line 3",
   });
@@ -41,7 +41,7 @@ test("applyNextStep with a terminal exception nulls next_action_at even if a rev
   const caseId = await seedCase();
   // Pass a non-null reviewAt: the OLD code would persist it; the NEW code must
   // force null for terminal states. This makes the test fail before the fix.
-  const res = await applyNextStep(client, caseId, {
+  const res = await applyNextStep(client, orgId, caseId, {
     nextStep: "exception", followUpAt: null, promisedAmount: null, promisedDate: null,
     reviewAt: "2026-09-01", exceptionReason: "do_not_contact", exceptionNote: null,
   });

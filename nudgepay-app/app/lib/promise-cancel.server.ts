@@ -10,11 +10,12 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 //    working with the promise still pending — the cancel button still shows and
 //    promise evaluation still runs, so the state is recoverable.
 export async function cancelPromise(
-  client: SupabaseClient, promiseId: string, today: string,
+  client: SupabaseClient, promiseId: string, orgId: string, today: string,
 ): Promise<{ ok: boolean }> {
   // Step 1: SELECT — validates org membership (RLS) and that promise is pending.
   const { data: prom, error: selErr } = await client.from("promises")
     .select("id, case_id")
+    .eq("org_id", orgId)
     .eq("id", promiseId)
     .eq("status", "pending")
     .maybeSingle();
@@ -25,12 +26,14 @@ export async function cancelPromise(
   // Step 2: UPDATE the case — if this fails, the promise is still pending (consistent).
   const { error: cErr } = await client.from("collection_cases")
     .update({ status: "working", next_action_type: "follow_up", next_action_at: today })
+    .eq("org_id", orgId)
     .eq("id", caseId);
   if (cErr) return { ok: false };
 
   // Step 3: UPDATE the promise (terminal write — last).
   const { data: cancelled, error: pErr } = await client.from("promises")
     .update({ status: "cancelled", resolved_at: new Date().toISOString() })
+    .eq("org_id", orgId)
     .eq("id", promiseId)
     .eq("status", "pending")
     .select("id");

@@ -1,7 +1,7 @@
 import { expect, test, beforeAll } from "vitest";
 import { createClient } from "@supabase/supabase-js";
 import { makeUserClient, serviceClient, TEST_ENV } from "./helpers";
-import { resolveOrg, requireOrgUser } from "../app/lib/session.server";
+import { resolveOrg, requireOrgUser, requireUser } from "../app/lib/session.server";
 
 let user: Awaited<ReturnType<typeof makeUserClient>>;
 let orgId: string;
@@ -106,4 +106,54 @@ test("requireOrgUser redirects to /login when there is no authenticated user", a
   expect(thrown).toBeInstanceOf(Response);
   expect((thrown as Response).status).toBe(302);
   expect((thrown as Response).headers.get("Location")).toBe("/login?returnTo=%2Fdashboard");
+});
+
+test("requireUser rejects authenticated unsafe requests without same-origin proof", async () => {
+  const session = await signInSession("session-user@example.com");
+  const cookie = sessionCookie(session);
+  const request = new Request("http://localhost/api/org-settings", {
+    method: "POST",
+    headers: { Cookie: cookie },
+    body: new FormData(),
+  });
+
+  const thrown = await requireUser(request, env).then(
+    () => null,
+    (err) => err,
+  );
+
+  expect(thrown).toBeInstanceOf(Response);
+  expect((thrown as Response).status).toBe(403);
+});
+
+test("requireUser accepts authenticated unsafe requests with same-origin proof", async () => {
+  const session = await signInSession("session-user@example.com");
+  const cookie = sessionCookie(session);
+  const request = new Request("http://localhost/api/org-settings", {
+    method: "POST",
+    headers: { Cookie: cookie, Origin: "http://localhost" },
+    body: new FormData(),
+  });
+
+  const result = await requireUser(request, env);
+
+  expect(result.user.id).toBe(user.userId);
+});
+
+test("requireUser rejects authenticated unsafe requests from a different origin", async () => {
+  const session = await signInSession("session-user@example.com");
+  const cookie = sessionCookie(session);
+  const request = new Request("http://localhost/api/org-settings", {
+    method: "POST",
+    headers: { Cookie: cookie, Origin: "https://attacker.example" },
+    body: new FormData(),
+  });
+
+  const thrown = await requireUser(request, env).then(
+    () => null,
+    (err) => err,
+  );
+
+  expect(thrown).toBeInstanceOf(Response);
+  expect((thrown as Response).status).toBe(403);
 });

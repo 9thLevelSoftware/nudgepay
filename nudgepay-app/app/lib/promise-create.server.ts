@@ -5,7 +5,7 @@ import { loadOrgConfig } from "./org-config.server";
 export type CreatePromiseInput = {
   orgId: string;
   caseId: string;
-  customerId: string | null;
+  customerId: string;
   userId: string;
   contactLogId: string | null;
   promisedAmount: number;
@@ -19,6 +19,14 @@ export type CreatePromiseInput = {
 export async function createPromiseForLog(
   client: SupabaseClient, input: CreatePromiseInput,
 ): Promise<{ ok: true; promiseId: string } | { ok: false }> {
+  const { data: cse, error: caseSelErr } = await client
+    .from("collection_cases")
+    .select("id, customer_id")
+    .eq("org_id", input.orgId)
+    .eq("id", input.caseId)
+    .maybeSingle();
+  if (caseSelErr || !cse || cse.customer_id !== input.customerId) return { ok: false };
+
   // Links all open-balance invoices (not just the overdue subset) because balance-delta
   // counts any payment against the customer's balance, and baseline+eval use the identical stored set.
   const { data: invs, error: iErr } = await client
@@ -68,13 +76,16 @@ export async function createPromiseForLog(
   // Point the (single) superseded promise at the replacement.
   if (priors && priors.length > 0) {
     const { error: rErr } = await client.from("promises")
-      .update({ replacement_promise_id: promiseId }).eq("id", priors[0].id as string);
+      .update({ replacement_promise_id: promiseId })
+      .eq("org_id", input.orgId)
+      .eq("id", priors[0].id as string);
     if (rErr) return { ok: false };
   }
 
   // Reflect into the case state machine.
   const { error: caseErr } = await client.from("collection_cases")
     .update({ status: "promised", next_action_type: "promise", next_action_at: graceUntil, exception_reason: null, exception_note: null })
+    .eq("org_id", input.orgId)
     .eq("id", input.caseId);
   if (caseErr) return { ok: false };
 

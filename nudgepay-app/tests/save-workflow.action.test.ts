@@ -35,7 +35,7 @@ async function postOrgSettings(cookie: string, fields: Record<string, string>): 
   return action({
     request: new Request("http://localhost/api/org-settings", {
       method: "POST",
-      headers: { Cookie: cookie },
+      headers: { Cookie: cookie, Origin: "http://localhost" },
       body: form,
     }),
     context: ctx(),

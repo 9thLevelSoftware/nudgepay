@@ -233,4 +233,19 @@ describe("email inbound + status", () => {
     });
     expect(r.matched).toBe(false);
   });
+
+  it("treats the inbound recipient as a literal address, not an ILIKE pattern", async () => {
+    const fromAddress = `billing-wild-${Math.random()}@chancey.test`;
+    await seedWithOutbound("wildcard-sender@x.com", `re_wild_${Math.random()}`, fromAddress);
+
+    const r = await recordInboundEmail(svc, {
+      from: "wildcard-sender@x.com",
+      to: "%",
+      subject: "Pattern attempt",
+      body: "This must not route.",
+      providerMessageId: `in_wild_${Math.random()}`,
+    });
+
+    expect(r.matched).toBe(false);
+  });
 });

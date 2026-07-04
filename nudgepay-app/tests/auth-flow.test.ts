@@ -17,14 +17,14 @@ test("signupOutcome preserves returnTo in confirm-email outcome", () => {
   expect(signupOutcome(false, "/accept/xyz")).toEqual({ confirmEmail: true, returnTo: "/accept/xyz" });
 });
 
-test("intuitDisconnectPlan clears tokens for any authenticated org (owner)", () => {
+test("intuitDisconnectPlan never clears tokens from the unsigned GET landing (owner)", () => {
   expect(intuitDisconnectPlan({ org_id: "org-1", role: "owner" }))
-    .toEqual({ clear: true, orgId: "org-1" });
+    .toEqual({ clear: false, orgId: null });
 });
 
-test("intuitDisconnectPlan clears tokens for a non-owner member too (Intuit already revoked)", () => {
+test("intuitDisconnectPlan never clears tokens from the unsigned GET landing (member)", () => {
   expect(intuitDisconnectPlan({ org_id: "org-2", role: "member" }))
-    .toEqual({ clear: true, orgId: "org-2" });
+    .toEqual({ clear: false, orgId: null });
 });
 
 test("intuitDisconnectPlan clears nothing when there is no session/org", () => {

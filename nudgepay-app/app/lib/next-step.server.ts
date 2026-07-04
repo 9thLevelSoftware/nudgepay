@@ -18,13 +18,15 @@ export type NextStepInput = {
 // client. waiting/exception first cancel any pending promise so the evaluator
 // cannot later flip the deferred case back to working.
 export async function applyNextStep(
-  client: SupabaseClient, caseId: string, f: NextStepInput,
+  client: SupabaseClient, orgId: string, caseId: string, f: NextStepInput,
 ): Promise<{ ok: boolean }> {
   if (f.nextStep === "waiting" || f.nextStep === "exception") {
     const { error: cancelErr } = await client
       .from("promises")
       .update({ status: "cancelled", resolved_at: new Date().toISOString() })
-      .eq("case_id", caseId).eq("status", "pending");
+      .eq("org_id", orgId)
+      .eq("case_id", caseId)
+      .eq("status", "pending");
     if (cancelErr) return { ok: false };
   }
 
@@ -48,7 +50,10 @@ export async function applyNextStep(
     };
   }
 
-  const { error } = await client.from("collection_cases").update(update).eq("id", caseId);
+  const { error } = await client.from("collection_cases")
+    .update(update)
+    .eq("org_id", orgId)
+    .eq("id", caseId);
   if (error) return { ok: false };
   return { ok: true };
 }

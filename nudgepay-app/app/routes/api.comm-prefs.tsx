@@ -50,12 +50,20 @@ export async function action({ request, context }: ActionFunctionArgs) {
   }
   if (!customerId && caseId) {
     const { data: cse } = await supabase
-      .from("collection_cases").select("customer_id").eq("id", caseId).maybeSingle();
+      .from("collection_cases")
+      .select("customer_id")
+      .eq("org_id", org.org_id)
+      .eq("id", caseId)
+      .maybeSingle();
     customerId = (cse?.customer_id as string | undefined) ?? null;
   }
   if (!customerId && invoiceId) {
     const { data: inv } = await supabase
-      .from("invoices").select("customer_id").eq("id", invoiceId).maybeSingle();
+      .from("invoices")
+      .select("customer_id")
+      .eq("org_id", org.org_id)
+      .eq("id", invoiceId)
+      .maybeSingle();
     customerId = (inv?.customer_id as string | undefined) ?? null;
   }
   if (!customerId) return redirect(returnTo, { headers });

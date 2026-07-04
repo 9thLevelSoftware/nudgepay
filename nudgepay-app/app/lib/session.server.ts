@@ -2,6 +2,7 @@ import { redirect } from "react-router";
 import type { SupabaseClient, User } from "@supabase/supabase-js";
 import type { AppEnv } from "./env.server";
 import { createSupabaseUserClient } from "./supabase.server";
+import { requireSameOrigin } from "./csrf.server";
 
 export async function getOptionalUser(request: Request, env: AppEnv) {
   const { supabase, headers } = createSupabaseUserClient(request, env);
@@ -22,6 +23,7 @@ export async function requireUser(request: Request, env: AppEnv) {
         : "/login";
     throw redirect(target, { headers });
   }
+  requireSameOrigin(request, headers);
   return { supabase, headers, user: user as User };
 }
 

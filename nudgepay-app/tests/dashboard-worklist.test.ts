@@ -152,7 +152,7 @@ test("RLS user client reads only the member's past-due invoices with customer em
   const today = TODAY;
   const { data: rows, error } = await user.client
     .from("invoices")
-    .select("id, qbo_doc_number, balance, due_date, customer_id, customers(name, phone, email)")
+    .select("id, qbo_doc_number, balance, due_date, customer_id, customers!invoices_org_customer_fk(name, phone, email)")
     .eq("org_id", orgId).gt("balance", 0).lt("due_date", today);
   expect(error).toBeNull();
   expect(rows!.length).toBe(1);
@@ -182,7 +182,7 @@ test("RLS user client reads an invoice thread ascending with consent embed", asy
   expect(msgs!.map((m) => m.body)).toEqual(["first", "reply"]);
 
   const { data: invRow } = await user.client
-    .from("invoices").select("customers(phone, sms_consent)").eq("id", inv!.id).maybeSingle();
+    .from("invoices").select("customers!invoices_org_customer_fk(phone, sms_consent)").eq("id", inv!.id).maybeSingle();
   expect((invRow as any).customers.sms_consent).toBe(true);
   expect((invRow as any).customers.phone).toBe("+13105559100");
 });

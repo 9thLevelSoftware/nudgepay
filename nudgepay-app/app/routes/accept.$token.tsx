@@ -26,18 +26,20 @@ export async function loader({ request, params, context }: LoaderFunctionArgs) {
   const service = createSupabaseServiceClient(env);
   const { data: inv } = await service
     .from("invites")
-    .select("org_id, email, accepted_at, organizations(name)")
+    .select("org_id, email, accepted_at, expires_at, organizations(name)")
     .eq("token", String(params.token))
     .maybeSingle();
 
   const org = (inv?.organizations ?? null) as { name: string } | { name: string }[] | null;
   const orgName = Array.isArray(org) ? org[0]?.name ?? null : org?.name ?? null;
+  const expired = Boolean(inv?.expires_at && new Date(inv.expires_at as string).getTime() <= Date.now());
 
   return data(
     {
       orgName,
       notFound: !inv,
       alreadyAccepted: Boolean(inv?.accepted_at),
+      expired,
       emailMismatch: Boolean(
         inv && inv.email.toLowerCase() !== (user.email ?? "").toLowerCase()
       ),
@@ -59,7 +61,7 @@ export async function action({ request, params, context }: ActionFunctionArgs) {
 }
 
 export default function Accept() {
-  const { orgName, notFound, alreadyAccepted, emailMismatch } =
+  const { orgName, notFound, alreadyAccepted, expired, emailMismatch } =
     useLoaderData<typeof loader>();
   const actionData = useActionData<typeof action>();
   const busy = useNavigation().state !== "idle";
@@ -75,6 +77,13 @@ export default function Accept() {
     return (
       <PublicLayout width="card" title="Invite already accepted">
         <p className="text-sm text-muted">This invite has already been used.</p>
+      </PublicLayout>
+    );
+  }
+  if (expired) {
+    return (
+      <PublicLayout width="card" title="Invite expired">
+        <p className="text-sm text-muted">Ask the workspace owner for a new invite link.</p>
       </PublicLayout>
     );
   }

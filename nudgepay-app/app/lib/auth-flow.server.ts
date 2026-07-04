@@ -15,15 +15,14 @@ export function signupOutcome(hasSession: boolean, returnTo: string): SignupOutc
     : { confirmEmail: true, returnTo };
 }
 
-// Intuit's Disconnect URL is hit by Intuit's browser AFTER Intuit has already
-// revoked the connection on their side. Any authenticated session that resolves
-// to an org should clear that org's now-stale tokens (reflecting state Intuit
-// already enforced); without a session we can't identify an org, so clear
-// nothing and just render a confirmation.
+// Intuit's Disconnect URL is a browser GET landing. It is not signed by Intuit
+// and carries no one-time state that proves the caller intended to mutate this
+// workspace, so it must never clear local tokens. The in-app POST disconnect is
+// the owner-gated mutation path.
 export function intuitDisconnectPlan(
   org: { org_id: string; role: string } | null,
 ): { clear: boolean; orgId: string | null } {
-  if (org) return { clear: true, orgId: org.org_id };
+  void org;
   return { clear: false, orgId: null };
 }
 

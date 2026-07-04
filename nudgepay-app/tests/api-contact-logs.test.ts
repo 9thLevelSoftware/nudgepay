@@ -49,7 +49,7 @@ async function postContactLog(cookie: string, fields: Record<string, string>): P
   return contactLogAction({
     request: new Request("http://localhost/api/contact-logs", {
       method: "POST",
-      headers: { Cookie: cookie },
+      headers: { Cookie: cookie, Origin: "http://localhost" },
       body: form,
     }),
     context: ctx(),
@@ -265,7 +265,7 @@ test("applyNextStep waiting sets waiting state + review date and clears exceptio
   const svc = serviceClient();
   const { orgId, caseId } = await seedCase(svc, "wait", "on_hold");
   await svc.from("collection_cases").update({ exception_reason: "disputed", exception_note: "x" }).eq("id", caseId);
-  const res = await applyNextStep(svc, caseId, { nextStep: "waiting", followUpAt: null, promisedAmount: null, promisedDate: null, reviewAt: "2026-07-08", exceptionReason: null, exceptionNote: null });
+  const res = await applyNextStep(svc, orgId, caseId, { nextStep: "waiting", followUpAt: null, promisedAmount: null, promisedDate: null, reviewAt: "2026-07-08", exceptionReason: null, exceptionNote: null });
   expect(res.ok).toBe(true);
   const { data: c } = await svc.from("collection_cases").select("status, next_action_type, next_action_at, exception_reason, exception_note").eq("id", caseId).single();
   expect(c!.status).toBe("waiting");
@@ -277,8 +277,8 @@ test("applyNextStep waiting sets waiting state + review date and clears exceptio
 
 test("applyNextStep exception sets on_hold + reason/note", async () => {
   const svc = serviceClient();
-  const { caseId } = await seedCase(svc, "exc");
-  const res = await applyNextStep(svc, caseId, { nextStep: "exception", followUpAt: null, promisedAmount: null, promisedDate: null, reviewAt: "2026-07-08", exceptionReason: "payment_plan", exceptionNote: "3 installments" });
+  const { orgId, caseId } = await seedCase(svc, "exc");
+  const res = await applyNextStep(svc, orgId, caseId, { nextStep: "exception", followUpAt: null, promisedAmount: null, promisedDate: null, reviewAt: "2026-07-08", exceptionReason: "payment_plan", exceptionNote: "3 installments" });
   expect(res.ok).toBe(true);
   const { data: c } = await svc.from("collection_cases").select("status, next_action_type, next_action_at, exception_reason, exception_note").eq("id", caseId).single();
   expect(c!.status).toBe("on_hold");
@@ -294,7 +294,7 @@ test("applyNextStep waiting cancels a pending promise without resetting the case
     org_id: orgId, case_id: caseId, customer_id: customerId, status: "pending",
     promised_amount: 500, promised_date: "2026-07-01", grace_until: "2026-07-03", baseline_balance: 1200,
   }).select("id").single();
-  const res = await applyNextStep(svc, caseId, { nextStep: "waiting", followUpAt: null, promisedAmount: null, promisedDate: null, reviewAt: "2026-07-08", exceptionReason: null, exceptionNote: null });
+  const res = await applyNextStep(svc, orgId, caseId, { nextStep: "waiting", followUpAt: null, promisedAmount: null, promisedDate: null, reviewAt: "2026-07-08", exceptionReason: null, exceptionNote: null });
   expect(res.ok).toBe(true);
   const { data: p } = await svc.from("promises").select("status").eq("id", prom!.id).single();
   expect(p!.status).toBe("cancelled");
@@ -309,7 +309,7 @@ test("applyNextStep follow_up sets working + follow-up date, leaves a pending pr
     org_id: orgId, case_id: caseId, customer_id: customerId, status: "pending",
     promised_amount: 500, promised_date: "2026-07-01", grace_until: "2026-07-03", baseline_balance: 1200,
   }).select("id").single();
-  const res = await applyNextStep(svc, caseId, { nextStep: "follow_up", followUpAt: "2026-07-05", promisedAmount: null, promisedDate: null, reviewAt: null, exceptionReason: null, exceptionNote: null });
+  const res = await applyNextStep(svc, orgId, caseId, { nextStep: "follow_up", followUpAt: "2026-07-05", promisedAmount: null, promisedDate: null, reviewAt: null, exceptionReason: null, exceptionNote: null });
   expect(res.ok).toBe(true);
   const { data: c } = await svc.from("collection_cases").select("status, next_action_type, next_action_at").eq("id", caseId).single();
   expect(c!.status).toBe("working");
@@ -382,6 +382,51 @@ test("action: foreign-org caseId returns 400 missing-case (cross-org guard via t
 
   expect(res.init?.status).toBe(400);
   expect(res.data).toEqual({ ok: false, error: "missing-case" });
+});
+
+test("action: visible case from a non-active org returns 400 missing-case", async () => {
+  const svc = serviceClient();
+  const email = `cl-multi-${Math.random()}@example.com`;
+  const user = await makeUserClient(email);
+
+  const { data: orgA } = await svc.from("organizations").insert({ name: `CL-ma ${Math.random()}` }).select("id").single();
+  await svc.from("memberships").insert({
+    org_id: orgA!.id,
+    user_id: user.userId,
+    role: "owner",
+    created_at: "2026-01-01T00:00:00Z",
+  });
+
+  const { data: orgB } = await svc.from("organizations").insert({ name: `CL-mb ${Math.random()}` }).select("id").single();
+  await svc.from("memberships").insert({
+    org_id: orgB!.id,
+    user_id: user.userId,
+    role: "member",
+    created_at: "2026-01-02T00:00:00Z",
+  });
+  const { data: custB } = await svc.from("customers")
+    .insert({ org_id: orgB!.id, qbo_id: `cl-mb-c1-${Math.random()}`, name: "Visible Foreign Co" }).select("id").single();
+  const { data: caseB } = await svc.from("collection_cases")
+    .insert({ org_id: orgB!.id, customer_id: custB!.id, status: "new", next_action_type: "contact" })
+    .select("id").single();
+
+  const session = await signInSession(email);
+  const cookie = sessionCookie(session);
+
+  const res = await postContactLog(cookie, {
+    returnTo: "/dashboard",
+    caseId: caseB!.id,
+    customerId: custB!.id,
+    method: "call",
+    outcome: "no-answer",
+    nextStep: "waiting",
+    reviewAt: "2026-07-08",
+  });
+
+  expect(res.init?.status).toBe(400);
+  expect(res.data).toEqual({ ok: false, error: "missing-case" });
+  const { data: rows } = await svc.from("contact_logs").select("id").eq("case_id", caseB!.id);
+  expect(rows ?? []).toHaveLength(0);
 });
 
 test("action: valid contact log inserts a row and redirects to returnTo?saved=1", async () => {

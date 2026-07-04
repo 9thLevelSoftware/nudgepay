@@ -19,16 +19,29 @@ export async function action({ request, context }: ActionFunctionArgs) {
   if (!parsed.ok) return data({ ok: false as const, error: parsed.error }, { status: 400, headers });
   const f = parsed.fields;
 
-  // Cross-org guard: the case must belong to the caller's org. RLS lets the user
-  // client read only own-org cases, so a foreign caseId returns no row.
+  // Active-org guard: a multi-org user can read cases in multiple orgs through
+  // RLS, so bind submitted object ids to the dashboard org explicitly.
   const { data: cse } = await supabase
-    .from("collection_cases").select("id").eq("id", f.caseId).maybeSingle();
+    .from("collection_cases")
+    .select("id, customer_id")
+    .eq("org_id", org.org_id)
+    .eq("id", f.caseId)
+    .maybeSingle();
   if (!cse) return data({ ok: false as const, error: "missing-case" }, { status: 400, headers });
+  const customerId = cse.customer_id as string;
+  if (f.customerId && f.customerId !== customerId) {
+    return data({ ok: false as const, error: "missing-customer" }, { status: 400, headers });
+  }
 
   // If an invoice was sub-selected, validate it too (own-org only).
   if (f.invoiceId) {
     const { data: inv } = await supabase
-      .from("invoices").select("id").eq("id", f.invoiceId).maybeSingle();
+      .from("invoices")
+      .select("id")
+      .eq("org_id", org.org_id)
+      .eq("id", f.invoiceId)
+      .eq("customer_id", customerId)
+      .maybeSingle();
     if (!inv) return data({ ok: false as const, error: "missing-invoice" }, { status: 400, headers });
   }
 
@@ -36,7 +49,7 @@ export async function action({ request, context }: ActionFunctionArgs) {
     org_id: org.org_id,
     case_id: f.caseId,
     invoice_id: f.invoiceId,
-    customer_id: f.customerId,
+    customer_id: customerId,
     user_id: user.id,
     method: f.method,
     outcome: f.outcome,
@@ -50,12 +63,12 @@ export async function action({ request, context }: ActionFunctionArgs) {
 
   if (f.nextStep === "promise" && f.promisedAmount != null && f.promisedDate != null) {
     const res = await createPromiseForLog(supabase, {
-      orgId: org.org_id, caseId: f.caseId, customerId: f.customerId, userId: user.id,
+      orgId: org.org_id, caseId: f.caseId, customerId, userId: user.id,
       contactLogId, promisedAmount: f.promisedAmount, promisedDate: f.promisedDate,
     });
     if (!res.ok) return data({ ok: false as const, error: "save-failed" }, { status: 400, headers });
   } else {
-    const res = await applyNextStep(supabase, f.caseId, f);
+    const res = await applyNextStep(supabase, org.org_id, f.caseId, f);
     if (!res.ok) return data({ ok: false as const, error: "save-failed" }, { status: 400, headers });
   }
 

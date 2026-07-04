@@ -24,15 +24,28 @@ export async function action({ request, context }: ActionFunctionArgs) {
   let customerId: string | null = null;
   if (invoiceId) {
     const { data: inv } = await supabase
-      .from("invoices").select("customer_id").eq("id", invoiceId).maybeSingle();
+      .from("invoices")
+      .select("customer_id")
+      .eq("org_id", org.org_id)
+      .eq("id", invoiceId)
+      .maybeSingle();
     customerId = (inv?.customer_id as string) ?? null;
   } else if (customerIdForm) {
-    customerId = customerIdForm;
+    const { data: cust } = await supabase
+      .from("customers")
+      .select("id")
+      .eq("org_id", org.org_id)
+      .eq("id", customerIdForm)
+      .maybeSingle();
+    customerId = (cust?.id as string | undefined) ?? null;
   }
   if (!customerId) return redirect(withSms(returnTo, "error"), { headers });
 
   const { error } = await supabase
-    .from("customers").update({ sms_consent: consent }).eq("id", customerId);
+    .from("customers")
+    .update({ sms_consent: consent })
+    .eq("org_id", org.org_id)
+    .eq("id", customerId);
   if (error) return redirect(withSms(returnTo, "error"), { headers });
 
   return redirect(returnTo, { headers });

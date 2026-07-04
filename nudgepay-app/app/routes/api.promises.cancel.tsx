@@ -26,7 +26,7 @@ export async function action({ request, context }: ActionFunctionArgs) {
 
   const orgConfig = await loadOrgConfig(supabase, org.org_id);
   const today = todayInTz(orgConfig.companyProfile.timezone);
-  const res = await cancelPromise(supabase, promiseId, today);
+  const res = await cancelPromise(supabase, promiseId, org.org_id, today);
   if (!res.ok) return redirect(withError(returnTo, "cancel-failed"), { headers });
   return redirect(returnTo, { headers });
 }

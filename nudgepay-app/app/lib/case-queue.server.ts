@@ -136,7 +136,7 @@ export async function loadCaseQueueSource(args: LoadCaseQueueArgs): Promise<Case
   ] = await Promise.all([
     supabase
       .from("invoices")
-      .select("id, qbo_doc_number, balance, due_date, customer_id, customers(name, phone, email, owner, sms_consent, preferred_channel, do_not_call, do_not_text)")
+      .select("id, qbo_doc_number, balance, due_date, customer_id, customers!invoices_org_customer_fk(name, phone, email, owner, sms_consent, preferred_channel, do_not_call, do_not_text)")
       .eq("org_id", orgId)
       .gt("balance", 0)
       .lte("due_date", plus7),

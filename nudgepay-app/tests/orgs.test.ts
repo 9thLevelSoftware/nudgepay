@@ -1,6 +1,6 @@
 import { expect, test } from "vitest";
 import { serviceClient, makeUserClient } from "./helpers";
-import { listOrgMembers } from "../app/lib/orgs.server";
+import { acceptInvite, listOrgMembers } from "../app/lib/orgs.server";
 
 test("listOrgMembers returns the org roster with email-local-part labels", async () => {
   const svc = serviceClient();
@@ -27,4 +27,25 @@ test("listOrgMembers returns empty for an org with no members", async () => {
   const svc = serviceClient();
   const { data: org } = await svc.from("organizations").insert({ name: "Empty Roster Org" }).select("id").single();
   expect(await listOrgMembers(svc, org!.id)).toEqual([]);
+});
+
+test("acceptInvite rejects expired invite tokens", async () => {
+  const svc = serviceClient();
+  const { data: org } = await svc.from("organizations").insert({ name: "Expired Invite Org" }).select("id").single();
+  const invited = await makeUserClient("expired-invitee@example.com");
+  const { data: inv } = await svc.from("invites").insert({
+    org_id: org!.id,
+    email: "expired-invitee@example.com",
+    expires_at: "2000-01-01T00:00:00Z",
+  }).select("token").single();
+
+  await expect(
+    acceptInvite(svc, inv!.token as string, invited.userId, "expired-invitee@example.com"),
+  ).rejects.toThrow(/expired/i);
+
+  const { data: memberships } = await svc.from("memberships")
+    .select("id")
+    .eq("org_id", org!.id)
+    .eq("user_id", invited.userId);
+  expect(memberships ?? []).toHaveLength(0);
 });
