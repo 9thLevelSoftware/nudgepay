@@ -154,6 +154,46 @@ test("recordInboundMessage STOP resolves org from default sender outbound histor
   expect(custAfter!.sms_consent).toBe(false);
 });
 
+test("recordInboundMessage STOP uses normalized outbound history before recency caps", async () => {
+  const phone = "+13105550212";
+  const defaultSender = "+15005551012";
+  const { data: org } = await svc.from("organizations").insert({ name: "Old Outbound Org" }).select("id").single();
+  const orgId = org!.id as string;
+  await svc.from("messaging_config").insert({ org_id: orgId, sender: null });
+  const { data: cust } = await svc.from("customers")
+    .insert({ org_id: orgId, qbo_id: "c-old-outbound", name: "Acme", phone, sms_consent: true }).select("id").single();
+  const customerId = cust!.id as string;
+  await svc.from("text_messages").insert({
+    org_id: orgId,
+    customer_id: customerId,
+    direction: "outbound",
+    twilio_message_sid: "SMout-212-old-default",
+    from_number: defaultSender,
+    to_number: "(310) 555-0212",
+    body: "ping",
+    created_at: "2026-01-01T00:00:00Z",
+  });
+
+  const { data: noiseOrgs } = await svc.from("organizations")
+    .insert(Array.from({ length: 101 }, (_, i) => ({ name: `Noisy Org ${i}` })))
+    .select("id");
+  await svc.from("text_messages").insert(noiseOrgs!.map((noiseOrgId, i) => ({
+    org_id: noiseOrgId.id as string,
+    direction: "outbound",
+    twilio_message_sid: `SMout-212-noise-${i}`,
+    from_number: defaultSender,
+    to_number: `+13105559${String(i).padStart(3, "0")}`,
+    body: "noise",
+    created_at: `2026-02-01T00:${String(i % 60).padStart(2, "0")}:00Z`,
+  })));
+
+  const out = await recordInboundMessage(svc, { from: phone, to: defaultSender, body: "STOP", messageSid: "SMin-212-old-stop" });
+  expect(out).toEqual({ matched: true, optOut: true });
+
+  const { data: custAfter } = await svc.from("customers").select("sms_consent").eq("id", customerId).single();
+  expect(custAfter!.sms_consent).toBe(false);
+});
+
 test("recordInboundMessage STOP resolves org from unique messaging service outbound history", async () => {
   const phone = "+13105550211";
   const inboundTo = "+15005551011";
