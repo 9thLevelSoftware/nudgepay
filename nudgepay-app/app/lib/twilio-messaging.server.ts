@@ -177,17 +177,13 @@ async function resolveInboundOrgId(service: SupabaseClient, args: { from: string
   const fromNorm = normalizePhone(args.from);
   if (fromNorm.length < 10) return null;
   const { data: outbound, error: outboundErr } = await service.from("text_messages")
-    .select("org_id, from_number, to_number")
+    .select("org_id")
     .eq("direction", "outbound")
-    .or("to_number.eq.\"" + args.from + "\",to_number.eq.\"" + fromNorm + "\",to_number.eq.\"+1" + fromNorm + "\"")
-    .order("created_at", { ascending: false })
-    .limit(100);
+    .eq("to_number_norm", fromNorm)
+    .or(`from_number_norm.is.null,from_number_norm.eq.${toNorm}`);
   if (outboundErr) throw outboundErr;
 
-  const orgIds = new Set((outbound ?? [])
-    .filter((msg) => normalizePhone(msg.to_number as string) === fromNorm)
-    .filter((msg) => !msg.from_number || normalizePhone(msg.from_number as string) === toNorm)
-    .map((msg) => msg.org_id as string));
+  const orgIds = new Set((outbound ?? []).map((msg) => msg.org_id as string));
   return orgIds.size === 1 ? [...orgIds][0] : null;
 }
 
