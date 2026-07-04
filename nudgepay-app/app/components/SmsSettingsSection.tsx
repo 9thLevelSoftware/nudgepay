@@ -23,7 +23,6 @@ export function SmsSettingsSection(d: SmsSettingsProps) {
   const navigation = useNavigation();
   const [sp] = useSearchParams();
   const errorCode = sp.get("error");
-  const smsSaved = sp.get("sms_saved") === "1";
   const testResult = sp.get("test_sms");
 
   const intentBusy = (intent: string) =>
@@ -65,50 +64,26 @@ export function SmsSettingsSection(d: SmsSettingsProps) {
         <p className="mt-2 text-xs text-hot">Outbound texts are turned off — composers are disabled and sends are blocked.</p>
       )}
 
-      {/* Sender override (owner only) */}
-      {d.isOwner && (
-        <Form method="post" action="/api/org-settings" className="mt-4 flex flex-col gap-3">
-          <input type="hidden" name="intent" value="save_sms_sender" />
-          <input type="hidden" name="returnTo" value={d.returnTo ?? "/settings"} />
-          <h3 className="text-sm font-medium text-text">Sender configuration</h3>
-          <div className="flex flex-col gap-1">
-            <label htmlFor="sms-sender" className="text-xs font-medium text-muted">From number (E.164)</label>
-            <input
-              id="sms-sender"
-              type="tel"
-              name="sender"
-              defaultValue={d.sender}
-              placeholder="+15551234567"
-              className="h-8 rounded-md border border-border bg-panel px-2 text-sm text-text tabular-nums focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-copper"
-            />
-            {errorCode === "sms_sender" && (
-              <p className="text-xs text-hot" role="alert">Enter a valid E.164 phone number (e.g. +15551234567)</p>
-            )}
+      {/* Sender identity (operator-managed) */}
+      <div className="mt-4 flex flex-col gap-2 rounded-md border border-border bg-panel/40 p-3">
+        <h3 className="text-sm font-medium text-text">Sender configuration</h3>
+        <p className="text-xs text-muted">
+          SMS sender identity is operator-managed for tenant isolation. Outbound texts use the NudgePay default sender unless an approved sender inventory is configured by the service team.
+        </p>
+        {errorCode === "sms_sender_locked" && (
+          <p className="text-xs text-hot" role="alert">Sender changes must be approved by NudgePay support.</p>
+        )}
+        <dl className="grid gap-1 text-xs">
+          <div className="flex gap-2">
+            <dt className="text-muted w-36">Workspace sender</dt>
+            <dd className="text-text tabular-nums">{d.sender || "Default sender"}</dd>
           </div>
-          <div className="flex flex-col gap-1">
-            <label htmlFor="sms-sid" className="text-xs font-medium text-muted">Messaging Service SID</label>
-            <input
-              id="sms-sid"
-              name="messaging_service_sid"
-              defaultValue={d.messagingServiceSid}
-              placeholder="MG..."
-              className="h-8 rounded-md border border-border bg-panel px-2 text-sm text-text font-mono text-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-copper"
-            />
-            {errorCode === "sms_sid" && (
-              <p className="text-xs text-hot" role="alert">Enter a valid Messaging Service SID (MG + 32 hex characters)</p>
-            )}
+          <div className="flex gap-2">
+            <dt className="text-muted w-36">Messaging Service</dt>
+            <dd className="text-text font-mono">{d.messagingServiceSid || "Default service"}</dd>
           </div>
-          <p className="text-xs text-muted">
-            Leave blank to use the NudgePay default sender. If both are set, the Messaging Service SID is used.
-          </p>
-          <div className="flex items-center gap-3">
-            <button type="submit" disabled={intentBusy("save_sms_sender")} className="rounded-md bg-copper px-3 py-1.5 text-xs font-semibold text-ink hover:bg-copper/90 disabled:opacity-60 disabled:cursor-not-allowed">
-              {intentBusy("save_sms_sender") ? "Saving…" : "Save"}
-            </button>
-            {smsSaved && <span className="text-xs text-cool" role="status">Saved.</span>}
-          </div>
-        </Form>
-      )}
+        </dl>
+      </div>
 
       {/* Test SMS (owner only) */}
       {d.isOwner && (

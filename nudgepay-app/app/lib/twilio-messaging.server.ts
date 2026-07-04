@@ -40,12 +40,14 @@ export function normalizePhone(s: string | null | undefined): string {
 }
 
 export async function resolveSender(
-  service: SupabaseClient, orgId: string, defaultSender: TwilioSender,
+  _service: SupabaseClient, _orgId: string, defaultSender: TwilioSender,
 ): Promise<TwilioSender> {
-  const { data } = await service.from("messaging_config")
-    .select("messaging_service_sid, sender").eq("org_id", orgId).maybeSingle();
-  if (data?.messaging_service_sid) return { messagingServiceSid: data.messaging_service_sid as string };
-  if (data?.sender) return { from: data.sender as string };
+  // Tenant-managed sender overrides are intentionally ignored. In a shared
+  // Twilio-account deployment, accepting caller-supplied From numbers or
+  // Messaging Service SIDs would let one workspace impersonate another sender
+  // owned by the global Twilio account. Until senders are validated against a
+  // server-side, org-bound inventory, all outbound SMS uses the operator-owned
+  // default sender from the Worker environment.
   return defaultSender;
 }
 
