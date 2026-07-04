@@ -3,7 +3,7 @@ import { getEnv } from "../lib/env.server";
 import { requireUser, resolveOrg } from "../lib/session.server";
 import { safeReturnTo } from "../lib/return-to";
 import { parseOrgSettingsUpdate, parseHolidayDate, parseHolidayLabel, parseLateFeeSettingsUpdate, parsePriorityThresholdsUpdate, parseWorkflowKnobsUpdate } from "../lib/org-settings";
-import { parseChannelSettingsUpdate, parseSmsSenderUpdate, parseQuietHoursUpdate } from "../lib/channel-settings";
+import { parseChannelSettingsUpdate, parseQuietHoursUpdate } from "../lib/channel-settings";
 import { parseEmailSettingsUpdate } from "../lib/email-settings";
 import { parseCompanyProfileUpdate } from "../lib/org-profile";
 import { parseTemplateUpsert, parseTemplateDelete } from "../lib/message-templates";
@@ -54,12 +54,11 @@ export async function action({ request, context }: ActionFunctionArgs) {
   }
 
   if (intent === "save_sms_sender") {
-    const parsed = parseSmsSenderUpdate(form);
-    if (!parsed.ok) return redirect(flag(returnTo, "error", parsed.error), { headers });
-    const { error } = await supabase.from("messaging_config")
-      .upsert({ org_id: org.org_id, ...parsed.value }, { onConflict: "org_id" });
-    if (error) return redirect(flag(returnTo, "error", "save"), { headers });
-    return redirect(flag(returnTo, "sms_saved", "1"), { headers });
+    // Sender identity changes require an operator-owned, server-side inventory
+    // that binds Twilio numbers / Messaging Service SIDs to orgs. Do not allow
+    // tenant owners to write arbitrary senders through the user-scoped settings
+    // endpoint.
+    return redirect(flag(returnTo, "error", "sms_sender_locked"), { headers });
   }
 
   if (intent === "save_quiet_hours") {

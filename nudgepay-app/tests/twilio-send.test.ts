@@ -34,12 +34,11 @@ test("normalizePhone reduces to the last 10 digits", () => {
   expect(normalizePhone(null)).toBe("");
 });
 
-test("resolveSender prefers messaging_config over the env default", async () => {
+test("resolveSender ignores tenant-managed overrides and uses env default", async () => {
   const { orgId } = await seed(true, "+12295550101");
-  // no messaging_config row -> env default
   expect(await resolveSender(svc, orgId, { from: "+1999" })).toEqual({ from: "+1999" });
   await svc.from("messaging_config").insert({ org_id: orgId, messaging_service_sid: "MG7" });
-  expect(await resolveSender(svc, orgId, { from: "+1999" })).toEqual({ messagingServiceSid: "MG7" });
+  expect(await resolveSender(svc, orgId, { from: "+1999" })).toEqual({ from: "+1999" });
 });
 
 test("sendInvoiceText sends and inserts an outbound row when the customer consented", async () => {

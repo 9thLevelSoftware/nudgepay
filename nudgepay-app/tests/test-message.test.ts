@@ -49,7 +49,7 @@ function mockService(overrides: Record<string, any> = {}) {
 // sendTestSms
 // ---------------------------------------------------------------------------
 
-test("sendTestSms: uses org sender override when present", async () => {
+test("sendTestSms: ignores org sender override and uses env default", async () => {
   const fetchFn = mockFetch({ sid: "SM123", status: "queued" });
   const service = mockService({
     messagingConfig: { messaging_service_sid: "MG" + "a".repeat(32), sender: "+15559990000" },
@@ -64,10 +64,9 @@ test("sendTestSms: uses org sender override when present", async () => {
     { orgId: "org1", to: "+15551234567" },
   );
   expect(result).toEqual({ sid: "SM123", status: "queued" });
-  // Should have used MessagingServiceSid (precedence: sid > sender > env)
   const body = (fetchFn as any).mock.calls[0][1].body as string;
-  expect(body).toContain("MessagingServiceSid=MG");
-  expect(body).not.toContain("From=");
+  expect(body).toContain("From=%2B15550001111");
+  expect(body).not.toContain("MessagingServiceSid=");
 });
 
 test("sendTestSms: falls back to env default when no org override", async () => {
