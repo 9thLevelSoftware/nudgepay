@@ -125,6 +125,61 @@ test("recordInboundMessage ignores messages addressed to an unconfigured To numb
   expect(rows ?? []).toHaveLength(0);
 });
 
+test("recordInboundMessage STOP resolves org from default sender outbound history", async () => {
+  const phone = "+13105550210";
+  const defaultSender = "+15005551010";
+  const { data: org } = await svc.from("organizations").insert({ name: "Default Sender Org" }).select("id").single();
+  const orgId = org!.id as string;
+  await svc.from("messaging_config").insert({ org_id: orgId, sender: null });
+  const { data: cust } = await svc.from("customers")
+    .insert({ org_id: orgId, qbo_id: "c-default-sender", name: "Acme", phone, sms_consent: true }).select("id").single();
+  const customerId = cust!.id as string;
+  const { data: inv } = await svc.from("invoices")
+    .insert({ org_id: orgId, qbo_id: "i-default-sender", customer_id: customerId, balance: 50 }).select("id").single();
+  await svc.from("text_messages").insert({
+    org_id: orgId,
+    invoice_id: inv!.id,
+    customer_id: customerId,
+    direction: "outbound",
+    twilio_message_sid: "SMout-210-default",
+    from_number: defaultSender,
+    to_number: phone,
+    body: "ping",
+  });
+
+  const out = await recordInboundMessage(svc, { from: phone, to: defaultSender, body: "STOP", messageSid: "SMin-210-default-stop" });
+  expect(out).toEqual({ matched: true, optOut: true });
+
+  const { data: custAfter } = await svc.from("customers").select("sms_consent").eq("id", customerId).single();
+  expect(custAfter!.sms_consent).toBe(false);
+});
+
+test("recordInboundMessage STOP resolves org from unique messaging service outbound history", async () => {
+  const phone = "+13105550211";
+  const inboundTo = "+15005551011";
+  const { data: org } = await svc.from("organizations").insert({ name: "Messaging Service Org" }).select("id").single();
+  const orgId = org!.id as string;
+  await svc.from("messaging_config").insert({ org_id: orgId, messaging_service_sid: "MGunique211", sender: null });
+  const { data: cust } = await svc.from("customers")
+    .insert({ org_id: orgId, qbo_id: "c-mg-sender", name: "Acme", phone, sms_consent: true }).select("id").single();
+  const customerId = cust!.id as string;
+  await svc.from("text_messages").insert({
+    org_id: orgId,
+    customer_id: customerId,
+    direction: "outbound",
+    twilio_message_sid: "SMout-211-mg",
+    from_number: null,
+    to_number: phone,
+    body: "ping",
+  });
+
+  const out = await recordInboundMessage(svc, { from: phone, to: inboundTo, body: "STOP", messageSid: "SMin-211-mg-stop" });
+  expect(out).toEqual({ matched: true, optOut: true });
+
+  const { data: custAfter } = await svc.from("customers").select("sms_consent").eq("id", customerId).single();
+  expect(custAfter!.sms_consent).toBe(false);
+});
+
 test("recordInboundMessage treats replayed MessageSid as idempotent", async () => {
   const { inboundTo } = await seedCustomerWithOutbound("+13105550209", "SMout-209", true);
   const args = { from: "+13105550209", to: inboundTo, body: "hello", messageSid: "SMin-209-idempotent" };
