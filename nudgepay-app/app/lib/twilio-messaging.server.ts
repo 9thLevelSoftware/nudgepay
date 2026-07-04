@@ -151,16 +151,42 @@ export async function sendInvoiceText(
 const STOP_KEYWORDS = ["STOP", "STOPALL", "UNSUBSCRIBE", "CANCEL", "END", "QUIT"];
 const START_KEYWORDS = ["START", "YES", "UNSTOP"];
 
-async function resolveInboundOrgId(service: SupabaseClient, to: string): Promise<string | null> {
-  const toNorm = normalizePhone(to);
+async function resolveInboundOrgId(service: SupabaseClient, args: { from: string; to: string }): Promise<string | null> {
+  const toNorm = normalizePhone(args.to);
   if (toNorm.length < 10) return null;
+
   const { data: configs, error } = await service
     .from("messaging_config")
     .select("org_id, sender")
     .not("sender", "is", null);
   if (error) throw error;
-  const matches = (configs ?? []).filter((cfg) => normalizePhone(cfg.sender as string) === toNorm);
-  return matches.length === 1 ? matches[0].org_id as string : null;
+  const senderMatches = (configs ?? []).filter((cfg) => normalizePhone(cfg.sender as string) === toNorm);
+  if (senderMatches.length === 1) return senderMatches[0].org_id as string;
+  if (senderMatches.length > 1) return null;
+
+  // Some workspaces send with the global Twilio sender (TWILIO_FROM_NUMBER) or a
+  // Messaging Service SID instead of a per-org messaging_config.sender. In those
+  // configurations inbound replies still arrive at this signed Twilio webhook, but
+  // there is no sender row to resolve. Fall back to the outbound message ledger:
+  // match the replying customer phone to a prior outbound text, and require any
+  // stored from_number to match Twilio's inbound To number. Messaging Service sends
+  // store from_number as null, so they are accepted only when the outbound history
+  // resolves to one org unambiguously.
+  const fromNorm = normalizePhone(args.from);
+  if (fromNorm.length < 10) return null;
+  const { data: outbound, error: outboundErr } = await service.from("text_messages")
+    .select("org_id, from_number, to_number")
+    .eq("direction", "outbound")
+    .or("to_number.eq.\"" + args.from + "\",to_number.eq.\"" + fromNorm + "\",to_number.eq.\"+1" + fromNorm + "\"")
+    .order("created_at", { ascending: false })
+    .limit(100);
+  if (outboundErr) throw outboundErr;
+
+  const orgIds = new Set((outbound ?? [])
+    .filter((msg) => normalizePhone(msg.to_number as string) === fromNorm)
+    .filter((msg) => !msg.from_number || normalizePhone(msg.from_number as string) === toNorm)
+    .map((msg) => msg.org_id as string));
+  return orgIds.size === 1 ? [...orgIds][0] : null;
 }
 
 export async function recordInboundMessage(
@@ -179,7 +205,7 @@ export async function recordInboundMessage(
     if (dup) return { matched: true, optOut: false };
   }
 
-  const orgId = await resolveInboundOrgId(service, args.to);
+  const orgId = await resolveInboundOrgId(service, { from: args.from, to: args.to });
   if (!orgId) return { matched: false, optOut: false };
 
   const fromNorm = normalizePhone(args.from);
