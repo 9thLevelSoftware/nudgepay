@@ -177,7 +177,7 @@ async function resolveInboundOrgId(service: SupabaseClient, args: { from: string
   const { data: outbound, error: outboundErr } = await service.from("text_messages")
     .select("org_id, from_number, to_number")
     .eq("direction", "outbound")
-    .not("to_number", "is", null)
+    .or("to_number.eq.\"" + args.from + "\",to_number.eq.\"" + fromNorm + "\",to_number.eq.\"+1" + fromNorm + "\"")
     .order("created_at", { ascending: false })
     .limit(100);
   if (outboundErr) throw outboundErr;
