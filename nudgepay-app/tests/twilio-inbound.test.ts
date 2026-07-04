@@ -17,14 +17,13 @@ async function seedCustomerWithOutbound(
 ) {
   const { data: org } = await svc.from("organizations").insert({ name: "Inbound Org" }).select("id").single();
   const orgId = org!.id as string;
-  await svc.from("messaging_config").insert({ org_id: orgId, sender: inboundTo });
   const { data: cust } = await svc.from("customers")
     .insert({ org_id: orgId, qbo_id: "c1", name: "Acme", phone, sms_consent: consent }).select("id").single();
   const { data: inv } = await svc.from("invoices")
     .insert({ org_id: orgId, qbo_id: "i1", customer_id: cust!.id, balance: 50 }).select("id").single();
   await svc.from("text_messages").insert({
     org_id: orgId, invoice_id: inv!.id, customer_id: cust!.id, direction: "outbound",
-    twilio_message_sid: outboundSid, to_number: phone, body: "ping",
+    twilio_message_sid: outboundSid, from_number: inboundTo, to_number: phone, body: "ping",
   });
   return { orgId, customerId: cust!.id as string, invoiceId: inv!.id as string, inboundTo };
 }
@@ -152,6 +151,41 @@ test("recordInboundMessage STOP resolves org from default sender outbound histor
 
   const { data: custAfter } = await svc.from("customers").select("sms_consent").eq("id", customerId).single();
   expect(custAfter!.sms_consent).toBe(false);
+});
+
+test("recordInboundMessage ignores stale tenant sender config when outbound used the default sender", async () => {
+  const phone = "+13105550212";
+  const defaultSender = "+15005551012";
+  const staleSender = "+15005559912";
+  const { data: org } = await svc.from("organizations").insert({ name: "Stale Sender Org" }).select("id").single();
+  const orgId = org!.id as string;
+  await svc.from("messaging_config").insert({ org_id: orgId, sender: staleSender });
+  const { data: cust } = await svc.from("customers")
+    .insert({ org_id: orgId, qbo_id: "c-stale-sender", name: "Acme", phone, sms_consent: true }).select("id").single();
+  const customerId = cust!.id as string;
+  await svc.from("text_messages").insert({
+    org_id: orgId,
+    customer_id: customerId,
+    direction: "outbound",
+    twilio_message_sid: "SMout-212-default",
+    from_number: defaultSender,
+    to_number: phone,
+    body: "ping",
+  });
+
+  const staleOut = await recordInboundMessage(svc, { from: phone, to: staleSender, body: "STOP", messageSid: "SMin-212-stale-stop" });
+  expect(staleOut).toEqual({ matched: false, optOut: false });
+
+  const { data: custAfterStale } = await svc.from("customers").select("sms_consent").eq("id", customerId).single();
+  expect(custAfterStale!.sms_consent).toBe(true);
+  const { data: staleRows } = await svc.from("text_messages").select("id").eq("twilio_message_sid", "SMin-212-stale-stop");
+  expect(staleRows ?? []).toHaveLength(0);
+
+  const defaultOut = await recordInboundMessage(svc, { from: phone, to: defaultSender, body: "STOP", messageSid: "SMin-212-default-stop" });
+  expect(defaultOut).toEqual({ matched: true, optOut: true });
+
+  const { data: custAfterDefault } = await svc.from("customers").select("sms_consent").eq("id", customerId).single();
+  expect(custAfterDefault!.sms_consent).toBe(false);
 });
 
 test("recordInboundMessage STOP resolves org from unique messaging service outbound history", async () => {

@@ -157,23 +157,13 @@ async function resolveInboundOrgId(service: SupabaseClient, args: { from: string
   const toNorm = normalizePhone(args.to);
   if (toNorm.length < 10) return null;
 
-  const { data: configs, error } = await service
-    .from("messaging_config")
-    .select("org_id, sender")
-    .not("sender", "is", null);
-  if (error) throw error;
-  const senderMatches = (configs ?? []).filter((cfg) => normalizePhone(cfg.sender as string) === toNorm);
-  if (senderMatches.length === 1) return senderMatches[0].org_id as string;
-  if (senderMatches.length > 1) return null;
-
-  // Some workspaces send with the global Twilio sender (TWILIO_FROM_NUMBER) or a
-  // Messaging Service SID instead of a per-org messaging_config.sender. In those
-  // configurations inbound replies still arrive at this signed Twilio webhook, but
-  // there is no sender row to resolve. Fall back to the outbound message ledger:
-  // match the replying customer phone to a prior outbound text, and require any
-  // stored from_number to match Twilio's inbound To number. Messaging Service sends
-  // store from_number as null, so they are accepted only when the outbound history
-  // resolves to one org unambiguously.
+  // Inbound routing must stay aligned with resolveSender. messaging_config.sender
+  // is tenant-managed legacy state and is not trusted for outbound sends, so it
+  // cannot be authoritative for inbound replies either. Route by the outbound
+  // ledger instead: match the replying customer phone to a prior outbound text,
+  // and require any stored from_number to match Twilio's inbound To number.
+  // Messaging Service sends store from_number as null, so they are accepted only
+  // when the outbound history resolves to one org unambiguously.
   const fromNorm = normalizePhone(args.from);
   if (fromNorm.length < 10) return null;
   const { data: outbound, error: outboundErr } = await service.from("text_messages")
