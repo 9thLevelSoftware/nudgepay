@@ -170,7 +170,7 @@ async function resolveInboundOrgId(service: SupabaseClient, args: { from: string
     .select("org_id")
     .eq("direction", "outbound")
     .eq("to_number_norm", fromNorm)
-    .or(`from_number_norm.is.null,from_number_norm.eq.${toNorm}`);
+    .or(`from_number_norm.is.null,from_number_norm.eq."${toNorm}"`);
   if (outboundErr) throw outboundErr;
 
   const orgIds = new Set((outbound ?? []).map((msg) => msg.org_id as string));
