@@ -83,6 +83,9 @@ separates "safe for a managed pilot" (near-term) from "safe for the public"
 
 ## Codebase map
 
+File paths in the map tables below are relative to `nudgepay-app/`; the
+findings sections use repo-root-relative paths.
+
 ### Feature areas
 
 | Area | Status | Key files |
@@ -204,7 +207,7 @@ pass. File references are relative to the repo root.
 `nudgepay-app/app/routes/login.tsx` · verified ✅
 
 A repo-wide search for `resetPasswordForEmail`, recovery routes, or any
-forgot-password UI returns nothing, and `app/routes.ts` registers no reset
+forgot-password UI returns nothing, and `nudgepay-app/app/routes.ts` registers no reset
 route. A public user who forgets their password is permanently locked out of
 their AR data with no recourse but emailing the operator. Combined with the
 missing change-password flow (M5), a compromised password can't be rotated
@@ -214,7 +217,7 @@ recovery-token landing route); it simply was never wired.
 ### B1 — Every loader read silently truncates at Supabase's 1,000-row cap
 `nudgepay-app/app/lib/case-queue.server.ts:137` · verified ✅
 
-`supabase/config.toml` sets `max_rows = 1000` (hosted Supabase defaults to
+`nudgepay-app/supabase/config.toml` sets `max_rows = 1000` (hosted Supabase defaults to
 the same), and no query in the app passes `.range()`/`.limit()` above it.
 The dashboard invoice query, cases query, accounts directory, messages
 inbox, promises ledger, and the inbound-SMS customer-matching query all
@@ -375,129 +378,129 @@ marked ✅ were independently re-verified in the second pass.
   no code/token exchange, no resend; signup's confirm branch also drops the
   Set-Cookie headers. Users who click the confirmation email land on the
   marketing page, not signed in, with `returnTo` (e.g. an invite) lost —
-  `app/routes/signup.tsx:41`.
+  `nudgepay-app/app/routes/signup.tsx:41`.
 - **M2. Invites don't send email.** The action returns a *relative*
   `/accept/<token>` path rendered in a `<code>` block (no origin, no copy
   button) despite the button saying "Sending invite…", and `/invite` is
   linked from no page — team setup is effectively a hidden developer
-  feature — `app/routes/invite.tsx:41`.
+  feature — `nudgepay-app/app/routes/invite.tsx:41`.
 - **M3. Multi-org membership is a trap.** ✅ `resolveOrg` always picks the
   oldest membership (`.order("created_at").limit(1)`) and no org switcher
   exists — accepting an invite while owning a workspace reports success but
-  the user can never see the second org — `app/lib/session.server.ts:38`.
+  the user can never see the second org — `nudgepay-app/app/lib/session.server.ts:38`.
 - **M4. No member removal, role change, invite revocation, or leave-org.**
   No UI, no API, no RLS delete policy on `memberships`. A terminated
   employee keeps full access to customer AR data and SMS sending forever —
-  `supabase/migrations/0002_rls_policies.sql:23`.
+  `nudgepay-app/supabase/migrations/0002_rls_policies.sql:23`.
 - **M5. No change-password, change-email, or account deletion.** The only
   `auth.updateUser` call sets display name; privacy policy punts deletion to
-  a support email — `app/routes/api.profile.tsx:21`.
+  a support email — `nudgepay-app/app/routes/api.profile.tsx:21`.
 
 ### Sync trust & first-run truth
 
 - **M6. Loader DB errors render as healthy empty states.** Every
   destructured `{ data }` discards `error`; a failed query shows a normal
   empty queue and $0 KPIs — a collections team could believe there's nothing
-  to collect — `app/lib/case-queue.server.ts:130`.
+  to collect — `nudgepay-app/app/lib/case-queue.server.ts:130`.
 - **M9. The SyncIssues warning badge exists but is mounted nowhere.** ✅
   Imported by zero routes (AppShell accepts the prop; only `reports.tsx`
   passes `null`). Sync failures are invisible outside Settings →
-  Integrations — `app/components/SyncIssues.tsx:27`.
+  Integrations — `nudgepay-app/app/components/SyncIssues.tsx:27`.
 - **M11. "Total customers" counts only ever-overdue customers.** Sync pulls
   only overdue/coming-due invoices and their customers, but the Accounts
   page presents itself as the full directory — a 500-customer org reads
-  "Total customers: 30" — `app/components/AccountsMetrics.tsx:9`.
+  "Total customers: 30" — `nudgepay-app/app/components/AccountsMetrics.tsx:9`.
 - **M17. OAuth/sync outcome params are never rendered.** ✅ Nothing reads
   `qbo=` or `sync=`; a failed QuickBooks connect looks like the button
-  didn't work — `app/routes/auth.qbo.callback.tsx:30`.
+  didn't work — `nudgepay-app/app/routes/auth.qbo.callback.tsx:30`.
 - **M18. No pagination of QBO query/CDC results.** Hard
   `maxresults 1000` everywhere, in-code comment sizes it to the pilot org,
   and the computed `truncated` flag is discarded by the caller —
-  `app/lib/qbo-sync.server.ts:27`.
+  `nudgepay-app/app/lib/qbo-sync.server.ts:27`.
 - **M19. Reconnecting a different QuickBooks company merges two books.**
   `storeConnection` upserts on `org_id`, silently replacing `realm_id`
   without purging the prior company's customers/invoices/cases —
-  `app/lib/qbo-connection.server.ts:11`.
+  `nudgepay-app/app/lib/qbo-connection.server.ts:11`.
 - **M20. QBO webhook processes synchronously before responding.** Each event
   does Intuit reads + ~6 DB round trips inline; slow acks count as delivery
   failures and can get the subscription suspended — no `ctx.waitUntil`
-  offload — `app/routes/webhooks.qbo.tsx:45`.
+  offload — `nudgepay-app/app/routes/webhooks.qbo.tsx:45`.
 - **M21. CDC cron is one serial loop over all orgs.** Single scheduled
   invocation, no time budget, checkpoint, or fan-out; growth of the user
   base breaks background sync for orgs late in iteration order —
-  `app/lib/qbo-cron.server.ts:42`.
+  `nudgepay-app/app/lib/qbo-cron.server.ts:42`.
 - **M26. QBO deletions/voids are mishandled.** CDC "Deleted" skeletons
   clobber real rows (customer becomes "(unnamed)"), and the webhook path
   leaves deleted invoices open with nonzero balances that users keep
-  dunning — `app/lib/qbo-api.server.ts:55`.
+  dunning — `nudgepay-app/app/lib/qbo-api.server.ts:55`.
 
 ### Work-queue & messaging experience
 
 - **M7. Focus Mode has no collision safeguards.** The dashboard's
   presence/collision system is absent here (`includePresence: false`); two
   reps in `/focus` walk the identical deterministic queue and double-text
-  the same customers — `app/routes/focus.tsx:58`.
+  the same customers — `nudgepay-app/app/routes/focus.tsx:58`.
 - **M8. No pagination/virtualization in the work queue; loader re-runs every
   20 s.** ✅ Plain `items.map(...)` renders every row, and the DetailPanel
   heartbeat calls `revalidate()` every 20 s while a case is open, re-running
-  the entire multi-query loader — `app/components/WorkQueue.tsx:648`,
-  `app/components/DetailPanel.tsx:622-626`.
+  the entire multi-query loader — `nudgepay-app/app/components/WorkQueue.tsx:648`,
+  `nudgepay-app/app/components/DetailPanel.tsx:622-626`.
 - **M10. Email never counts as contact.** `last contact` derives only from
   contact_logs + text_messages; after emailing a customer the case still
   says "Never contacted", gets +15 priority points, and `whyNow()` explains
-  it wrongly — reps double-contact — `app/lib/case-queue.server.ts:247`.
+  it wrongly — reps double-contact — `nudgepay-app/app/lib/case-queue.server.ts:247`.
 - **M14. No read/unread state for inbound messages.** The only signal is
   "last message was inbound"; the sole way to clear "Needs reply" is to send
-  a reply — `app/lib/message-inbox.ts:161`.
+  a reply — `nudgepay-app/app/lib/message-inbox.ts:161`.
 - **M15. Messages inbox never updates while open.** Load-time only — no
   polling/revalidation/push; the dedicated inbox lacks the heartbeat the
-  dashboard got — `app/routes/messages.tsx:46`.
+  dashboard got — `nudgepay-app/app/routes/messages.tsx:46`.
 - **M16. Default templates resurrect after deletion.** ✅ The resolver
   re-appends any default slug missing from the DB, so Delete reports success
-  and the template returns — `app/lib/message-templates.ts:40`.
+  and the template returns — `nudgepay-app/app/lib/message-templates.ts:40`.
 - **M31. QuickBooks Disconnect is one un-confirmed click** that revokes
   tokens and locks the whole org out of every workspace page until a full
-  reconnect — `app/routes/settings.tsx:248`.
+  reconnect — `nudgepay-app/app/routes/settings.tsx:248`.
 
 ### Compliance & abuse surface
 
 - **M22. No `reply_to` and no inbound-email setup path.** Even with B7
   fixed, tenants aren't told replies require MX-to-Resend on the sending
   domain; with the normal dedicated-subdomain setup, customer replies bounce
-  — for templates that ask customers to reply — `app/lib/email-client.server.ts:10`.
+  — for templates that ask customers to reply — `nudgepay-app/app/lib/email-client.server.ts:10`.
 - **M23. Consent has no provenance and STOP is one-click reversible.**
   `sms_consent` is a bare boolean; an inbound STOP is indistinguishable from
   never-consented, and the UI then invites "Mark consent" to resume texting
-  — TCPA exposure at $500–$1,500/text — `app/routes/api.sms-consent.tsx:44`.
+  — TCPA exposure at $500–$1,500/text — `nudgepay-app/app/routes/api.sms-consent.tsx:44`.
 - **M24. No rate limiting or send-frequency caps on any send endpoint.** Any
   authenticated member can loop sends without ceiling on the shared Twilio
-  and Resend accounts every tenant depends on — `app/routes/api.text.send.tsx:15`.
+  and Resend accounts every tenant depends on — `nudgepay-app/app/routes/api.text.send.tsx:15`.
 - **M25. Plain members can DELETE/rewrite the audit trail.** `FOR ALL`
   member-keyed RLS on text_messages, contact_logs, cases, promises — the
   compliance record for a collections product is editable by anyone in the
   org via PostgREST (mitigated by the anon key not shipping to the browser,
   but Supabase treats publishable keys as public by design) —
-  `supabase/migrations/0002_rls_policies.sql:33`.
+  `nudgepay-app/supabase/migrations/0002_rls_policies.sql:33`.
 
 ### Product breadth
 
 - **M12. No CSV/data export anywhere** — receivables, promises, messages,
   reports. AR teams live in spreadsheets; there is also no aging-bucket
-  report — `app/routes/reports.tsx:155`.
+  report — `nudgepay-app/app/routes/reports.tsx:155`.
 - **M13. Money is hardcoded USD/en-US.** QBO onboards CA/UK/AU orgs through
   the same OAuth; their balances render — and get texted to customers — as
   USD. Needs currency sync or an explicit US-only gate —
-  `app/lib/format.ts:20`.
+  `nudgepay-app/app/lib/format.ts:20`.
 
 ### Accessibility
 
 - **M32. Copper brand color fails WCAG AA on light surfaces (~2.9–3.1:1)**
-  across links, badges, and two primary button styles — `app/app.css:12`.
+  across links, badges, and two primary button styles — `nudgepay-app/app/app.css:12`.
 - **M33. Focus Mode dark theme renders secondary text at 1.6–2.8:1** —
-  amounts, due dates, hints, recipient number — `app/components/focus/FocusCard.tsx:48`.
+  amounts, due dates, hints, recipient number — `nudgepay-app/app/components/focus/FocusCard.tsx:48`.
 - **M34. Unlabeled controls in core flows** — the Focus Mode SMS body,
   accounts search, late-fee master toggle (placeholder-as-label antipattern)
-  — `app/components/focus/SendTextMiniForm.tsx:158`.
+  — `nudgepay-app/app/components/focus/SendTextMiniForm.tsx:158`.
 
 ### Release operations
 
@@ -517,67 +520,67 @@ marked ✅ were independently re-verified in the second pass.
 
 | # | Finding | Category | Where |
 |---|---|---|---|
-| 1 | Onboarding action doesn't re-check org membership — replayed POST creates orphaned organizations | bug | `app/routes/onboarding.tsx:36` |
-| 2 | Non-owner Reports nav item is announced as "(coming soon)" though the feature exists and is owner-gated | a11y | `app/components/AppShell.tsx:245` |
-| 3 | Clicking the user avatar instantly signs you out — no profile menu, no confirmation | ux | `app/components/AppShell.tsx:154` |
-| 4 | All unmapped Supabase auth errors collapse to "Something went wrong. Please try again." | ux | `app/lib/auth-flow.server.ts:40` |
-| 5 | Landing page is a single headline with no features, screenshots, pricing, or support contact; EULA still says "private beta" | ux | `app/routes/home.tsx:19` |
-| 6 | Empty work queue always shows the filter-centric message, even for a brand-new org with zero cases | ux | `app/components/WorkQueue.tsx:610` |
-| 7 | Focus Mode surfaces raw machine error codes in user-facing toasts | ux | `app/routes/focus.tsx:394` |
-| 8 | Focus Mode is unreachable on mobile — its only nav entry is hidden below the sm breakpoint | ux | `app/routes/dashboard.tsx:529` |
-| 9 | Bulk SMS skipped-reason summary omits the do-not-text bucket, so counts don't add up | bug | `app/components/BulkSmsDrawer.tsx:10` |
-| 10 | Consent toggle in the Messages tab breaks (with a wrong error message) when the case has no representative invoice | bug | `app/components/DetailPanel.tsx:210` |
-| 11 | Dashboard detail panel is a fixed 384px (w-96) pane that overflows and clips on sub-384px phones | ux | `app/routes/dashboard.tsx:609` |
-| 12 | Coming-due empty state hardcodes "next 7 days" though the window is org-configurable | ux | `app/components/ComingDueList.tsx:29` |
-| 13 | UTC calendar day compared against org-local 'today' skews the broken-promise flag and daysSinceContact for orgs west of UTC | bug | `app/components/DetailPanel.tsx:89` |
-| 14 | Promises cannot be edited, and the Promises page itself offers no cancel/renegotiate action | partial-feature | `app/components/PromiseQuickPanel.tsx:73` |
-| 15 | Timestamp dates render in the server's UTC zone during SSR (hydration mismatch) and show no time-of-day | ux | `app/lib/dates.ts:32` |
-| 16 | Collections rules form gives zero success or error feedback; saved=1 lights "Saved." on the wrong forms | ux | `app/components/CollectionsRulesForm.tsx:71` |
-| 17 | Priority high-value threshold: client allows min $0.01 but server rejects anything under $1,000, and the error copy/codes don't match | bug | `app/components/PriorityThresholdsForm.tsx:37` |
-| 18 | No unsaved-changes protection on any settings form; tab switches silently discard edits | ux | `app/components/SettingsTabs.tsx:34` |
-| 19 | Template editor has no preview, no token insertion, and no validation of misspelled {placeholders}; legend copy is wrong | partial-feature | `app/components/TemplateEditor.tsx:95` |
-| 20 | SMS thread bubbles show no timestamps and the thread pane doesn't scroll to the newest message | ux | `app/components/MessageBubbles.tsx:30` |
-| 21 | No rate-limit (429) detection, backoff, or retry on any Intuit API call | tech-gap | `app/lib/qbo-api.server.ts:21` |
-| 22 | CDC watermark stamped with local time AFTER fetch/processing — changes during the processing window can be skipped | bug | `app/lib/qbo-sync.server.ts:321` |
-| 23 | Invoice status column goes stale when a due date passes without any QBO change | bug | `app/lib/qbo-mappers.server.ts:43` |
-| 24 | No data-retention or cleanup job for unbounded operational tables (oauth_states, notification_log, resolved sync_errors, expired invites) | release-ops | `workers/app.ts:27` |
-| 25 | CloudEvents webhook parser shipped with an in-code admission it is unverified against real Intuit payloads | tech-gap | `app/lib/qbo-webhook.server.ts:88` |
-| 26 | Resend email.failed / email.suppressed events are ignored, so async send failures stay 'sent' forever | bug | `app/lib/email-events.ts:44` |
-| 27 | No 'Reply STOP to opt out' language in default SMS templates and none appended at send time | missing-feature | `app/lib/sms-templates.ts:26` |
-| 28 | Quiet hours computed in the org's timezone, not the recipient's | tech-gap | `app/lib/twilio-messaging.server.ts:110` |
-| 29 | No server-side duplicate-send protection (idempotency) on single-send endpoints | missing-feature | `app/routes/api.text.send.tsx:48` |
-| 30 | Bulk SMS partial failures reported only as an aggregate count; per-case errors are swallowed | ux | `app/lib/bulk-send.server.ts:97` |
-| 31 | Broken-promise alert email failures are permanently lost — one-shot trigger with no retry path | tech-gap | `app/lib/notifications.server.ts:114` |
-| 32 | No List-Unsubscribe / one-click unsubscribe headers on customer emails | missing-feature | `app/lib/email-client.server.ts:10` |
-| 33 | Promise kept/partially-kept boundary uses exact float comparison on float-summed money | bug | `app/lib/promises.ts:29` |
-| 34 | high_value_threshold above $10,000 is accepted but silently stops affecting priority scoring | bug | `app/lib/priority.ts:41` |
-| 35 | worklist.ts retains a dead, conflicting age-only priority model (plus static-zero metrics) | tech-gap | `app/lib/worklist.ts:68` |
-| 36 | Late-fee estimate model is simplistic (no cap, fixed 30-day months, retroactive basis) and priority weights remain hardcoded behind a stale 'deferred to C7' comment | docs-drift | `app/lib/late-fees.ts:37` |
-| 37 | Promise evaluation counts any QBO balance reduction (credit memo, void, edit) as payment received | tech-gap | `app/lib/promises.ts:26` |
-| 38 | Owner test-SMS endpoint sends to arbitrary numbers with no consent gate and no throttle | security | `app/routes/api.test-message.tsx:39` |
-| 39 | Auth actions (login/signup/logout) bypass the same-origin CSRF check applied to every other mutation | security | `app/routes/logout.tsx:7` |
-| 40 | Invite action returns raw database error message to the client | security | `app/routes/invite.tsx:40` |
-| 41 | dev-data.sql is broken by the 0032 member-source-edit trigger — its 'UPDATE customers SET phone = NULL' raises and rolls back the whole snippet | test-gap | `supabase/snippets/dev-data.sql:147` |
-| 42 | email_config.updated_at is never maintained — no trigger and no code sets it | tech-gap | `supabase/migrations/0020_channel_settings.sql:25` |
-| 43 | Audit-actor columns are bare uuids without FKs, and user-reference FKs lack ON DELETE actions, making auth-user deletion impossible | tech-gap | `supabase/migrations/0013_sync_errors.sql:13` |
-| 44 | Invites allow unlimited duplicate pending invites per (org, email) — no uniqueness constraint | tech-gap | `supabase/migrations/0003_invites.sql:4` |
-| 45 | No robots.txt, sitemap, meta description, or Open Graph tags for the public marketing surface | ux | `app/lib/meta.ts:1` |
+| 1 | Onboarding action doesn't re-check org membership — replayed POST creates orphaned organizations | bug | `nudgepay-app/app/routes/onboarding.tsx:36` |
+| 2 | Non-owner Reports nav item is announced as "(coming soon)" though the feature exists and is owner-gated | a11y | `nudgepay-app/app/components/AppShell.tsx:245` |
+| 3 | Clicking the user avatar instantly signs you out — no profile menu, no confirmation | ux | `nudgepay-app/app/components/AppShell.tsx:154` |
+| 4 | All unmapped Supabase auth errors collapse to "Something went wrong. Please try again." | ux | `nudgepay-app/app/lib/auth-flow.server.ts:40` |
+| 5 | Landing page is a single headline with no features, screenshots, pricing, or support contact; EULA still says "private beta" | ux | `nudgepay-app/app/routes/home.tsx:19` |
+| 6 | Empty work queue always shows the filter-centric message, even for a brand-new org with zero cases | ux | `nudgepay-app/app/components/WorkQueue.tsx:610` |
+| 7 | Focus Mode surfaces raw machine error codes in user-facing toasts | ux | `nudgepay-app/app/routes/focus.tsx:394` |
+| 8 | Focus Mode is unreachable on mobile — its only nav entry is hidden below the sm breakpoint | ux | `nudgepay-app/app/routes/dashboard.tsx:529` |
+| 9 | Bulk SMS skipped-reason summary omits the do-not-text bucket, so counts don't add up | bug | `nudgepay-app/app/components/BulkSmsDrawer.tsx:10` |
+| 10 | Consent toggle in the Messages tab breaks (with a wrong error message) when the case has no representative invoice | bug | `nudgepay-app/app/components/DetailPanel.tsx:210` |
+| 11 | Dashboard detail panel is a fixed 384px (w-96) pane that overflows and clips on sub-384px phones | ux | `nudgepay-app/app/routes/dashboard.tsx:609` |
+| 12 | Coming-due empty state hardcodes "next 7 days" though the window is org-configurable | ux | `nudgepay-app/app/components/ComingDueList.tsx:29` |
+| 13 | UTC calendar day compared against org-local 'today' skews the broken-promise flag and daysSinceContact for orgs west of UTC | bug | `nudgepay-app/app/components/DetailPanel.tsx:89` |
+| 14 | Promises cannot be edited, and the Promises page itself offers no cancel/renegotiate action | partial-feature | `nudgepay-app/app/components/PromiseQuickPanel.tsx:73` |
+| 15 | Timestamp dates render in the server's UTC zone during SSR (hydration mismatch) and show no time-of-day | ux | `nudgepay-app/app/lib/dates.ts:32` |
+| 16 | Collections rules form gives zero success or error feedback; saved=1 lights "Saved." on the wrong forms | ux | `nudgepay-app/app/components/CollectionsRulesForm.tsx:71` |
+| 17 | Priority high-value threshold: client allows min $0.01 but server rejects anything under $1,000, and the error copy/codes don't match | bug | `nudgepay-app/app/components/PriorityThresholdsForm.tsx:37` |
+| 18 | No unsaved-changes protection on any settings form; tab switches silently discard edits | ux | `nudgepay-app/app/components/SettingsTabs.tsx:34` |
+| 19 | Template editor has no preview, no token insertion, and no validation of misspelled {placeholders}; legend copy is wrong | partial-feature | `nudgepay-app/app/components/TemplateEditor.tsx:95` |
+| 20 | SMS thread bubbles show no timestamps and the thread pane doesn't scroll to the newest message | ux | `nudgepay-app/app/components/MessageBubbles.tsx:30` |
+| 21 | No rate-limit (429) detection, backoff, or retry on any Intuit API call | tech-gap | `nudgepay-app/app/lib/qbo-api.server.ts:21` |
+| 22 | CDC watermark stamped with local time AFTER fetch/processing — changes during the processing window can be skipped | bug | `nudgepay-app/app/lib/qbo-sync.server.ts:321` |
+| 23 | Invoice status column goes stale when a due date passes without any QBO change | bug | `nudgepay-app/app/lib/qbo-mappers.server.ts:43` |
+| 24 | No data-retention or cleanup job for unbounded operational tables (oauth_states, notification_log, resolved sync_errors, expired invites) | release-ops | `nudgepay-app/workers/app.ts:27` |
+| 25 | CloudEvents webhook parser shipped with an in-code admission it is unverified against real Intuit payloads | tech-gap | `nudgepay-app/app/lib/qbo-webhook.server.ts:88` |
+| 26 | Resend email.failed / email.suppressed events are ignored, so async send failures stay 'sent' forever | bug | `nudgepay-app/app/lib/email-events.ts:44` |
+| 27 | No 'Reply STOP to opt out' language in default SMS templates and none appended at send time | missing-feature | `nudgepay-app/app/lib/sms-templates.ts:26` |
+| 28 | Quiet hours computed in the org's timezone, not the recipient's | tech-gap | `nudgepay-app/app/lib/twilio-messaging.server.ts:110` |
+| 29 | No server-side duplicate-send protection (idempotency) on single-send endpoints | missing-feature | `nudgepay-app/app/routes/api.text.send.tsx:48` |
+| 30 | Bulk SMS partial failures reported only as an aggregate count; per-case errors are swallowed | ux | `nudgepay-app/app/lib/bulk-send.server.ts:97` |
+| 31 | Broken-promise alert email failures are permanently lost — one-shot trigger with no retry path | tech-gap | `nudgepay-app/app/lib/notifications.server.ts:114` |
+| 32 | No List-Unsubscribe / one-click unsubscribe headers on customer emails | missing-feature | `nudgepay-app/app/lib/email-client.server.ts:10` |
+| 33 | Promise kept/partially-kept boundary uses exact float comparison on float-summed money | bug | `nudgepay-app/app/lib/promises.ts:29` |
+| 34 | high_value_threshold above $10,000 is accepted but silently stops affecting priority scoring | bug | `nudgepay-app/app/lib/priority.ts:41` |
+| 35 | worklist.ts retains a dead, conflicting age-only priority model (plus static-zero metrics) | tech-gap | `nudgepay-app/app/lib/worklist.ts:68` |
+| 36 | Late-fee estimate model is simplistic (no cap, fixed 30-day months, retroactive basis) and priority weights remain hardcoded behind a stale 'deferred to C7' comment | docs-drift | `nudgepay-app/app/lib/late-fees.ts:37` |
+| 37 | Promise evaluation counts any QBO balance reduction (credit memo, void, edit) as payment received | tech-gap | `nudgepay-app/app/lib/promises.ts:26` |
+| 38 | Owner test-SMS endpoint sends to arbitrary numbers with no consent gate and no throttle | security | `nudgepay-app/app/routes/api.test-message.tsx:39` |
+| 39 | Auth actions (login/signup/logout) bypass the same-origin CSRF check applied to every other mutation | security | `nudgepay-app/app/routes/logout.tsx:7` |
+| 40 | Invite action returns raw database error message to the client | security | `nudgepay-app/app/routes/invite.tsx:40` |
+| 41 | dev-data.sql is broken by the 0032 member-source-edit trigger — its 'UPDATE customers SET phone = NULL' raises and rolls back the whole snippet | test-gap | `nudgepay-app/supabase/snippets/dev-data.sql:147` |
+| 42 | email_config.updated_at is never maintained — no trigger and no code sets it | tech-gap | `nudgepay-app/supabase/migrations/0020_channel_settings.sql:25` |
+| 43 | Audit-actor columns are bare uuids without FKs, and user-reference FKs lack ON DELETE actions, making auth-user deletion impossible | tech-gap | `nudgepay-app/supabase/migrations/0013_sync_errors.sql:13` |
+| 44 | Invites allow unlimited duplicate pending invites per (org, email) — no uniqueness constraint | tech-gap | `nudgepay-app/supabase/migrations/0003_invites.sql:4` |
+| 45 | No robots.txt, sitemap, meta description, or Open Graph tags for the public marketing surface | ux | `nudgepay-app/app/lib/meta.ts:1` |
 | 46 | README.md materially stale: 24 migrations (actual 33), repo layout lists deleted directories, route map missing routes, superseded status link | docs-drift | `README.md:60` |
 | 47 | AGENTS.md stale: migrations 0001–0024 (actual 0033), nonexistent legacy dirs, wrong table name and typecheck command | docs-drift | `AGENTS.md:57` |
-| 48 | Starter-template boilerplate remains: nudgepay-app/README.md is the untouched Cloudflare starter README and package.json still carries the template-marketplace block with publish:true | docs-drift | `README.md:1` |
+| 48 | Starter-template boilerplate remains: nudgepay-app/README.md is the untouched Cloudflare starter README and package.json still carries the template-marketplace block with publish:true | docs-drift | `nudgepay-app/README.md:1` |
 | 49 | No LICENSE file committed | release-ops | `README.md:142` |
-| 50 | Six demo-recording PNGs (~870 KB) committed to the repo | docs-drift | `demo-recording/frontend-screenshot.png` |
+| 50 | Six demo-recording PNGs (~870 KB) committed to the repo | docs-drift | `nudgepay-app/demo-recording/frontend-screenshot.png` |
 | 51 | Open security action item: legacy Supabase anon key rotation is documented as pending and unverifiable | security | `AGENTS.md:98` |
-| 52 | listOrgMembers fetches only the first 1000 auth users project-wide — display names and team alerts silently break past that | tech-gap | `app/lib/orgs.server.ts:88` |
-| 53 | Team alert emails and daily digest are gated on the customer-facing email channel being configured | partial-feature | `app/lib/notifications.server.ts:40` |
-| 54 | WorkQueue desktop grid has no table semantics; column headers not associated with cell values | a11y | `app/components/WorkQueue.tsx:647` |
-| 55 | Infinite loading animation and fade-in not gated on prefers-reduced-motion | a11y | `app/components/AppShell.tsx:86` |
-| 56 | CommPrefsDrawer scrim link has contradictory aria-hidden="true" + aria-label="Close" | a11y | `app/components/CommPrefsDrawer.tsx:29` |
-| 57 | TemplateEditor uses role=tablist/tab without tabpanel association or arrow-key navigation | a11y | `app/components/TemplateEditor.tsx:63` |
-| 58 | QuickBooks sync status chip and sync-issue alerts are completely hidden on mobile | ux | `app/components/SyncIssues.tsx:59` |
-| 59 | Async UI results not announced: copy-to-clipboard confirmation and bulk-selection count lack live regions | a11y | `app/components/WebhookUrlField.tsx:31` |
-| 60 | No in-app notification surface: broken-promise alerts and daily digests are email-only, with no bell/center and no fallback when email is unconfigured or opted out | missing-feature | `app/lib/notifications.server.ts:28` |
-| 61 | First-run bounce to Settings has no welcome or explanation; brand-new users are dropped on the Integrations tab mid-flow | ux | `app/lib/workspace.server.ts:37` |
+| 52 | listOrgMembers fetches only the first 1000 auth users project-wide — display names and team alerts silently break past that | tech-gap | `nudgepay-app/app/lib/orgs.server.ts:88` |
+| 53 | Team alert emails and daily digest are gated on the customer-facing email channel being configured | partial-feature | `nudgepay-app/app/lib/notifications.server.ts:40` |
+| 54 | WorkQueue desktop grid has no table semantics; column headers not associated with cell values | a11y | `nudgepay-app/app/components/WorkQueue.tsx:647` |
+| 55 | Infinite loading animation and fade-in not gated on prefers-reduced-motion | a11y | `nudgepay-app/app/components/AppShell.tsx:86` |
+| 56 | CommPrefsDrawer scrim link has contradictory aria-hidden="true" + aria-label="Close" | a11y | `nudgepay-app/app/components/CommPrefsDrawer.tsx:29` |
+| 57 | TemplateEditor uses role=tablist/tab without tabpanel association or arrow-key navigation | a11y | `nudgepay-app/app/components/TemplateEditor.tsx:63` |
+| 58 | QuickBooks sync status chip and sync-issue alerts are completely hidden on mobile | ux | `nudgepay-app/app/components/SyncIssues.tsx:59` |
+| 59 | Async UI results not announced: copy-to-clipboard confirmation and bulk-selection count lack live regions | a11y | `nudgepay-app/app/components/WebhookUrlField.tsx:31` |
+| 60 | No in-app notification surface: broken-promise alerts and daily digests are email-only, with no bell/center and no fallback when email is unconfigured or opted out | missing-feature | `nudgepay-app/app/lib/notifications.server.ts:28` |
+| 61 | First-run bounce to Settings has no welcome or explanation; brand-new users are dropped on the Integrations tab mid-flow | ux | `nudgepay-app/app/lib/workspace.server.ts:37` |
 
 ---
 
@@ -587,11 +590,16 @@ The audit's second job was confirming what already holds up. Highlights, each
 checked against code:
 
 - **Tenancy.** RLS enabled on all tables with org-membership-keyed policies;
-  every loader/action query additionally pins `.eq("org_id", …)` (defense in
-  depth); the service-role client stays in sync/cron/admin paths.
-- **CSRF & redirects.** All authenticated mutations pass an
-  Origin-then-Referer same-origin check (`csrf.server.ts`); `safeReturnTo`
-  blocks open redirects (`//`, backslashes, control chars).
+  loader/action queries additionally pin `.eq("org_id", …)` as defense in
+  depth across nearly all of the audited surface — though not universally
+  (e.g. the dashboard's selected-case customer-prefs read at
+  `nudgepay-app/app/routes/dashboard.tsx:331-332` relies on RLS alone), so
+  RLS remains the actual security boundary; the service-role client stays in
+  sync/cron/admin paths.
+- **CSRF & redirects.** Authenticated mutations behind `requireUser` pass an
+  Origin-then-Referer same-origin check (`csrf.server.ts`); the auth actions
+  themselves (login/signup/logout) bypass that check — see minor 39.
+  `safeReturnTo` blocks open redirects (`//`, backslashes, control chars).
 - **Webhook authentication.** Twilio HMAC-SHA1 with timing-safe compare, QBO
   verifier-token HMAC, Resend/Svix signature verification — all three
   providers verified.
