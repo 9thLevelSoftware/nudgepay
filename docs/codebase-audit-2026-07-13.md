@@ -88,17 +88,21 @@ findings sections use repo-root-relative paths.
 
 ### Feature areas
 
+Status reflects the audit's findings, not just whether code exists: an area
+with a blocker-level failure of its named capability is marked partial even
+when its outbound/primary path works.
+
 | Area | Status | Key files |
 |---|---|---|
 | Auth & session (signup/login/logout) | complete | `app/routes/signup.tsx`, `app/routes/login.tsx`, `app/lib/session.server.ts`, `app/lib/auth-flow.server.ts` |
 | Onboarding & team invites | partial | `app/routes/onboarding.tsx`, `app/routes/invite.tsx`, `app/routes/accept.$token.tsx`, `app/lib/orgs.server.ts` |
-| QBO OAuth connection lifecycle | complete | `app/routes/api.qbo.connect.tsx`, `app/routes/auth.qbo.callback.tsx`, `app/routes/api.qbo.disconnect.tsx`, `app/lib/oauth-state.server.ts`, `app/lib/qbo-connection.server.ts` |
-| QBO sync (manual, webhook CDC, cron catch-up, payments) | complete | `app/lib/qbo-sync.server.ts`, `app/routes/webhooks.qbo.tsx`, `app/lib/qbo-cron.server.ts`, `app/routes/api.qbo.refresh.tsx`, `app/lib/sync-errors.server.ts` |
-| Collection cases & dashboard work queue | complete | `app/routes/dashboard.tsx`, `app/lib/cases.ts`, `app/lib/case-queue.server.ts`, `app/lib/case-lifecycle.server.ts`, `app/components/WorkQueue.tsx` |
+| QBO OAuth connection lifecycle | partial — dead connections never flagged (B9), silent OAuth outcomes (M17), realm-switch merges books (M19) | `app/routes/api.qbo.connect.tsx`, `app/routes/auth.qbo.callback.tsx`, `app/routes/api.qbo.disconnect.tsx`, `app/lib/oauth-state.server.ts`, `app/lib/qbo-connection.server.ts` |
+| QBO sync (manual, webhook CDC, cron catch-up, payments) | partial — no automatic initial sync (B8), no result pagination (M18), deletions mishandled (M26) | `app/lib/qbo-sync.server.ts`, `app/routes/webhooks.qbo.tsx`, `app/lib/qbo-cron.server.ts`, `app/routes/api.qbo.refresh.tsx`, `app/lib/sync-errors.server.ts` |
+| Collection cases & dashboard work queue | complete at pilot scale — unbounded reads truncate and mis-resolve cases past 1,000 rows (B1/B2) | `app/routes/dashboard.tsx`, `app/lib/cases.ts`, `app/lib/case-queue.server.ts`, `app/lib/case-lifecycle.server.ts`, `app/components/WorkQueue.tsx` |
 | Focus mode | complete | `app/routes/focus.tsx`, `app/lib/focus-queue.ts`, `app/lib/focus-session.ts`, `app/components/focus/FocusCard.tsx` |
 | Promises (promise-to-pay loop) | complete | `app/routes/promises.tsx`, `app/lib/promise-create.server.ts`, `app/lib/promise-evaluation.server.ts`, `app/lib/promise-ledger.ts`, `app/routes/api.promises.cancel.tsx` |
-| Two-way SMS (Twilio, STOP/START compliance, quiet hours) | complete | `app/lib/twilio-messaging.server.ts`, `app/routes/webhooks.twilio.inbound.tsx`, `app/routes/webhooks.twilio.status.tsx`, `app/routes/api.text.send.tsx`, `app/lib/quiet-hours.ts` |
-| Email channel (Resend outbound/inbound, unsubscribe, CAN-SPAM) | complete | `app/lib/email-messaging.server.ts`, `app/routes/api.email.send.tsx`, `app/routes/webhooks.resend.tsx`, `app/routes/unsubscribe.tsx`, `app/lib/unsubscribe-token.ts` |
+| Two-way SMS (Twilio, STOP/START compliance, quiet hours) | partial — outbound solid; unmatched inbound (incl. STOP) silently dropped (B5), shared operator sender (B4) | `app/lib/twilio-messaging.server.ts`, `app/routes/webhooks.twilio.inbound.tsx`, `app/routes/webhooks.twilio.status.tsx`, `app/routes/api.text.send.tsx`, `app/lib/quiet-hours.ts` |
+| Email channel (Resend outbound/inbound, unsubscribe, CAN-SPAM) | partial — outbound + unsubscribe solid; inbound mapping cannot work (B7), unverified per-org sender (B6) | `app/lib/email-messaging.server.ts`, `app/routes/api.email.send.tsx`, `app/routes/webhooks.resend.tsx`, `app/routes/unsubscribe.tsx`, `app/lib/unsubscribe-token.ts` |
 | Messages inbox (unified SMS+email threads) | complete | `app/routes/messages.tsx`, `app/lib/message-inbox.ts`, `app/components/MessageThreadPanel.tsx` |
 | Bulk actions (bulk assign + bulk SMS) | complete | `app/routes/api.bulk-sms.tsx`, `app/routes/api.bulk-assign.tsx`, `app/lib/bulk-send.server.ts`, `app/lib/bulk.ts`, `app/components/BulkSmsDrawer.tsx` |
 | Late fees | display-only | `app/lib/late-fees.ts`, `app/components/LateFeesForm.tsx`, `supabase/migrations/0023_late_fees.sql` |
