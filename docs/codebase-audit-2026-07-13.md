@@ -94,7 +94,7 @@ when its outbound/primary path works.
 
 | Area | Status | Key files |
 |---|---|---|
-| Auth & session (signup/login/logout) | complete | `app/routes/signup.tsx`, `app/routes/login.tsx`, `app/lib/session.server.ts`, `app/lib/auth-flow.server.ts` |
+| Auth & session (signup/login/logout) | partial — signup/login/logout work; no password reset (B0), no change-password/email or account deletion (M5), no confirm-email landing (M1) | `app/routes/signup.tsx`, `app/routes/login.tsx`, `app/lib/session.server.ts`, `app/lib/auth-flow.server.ts` |
 | Onboarding & team invites | partial | `app/routes/onboarding.tsx`, `app/routes/invite.tsx`, `app/routes/accept.$token.tsx`, `app/lib/orgs.server.ts` |
 | QBO OAuth connection lifecycle | partial — dead connections never flagged (B9), silent OAuth outcomes (M17), realm-switch merges books (M19) | `app/routes/api.qbo.connect.tsx`, `app/routes/auth.qbo.callback.tsx`, `app/routes/api.qbo.disconnect.tsx`, `app/lib/oauth-state.server.ts`, `app/lib/qbo-connection.server.ts` |
 | QBO sync (manual, webhook CDC, cron catch-up, payments) | partial — no automatic initial sync (B8), no result pagination (M18), deletions mishandled (M26) | `app/lib/qbo-sync.server.ts`, `app/routes/webhooks.qbo.tsx`, `app/lib/qbo-cron.server.ts`, `app/routes/api.qbo.refresh.tsx`, `app/lib/sync-errors.server.ts` |
@@ -109,7 +109,7 @@ when its outbound/primary path works.
 | Reports (owner-only team report) | complete | `app/routes/reports.tsx`, `app/lib/reports.ts` |
 | Notifications & daily digest (broken-promise alerts, digest cron, prefs) | complete | `app/lib/notifications.server.ts`, `app/lib/digest-cron.server.ts`, `app/routes/api.notification-prefs.tsx`, `app/components/NotificationPrefsForm.tsx` |
 | Settings & org configuration (profile, rules, thresholds, knobs, quiet hours, holidays, channels, templates, test messages) | complete | `app/routes/settings.tsx`, `app/routes/api.org-settings.tsx`, `app/lib/org-config.server.ts`, `app/routes/api.test-message.tsx`, `app/lib/message-templates.ts` |
-| Accounts directory & profile (owner assignment, comm prefs, notes, presence/collision) | complete | `app/routes/accounts.tsx`, `app/routes/accounts.$id.tsx`, `app/lib/presence.server.ts`, `app/lib/collision.ts`, `app/routes/api.account-notes.tsx` |
+| Accounts directory & profile (owner assignment, comm prefs, notes, presence/collision) | partial — profile Save preferences resets email opt-outs (B3), directory only holds ever-overdue customers (M11) | `app/routes/accounts.tsx`, `app/routes/accounts.$id.tsx`, `app/lib/presence.server.ts`, `app/lib/collision.ts`, `app/routes/api.account-notes.tsx` |
 
 ### Pages (18)
 
