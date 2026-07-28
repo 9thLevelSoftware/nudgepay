@@ -7,19 +7,21 @@ function randomState(): string {
   return hex;
 }
 
+export type OAuthState = { orgId: string; userId: string };
+
 export async function createOAuthState(
-  service: SupabaseClient, orgId: string, ttlSeconds = 600,
+  service: SupabaseClient, orgId: string, userId: string, ttlSeconds = 600,
 ): Promise<string> {
   const state = randomState();
   const expires_at = new Date(Date.now() + ttlSeconds * 1000).toISOString();
-  const { error } = await service.from("oauth_states").insert({ state, org_id: orgId, expires_at });
+  const { error } = await service.from("oauth_states").insert({ state, org_id: orgId, user_id: userId, expires_at });
   if (error) throw error;
   return state;
 }
 
-export async function consumeOAuthState(service: SupabaseClient, state: string): Promise<string> {
+export async function consumeOAuthState(service: SupabaseClient, state: string): Promise<OAuthState> {
   const { data, error } = await service.from("oauth_states")
-    .select("org_id, expires_at").eq("state", state).maybeSingle();
+    .select("org_id, user_id, expires_at").eq("state", state).maybeSingle();
   if (error) throw error;
   if (!data) throw new Error("Invalid OAuth state");
   // single-use: delete before returning success; a failed delete must not
@@ -29,5 +31,5 @@ export async function consumeOAuthState(service: SupabaseClient, state: string):
   if (new Date(data.expires_at as string).getTime() < Date.now()) {
     throw new Error("Expired OAuth state");
   }
-  return data.org_id as string;
+  return { orgId: data.org_id as string, userId: data.user_id as string };
 }
