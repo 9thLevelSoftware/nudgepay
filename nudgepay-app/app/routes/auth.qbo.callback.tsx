@@ -1,6 +1,7 @@
 import { redirect, type LoaderFunctionArgs } from "react-router";
 import { getEnv, getQboEnv } from "../lib/env.server";
 import { createSupabaseServiceClient } from "../lib/supabase.server";
+import { requireUser, resolveOrg } from "../lib/session.server";
 import { consumeOAuthState } from "../lib/oauth-state.server";
 import { exchangeCodeForTokens } from "../lib/qbo-client.server";
 import { storeConnection } from "../lib/qbo-connection.server";
@@ -20,12 +21,17 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
   const cfg = {
     clientId: qbo.QBO_CLIENT_ID, clientSecret: qbo.QBO_CLIENT_SECRET, redirectUri: qbo.QBO_REDIRECT_URI,
   };
+  const { supabase, headers, user } = await requireUser(request, env);
   try {
     const service = createSupabaseServiceClient(env);
-    const orgId = await consumeOAuthState(service, state); // throws on invalid/expired/replay
+    const oauthState = await consumeOAuthState(service, state); // throws on invalid/expired/replay
+    const org = await resolveOrg(supabase, user.id);
+    if (!org || org.role !== "owner" || org.org_id !== oauthState.orgId || user.id !== oauthState.userId) {
+      return redirect("/dashboard?qbo=forbidden", { headers });
+    }
     const tokens = await exchangeCodeForTokens(fetch, cfg, code);
-    await storeConnection(service, qbo.QBO_ENCRYPTION_KEY, orgId, realmId, tokens);
-    return redirect("/dashboard?qbo=connected");
+    await storeConnection(service, qbo.QBO_ENCRYPTION_KEY, oauthState.orgId, realmId, tokens);
+    return redirect("/dashboard?qbo=connected", { headers });
   } catch {
     return redirect("/dashboard?qbo=error");
   }

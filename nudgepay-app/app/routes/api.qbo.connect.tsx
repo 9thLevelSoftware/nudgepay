@@ -14,7 +14,7 @@ export async function action({ request, context }: ActionFunctionArgs) {
     return redirect("/dashboard?qbo=forbidden", { headers });
   }
   const service = createSupabaseServiceClient(env);
-  const state = await createOAuthState(service, org.org_id);
+  const state = await createOAuthState(service, org.org_id, user.id);
   const url = buildAuthorizeUrl(
     { clientId: qbo.QBO_CLIENT_ID, clientSecret: qbo.QBO_CLIENT_SECRET, redirectUri: qbo.QBO_REDIRECT_URI },
     state,
