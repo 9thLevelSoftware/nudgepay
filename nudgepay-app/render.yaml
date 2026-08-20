@@ -34,7 +34,10 @@ services:
     region: oregon
     rootDir: nudgepay-app
     branch: main
-    buildCommand: npm ci && npm run build && npm run build:cron
+    # --include=dev is REQUIRED. NODE_ENV=production (below) makes npm skip
+    # devDependencies, and the build toolchain lives there: @react-router/dev
+    # provides the `react-router` CLI, plus vite, tailwind and esbuild.
+    buildCommand: npm ci --include=dev && npm run build && npm run build:cron
     startCommand: npm start
     healthCheckPath: /healthz
     autoDeployTrigger: commit
@@ -122,7 +125,7 @@ services:
 #    rootDir: nudgepay-app
 #    branch: main
 #    schedule: "*/30 * * * *"
-#    buildCommand: npm ci && npm run build:cron
+#    buildCommand: npm ci --include=dev && npm run build:cron
 #    startCommand: node dist-cron/cdc.js
 #    envVars:
 #      - fromGroup: nudgepay-shared
@@ -136,7 +139,7 @@ services:
 #    rootDir: nudgepay-app
 #    branch: main
 #    schedule: "0 * * * *"
-#    buildCommand: npm ci && npm run build:cron
+#    buildCommand: npm ci --include=dev && npm run build:cron
 #    startCommand: node dist-cron/digest.js
 #    envVars:
 #      - fromGroup: nudgepay-shared
