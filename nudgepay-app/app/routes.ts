@@ -44,4 +44,5 @@ export default [
   route("api/profile", "routes/api.profile.tsx"),
   route("api/notification-prefs", "routes/api.notification-prefs.tsx"),
   route("api/test-message", "routes/api.test-message.tsx"),
+  route("healthz", "routes/healthz.tsx"),
 ] satisfies RouteConfig;

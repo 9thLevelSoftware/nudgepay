@@ -126,6 +126,38 @@ A successful deploy requires every secret listed under
 500 at runtime until their respective secrets are present. Email/alert
 secrets are optional — `getEmailEnvOrNull` degrades gracefully.
 
+### Render (secondary target)
+
+Cloudflare Workers is the primary deployment and owns production traffic
+**and** both cron schedules. `nudgepay-app/render.yaml` defines an optional
+Node deployment of the same app on Render; it is additive and changes
+nothing about the Workers path.
+
+The Node target reuses everything: `vite.config.ts` drops
+`@cloudflare/vite-plugin` when `BUILD_TARGET=node`, and `server.js` hands
+routes the same `{ cloudflare: { env } }` load context that
+`workers/app.ts` does, so `app/lib/env.server.ts` and every route work
+unchanged. `cron/*.ts` are standalone entry points for the same
+`runScheduledCdc` / `runScheduledDigest` functions the Worker's
+`scheduled` handler calls.
+
+Render looks for `render.yaml` at the repo root by default — set the path
+to `nudgepay-app/render.yaml` when creating the Blueprint.
+
+Caveats, all called out inline in `render.yaml`:
+
+- The web service is on Render's **free** plan, which spins down after
+  inactivity. Leave the `/webhooks/*` endpoints pointed at the Worker; a
+  cold start will exceed Intuit/Twilio/Resend webhook timeouts.
+- Render cron jobs have no free tier, so both jobs ship **commented out**.
+  Cloudflare's `[triggers]` still runs them. If you enable them, remove
+  `[triggers]` from `wrangler.toml` first or the CDC catch-up double-runs.
+- `QBO_ENCRYPTION_KEY` and `UNSUBSCRIBE_SECRET` must be byte-identical to
+  the Worker's — the first decrypts stored QBO tokens, the second signs
+  unsubscribe links that have already been mailed and never expire.
+- `QBO_REDIRECT_URI` is origin-specific; register the `onrender.com`
+  callback in the Intuit app before using OAuth there.
+
 ## Testing
 
 ```bash

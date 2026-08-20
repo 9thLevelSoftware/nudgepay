@@ -1,0 +1,143 @@
+# Render Blueprint — https://render.com/docs/blueprint-spec
+#
+# SECONDARY deploy target. Cloudflare Workers (wrangler.toml) remains primary and
+# owns production traffic AND both cron schedules.
+#
+# Setup: Render Dashboard > New > Blueprint. Render looks for render.yaml at the
+# repository root by default; this file lives in nudgepay-app/, so set that path
+# when creating the Blueprint. `rootDir` below is relative to the REPO root.
+#
+# On first sync Render prompts once for every `sync: false` value. Before entering
+# them, read the two warnings in the web service's envVars block.
+
+envVarGroups:
+  - name: nudgepay-shared
+    envVars:
+      # Pin explicitly: @react-router/express defaults its mode to NODE_ENV, and an
+      # unset value makes React Router serve verbose development error payloads.
+      - key: NODE_ENV
+        value: production
+      # Drops @cloudflare/vite-plugin from vite.config.ts so `react-router build`
+      # emits a plain Node server build at build/server/index.js for server.js.
+      - key: BUILD_TARGET
+        value: node
+      # "false" selects the production Intuit Data API base URL. Note app/lib/env.server.ts
+      # defaults to sandbox (true) for ANY value other than the exact string "false".
+      - key: QBO_SANDBOX
+        value: "false"
+
+services:
+  - type: web
+    name: nudgepay-app
+    runtime: node
+    plan: free
+    region: oregon
+    rootDir: nudgepay-app
+    branch: main
+    buildCommand: npm ci && npm run build && npm run build:cron
+    startCommand: npm start
+    healthCheckPath: /healthz
+    autoDeployTrigger: commit
+    envVars:
+      - fromGroup: nudgepay-shared
+
+      # --- Supabase (app/lib/env.server.ts :: getEnv) ---------------------------
+      # All three are hard-required; every authenticated route 500s without them.
+      # SUPABASE_URL is sync:false rather than a literal so the "<your-prod-project-ref>"
+      # placeholder still sitting in wrangler.toml is not duplicated here.
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_ANON_KEY
+        sync: false
+      - key: SUPABASE_SERVICE_KEY
+        sync: false
+
+      # --- QuickBooks Online (getQboEnv) ---------------------------------------
+      # WARNING: QBO_ENCRYPTION_KEY must be BYTE-IDENTICAL to the Worker's. It
+      # AES-256-GCM-decrypts the tokens stored in qbo_connections; a different value
+      # breaks every QBO connection this service touches.
+      # WARNING: QBO_REDIRECT_URI is origin-specific and must be registered in the
+      # Intuit app before OAuth will work from the onrender.com origin.
+      - key: QBO_CLIENT_ID
+        sync: false
+      - key: QBO_CLIENT_SECRET
+        sync: false
+      - key: QBO_REDIRECT_URI
+        sync: false
+      - key: QBO_ENCRYPTION_KEY
+        sync: false
+      - key: QBO_WEBHOOK_VERIFIER_TOKEN
+        sync: false
+
+      # --- Twilio SMS (getTwilioEnv) -------------------------------------------
+      # Set TWILIO_MESSAGING_SERVICE_SID *or* TWILIO_FROM_NUMBER; getTwilioEnv throws
+      # if neither is present. TWILIO_PUBLIC_BASE_URL is optional but should be this
+      # service's public origin so inbound signature validation and StatusCallback match.
+      - key: TWILIO_ACCOUNT_SID
+        sync: false
+      - key: TWILIO_AUTH_TOKEN
+        sync: false
+      - key: TWILIO_MESSAGING_SERVICE_SID
+        sync: false
+      - key: TWILIO_FROM_NUMBER
+        sync: false
+      - key: TWILIO_PUBLIC_BASE_URL
+        sync: false
+
+      # --- Resend email (getEmailEnvOrNull / getUnsubscribeEnv) -----------------
+      # Optional as a group: alert and digest paths degrade gracefully when absent.
+      # WARNING: UNSUBSCRIBE_SECRET must match the Worker's — it HMACs CAN-SPAM
+      # unsubscribe tokens that have already been mailed out, and they never expire.
+      # APP_PUBLIC_BASE_URL should be this service's public origin; when it is unset
+      # the crons emit relative (broken) unsubscribe links.
+      - key: RESEND_API_KEY
+        sync: false
+      - key: RESEND_WEBHOOK_SECRET
+        sync: false
+      - key: UNSUBSCRIBE_SECRET
+        sync: false
+      - key: APP_PUBLIC_BASE_URL
+        sync: false
+
+# ---------------------------------------------------------------------------------
+# Cron jobs — intentionally disabled.
+#
+# Render cron jobs have no free tier (~$1/mo minimum each), and this Blueprint runs
+# the web service on `plan: free`. Cloudflare's [triggers] in wrangler.toml continue
+# to run both schedules, so nothing is lost by leaving these commented out.
+#
+# Before enabling: remove [triggers] and [env.production.triggers] from wrangler.toml,
+# or the CDC catch-up will double-run. (The digest is idempotent per org-day via the
+# last_digest_date claim in digest-cron.server.ts; the CDC catch-up is not.)
+#
+# Both jobs need the same secrets as the web service above — Render forbids `sync: false`
+# inside envVarGroups, so the block must be repeated on each service.
+# ---------------------------------------------------------------------------------
+#
+#  - type: cron
+#    name: nudgepay-cdc
+#    runtime: node
+#    plan: starter
+#    region: oregon
+#    rootDir: nudgepay-app
+#    branch: main
+#    schedule: "*/30 * * * *"
+#    buildCommand: npm ci && npm run build:cron
+#    startCommand: node dist-cron/cdc.js
+#    envVars:
+#      - fromGroup: nudgepay-shared
+#      # ...repeat every `sync: false` key from the web service...
+#
+#  - type: cron
+#    name: nudgepay-digest
+#    runtime: node
+#    plan: starter
+#    region: oregon
+#    rootDir: nudgepay-app
+#    branch: main
+#    schedule: "0 * * * *"
+#    buildCommand: npm ci && npm run build:cron
+#    startCommand: node dist-cron/digest.js
+#    envVars:
+#      - fromGroup: nudgepay-shared
+#      # ...repeat every `sync: false` key from the web service...
