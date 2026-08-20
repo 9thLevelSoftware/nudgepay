@@ -205,3 +205,6 @@ worker-configuration.d.ts
 
 ### Supabase ###
 supabase/.temp/
+
+# Node/Render build output (see render.yaml, scripts/build-cron.mjs)
+/dist-cron/
