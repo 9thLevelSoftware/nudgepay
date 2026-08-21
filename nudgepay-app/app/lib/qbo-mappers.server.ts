@@ -21,6 +21,7 @@ export type InvoiceUpsert = {
   invoice_date: string | null;
   status: string;
   qbo_sync_at: string;
+  paid_date?: string | null;
 };
 
 function money(v: unknown): number {

@@ -11,6 +11,7 @@ import { applyPromiseEvaluation, type BrokenPromiseDetail } from "./promise-eval
 import { loadOrgConfig } from "./org-config.server";
 import { DEFAULT_ORG_CONFIG } from "./org-config";
 import { todayInTz } from "./tz";
+import { mergePaidDate, type ExistingPaidRow } from "./paid-date";
 
 export type NotifyFn = (orgId: string, brokenDetails: BrokenPromiseDetail[], today: string) => Promise<void>;
 
@@ -33,9 +34,45 @@ export async function upsertCustomers(service: SupabaseClient, rows: CustomerUps
   if (error) throw error;
 }
 
-export async function upsertInvoices(service: SupabaseClient, rows: InvoiceUpsert[]): Promise<void> {
+const PAID_DATE_LOOKUP_CHUNK = 200;
+
+function existingPaidRow(row: {
+  qbo_id: unknown; balance: unknown; paid_date: unknown;
+}): ExistingPaidRow {
+  return {
+    qbo_id: String(row.qbo_id),
+    balance: Number(row.balance),
+    paid_date: typeof row.paid_date === "string" ? row.paid_date : null,
+  };
+}
+
+export async function upsertInvoices(
+  service: SupabaseClient, rows: InvoiceUpsert[], syncToday: string,
+): Promise<void> {
   if (rows.length === 0) return;
-  const { error } = await service.from("invoices").upsert(rows, { onConflict: "org_id,qbo_id" });
+  const orgId = rows[0].org_id;
+  const qboIds = [...new Set(rows.map((r) => r.qbo_id))];
+  const existingByQbo = new Map<string, ExistingPaidRow>();
+  for (let i = 0; i < qboIds.length; i += PAID_DATE_LOOKUP_CHUNK) {
+    const chunk = qboIds.slice(i, i + PAID_DATE_LOOKUP_CHUNK);
+    const { data, error } = await service.from("invoices")
+      .select("qbo_id, balance, paid_date")
+      .eq("org_id", orgId)
+      .in("qbo_id", chunk);
+    if (error) throw error;
+    for (const row of data ?? []) {
+      existingByQbo.set(String(row.qbo_id), existingPaidRow(row));
+    }
+  }
+  const merged = rows.map((row) => ({
+    ...row,
+    paid_date: mergePaidDate({
+      existing: existingByQbo.get(row.qbo_id),
+      incomingBalance: row.balance,
+      syncToday,
+    }),
+  }));
+  const { error } = await service.from("invoices").upsert(merged, { onConflict: "org_id,qbo_id" });
   if (error) throw error;
 }
 
@@ -65,6 +102,7 @@ export async function customerIdMap(
 // real balance and its case can auto-resolve.
 export async function repullCustomerInvoices(
   deps: SyncDeps, orgId: string, accessToken: string, realmId: string, qboCustomerIds: string[],
+  syncToday: string,
 ): Promise<void> {
   const ids = [...new Set(qboCustomerIds.filter(Boolean))];
   if (ids.length === 0) return;
@@ -79,7 +117,7 @@ export async function repullCustomerInvoices(
   const now = new Date();
   const rows = invoices.map((inv) =>
     mapQboInvoice(inv, orgId, idMap.get(String(inv?.CustomerRef?.value)) ?? null, now));
-  await upsertInvoices(deps.service, rows);
+  await upsertInvoices(deps.service, rows, syncToday);
 }
 
 export async function applyPaymentsAndEvaluate(
@@ -101,7 +139,7 @@ export async function applyPaymentsAndEvaluate(
   await upsertPayments(deps.service, paymentRows);
 
   if (payCustQboIds.length > 0) {
-    try { await repullCustomerInvoices(deps, orgId, accessToken, realmId, payCustQboIds); }
+    try { await repullCustomerInvoices(deps, orgId, accessToken, realmId, payCustQboIds, today); }
     catch (e) { console.error("[6b] payment re-pull failed", e); }
   }
   try { await applyCaseReconciliation(deps.service, orgId, today); }
@@ -207,7 +245,7 @@ export async function syncOverdueInvoices(
   const invoiceRows = invoices.map((inv) =>
     mapQboInvoice(inv, orgId, idMap.get(String(inv?.CustomerRef?.value)) ?? null, now),
   );
-  await upsertInvoices(deps.service, invoiceRows);
+  await upsertInvoices(deps.service, invoiceRows, today);
 
   // Reuse the org-local `today` computed above (same calendar day as the
   // overdue-invoice query) rather than recomputing from a fresh UTC Date.
@@ -247,11 +285,25 @@ export async function applyInvoiceWebhook(
   const { accessToken, realmId } = await getValidAccessToken(
     deps.fetchFn, deps.service, deps.cfg, deps.key, orgId,
   );
+  const orgConfig = await loadOrgConfig(deps.service, orgId).catch(() => DEFAULT_ORG_CONFIG);
+  const now = new Date();
+  const syncToday = todayInTz(orgConfig.companyProfile.timezone, now);
   const inv = await qboReadEntity(deps.fetchFn, deps.api, accessToken, realmId, "Invoice", qboInvoiceId);
   if (!inv) {
     // Missing at Intuit (deleted): zero local balance so recon can close the case.
+    const { data: existingRow, error: selectError } = await deps.service.from("invoices")
+      .select("qbo_id, balance, paid_date")
+      .eq("org_id", orgId)
+      .eq("qbo_id", qboInvoiceId)
+      .maybeSingle();
+    if (selectError) throw selectError;
+    const existing = existingRow ? existingPaidRow(existingRow) : undefined;
     const { error } = await deps.service.from("invoices")
-      .update({ balance: 0, status: "paid" })
+      .update({
+        balance: 0,
+        status: "paid",
+        paid_date: mergePaidDate({ existing, incomingBalance: 0, syncToday }),
+      })
       .eq("org_id", orgId)
       .eq("qbo_id", qboInvoiceId);
     if (error) throw error;
@@ -267,13 +319,10 @@ export async function applyInvoiceWebhook(
     const idMap = await customerIdMap(deps.service, orgId, [qboCustomerId]);
     customerId = idMap.get(qboCustomerId) ?? null;
   }
-  const now = new Date();
-  await upsertInvoices(deps.service, [mapQboInvoice(inv, orgId, customerId, now)]);
+  await upsertInvoices(deps.service, [mapQboInvoice(inv, orgId, customerId, now)], syncToday);
 
-  const orgConfig = await loadOrgConfig(deps.service, orgId).catch(() => DEFAULT_ORG_CONFIG);
-  const reconcileToday = todayInTz(orgConfig.companyProfile.timezone, now);
   try {
-    await applyPaymentsAndEvaluate(deps, orgId, accessToken, realmId, [], reconcileToday, now);
+    await applyPaymentsAndEvaluate(deps, orgId, accessToken, realmId, [], syncToday, now);
   } catch (e) {
     console.error("[6b] payments/eval failed; cron will re-converge", e);
   }
@@ -317,15 +366,16 @@ export async function runCdcCatchup(
     .map((c) => mapQboCustomer(c, orgId));
   await upsertCustomers(deps.service, customerRows);
 
+  const orgConfig = await loadOrgConfig(deps.service, orgId).catch(() => DEFAULT_ORG_CONFIG);
+  const reconcileToday = todayInTz(orgConfig.companyProfile.timezone, fetchedAt);
+
   const custIds = invoices.map((i) => i?.CustomerRef?.value).filter(Boolean).map(String);
   const idMap = await customerIdMap(deps.service, orgId, custIds);
   const invoiceRows = invoices.map((inv) =>
     mapQboInvoice(inv, orgId, idMap.get(String(inv?.CustomerRef?.value)) ?? null, fetchedAt),
   );
-  await upsertInvoices(deps.service, invoiceRows);
+  await upsertInvoices(deps.service, invoiceRows, reconcileToday);
 
-  const orgConfig = await loadOrgConfig(deps.service, orgId).catch(() => DEFAULT_ORG_CONFIG);
-  const reconcileToday = todayInTz(orgConfig.companyProfile.timezone, fetchedAt);
   const paymentRaws = [
     ...payments.map((p) => ({ raw: p, type: "payment" as const })),
     ...creditMemos.map((c) => ({ raw: c, type: "credit_memo" as const })),

@@ -64,6 +64,16 @@ test("mapQboInvoice maps money with NaN guard and anchors status on due date", (
   expect(row.customer_id).toBe("cust-uuid");
   expect(row.status).toBe("overdue");
   expect(row.qbo_sync_at).toBe(NOW.toISOString());
+  expect("paid_date" in row).toBe(false); // merge fills paid_date; never copy TxnDate
+});
+
+test("mapQboInvoice does not copy TxnDate onto paid_date", () => {
+  const row = mapQboInvoice({
+    Id: "1", TotalAmt: "10", Balance: "0", TxnDate: "2026-05-01", DueDate: "2026-06-01",
+  }, "org-1", "c", NOW);
+  expect(row.invoice_date).toBe("2026-05-01");
+  expect(row.paid_date).toBeUndefined();
+  expect("paid_date" in row).toBe(false);
 });
 
 test("mapQboInvoice coerces unparseable money to 0 (never NaN into numeric column)", () => {
