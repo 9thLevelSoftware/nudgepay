@@ -166,7 +166,8 @@ interface WorkQueueProps {
 }
 
 // ---------------------------------------------------------------------------
-// Row — flex wrapper with a sibling checkbox + flex-1 Link; keyboard-focusable.
+// Row — checkbox + QUEUE_GRID cells; name Link lives in the Customer cell.
+// Pointer clicks on the row open the case; checkbox and action links stop that.
 // ---------------------------------------------------------------------------
 
 function QueueRow({
@@ -192,6 +193,7 @@ function QueueRow({
   collision?: Collision;
   timeZone?: string | null;
 }) {
+  const navigate = useNavigate();
   const params = new URLSearchParams({ case: item.caseId, view, sort, ...(search ? { q: search } : {}) });
   const href = `?${params.toString()}`;
 
@@ -201,8 +203,9 @@ function QueueRow({
   return (
     <div
       role="row"
+      onClick={() => navigate(href)}
       className={[
-        "group relative flex items-center border-b border-border transition-colors duration-100 hover:bg-paper",
+        "group relative flex items-center border-b border-border cursor-pointer transition-colors duration-100 hover:bg-paper",
         selected ? "bg-copper/5" : "",
       ].join(" ")}
     >
@@ -233,6 +236,7 @@ function QueueRow({
           <Link
             to={href}
             aria-current={selected ? "true" : undefined}
+            onClick={(e) => e.stopPropagation()}
             className="block font-sans text-text truncate focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-copper focus-visible:ring-inset rounded"
           >
             {item.customerName}
@@ -310,6 +314,7 @@ function QueueRow({
         <Link
           to={msgHref}
           aria-label={`Send text to ${item.customerName}`}
+          onClick={(e) => e.stopPropagation()}
           className="flex items-center justify-center w-7 h-7 rounded border border-border bg-panel text-muted hover:text-copper hover:border-copper focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-copper transition-colors"
         >
           <Icon name="message" size={14} aria-hidden />
@@ -317,6 +322,7 @@ function QueueRow({
         <Link
           to={logHref}
           aria-label={`Log call for ${item.customerName}`}
+          onClick={(e) => e.stopPropagation()}
           className="flex items-center justify-center w-7 h-7 rounded border border-border bg-panel text-muted hover:text-copper hover:border-copper focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-copper transition-colors"
         >
           <Icon name="phone" size={14} aria-hidden />

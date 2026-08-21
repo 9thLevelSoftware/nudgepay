@@ -41,6 +41,9 @@ describe("TEMP-UX-015 queue table roles", () => {
     expect(customerLink).toBeGreaterThan(customerCell);
     expect(overdueCell).toBeGreaterThan(customerLink);
     expect(row.slice(customerLink, overdueCell)).not.toContain('role="cell"');
+    expect(row).toContain("cursor-pointer");
+    expect(row).toContain("onClick={() => navigate(href)}");
+    expect(row).toMatch(/Send text to \$\{item\.customerName\}[\s\S]*onClick=\{\(e\) => e\.stopPropagation\(\)\}/);
   });
 
   it("keeps mobile cards as a list", () => {
