@@ -2,8 +2,13 @@ import { readFileSync } from "node:fs";
 import { describe, it, expect } from "vitest";
 import {
   visibleWindow,
+  queueRowHeight,
   QUEUE_ROW_H,
+  QUEUE_ROW_DETAILED_H,
+  QUEUE_ROW_RISK_H,
   QUEUE_CARD_H,
+  QUEUE_CARD_DETAILED_H,
+  QUEUE_CARD_RISK_H,
   QUEUE_OVERSCAN,
 } from "../app/lib/virtual-window";
 
@@ -132,13 +137,30 @@ describe("visibleWindow", () => {
   });
 });
 
+describe("queueRowHeight", () => {
+  it("locks general / detailed / risk heights for desktop and mobile", () => {
+    expect(QUEUE_ROW_H).toBe(56);
+    expect(QUEUE_ROW_DETAILED_H).toBe(96);
+    expect(QUEUE_ROW_RISK_H).toBe(64);
+    expect(QUEUE_CARD_H).toBe(108);
+    expect(QUEUE_CARD_DETAILED_H).toBe(132);
+    expect(QUEUE_CARD_RISK_H).toBe(128);
+    expect(queueRowHeight("general", false)).toBe(QUEUE_ROW_H);
+    expect(queueRowHeight("detailed", false)).toBe(QUEUE_ROW_DETAILED_H);
+    expect(queueRowHeight("risk", false)).toBe(QUEUE_ROW_RISK_H);
+    expect(queueRowHeight("general", true)).toBe(QUEUE_CARD_H);
+    expect(queueRowHeight("detailed", true)).toBe(QUEUE_CARD_DETAILED_H);
+    expect(queueRowHeight("risk", true)).toBe(QUEUE_CARD_RISK_H);
+  });
+});
+
 describe("WorkQueue virtualization (NP-AUD-2026-050)", () => {
   it("windows desktop rows and mobile cards instead of mapping every item into the DOM", () => {
     const src = readFileSync(new URL("../app/components/WorkQueue.tsx", import.meta.url), "utf8");
     expect(src).toContain('from "../lib/virtual-window"');
     expect(src).toContain("visibleWindow(");
-    expect(src).toContain("QUEUE_ROW_H");
-    expect(src).toContain("QUEUE_CARD_H");
+    expect(src).toContain("queueRowHeight");
+    expect(src).toMatch(/queueRowHeight\(density,\s*!desktop\)/);
     expect(src).toMatch(/items\.slice\(\w+\.start, \w+\.end\)/);
     // Full-list maps into QueueRow / MobileCard were the original defect.
     expect(src).not.toMatch(/\{items\.map\(\(item\) =>/);

@@ -19,6 +19,9 @@ import {
   type AccountLastContactInput,
 } from "../lib/accounts";
 import type { CustomerInput, InvoiceInput } from "../lib/worklist";
+import { loadReplySource, peekWindowStartIso } from "../lib/activity-peek.server";
+import { loadPayerSource } from "../lib/payer-behavior.server";
+import { parseDensity } from "../lib/queue-chrome";
 import { AppShell } from "../components/AppShell";
 import { SyncIssues } from "../components/SyncIssues";
 import { AccountsMetrics } from "../components/AccountsMetrics";
@@ -52,6 +55,9 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
     : "name";
   const q = sp.get("q") ?? "";
   const customerId = sp.get("customerId");
+  const densityRaw = sp.get("density");
+  const densityFromUrl = densityRaw != null;
+  const density = parseDensity(densityRaw);
 
   const orgConfig = await loadOrgConfig(supabase, org.org_id);
   const today = todayInTz(orgConfig.companyProfile.timezone);
@@ -162,6 +168,32 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
   const roster = await listOrgMembers(service, org.org_id);
   const ownerLabels = new Map(roster.map((m) => [m.userId, m.label]));
 
+  const customerIds = customersInput.map((c) => c.id);
+  const brokenPromiseByCustomer = new Map<string, boolean>();
+  const { data: brokenProms } = await supabase
+    .from("promises")
+    .select("case_id")
+    .eq("org_id", org.org_id)
+    .eq("status", "broken");
+  for (const r of (brokenProms as { case_id: string | null }[] | null) ?? []) {
+    const cid = r.case_id ? caseToCustomer.get(r.case_id) : undefined;
+    if (cid) brokenPromiseByCustomer.set(cid, true);
+  }
+  const replySrc = await loadReplySource({
+    supabase,
+    orgId: org.org_id,
+    customerIds,
+    windowStartIso: peekWindowStartIso(today),
+  });
+  const payerByCustomer = await loadPayerSource({
+    supabase,
+    orgId: org.org_id,
+    customerIds,
+    today,
+    brokenPromiseByCustomer,
+    replyByCustomer: replySrc.replyByCustomer,
+  });
+
   // --- Build rows ---
   const allRows = buildAccountRows(
     customersInput,
@@ -170,7 +202,7 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
     lastContactsInput,
     today,
     ownerLabels,
-  );
+  ).map((r) => ({ ...r, payer: payerByCustomer.get(r.customerId) ?? null }));
   const searched =
     q.trim() === "" ? allRows : allRows.filter((r) => r.searchText.includes(q.toLowerCase()));
   const metrics = computeAccountMetrics(searched);
@@ -195,6 +227,8 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
       filter,
       sort,
       q,
+      density,
+      densityFromUrl,
       selected,
       timeZone: orgConfig.companyProfile.timezone,
     },
@@ -227,6 +261,8 @@ export default function Accounts() {
             filter={d.filter}
             sort={d.sort}
             search={d.q}
+            density={d.density}
+            densityFromUrl={d.densityFromUrl}
             counts={d.counts}
             selectedId={d.selected?.customerId ?? null}
             timeZone={d.timeZone}

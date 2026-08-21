@@ -12,10 +12,22 @@ import { plural } from "../lib/labels";
 import { emptyQueueCopy } from "../lib/empty-queue-copy";
 import {
   visibleWindow,
-  QUEUE_ROW_H,
-  QUEUE_CARD_H,
+  queueRowHeight,
   QUEUE_OVERSCAN,
 } from "../lib/virtual-window";
+import {
+  dashboardHref,
+  dashboardSearchParams,
+  parseDensity,
+  DENSITY_IDS,
+  DENSITY_STORAGE_KEY,
+  type DensityId,
+} from "../lib/queue-chrome";
+import {
+  PAYER_BAND_HINT,
+  PAYER_BAND_LABEL,
+  type PayerBand,
+} from "../lib/payer-behavior";
 import { BulkActionBar } from "./BulkActionBar";
 import { useQueueKeys, type QueueKey } from "../lib/use-queue-keys";
 import { BulkSmsDrawer } from "./BulkSmsDrawer";
@@ -25,13 +37,68 @@ import { statusChipTone, type ChipTone } from "../lib/status-style";
 import type { ComingDueGroup } from "../lib/coming-due";
 import { ComingDueList } from "./ComingDueList";
 
-// Shared grid template — used by both the header row and queue rows so
-// column widths can't drift apart.
-const QUEUE_GRID = [
+// Shared grid templates — header row and queue rows must use the same string
+// so column widths can't drift. Literal Tailwind classes for the v4 scanner.
+const QUEUE_GRID_CUST_GENERAL = [
   "grid-cols-[auto_minmax(180px,2fr)_minmax(96px,0.9fr)_minmax(56px,0.5fr)]",
   "lg:grid-cols-[auto_minmax(180px,2fr)_minmax(96px,0.7fr)_minmax(56px,0.5fr)_minmax(96px,0.7fr)_minmax(230px,2fr)]",
   "xl:grid-cols-[auto_minmax(180px,2fr)_minmax(96px,0.7fr)_minmax(56px,0.5fr)_minmax(96px,0.7fr)_minmax(230px,2fr)_minmax(104px,0.7fr)]",
 ].join(" ");
+const QUEUE_GRID = QUEUE_GRID_CUST_GENERAL;
+
+const QUEUE_GRID_CUST_DETAILED = [
+  "grid-cols-[auto_minmax(160px,1.6fr)_minmax(88px,0.7fr)_minmax(56px,0.4fr)]",
+  "lg:grid-cols-[auto_minmax(160px,1.6fr)_minmax(88px,0.7fr)_minmax(56px,0.4fr)_minmax(220px,2fr)_minmax(200px,1.5fr)]",
+  "xl:grid-cols-[auto_minmax(160px,1.6fr)_minmax(88px,0.7fr)_minmax(56px,0.4fr)_minmax(220px,2fr)_minmax(200px,1.5fr)_minmax(96px,0.6fr)]",
+].join(" ");
+
+const QUEUE_GRID_CUST_RISK = [
+  "grid-cols-[auto_minmax(140px,1.4fr)_minmax(88px,0.7fr)_minmax(48px,0.4fr)]",
+  "lg:grid-cols-[auto_minmax(140px,1.4fr)_minmax(88px,0.7fr)_minmax(48px,0.4fr)_minmax(64px,0.5fr)_minmax(64px,0.5fr)_minmax(56px,0.4fr)]",
+  "xl:grid-cols-[auto_minmax(140px,1.4fr)_minmax(88px,0.7fr)_minmax(48px,0.4fr)_minmax(64px,0.5fr)_minmax(64px,0.5fr)_minmax(56px,0.4fr)_minmax(96px,0.7fr)_minmax(96px,0.6fr)]",
+].join(" ");
+
+function queueGrid(density: DensityId): string {
+  if (density === "detailed") return QUEUE_GRID_CUST_DETAILED;
+  if (density === "risk") return QUEUE_GRID_CUST_RISK;
+  return QUEUE_GRID;
+}
+
+const DENSITY_LABEL: Record<DensityId, string> = {
+  general: "General",
+  detailed: "Detailed",
+  risk: "Risk",
+};
+
+const PAYER_CHIP: Record<PayerBand, string> = {
+  good: "bg-cool/10 text-cool",
+  fair: "bg-warm/10 text-warm",
+  risk: "bg-hot/10 text-hot",
+  unknown: "bg-muted/10 text-muted",
+};
+
+function persistDensity(id: DensityId) {
+  try { localStorage.setItem(DENSITY_STORAGE_KEY, id); } catch { /* private mode */ }
+}
+
+function formatDtp(days: number | null | undefined): string {
+  return days == null || !Number.isFinite(days) ? "—" : `${Math.round(days)}d`;
+}
+
+function formatReplyPct(rate: number | null | undefined): string {
+  return rate == null || !Number.isFinite(rate) ? "—" : `${Math.round(rate * 100)}%`;
+}
+
+function PayerChip({ band }: { band: PayerBand }) {
+  return (
+    <span
+      className={`inline-flex items-center rounded px-1.5 py-0.5 text-[10px] font-sans font-semibold ${PAYER_CHIP[band]}`}
+      title={PAYER_BAND_HINT}
+    >
+      {PAYER_BAND_LABEL[band]}
+    </span>
+  );
+}
 
 // ---------------------------------------------------------------------------
 // Static maps — Tailwind v4 scanner requires literal class strings; no template
@@ -143,6 +210,8 @@ interface WorkQueueProps {
   view: ViewId;
   sort: SortId;
   search: string;
+  density: DensityId;
+  densityFromUrl: boolean;
   selectedCaseId: string | null;
   totalCount: number;
   viewCounts: Record<ViewId, number>;
@@ -176,6 +245,8 @@ function QueueRow({
   view,
   sort,
   search,
+  density,
+  hrefDensity,
   checked,
   onToggle,
   disabled,
@@ -187,6 +258,8 @@ function QueueRow({
   view: ViewId;
   sort: SortId;
   search: string;
+  density: DensityId;
+  hrefDensity?: DensityId;
   checked: boolean;
   onToggle: (id: string) => void;
   disabled: boolean;
@@ -194,11 +267,14 @@ function QueueRow({
   timeZone?: string | null;
 }) {
   const navigate = useNavigate();
-  const params = new URLSearchParams({ case: item.caseId, view, sort, ...(search ? { q: search } : {}) });
-  const href = `?${params.toString()}`;
-
-  const msgHref = `?${new URLSearchParams({ case: item.caseId, tab: "messages", view, sort, ...(search ? { q: search } : {}) }).toString()}`;
-  const logHref = `?${new URLSearchParams({ case: item.caseId, log: "1", method: "call", view, sort, ...(search ? { q: search } : {}) }).toString()}`;
+  const chrome = { view, sort, q: search || undefined, density: hrefDensity, case: item.caseId };
+  const href = dashboardHref(chrome);
+  const msgHref = dashboardHref({ ...chrome, tab: "messages" });
+  const logParams = dashboardSearchParams(chrome);
+  logParams.set("log", "1");
+  logParams.set("method", "call");
+  const logHref = `?${logParams.toString()}`;
+  const band: PayerBand = item.payer?.band ?? "unknown";
 
   return (
     <div
@@ -224,7 +300,7 @@ function QueueRow({
       {/* role=presentation flattens this grid wrapper so cells are owned by the row. */}
       <div
         role="presentation"
-        className={`flex-1 grid items-center gap-x-6 gap-y-0 ${QUEUE_GRID} px-4 py-2 text-sm`}
+        className={`flex-1 grid items-center gap-x-6 gap-y-0 ${queueGrid(density)} px-4 py-2 text-sm`}
       >
         {/* Heat */}
         <span role="cell" data-label="Heat" className="hidden md:flex">
@@ -271,37 +347,61 @@ function QueueRow({
           )}
         </span>
 
-        {/* Last contact */}
-        <span role="cell" data-label="Last contact" className="hidden lg:block min-w-0">
-          {item.lastContact ? (
-            <>
-              <span className="block text-text text-xs">{formatInstant(item.lastContact.date, timeZone)}</span>
-              <span className="block text-muted text-xs capitalize">{item.lastContact.channel}</span>
-            </>
-          ) : (
-            <span className="text-muted text-xs">Never contacted</span>
-          )}
-          <CollisionMarker collision={collision} />
-        </span>
+        {density === "detailed" ? (
+          <span role="cell" data-label="Peek" className="hidden lg:flex flex-col min-w-0 gap-0.5">
+            {item.peeks.slice(0, 2).map((p, i) => (
+              <span key={`${p.at}-${p.kind}-${i}`} className="block truncate text-xs text-muted">{p.summary}</span>
+            ))}
+          </span>
+        ) : null}
 
-        {/* Status + next action date */}
-        <span role="cell" data-label="Status" className="hidden lg:flex flex-col items-start gap-0.5 min-w-0">
-          {(() => {
-            const tone = statusChipTone(item.status);
-            return (
-              <span className={`inline-flex items-center gap-1.5 rounded-md px-2 py-0.5 text-[11.5px] font-sans font-semibold ${CHIP[tone]}`}>
-                <span aria-hidden="true" className={`w-1.5 h-1.5 rounded-full ${CHIP_DOT[tone]}`} />
-                {STATUS_LABEL[item.status] ?? item.status}
-                {item.nextActionAt ? <span className="font-normal opacity-80"> · {formatDate(item.nextActionAt)}</span> : null}
-              </span>
-            );
-          })()}
-          {item.promiseStatus === "broken" ? (
-            <span className="text-[11px] text-hot pl-0.5">Promise broken</span>
-          ) : item.status === "on_hold" && item.exceptionReason ? (
-            <span className="text-[11px] text-muted pl-0.5">{exceptionLabel(item.exceptionReason)}</span>
-          ) : null}
-        </span>
+        {density === "risk" ? (
+          <>
+            <span role="cell" data-label="Payer" className="hidden lg:flex">
+              <PayerChip band={band} />
+            </span>
+            <span role="cell" data-label="Days-to-pay" className="hidden lg:block font-mono text-xs text-muted tabular-nums">
+              {formatDtp(item.payer?.daysToPay)}
+            </span>
+            <span role="cell" data-label="Reply" className="hidden lg:block font-mono text-xs text-muted tabular-nums">
+              {formatReplyPct(item.payer?.replyRate)}
+            </span>
+          </>
+        ) : null}
+
+        {density !== "detailed" ? (
+          <span role="cell" data-label="Last contact" className={density === "risk" ? "hidden xl:block min-w-0" : "hidden lg:block min-w-0"}>
+            {item.lastContact ? (
+              <>
+                <span className="block text-text text-xs">{formatInstant(item.lastContact.date, timeZone)}</span>
+                <span className="block text-muted text-xs capitalize">{item.lastContact.channel}</span>
+              </>
+            ) : (
+              <span className="text-muted text-xs">Never contacted</span>
+            )}
+            <CollisionMarker collision={collision} />
+          </span>
+        ) : null}
+
+        {density !== "risk" ? (
+          <span role="cell" data-label="Status" className="hidden lg:flex flex-col items-start gap-0.5 min-w-0">
+            {(() => {
+              const tone = statusChipTone(item.status);
+              return (
+                <span className={`inline-flex items-center gap-1.5 rounded-md px-2 py-0.5 text-[11.5px] font-sans font-semibold ${CHIP[tone]}`}>
+                  <span aria-hidden="true" className={`w-1.5 h-1.5 rounded-full ${CHIP_DOT[tone]}`} />
+                  {STATUS_LABEL[item.status] ?? item.status}
+                  {item.nextActionAt ? <span className="font-normal opacity-80"> · {formatDate(item.nextActionAt)}</span> : null}
+                </span>
+              );
+            })()}
+            {item.promiseStatus === "broken" ? (
+              <span className="text-[11px] text-hot pl-0.5">Promise broken</span>
+            ) : item.status === "on_hold" && item.exceptionReason ? (
+              <span className="text-[11px] text-muted pl-0.5">{exceptionLabel(item.exceptionReason)}</span>
+            ) : null}
+          </span>
+        ) : null}
 
         {/* Owner chip */}
         <span role="cell" data-label="Owner" className="hidden xl:inline-flex items-center gap-1 rounded-full bg-panel border border-border px-2 py-0.5 text-xs text-muted font-sans whitespace-nowrap">
@@ -337,14 +437,15 @@ function QueueRow({
 // ---------------------------------------------------------------------------
 
 function MobileCard({
-  item, selected, view, sort, search, checked, onToggle, disabled, collision, timeZone,
+  item, selected, view, sort, search, density, hrefDensity, checked, onToggle, disabled, collision, timeZone,
 }: {
   item: CaseItem; selected: boolean; view: ViewId; sort: SortId; search: string;
+  density: DensityId; hrefDensity?: DensityId;
   checked: boolean; onToggle: (id: string) => void; disabled: boolean; collision?: Collision;
   timeZone?: string | null;
 }) {
-  const params = new URLSearchParams({ case: item.caseId, view, sort, ...(search ? { q: search } : {}) });
-  const href = `?${params.toString()}`;
+  const href = dashboardHref({ view, sort, q: search || undefined, density: hrefDensity, case: item.caseId });
+  const band: PayerBand = item.payer?.band ?? "unknown";
   return (
     <div className={["flex gap-2 items-start bg-surface border rounded-lg p-3 mb-2", selected ? "border-copper ring-2 ring-copper bg-copper/5" : "border-border"].join(" ")}>
       <label className="pt-1 cursor-pointer" onClick={(e) => e.stopPropagation()}>
@@ -390,6 +491,14 @@ function MobileCard({
           )}
           <CollisionMarker collision={collision} />
         </div>
+        {density === "detailed" && item.peeks[0] ? (
+          <p className="mt-1 text-xs text-muted truncate">{item.peeks[0].summary}</p>
+        ) : null}
+        {density === "risk" ? (
+          <p className="mt-1 text-xs text-muted truncate">
+            {PAYER_BAND_LABEL[band]} · {formatDtp(item.payer?.daysToPay)} · {formatReplyPct(item.payer?.replyRate)}
+          </p>
+        ) : null}
       </Link>
     </div>
   );
@@ -453,6 +562,8 @@ export function WorkQueue({
   view,
   sort,
   search,
+  density,
+  densityFromUrl,
   selectedCaseId,
   totalCount,
   viewCounts,
@@ -476,17 +587,18 @@ export function WorkQueue({
   const [smsOpen, setSmsOpen] = useState(false);
   const nav = useNavigation();
   const { scrollerRef, scrollTop, viewportH } = useQueueScroller();
+  const hrefDensity = densityFromUrl ? density : undefined;
   const desk = visibleWindow({
     scrollTop,
     viewportH,
-    rowH: QUEUE_ROW_H,
+    rowH: queueRowHeight(density, false),
     count: items.length,
     overscan: QUEUE_OVERSCAN,
   });
   const mobile = visibleWindow({
     scrollTop,
     viewportH,
-    rowH: QUEUE_CARD_H,
+    rowH: queueRowHeight(density, true),
     count: items.length,
     overscan: QUEUE_OVERSCAN,
   });
@@ -570,12 +682,26 @@ export function WorkQueue({
       : currentIdx - 1;                              // k: move up
     const target = items[nextIdx];
     if (target) {
-      const p = new URLSearchParams({ case: target.caseId, view, sort, ...(search ? { q: search } : {}) });
-      navigate(`?${p.toString()}`);
+      navigate(dashboardHref({ view, sort, q: search || undefined, density: hrefDensity, case: target.caseId }));
     }
-  }, [items, selectedCaseId, view, sort, search, navigate, toggle]);
+  }, [items, selectedCaseId, view, sort, search, hrefDensity, navigate, toggle]);
 
   useQueueKeys({ enabled: true, onAction: handleQueueKey });
+
+  // First landing: restore density from localStorage once when the URL has no param.
+  useEffect(() => {
+    if (densityFromUrl) return;
+    let stored: string | null = null;
+    try { stored = localStorage.getItem(DENSITY_STORAGE_KEY); } catch { return; }
+    const next = parseDensity(stored);
+    if (stored !== "general" && stored !== "detailed" && stored !== "risk") return;
+    persistDensity(next);
+    navigate(dashboardHref({
+      view, sort, q: search || undefined, density: next, case: selectedCaseId,
+    }), { replace: true });
+  // First landing only — URL is source of truth after a density click.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Keep the selected row in the scrollport so j/k (and deep-links) still land
   // on a mounted row after windowing.
@@ -585,14 +711,14 @@ export function WorkQueue({
     const idx = items.findIndex((i) => i.caseId === selectedCaseId);
     if (idx < 0) return;
     const desktop = typeof window !== "undefined" && window.matchMedia(MD_MIN).matches;
-    const rowH = desktop ? QUEUE_ROW_H : QUEUE_CARD_H;
+    const rowH = queueRowHeight(density, !desktop);
     const rowTop = idx * rowH;
     const rowBottom = rowTop + rowH;
     const viewTop = el.scrollTop;
     const viewBottom = el.scrollTop + el.clientHeight;
     if (rowTop < viewTop) el.scrollTop = rowTop;
     else if (rowBottom > viewBottom) el.scrollTop = Math.max(0, rowBottom - el.clientHeight);
-  }, [selectedCaseId, items, scrollerRef]);
+  }, [selectedCaseId, items, scrollerRef, density]);
 
   const emptyCopy = emptyQueueCopy({ connected, view, q: search });
 
@@ -615,9 +741,28 @@ export function WorkQueue({
           </p>
         </div>
 
-        {/* GET form; submit preserves view via hidden input */}
+        <div className="flex items-center rounded-md border border-border bg-panel p-0.5" aria-label="Queue density">
+          {DENSITY_IDS.map((id) => (
+            <Link
+              key={id}
+              to={dashboardHref({ view, sort, q: search || undefined, density: id, case: selectedCaseId })}
+              aria-pressed={density === id}
+              onClick={() => persistDensity(id)}
+              className={[
+                "px-2.5 h-8 inline-flex items-center rounded text-xs font-sans font-medium transition-colors",
+                "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-copper",
+                density === id ? "bg-ink text-surface" : "text-muted hover:text-text",
+              ].join(" ")}
+            >
+              {DENSITY_LABEL[id]}
+            </Link>
+          ))}
+        </div>
+
+        {/* GET form; submit preserves view + density via hidden inputs (not sort). */}
         <Form method="get" className="flex items-center gap-2 ml-auto">
           <input type="hidden" name="view" value={view} />
+          {hrefDensity ? <input type="hidden" name="density" value={hrefDensity} /> : null}
 
           {/* Search input */}
           <label className="flex items-center gap-1.5 w-56 rounded-md border border-border bg-panel px-2.5 h-9 text-sm text-text focus-within:ring-2 focus-within:ring-copper focus-within:border-transparent transition-shadow">
@@ -657,7 +802,7 @@ export function WorkQueue({
             Apply
           </button>
           <a
-            href={`/queue.csv?${new URLSearchParams({ view, sort, ...(search ? { q: search } : {}) }).toString()}`}
+            href={`/queue.csv${dashboardHref({ view, sort, q: search || undefined, density: hrefDensity })}`}
             className="rounded-md border border-border bg-panel px-3 h-9 inline-flex items-center text-xs font-sans text-muted hover:text-text hover:border-copper transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-copper"
           >
             Export CSV
@@ -672,15 +817,10 @@ export function WorkQueue({
       >
         {SAVED_VIEWS.map((sv) => {
           const isActive = view === sv.id;
-          const params = new URLSearchParams({
-            view: sv.id,
-            sort,
-            ...(search ? { q: search } : {}),
-          });
           return (
             <Link
               key={sv.id}
-              to={`?${params.toString()}`}
+              to={dashboardHref({ view: sv.id, sort, q: search || undefined, density: hrefDensity })}
               aria-current={isActive ? "page" : undefined}
               className={[
                 "flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-[12.5px] whitespace-nowrap transition-colors",
@@ -717,13 +857,27 @@ export function WorkQueue({
                 className="h-4 w-4 rounded border-border text-copper focus-visible:ring-2 focus-visible:ring-copper"
               />
             </label>
-            <div className={`flex-1 grid items-center gap-x-6 ${QUEUE_GRID}`} aria-hidden="true">
+            <div className={`flex-1 grid items-center gap-x-6 ${queueGrid(density)}`} aria-hidden="true">
               <span className="font-sans text-xs text-muted uppercase tracking-wide">Heat</span>
               <span className="font-sans text-xs text-muted uppercase tracking-wide">Customer</span>
               <span className="font-sans text-xs text-muted uppercase tracking-wide text-right">Total overdue</span>
               <span className="font-sans text-xs text-muted uppercase tracking-wide">Oldest age</span>
-              <span className="font-sans text-xs text-muted uppercase tracking-wide hidden lg:block">Last contact</span>
-              <span className="font-sans text-xs text-muted uppercase tracking-wide hidden lg:block">Status</span>
+              {density === "detailed" ? (
+                <span className="font-sans text-xs text-muted uppercase tracking-wide hidden lg:block">Peek</span>
+              ) : null}
+              {density === "risk" ? (
+                <>
+                  <span className="font-sans text-xs text-muted uppercase tracking-wide hidden lg:block">Payer</span>
+                  <span className="font-sans text-xs text-muted uppercase tracking-wide hidden lg:block">DTP</span>
+                  <span className="font-sans text-xs text-muted uppercase tracking-wide hidden lg:block">Reply</span>
+                </>
+              ) : null}
+              {density !== "detailed" ? (
+                <span className={`font-sans text-xs text-muted uppercase tracking-wide ${density === "risk" ? "hidden xl:block" : "hidden lg:block"}`}>Last contact</span>
+              ) : null}
+              {density !== "risk" ? (
+                <span className="font-sans text-xs text-muted uppercase tracking-wide hidden lg:block">Status</span>
+              ) : null}
               <span className="font-sans text-xs text-muted uppercase tracking-wide hidden xl:block">Owner</span>
             </div>
           </div>
@@ -743,7 +897,7 @@ export function WorkQueue({
             <p className="font-sans text-text font-medium">{emptyCopy.title}</p>
             {emptyCopy.clearSearch ? (
               <p className="font-sans text-sm text-muted max-w-xs">
-                <Link to={`?view=all-open&sort=${sort}`} className="text-copper hover:underline font-medium">Clear the search</Link>{" "}
+                <Link to={dashboardHref({ view: "all-open", sort, density: hrefDensity })} className="text-copper hover:underline font-medium">Clear the search</Link>{" "}
                 or pick another view.
               </p>
             ) : null}
@@ -758,9 +912,17 @@ export function WorkQueue({
                 <span role="columnheader">Customer</span>
                 <span role="columnheader">Total overdue</span>
                 <span role="columnheader">Oldest age</span>
-                <span role="columnheader" className="hidden lg:inline">Last contact</span>
-                <span role="columnheader" className="hidden lg:inline">Status</span>
-                <span role="columnheader" className="hidden xl:inline">Owner</span>
+                {density === "detailed" ? <span role="columnheader">Peek</span> : null}
+                {density === "risk" ? (
+                  <>
+                    <span role="columnheader">Payer</span>
+                    <span role="columnheader">Days-to-pay</span>
+                    <span role="columnheader">Reply</span>
+                  </>
+                ) : null}
+                {density !== "detailed" ? <span role="columnheader">Last contact</span> : null}
+                {density !== "risk" ? <span role="columnheader">Status</span> : null}
+                <span role="columnheader">Owner</span>
                 <span role="columnheader">Actions</span>
               </div>
               {/* Rows — only the visible window (+ overscan) is mounted. */}
@@ -776,6 +938,8 @@ export function WorkQueue({
                     view={view}
                     sort={sort}
                     search={search}
+                    density={density}
+                    hrefDensity={hrefDensity}
                     checked={selected.has(item.caseId)}
                     onToggle={toggle}
                     disabled={!selected.has(item.caseId) && capReached}
@@ -801,6 +965,8 @@ export function WorkQueue({
                     view={view}
                     sort={sort}
                     search={search}
+                    density={density}
+                    hrefDensity={hrefDensity}
                     checked={selected.has(item.caseId)}
                     onToggle={toggle}
                     disabled={!selected.has(item.caseId) && capReached}

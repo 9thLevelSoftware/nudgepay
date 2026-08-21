@@ -6,8 +6,11 @@ import { requireOrgUser } from "../lib/session.server";
 import { getConnectionStatus } from "../lib/qbo-connection.server";
 import { createSupabaseServiceClient } from "../lib/supabase.server";
 import { loadCaseQueueSource } from "../lib/case-queue.server";
-import { loadPeekSource, peekWindowStartIso } from "../lib/activity-peek.server";
+import { loadPeekSource, loadReplySource, peekWindowStartIso } from "../lib/activity-peek.server";
 import type { ActivityPeek } from "../lib/activity-peek";
+import { loadPayerSource } from "../lib/payer-behavior.server";
+import type { PayerStats } from "../lib/payer-behavior";
+import { dashboardHref, parseDensity, parseSort, type DensityId } from "../lib/queue-chrome";
 import { loadOrgConfig } from "../lib/org-config.server";
 import { todayInTz } from "../lib/tz";
 import type { OrgMember } from "../lib/orgs.server";
@@ -60,6 +63,7 @@ type DashboardParams = {
   view: ViewId;
   sort: SortId;
   q: string;
+  density?: DensityId;
   caseId: string | null;
   invoice?: string | null;
   tab?: "overview" | "activity" | "messages" | "email";
@@ -92,7 +96,7 @@ export function buildCaseData(
   config: OrgConfig,
   comingDueInvoices: InvoiceInput[] = [],
   peeksByCase: Map<string, ActivityPeek[]> = new Map(),
-  payerByCustomer: Map<string, CaseItem["payer"]> = new Map(),
+  payerByCustomer: Map<string, PayerStats> = new Map(),
 ): DashboardData {
   const { view, sort, q, caseId } = params;
   const highValue = config.priority.highValue;
@@ -236,15 +240,16 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
   const sp = url.searchParams;
 
   const VALID_VIEWS: ViewId[] = ["all-open", "coming-due", "30-plus", "high-value", "never-contacted", "follow-ups-due", "broken-promises", "waiting", "on-hold", "my-work"];
-  const VALID_SORTS: SortId[] = ["recommended", "most-overdue", "highest-balance", "customer"];
   const VALID_TABS = ["overview", "activity", "messages", "email"] as const;
 
   const rawView = sp.get("view") ?? "";
-  const rawSort = sp.get("sort") ?? "";
   const rawTab = sp.get("tab") ?? "";
+  const densityRaw = sp.get("density");
+  const densityFromUrl = densityRaw != null;
+  const density = parseDensity(densityRaw);
 
   const view: ViewId = VALID_VIEWS.includes(rawView as ViewId) ? (rawView as ViewId) : "all-open";
-  const sort: SortId = VALID_SORTS.includes(rawSort as SortId) ? (rawSort as SortId) : "recommended";
+  const sort: SortId = parseSort(sp.get("sort"));
   const q = sp.get("q") ?? "";
   const caseId = sp.get("case") ?? null;
   const invoice = sp.get("invoice") ?? null; // optional sub-selection for invoice-specific actions
@@ -313,17 +318,40 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
 
   const emailEnabled = resolveEmailSettings(ecfg as any).emailEnabled;
 
-  const peekSrc = await loadPeekSource({
+  const customerIds = [...new Set(cases.map((c) => c.customerId).filter(Boolean))];
+  const windowStartIso = peekWindowStartIso(today);
+  const brokenPromiseByCustomer = new Map<string, boolean>();
+  const caseById = new Map(cases.map((c) => [c.id, c]));
+  for (const p of promisesInput) {
+    if (p.status !== "broken") continue;
+    const cse = caseById.get(p.caseId);
+    if (cse) brokenPromiseByCustomer.set(cse.customerId, true);
+  }
+  const peekP = loadPeekSource({
     supabase,
     orgId: org.org_id,
     caseIds: cases.map((c) => c.id),
-    windowStartIso: peekWindowStartIso(today),
+    windowStartIso,
   });
+  const payerP = loadReplySource({
+    supabase,
+    orgId: org.org_id,
+    customerIds,
+    windowStartIso,
+  }).then((replySrc) => loadPayerSource({
+    supabase,
+    orgId: org.org_id,
+    customerIds,
+    today,
+    brokenPromiseByCustomer,
+    replyByCustomer: replySrc.replyByCustomer,
+  }));
+  const [peekSrc, payerByCustomer] = await Promise.all([peekP, payerP]);
 
   const dashboardData: DashboardData = buildCaseData(
     cases, invoicesInput, customersInput, lastContactsInput, promisesInput,
-    { view, sort, q, caseId, invoice, tab }, today, ownerLabels, user.id, orgConfig,
-    comingDueInvoices, peekSrc.peeksByCase,
+    { view, sort, q, density: densityFromUrl ? density : undefined, caseId, invoice, tab }, today, ownerLabels, user.id, orgConfig,
+    comingDueInvoices, peekSrc.peeksByCase, payerByCustomer,
   );
 
   const sel = dashboardData.selected;
@@ -431,6 +459,8 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
       view,
       sort,
       q,
+      density,
+      densityFromUrl,
       case: caseId,
       invoice,
       repInvoiceId: selectedRepInvoiceId,
@@ -499,6 +529,8 @@ export default function Dashboard() {
     view,
     sort,
     q,
+    density,
+    densityFromUrl,
     tab,
     log,
     logMethod,
@@ -560,7 +592,10 @@ export default function Dashboard() {
   const scopeLabel = isFiltered
     ? q ? `Filtered — matching "${q}"` : `Filtered — ${VIEW_LABEL[view ?? ""] ?? view}`
     : null;
-  const clearHref = isFiltered ? "?view=all-open&sort=" + sort : undefined;
+  const hrefDensity = densityFromUrl ? density : undefined;
+  const clearHref = isFiltered
+    ? dashboardHref({ view: "all-open", sort, density: hrefDensity })
+    : undefined;
 
   return (
     <AppShell
@@ -627,11 +662,11 @@ export default function Dashboard() {
       <div className="flex flex-col h-full">
           {/* KPI band */}
           <div className="px-6 py-3 border-b border-border bg-panel shrink-0">
-            <KpiBand metrics={metrics} view={view} sort={sort} search={q} scopeLabel={scopeLabel} clearHref={clearHref} />
+            <KpiBand metrics={metrics} view={view} sort={sort} search={q} density={hrefDensity} scopeLabel={scopeLabel} clearHref={clearHref} />
           </div>
 
           {/* Triage strip — top-3 actionable cases */}
-          <TriageStrip items={items} view={view} sort={sort} search={q} timeZone={timeZone} />
+          <TriageStrip items={items} view={view} sort={sort} search={q} density={hrefDensity} timeZone={timeZone} />
 
           {/* Workspace: queue full-width until a case is selected; md+ two-pane, <md detail fills */}
           <div className="flex flex-1 overflow-hidden">
@@ -642,11 +677,13 @@ export default function Dashboard() {
                 view={view}
                 sort={sort}
                 search={q}
+                density={density}
+                densityFromUrl={densityFromUrl}
                 selectedCaseId={selected?.caseId ?? null}
                 totalCount={viewCounts["all-open"]}
                 viewCounts={viewCounts}
                 roster={roster}
-                returnTo={`/dashboard?${new URLSearchParams({ view, sort, ...(q ? { q } : {}) }).toString()}`}
+                returnTo={`/dashboard${dashboardHref({ view, sort, q: q || undefined, density: hrefDensity })}`}
                 collisions={collisions}
                 smsEnabled={smsEnabled}
                 smsQuietNow={smsQuietNow}
@@ -688,6 +725,7 @@ export default function Dashboard() {
                   view={view}
                   sort={sort}
                   q={q}
+                  density={hrefDensity}
                   collision={selected ? (collisions[selected.caseId] ?? null) : null}
                   smsTemplates={smsTemplates}
                   emailTemplates={emailTemplates}
@@ -706,7 +744,7 @@ export default function Dashboard() {
               key={selected.caseId}
               selected={selected}
               repInvoiceId={repInvoiceId ?? null}
-              returnTo={`/dashboard?${new URLSearchParams({ case: selected.caseId, tab, view, sort, ...(q ? { q } : {}) }).toString()}`}
+              returnTo={`/dashboard${dashboardHref({ view, sort, q: q || undefined, density: hrefDensity, case: selected.caseId, tab })}`}
               logError={logError}
               collision={collisions[selected.caseId] ?? null}
               method={logMethod}
@@ -719,8 +757,8 @@ export default function Dashboard() {
               caseId={selected.caseId}
               repInvoiceId={repInvoiceId ?? null}
               prefs={selectedPrefs}
-              returnTo={`/dashboard?${new URLSearchParams({ case: selected.caseId, tab, view, sort, ...(q ? { q } : {}) }).toString()}`}
-              closeHref={`?${new URLSearchParams({ case: selected.caseId, tab, view, sort, ...(q ? { q } : {}) }).toString()}`}
+              returnTo={`/dashboard${dashboardHref({ view, sort, q: q || undefined, density: hrefDensity, case: selected.caseId, tab })}`}
+              closeHref={dashboardHref({ view, sort, q: q || undefined, density: hrefDensity, case: selected.caseId, tab })}
             />
           ) : null}
         </div>

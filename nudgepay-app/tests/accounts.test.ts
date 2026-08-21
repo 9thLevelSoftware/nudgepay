@@ -94,6 +94,18 @@ test("computeAccountMetrics totals customers, open AR, unassigned, paid-up", () 
   expect(m.paidUpCount).toBe(1);
 });
 
+test("AccountsDirectory is General | Risk only and preserves density", () => {
+  const src = readFileSync(new URL("../app/components/AccountsDirectory.tsx", import.meta.url), "utf8");
+  expect(src).toContain("ACCOUNTS_DENSITY_IDS");
+  expect(src).toContain("accountsHref");
+  expect(src).toContain("Oldest overdue");
+  expect(src).toContain("Open A/R");
+  expect(src).not.toContain("Detailed");
+  const route = readFileSync(new URL("../app/routes/accounts.tsx", import.meta.url), "utf8");
+  expect(route).toContain("loadPayerSource");
+  expect(route).toContain("loadReplySource");
+});
+
 test("AccountsMetrics labels the count as collections customers, not the QBO directory", () => {
   const src = readFileSync(new URL("../app/components/AccountsMetrics.tsx", import.meta.url), "utf8");
   expect(src).toContain('label="Customers in collections"');
