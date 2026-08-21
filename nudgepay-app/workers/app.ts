@@ -1,6 +1,7 @@
 import { createRequestHandler } from "react-router";
 import { runScheduledCdc } from "../app/lib/qbo-cron.server";
 import { runScheduledDigest } from "../app/lib/digest-cron.server";
+import { withSecurityHeaders } from "../app/lib/security-headers";
 
 declare module "react-router" {
 	export interface AppLoadContext {
@@ -17,10 +18,11 @@ const requestHandler = createRequestHandler(
 );
 
 export default {
-	fetch(request, env, ctx) {
-		return requestHandler(request, {
+	async fetch(request, env, ctx) {
+		const response = await requestHandler(request, {
 			cloudflare: { env, ctx },
 		});
+		return withSecurityHeaders(response);
 	},
 	scheduled(controller, env, ctx) {
 		const envRecord = env as unknown as Record<string, string>;

@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { expect, test } from "vitest";
 import { serviceClient, makeUserClient } from "./helpers";
-import { parseCommPrefsUpdate } from "../app/routes/api.comm-prefs";
+import { parseCommPrefsUpdate } from "../app/lib/comm-prefs";
 
 function fd(entries: Record<string, string>): FormData {
   const f = new FormData();
@@ -11,8 +11,13 @@ function fd(entries: Record<string, string>): FormData {
 
 // --- pure parsing (the action's real logic) ---
 test("parseCommPrefsUpdate maps a valid channel and the checked opt-outs", () => {
-  expect(parseCommPrefsUpdate(fd({ preferred_channel: "text", do_not_call: "true", do_not_text: "true" })))
-    .toEqual({ preferred_channel: "text", do_not_call: true, do_not_text: true, do_not_email: false });
+  expect(parseCommPrefsUpdate(fd({
+    preferred_channel: "text",
+    do_not_call_set: "1", do_not_call: "true",
+    do_not_text_set: "1", do_not_text: "true",
+    do_not_email_set: "1", do_not_email: "true",
+  })))
+    .toEqual({ preferred_channel: "text", do_not_call: true, do_not_text: true, do_not_email: true });
 });
 
 test("parseCommPrefsUpdate coerces empty/unknown/missing channel to null", () => {
@@ -25,8 +30,8 @@ test("parseCommPrefsUpdate never includes sms_consent (legal record untouched)",
   expect("sms_consent" in parseCommPrefsUpdate(fd({ do_not_text: "true" }))).toBe(false);
 });
 
-test("a non-true checkbox value resolves to false", () => {
-  const u = parseCommPrefsUpdate(fd({ do_not_call: "false" }));
+test("a non-true checkbox value resolves to false when the sentinel is posted", () => {
+  const u = parseCommPrefsUpdate(fd({ do_not_call_set: "1", do_not_call: "false", do_not_text_set: "1" }));
   expect(u.do_not_call).toBe(false);
   expect(u.do_not_text).toBe(false);
 });

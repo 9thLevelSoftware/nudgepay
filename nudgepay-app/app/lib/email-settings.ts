@@ -27,13 +27,33 @@ export type EmailSettingsUpdate =
   | { ok: true; value: { email_enabled: boolean; from_address: string; from_name: string; postal_address: string } }
   | { ok: false; error: string };
 
-export function parseEmailSettingsUpdate(form: FormData): EmailSettingsUpdate {
+export function parseAllowedFromList(raw: string | null | undefined): string[] {
+  return (raw ?? "")
+    .split(",")
+    .map((s) => s.trim().toLowerCase())
+    .filter(Boolean);
+}
+
+export function fromAddressAllowed(fromAddress: string, allowlist: string[]): boolean {
+  if (allowlist.length === 0) return true;
+  return allowlist.includes(fromAddress.trim().toLowerCase());
+}
+
+export function parseEmailSettingsUpdate(
+  form: FormData,
+  allowlist: string[] = [],
+): EmailSettingsUpdate {
   const email_enabled = form.get("email_enabled") === "true";
   const from_address = (typeof form.get("from_address") === "string" ? (form.get("from_address") as string) : "").trim();
   const from_name = (typeof form.get("from_name") === "string" ? (form.get("from_name") as string) : "").trim();
   const postal_address = (typeof form.get("postal_address") === "string" ? (form.get("postal_address") as string) : "").trim();
   if (from_address !== "" && !EMAIL_RE.test(from_address)) {
     return { ok: false, error: "address" };
+  }
+  if (email_enabled) {
+    if (!from_address) return { ok: false, error: "address" };
+    if (!postal_address) return { ok: false, error: "postal" };
+    if (!fromAddressAllowed(from_address, allowlist)) return { ok: false, error: "from_allowlist" };
   }
   return { ok: true, value: { email_enabled, from_address, from_name, postal_address } };
 }

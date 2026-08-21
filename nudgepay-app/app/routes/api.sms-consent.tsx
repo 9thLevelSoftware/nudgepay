@@ -41,9 +41,30 @@ export async function action({ request, context }: ActionFunctionArgs) {
   }
   if (!customerId) return redirect(withSms(returnTo, "error"), { headers });
 
+  const { data: current, error: curErr } = await supabase
+    .from("customers")
+    .select("sms_consent, sms_consent_source")
+    .eq("org_id", org.org_id)
+    .eq("id", customerId)
+    .maybeSingle();
+  if (curErr || !current) return redirect(withSms(returnTo, "error"), { headers });
+
+  const reason = typeof form.get("reason") === "string" ? (form.get("reason") as string).trim() : "";
+  if (consent === true && current.sms_consent_source === "inbound_stop") {
+    if (org.role !== "owner" || reason.length < 3) {
+      return redirect(withSms(returnTo, "consent_locked"), { headers });
+    }
+  }
+
   const { error } = await supabase
     .from("customers")
-    .update({ sms_consent: consent })
+    .update({
+      sms_consent: consent,
+      sms_consent_source: "staff",
+      sms_consent_at: new Date().toISOString(),
+      sms_consent_actor: user.id,
+      sms_consent_reason: consent && current.sms_consent_source === "inbound_stop" ? reason : null,
+    })
     .eq("org_id", org.org_id)
     .eq("id", customerId);
   if (error) return redirect(withSms(returnTo, "error"), { headers });

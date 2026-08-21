@@ -1,10 +1,14 @@
 import { redirect, type LoaderFunctionArgs } from "react-router";
-import { getEnv, getQboEnv } from "../lib/env.server";
+import { getEnv, getQboEnv, getEmailEnvOrNull } from "../lib/env.server";
 import { createSupabaseServiceClient } from "../lib/supabase.server";
 import { requireUser, resolveOrg } from "../lib/session.server";
 import { consumeOAuthState } from "../lib/oauth-state.server";
 import { exchangeCodeForTokens } from "../lib/qbo-client.server";
 import { storeConnection } from "../lib/qbo-connection.server";
+import { qboApiBaseUrl } from "../lib/qbo-api.server";
+import { syncOverdueInvoices, type SyncDeps } from "../lib/qbo-sync.server";
+import { sendBrokenPromiseAlerts } from "../lib/notifications.server";
+import { recordSyncError } from "../lib/sync-errors.server";
 
 export async function loader({ request, context }: LoaderFunctionArgs) {
   const env = getEnv(context as any);
@@ -31,6 +35,34 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
     }
     const tokens = await exchangeCodeForTokens(fetch, cfg, code);
     await storeConnection(service, qbo.QBO_ENCRYPTION_KEY, oauthState.orgId, realmId, tokens);
+    const ctx = (context as { cloudflare?: { ctx?: { waitUntil?: (p: Promise<unknown>) => void } } })
+      .cloudflare?.ctx;
+    const emailEnv = getEmailEnvOrNull(context as any);
+    const notify = emailEnv
+      ? (orgId: string, brokenDetails: any[], today: string) =>
+          sendBrokenPromiseAlerts(
+            { fetchFn: fetch, service, email: { apiKey: emailEnv.RESEND_API_KEY }, appUrl: emailEnv.APP_PUBLIC_BASE_URL ?? "" },
+            orgId, brokenDetails, today,
+          )
+      : undefined;
+    const deps: SyncDeps = {
+      fetchFn: fetch,
+      service,
+      cfg,
+      api: { baseUrl: qboApiBaseUrl(qbo.QBO_SANDBOX) },
+      key: qbo.QBO_ENCRYPTION_KEY,
+      notify,
+    };
+    const orgId = oauthState.orgId;
+    const backfill = syncOverdueInvoices(deps, orgId).catch(async (err) => {
+      console.error("[qbo-callback] first sync failed for org", orgId, err);
+      await recordSyncError(service, {
+        orgId, source: "manual", scope: "full",
+        message: err instanceof Error ? err.message : String(err),
+      }).catch(() => {});
+    });
+    if (ctx?.waitUntil) ctx.waitUntil(backfill);
+    else await backfill;
     return redirect("/dashboard?qbo=connected", { headers });
   } catch {
     return redirect("/dashboard?qbo=error");

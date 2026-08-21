@@ -10,6 +10,7 @@ import {
 import { getEnv } from "../lib/env.server";
 import { createSupabaseUserClient } from "../lib/supabase.server";
 import { resolveOrg } from "../lib/session.server";
+import { requireSameOrigin } from "../lib/csrf.server";
 import { safeReturnTo } from "../lib/return-to";
 import { humanAuthError } from "../lib/auth-flow.server";
 import { PublicLayout } from "../components/PublicLayout";
@@ -20,6 +21,7 @@ import type { Route } from "./+types/login";
 export const meta: Route.MetaFunction = () => pageTitle("Log in");
 
 export async function action({ request, context }: ActionFunctionArgs) {
+  requireSameOrigin(request);
   const env = getEnv(context as any);
   const form = await request.formData();
   const rawEmail = form.get("email");
@@ -83,6 +85,9 @@ export default function Login() {
           <input name="password" type="password" required autoComplete="current-password" className={inputClass} />
         </label>
         <Button type="submit" disabled={busy}>{busy ? "Signing in…" : "Log in"}</Button>
+        <p className="text-center text-sm text-muted">
+          <Link to="/forgot-password" className="font-medium text-text underline">Forgot password?</Link>
+        </p>
         <p className="text-center text-sm text-muted">
           Don&apos;t have an account? <Link to={signupHref} className="font-medium text-text underline">Sign up</Link>
         </p>

@@ -3,6 +3,12 @@ import { sendSms, type TwilioConfig, type TwilioSender } from "./twilio-client.s
 import { isContactBlocked, type ExceptionState } from "./exceptions";
 import { isWithinSendWindow, resolveQuietHours, quietHoursWindowLabel } from "./quiet-hours";
 import { DEFAULT_COMPANY_PROFILE } from "./org-profile";
+import {
+  classifyInboundSms,
+  ensureStopLanguage,
+  twimlForKeyword,
+  type InboundKeyword,
+} from "./sms-keywords";
 
 // Pre-resolved quiet-hours window, threaded through from the caller's already
 // -loaded org config (bulk path) to avoid a repeat org_settings read per case
@@ -128,8 +134,9 @@ export async function sendInvoiceText(
 
   const sender = await resolveSender(deps.service, args.orgId, deps.defaultSender);
   const caseId = activeCase.id;
+  const body = ensureStopLanguage(args.body);
   const result = await sendSms(deps.fetchFn, deps.twilio, {
-    to: cust.phone as string, body: args.body, sender, statusCallback: deps.statusCallback ?? null,
+    to: cust.phone as string, body, sender, statusCallback: deps.statusCallback ?? null,
   });
 
   const { data: row, error: insErr } = await deps.service.from("text_messages").insert({
@@ -143,15 +150,12 @@ export async function sendInvoiceText(
     status: result.status,
     from_number: "from" in sender ? sender.from : null,
     to_number: cust.phone as string,
-    body: args.body,
+    body,
   }).select("id").single();
   if (insErr) throw insErr;
 
   return { id: row!.id as string, sid: result.sid, status: result.status };
 }
-
-const STOP_KEYWORDS = ["STOP", "STOPALL", "UNSUBSCRIBE", "CANCEL", "END", "QUIT"];
-const START_KEYWORDS = ["START", "YES", "UNSTOP"];
 
 async function resolveInboundOrgId(service: SupabaseClient, args: { from: string; to: string }): Promise<string | null> {
   const toNorm = normalizePhone(args.to);
@@ -177,64 +181,122 @@ async function resolveInboundOrgId(service: SupabaseClient, args: { from: string
   return orgIds.size === 1 ? [...orgIds][0] : null;
 }
 
+export type InboundResult = {
+  matched: boolean;
+  optOut: boolean;
+  keyword: InboundKeyword;
+  twiml: string | null;
+};
+
+async function alreadyRecordedInbound(service: SupabaseClient, messageSid: string): Promise<boolean> {
+  if (!messageSid) return false;
+  const { data: msg, error: msgErr } = await service
+    .from("text_messages")
+    .select("id")
+    .eq("twilio_message_sid", messageSid)
+    .eq("direction", "inbound")
+    .limit(1)
+    .maybeSingle();
+  if (msgErr) throw msgErr;
+  if (msg) return true;
+  const { data: orphan, error: orphanErr } = await service
+    .from("inbound_orphans")
+    .select("id")
+    .eq("twilio_message_sid", messageSid)
+    .maybeSingle();
+  if (orphanErr) throw orphanErr;
+  return Boolean(orphan);
+}
+
+async function persistOrphan(
+  service: SupabaseClient,
+  args: { from: string; to: string; body: string; messageSid: string; keyword: InboundKeyword },
+): Promise<void> {
+  const { error } = await service.from("inbound_orphans").insert({
+    from_number: args.from,
+    to_number: args.to,
+    body: args.body,
+    twilio_message_sid: args.messageSid || null,
+    keyword: args.keyword,
+  });
+  if (error && (error as { code?: string }).code !== "23505") throw error;
+}
+
+async function applyKeywordByPhone(
+  service: SupabaseClient,
+  fromNorm: string,
+  keyword: InboundKeyword,
+): Promise<void> {
+  if (keyword !== "stop" && keyword !== "start") return;
+  const now = new Date().toISOString();
+  const patch = keyword === "stop"
+    ? {
+        sms_consent: false,
+        do_not_text: true,
+        sms_consent_source: "inbound_stop",
+        sms_consent_at: now,
+        sms_consent_actor: null,
+        sms_consent_reason: null,
+      }
+    : {
+        sms_consent: true,
+        do_not_text: false,
+        sms_consent_source: "inbound_start",
+        sms_consent_at: now,
+      };
+  const { error } = await service.from("customers").update(patch).eq("phone_last10", fromNorm);
+  if (error) throw error;
+}
+
+async function loadOrgName(service: SupabaseClient, orgId: string | null): Promise<string> {
+  if (!orgId) return "";
+  const { data, error } = await service.from("organizations").select("name").eq("id", orgId).maybeSingle();
+  if (error) throw error;
+  return (data?.name as string) ?? "";
+}
+
 export async function recordInboundMessage(
   service: SupabaseClient,
   args: { from: string; to: string; body: string; messageSid: string },
-): Promise<{ matched: boolean; optOut: boolean }> {
-  if (args.messageSid) {
-    const { data: dup, error: dupErr } = await service
-      .from("text_messages")
-      .select("id")
-      .eq("twilio_message_sid", args.messageSid)
-      .eq("direction", "inbound")
-      .limit(1)
-      .maybeSingle();
-    if (dupErr) throw dupErr;
-    if (dup) return { matched: true, optOut: false };
+): Promise<InboundResult> {
+  const keyword = classifyInboundSms(args.body);
+  const optOut = keyword === "stop";
+
+  if (await alreadyRecordedInbound(service, args.messageSid)) {
+    return { matched: true, optOut: false, keyword, twiml: twimlForKeyword(keyword, "") };
+  }
+
+  const fromNorm = normalizePhone(args.from);
+  if (fromNorm.length >= 10 && (keyword === "stop" || keyword === "start")) {
+    await applyKeywordByPhone(service, fromNorm, keyword);
   }
 
   const orgId = await resolveInboundOrgId(service, { from: args.from, to: args.to });
-  if (!orgId) return { matched: false, optOut: false };
+  const name = await loadOrgName(service, orgId);
+  const twiml = twimlForKeyword(keyword, name);
 
-  const fromNorm = normalizePhone(args.from);
-  if (fromNorm.length < 10) return { matched: false, optOut: false };
-
-  // Match the sender to a customer inside the org resolved from Twilio's To
-  // number. At Chancey scale this in-memory match is fine; a normalized column
-  // would scale it later.
-  const { data: candidates, error: candErr } = await service.from("customers")
-    .select("id, org_id, phone")
-    .eq("org_id", orgId)
-    .not("phone", "is", null);
-  if (candErr) throw candErr;
-  const match = (candidates ?? []).find((c) => normalizePhone(c.phone as string) === fromNorm);
-  if (!match) return { matched: false, optOut: false };
-
-  const keyword = args.body.trim().toUpperCase();
-  const optOut = STOP_KEYWORDS.includes(keyword);
-  if (optOut) {
-    const { error } = await service.from("customers")
-      .update({ sms_consent: false })
-      .eq("org_id", orgId)
-      .eq("id", match.id as string);
-    if (error) throw error;
-  } else if (START_KEYWORDS.includes(keyword)) {
-    const { error } = await service.from("customers")
-      .update({ sms_consent: true })
-      .eq("org_id", orgId)
-      .eq("id", match.id as string);
-    if (error) throw error;
+  if (!orgId || fromNorm.length < 10) {
+    await persistOrphan(service, { ...args, keyword });
+    return { matched: false, optOut, keyword, twiml };
   }
 
-  // Thread to the customer's most recent outbound invoice, if any.
+  const { data: matches, error: matchErr } = await service.from("customers")
+    .select("id")
+    .eq("org_id", orgId)
+    .eq("phone_last10", fromNorm);
+  if (matchErr) throw matchErr;
+  const match = matches?.[0];
+  if (!match) {
+    await persistOrphan(service, { ...args, keyword });
+    return { matched: false, optOut, keyword, twiml };
+  }
+
   const { data: lastOut, error: lastOutErr } = await service.from("text_messages")
     .select("invoice_id")
     .eq("org_id", orgId)
     .eq("customer_id", match.id as string)
     .eq("direction", "outbound")
     .not("invoice_id", "is", null).order("created_at", { ascending: false }).limit(1).maybeSingle();
-  // Fail loud: a swallowed read error would silently thread the inbound row with a
-  // null invoice_id instead of surfacing the failure (matches the other reads here).
   if (lastOutErr) throw lastOutErr;
 
   const caseId = await activeCaseId(service, orgId, match.id as string);
@@ -251,11 +313,13 @@ export async function recordInboundMessage(
     body: args.body,
   });
   if (insErr) {
-    if ((insErr as { code?: string }).code === "23505") return { matched: true, optOut };
+    if ((insErr as { code?: string }).code === "23505") {
+      return { matched: true, optOut, keyword, twiml };
+    }
     throw insErr;
   }
 
-  return { matched: true, optOut };
+  return { matched: true, optOut, keyword, twiml };
 }
 
 export async function updateMessageStatus(

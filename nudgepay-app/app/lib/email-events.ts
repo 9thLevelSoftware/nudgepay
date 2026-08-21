@@ -20,6 +20,17 @@ function str(v: unknown): string {
   return typeof v === "string" ? v : "";
 }
 
+function firstAddr(v: unknown): string {
+  if (typeof v === "string") return v;
+  if (Array.isArray(v)) return firstAddr(v[0]);
+  if (v && typeof v === "object") {
+    const rec = v as Record<string, unknown>;
+    if (typeof rec.address === "string") return rec.address;
+    if (typeof rec.email === "string") return rec.email;
+  }
+  return "";
+}
+
 export function mapResendEvent(evt: ResendEvent): MappedEvent {
   const d = evt.data ?? {};
   switch (evt.type) {
@@ -37,9 +48,21 @@ export function mapResendEvent(evt: ResendEvent): MappedEvent {
     }
     case "email.complained":
       return { kind: "status", providerMessageId: str(d.email_id), status: "complained", errorCode: "complaint", optOut: true };
+    case "email.failed": {
+      const errObj = d.error;
+      const errMsg = typeof errObj === "string"
+        ? errObj
+        : str(errObj && typeof errObj === "object" ? (errObj as { message?: unknown }).message : "");
+      return { kind: "status", providerMessageId: str(d.email_id), status: "failed",
+        errorCode: errMsg || "failed", optOut: false };
+    }
+    case "email.suppressed":
+      return { kind: "status", providerMessageId: str(d.email_id), status: "failed",
+        errorCode: "suppressed", optOut: true };
+    case "email.received":
     case "inbound.email.received":
     case "email.inbound":
-      return { kind: "inbound", from: str(d.from), to: str(d.to), subject: str(d.subject),
+      return { kind: "inbound", from: firstAddr(d.from), to: firstAddr(d.to), subject: str(d.subject),
         body: str(d.text) || str(d.html), providerMessageId: str(d.email_id) };
     default:
       return { kind: "ignore" };

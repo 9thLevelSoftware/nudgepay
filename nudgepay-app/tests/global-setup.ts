@@ -4,26 +4,10 @@
  * `supabase db reset` first. Uses the service-role key from .env.test.
  */
 import { createClient } from "@supabase/supabase-js";
-import { readFileSync } from "node:fs";
-import { fileURLToPath } from "node:url";
-import { dirname, join } from "node:path";
-
-function loadEnv(): Record<string, string> {
-  const dir = dirname(fileURLToPath(import.meta.url));
-  const envPath = join(dir, "../.env.test");
-  return Object.fromEntries(
-    readFileSync(envPath, "utf8")
-      .split("\n")
-      .filter(Boolean)
-      .map((l) => {
-        const i = l.indexOf("=");
-        return [l.slice(0, i).trim(), l.slice(i + 1).trim()];
-      })
-  );
-}
+import { loadTestEnv } from "./load-env";
 
 export async function setup() {
-  const env = loadEnv();
+  const env = loadTestEnv();
   const svc = createClient(env.SUPABASE_URL, env.SUPABASE_SERVICE_KEY, {
     auth: { persistSession: false, autoRefreshToken: false },
     db: { schema: "public" },
@@ -44,6 +28,7 @@ export async function setup() {
   }
 
   // Table-by-table delete in dependency order; service role bypasses RLS.
+  await svc.from("inbound_orphans").delete().neq("id", "00000000-0000-0000-0000-000000000000");
   await svc.from("invites").delete().neq("id", "00000000-0000-0000-0000-000000000000");
   await svc.from("contact_logs").delete().neq("id", "00000000-0000-0000-0000-000000000000");
   await svc.from("text_messages").delete().neq("id", "00000000-0000-0000-0000-000000000000");

@@ -27,17 +27,17 @@ export const DEFAULT_SMS_TEMPLATES: SmsTemplate[] = [
   {
     id: "friendly-reminder",
     label: "Friendly reminder",
-    body: "Hi {customer}, a friendly reminder that invoice {invoice} for {balance} was due {dueDate}. Reply with any questions. — {company}",
+    body: "Hi {customer}, a friendly reminder that invoice {invoice} for {balance} was due {dueDate}. Reply STOP to opt out. — {company}",
   },
   {
     id: "past-due",
     label: "Past due",
-    body: "Hi {customer}, invoice {invoice} ({balance}) is now past due as of {dueDate}. Please let us know when we can expect payment. — {company}",
+    body: "Hi {customer}, invoice {invoice} ({balance}) is now past due as of {dueDate}. Please let us know when we can expect payment. Reply STOP to opt out. — {company}",
   },
   {
     id: "final-notice",
     label: "Final notice",
-    body: "{customer}, invoice {invoice} for {balance} remains unpaid and is now seriously past due. Please contact us promptly to avoid further action. — {company}",
+    body: "{customer}, invoice {invoice} for {balance} remains unpaid and is now seriously past due. Please contact us promptly to avoid further action. Reply STOP to opt out. — {company}",
   },
   {
     id: "payment-received",

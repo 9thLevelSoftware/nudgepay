@@ -1,0 +1,7 @@
+{
+  "schemaVersion": 1,
+  "candidate": "88b9baca35be5b8d9235b2f96863150ef3a67ad1",
+  "artifacts": [],
+  "note": "No HAR, video, trace, load-test, database snapshot, or provider export was produced because isolated staging/provider resources were unavailable. Add external retention URI, SHA-256, size, creation time, redaction state, and retention policy for every future artifact."
+}
+

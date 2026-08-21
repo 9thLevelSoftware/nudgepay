@@ -17,3 +17,9 @@ test("every api/webhooks/auth route file is registered in routes.ts", () => {
   const missing = mustRegister.filter((f) => !routesTable.includes(`"routes/${f}"`));
   expect(missing).toEqual([]);
 });
+
+test("password recovery and readiness routes are registered", () => {
+  for (const f of ["forgot-password.tsx", "auth.confirm.tsx", "reset-password.tsx", "readyz.tsx"]) {
+    expect(routesTable, f).toContain(`"routes/${f}"`);
+  }
+});

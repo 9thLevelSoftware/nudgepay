@@ -4,7 +4,7 @@ import { requireUser, resolveOrg } from "../lib/session.server";
 import { safeReturnTo } from "../lib/return-to";
 import { parseOrgSettingsUpdate, parseHolidayDate, parseHolidayLabel, parseLateFeeSettingsUpdate, parsePriorityThresholdsUpdate, parseWorkflowKnobsUpdate } from "../lib/org-settings";
 import { parseChannelSettingsUpdate, parseQuietHoursUpdate } from "../lib/channel-settings";
-import { parseEmailSettingsUpdate } from "../lib/email-settings";
+import { parseAllowedFromList, parseEmailSettingsUpdate } from "../lib/email-settings";
 import { parseCompanyProfileUpdate } from "../lib/org-profile";
 import { parseTemplateUpsert, parseTemplateDelete } from "../lib/message-templates";
 import { DEFAULT_SMS_TEMPLATES } from "../lib/sms-templates";
@@ -126,7 +126,9 @@ export async function action({ request, context }: ActionFunctionArgs) {
   }
 
   if (intent === "save_email") {
-    const parsed = parseEmailSettingsUpdate(form);
+    const allowlist = parseAllowedFromList((context as { cloudflare?: { env?: Record<string, string> } })
+      .cloudflare?.env?.RESEND_ALLOWED_FROM);
+    const parsed = parseEmailSettingsUpdate(form, allowlist);
     if (!parsed.ok) return redirect(flag(returnTo, "error", "email"), { headers });
     const { error } = await supabase.from("email_config")
       .upsert({ org_id: org.org_id, ...parsed.value }, { onConflict: "org_id" });

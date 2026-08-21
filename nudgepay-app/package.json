@@ -12,6 +12,8 @@
     "dev": "react-router dev",
     "preview": "npm run build && vite preview",
     "typecheck": "npm run typegen && tsc -b",
+    "test": "vitest run",
+    "test:unit": "vitest run --config vitest.unit.config.ts",
     "start": "node server.js",
     "build:cron": "node scripts/build-cron.mjs"
   },

@@ -24,12 +24,13 @@ export async function action({ request, context }: ActionFunctionArgs) {
   try {
     const env = getEnv(context as any);
     const service = createSupabaseServiceClient(env);
-    await recordInboundMessage(service, {
+    const result = await recordInboundMessage(service, {
       from: params.From ?? "", to: params.To ?? "", body: params.Body ?? "", messageSid: params.MessageSid ?? "",
     });
+    const xml = result.twiml ?? "<Response></Response>";
+    return new Response(xml, { status: 200, headers: { "Content-Type": "text/xml" } });
   } catch (err) {
     console.error("Twilio inbound processing failed", err);
     return new Response("processing error", { status: 500 });
   }
-  return new Response("<Response></Response>", { status: 200, headers: { "Content-Type": "text/xml" } });
 }

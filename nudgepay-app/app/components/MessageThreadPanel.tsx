@@ -130,11 +130,20 @@ export function MessageThreadPanel({
             <span className={consent ? "font-semibold text-cool" : "font-semibold text-hot"}>{consent ? "yes" : "no"}</span>
             {phone ? <span className="text-muted"> · {phone}</span> : null}
           </span>
-          <Form method="post" action="/api/sms-consent">
+          <Form method="post" action="/api/sms-consent" className="flex items-center gap-2">
             <input type="hidden" name="invoiceId" value={thread.anchorInvoiceId ?? ""} />
             <input type="hidden" name="customerId" value={thread.customerId} />
             <input type="hidden" name="returnTo" value={returnTo} />
             <input type="hidden" name="consent" value={consent ? "false" : "true"} />
+            {!consent ? (
+              <input
+                name="reason"
+                required
+                placeholder="Override reason"
+                className="h-7 w-40 rounded border border-border bg-surface px-2 text-xs"
+                aria-label="Consent override reason"
+              />
+            ) : null}
             <button type="submit" disabled={formBusy("/api/sms-consent")} className="text-xs font-medium text-copper hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-copper rounded disabled:opacity-60 disabled:cursor-not-allowed">
               {formBusy("/api/sms-consent") ? "Updating…" : consent ? "Revoke consent" : "Mark consented"}
             </button>

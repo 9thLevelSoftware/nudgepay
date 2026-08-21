@@ -2,26 +2,9 @@ import { redirect, type ActionFunctionArgs } from "react-router";
 import { getEnv } from "../lib/env.server";
 import { requireUser, resolveOrg } from "../lib/session.server";
 import { safeReturnTo } from "../lib/return-to";
-import { CHANNELS, type Channel } from "../lib/comm-prefs";
+import { parseCommPrefsUpdate } from "../lib/comm-prefs";
 
-// Pure: shape the submitted form into the customers update. Deliberately OMITS
-// sms_consent — the legal consent record is governed solely by STOP/START, never
-// by a preferences write. Unknown/empty preferred_channel -> null (no preference).
-export function parseCommPrefsUpdate(form: FormData): {
-  preferred_channel: Channel | null;
-  do_not_call: boolean;
-  do_not_text: boolean;
-  do_not_email: boolean;
-} {
-  const raw = form.get("preferred_channel");
-  const ch = typeof raw === "string" ? raw : "";
-  return {
-    preferred_channel: (CHANNELS as readonly string[]).includes(ch) ? (ch as Channel) : null,
-    do_not_call: form.get("do_not_call") === "true",
-    do_not_text: form.get("do_not_text") === "true",
-    do_not_email: form.get("do_not_email") === "true",
-  };
-}
+export { parseCommPrefsUpdate };
 
 export async function action({ request, context }: ActionFunctionArgs) {
   const env = getEnv(context as any);
