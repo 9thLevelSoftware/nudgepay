@@ -116,7 +116,7 @@ export async function repullCustomerInvoices(
   const idMap = await customerIdMap(deps.service, orgId, ids);
   const now = new Date();
   const rows = invoices.map((inv) =>
-    mapQboInvoice(inv, orgId, idMap.get(String(inv?.CustomerRef?.value)) ?? null, now));
+    mapQboInvoice(inv, orgId, idMap.get(String(inv?.CustomerRef?.value)) ?? null, now, syncToday));
   await upsertInvoices(deps.service, rows, syncToday);
 }
 
@@ -243,7 +243,7 @@ export async function syncOverdueInvoices(
   const idMap = await customerIdMap(deps.service, orgId, custIds);
   const now = new Date();
   const invoiceRows = invoices.map((inv) =>
-    mapQboInvoice(inv, orgId, idMap.get(String(inv?.CustomerRef?.value)) ?? null, now),
+    mapQboInvoice(inv, orgId, idMap.get(String(inv?.CustomerRef?.value)) ?? null, now, today),
   );
   await upsertInvoices(deps.service, invoiceRows, today);
 
@@ -319,7 +319,7 @@ export async function applyInvoiceWebhook(
     const idMap = await customerIdMap(deps.service, orgId, [qboCustomerId]);
     customerId = idMap.get(qboCustomerId) ?? null;
   }
-  await upsertInvoices(deps.service, [mapQboInvoice(inv, orgId, customerId, now)], syncToday);
+  await upsertInvoices(deps.service, [mapQboInvoice(inv, orgId, customerId, now, syncToday)], syncToday);
 
   try {
     await applyPaymentsAndEvaluate(deps, orgId, accessToken, realmId, [], syncToday, now);
@@ -372,7 +372,7 @@ export async function runCdcCatchup(
   const custIds = invoices.map((i) => i?.CustomerRef?.value).filter(Boolean).map(String);
   const idMap = await customerIdMap(deps.service, orgId, custIds);
   const invoiceRows = invoices.map((inv) =>
-    mapQboInvoice(inv, orgId, idMap.get(String(inv?.CustomerRef?.value)) ?? null, fetchedAt),
+    mapQboInvoice(inv, orgId, idMap.get(String(inv?.CustomerRef?.value)) ?? null, fetchedAt, reconcileToday),
   );
   await upsertInvoices(deps.service, invoiceRows, reconcileToday);
 
