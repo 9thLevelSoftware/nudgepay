@@ -497,6 +497,7 @@ export default function Settings() {
                     {d.connected ? `Connected · ${syncLabel}` : "Not connected"}
                   </span>
                 </div>
+                <p className="mt-0.5 text-xs text-muted">US companies billed in USD only.</p>
                 {!d.qboConfigured ? (
                   <p className="mt-3 text-sm text-muted">
                     QuickBooks is not configured on this server yet. An operator needs to set the QBO Worker
