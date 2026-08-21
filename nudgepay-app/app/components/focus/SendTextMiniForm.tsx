@@ -5,6 +5,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useFetcher } from "react-router";
 import type { CaseItem } from "../../lib/cases";
+import type { Collision } from "../../lib/collision";
 import { smsGateFor } from "../../lib/sms-gate";
 import { applyTemplate, type TemplateVars } from "../../lib/sms-templates";
 import type { MessageTemplateRow } from "../../lib/message-templates";
@@ -13,6 +14,7 @@ import { formatDate } from "../../lib/dates";
 
 interface SendTextMiniFormProps {
   item: CaseItem;
+  collision: Collision | null;
   smsEnabled: boolean;
   smsQuietNow: boolean;
   quietHoursLabel: string;
@@ -27,7 +29,7 @@ interface SendTextMiniFormProps {
 }
 
 export function SendTextMiniForm({
-  item, smsEnabled, smsQuietNow, quietHoursLabel, onDone, onCancel, onError,
+  item, collision, smsEnabled, smsQuietNow, quietHoursLabel, onDone, onCancel, onError,
   smsTemplates, orgCompany, orgPhone, orgPaymentLink,
 }: SendTextMiniFormProps) {
   const firstInvoice = item.invoices[0] ?? null;
@@ -53,6 +55,8 @@ export function SendTextMiniForm({
   };
 
   const [body, setBody] = useState("");
+  const [confirmSend, setConfirmSend] = useState(false);
+  const needsConfirm = !!collision && collision.level !== "none";
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fetcher = useFetcher();
 
@@ -60,6 +64,10 @@ export function SendTextMiniForm({
   useEffect(() => {
     textareaRef.current?.focus();
   }, []);
+
+  useEffect(() => {
+    setConfirmSend(false);
+  }, [item.caseId]);
 
   // Track which fetcher response we've already handled — prevents re-fire
   // if callbacks change identity on parent re-render before unmount.
@@ -166,11 +174,27 @@ export function SendTextMiniForm({
           />
 
           {/* Send */}
+          {confirmSend ? (
+            <p className="mt-2 text-xs font-sans text-advisory" role="alert">
+              {collision?.level === "live"
+                ? `${collision.byUser} is viewing this customer now. Send anyway?`
+                : `${collision?.byUser} contacted this customer recently. Send anyway?`}
+            </p>
+          ) : null}
           <div className="mt-3 flex items-center justify-between">
             <p className="text-[10px] text-on-ink/80">
               To: {item.phone ?? "—"}
             </p>
-            <fetcher.Form method="post" action="/api/text/send">
+            <fetcher.Form
+              method="post"
+              action="/api/text/send"
+              onSubmit={(e) => {
+                if (needsConfirm && !confirmSend) {
+                  e.preventDefault();
+                  setConfirmSend(true);
+                }
+              }}
+            >
               <input type="hidden" name="invoiceId" value={firstInvoice?.invoiceId ?? ""} />
               <input type="hidden" name="body" value={body} />
               <input type="hidden" name="respond" value="json" />

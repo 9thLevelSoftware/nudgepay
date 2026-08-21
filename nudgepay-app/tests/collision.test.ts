@@ -100,3 +100,43 @@ test("Focus heartbeat POSTs presence without revalidating", () => {
   expect(src).not.toMatch(/useRevalidator/);
   expect(src).not.toMatch(/revalidate\(/);
 });
+
+test("Focus send/log require confirm on live or recent collision (dashboard parity)", () => {
+  const focus = readFileSync(new URL("../app/routes/focus.tsx", import.meta.url), "utf8");
+  const send = readFileSync(new URL("../app/components/focus/SendTextMiniForm.tsx", import.meta.url), "utf8");
+  const log = readFileSync(new URL("../app/components/focus/LogCallMiniForm.tsx", import.meta.url), "utf8");
+  const detail = readFileSync(new URL("../app/components/DetailPanel.tsx", import.meta.url), "utf8");
+  const drawer = readFileSync(new URL("../app/components/LogContactDrawer.tsx", import.meta.url), "utf8");
+
+  expect(focus).toContain("collisionState");
+  expect(focus).toContain("dropLivePresenceCases");
+  expect(focus).toContain("recentByCase");
+  expect(focus).toContain("collision={collisions[currentItem.caseId] ?? null}");
+
+  expect(send).toContain("collision: Collision | null");
+  expect(send).toContain("const needsConfirm = !!collision && collision.level !== \"none\"");
+  expect(send).toMatch(/if \(needsConfirm && !confirmSend\)/);
+  expect(send).toContain("is viewing this customer now. Send anyway?");
+  expect(send).toContain("contacted this customer recently. Send anyway?");
+  expect(send).toContain('role="alert"');
+
+  expect(log).toContain("collision: Collision | null");
+  expect(log).toContain("const needsConfirm = !!collision && collision.level !== \"none\"");
+  expect(log).toMatch(/if \(needsConfirm && !confirmSave\)/);
+  expect(log).toContain("is viewing this customer now. Log anyway?");
+  expect(log).toContain("contacted this customer recently. Log anyway?");
+  expect(log).toContain('role="alert"');
+
+  expect(detail).toContain("is viewing this customer now. Send anyway?");
+  expect(drawer).toContain("is viewing this customer now. Log anyway?");
+});
+
+test("recent-contact within RECENT_WINDOW_MIN is a collision that needs confirm", () => {
+  const c = collisionState({
+    contacts: [{ userId: JANE, at: minutesAgo(RECENT_WINDOW_MIN) }],
+    heartbeats: [],
+    currentUserId: ME, nowMs: NOW, label,
+  });
+  expect(c.level).toBe("recent");
+  expect(c.level !== "none").toBe(true);
+});

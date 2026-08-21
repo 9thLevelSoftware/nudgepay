@@ -136,3 +136,16 @@ test("dropLivePresenceCases ignores self presence", () => {
   expect(queue.map((c) => c.caseId)).toEqual(["c1"]);
   expect(held).toEqual([]);
 });
+
+test("dropLivePresenceCases keeps cases with no live viewer (recent-contact stays in the deck)", () => {
+  const items = [stub({ caseId: "c1", customerId: "cust-1" })];
+  const now = Date.parse("2026-08-20T12:00:00Z");
+  const { queue, held } = dropLivePresenceCases(
+    items,
+    [{ customer_id: "cust-1", user_id: "other", last_seen_at: "2026-08-20T11:00:00Z" }],
+    USER,
+    now,
+  );
+  expect(queue.map((c) => c.caseId)).toEqual(["c1"]);
+  expect(held).toEqual([]);
+});

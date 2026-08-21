@@ -6,6 +6,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useFetcher } from "react-router";
 import type { CaseItem } from "../../lib/cases";
+import type { Collision } from "../../lib/collision";
 import { formatDate } from "../../lib/dates";
 import type { action } from "../../routes/api.contact-logs";
 
@@ -17,14 +18,17 @@ const OUTCOMES: { label: string; value: string }[] = [
 
 interface LogCallMiniFormProps {
   item: CaseItem;
+  collision: Collision | null;
   onDone: () => void;
   onCancel: () => void;
 }
 
-export function LogCallMiniForm({ item, onDone, onCancel }: LogCallMiniFormProps) {
+export function LogCallMiniForm({ item, collision, onDone, onCancel }: LogCallMiniFormProps) {
   const fetcher = useFetcher<typeof action>();
   const [outcome, setOutcome] = useState(OUTCOMES[0].value);
   const [notes, setNotes] = useState("");
+  const [confirmSave, setConfirmSave] = useState(false);
+  const needsConfirm = !!collision && collision.level !== "none";
   const formRef = useRef<HTMLFormElement>(null);
 
   // Track which fetcher response we've already handled — prevents re-fire
@@ -44,6 +48,10 @@ export function LogCallMiniForm({ item, onDone, onCancel }: LogCallMiniFormProps
       onDone();
     }
   }, [fetcher.data, onDone]);
+
+  useEffect(() => {
+    setConfirmSave(false);
+  }, [item.caseId]);
 
   // Close on Escape
   useEffect(() => {
@@ -73,7 +81,17 @@ export function LogCallMiniForm({ item, onDone, onCancel }: LogCallMiniFormProps
         </button>
       </div>
 
-      <fetcher.Form ref={formRef} method="post" action="/api/contact-logs">
+      <fetcher.Form
+        ref={formRef}
+        method="post"
+        action="/api/contact-logs"
+        onSubmit={(e) => {
+          if (needsConfirm && !confirmSave) {
+            e.preventDefault();
+            setConfirmSave(true);
+          }
+        }}
+      >
         {/* Hidden fields */}
         <input type="hidden" name="caseId" value={item.caseId} />
         <input type="hidden" name="customerId" value={item.customerId} />
@@ -126,6 +144,14 @@ export function LogCallMiniForm({ item, onDone, onCancel }: LogCallMiniFormProps
         {error && (
           <p className="mt-2 text-xs text-hot">{error}</p>
         )}
+
+        {confirmSave ? (
+          <p className="mt-2 text-xs font-sans text-advisory" role="alert">
+            {collision?.level === "live"
+              ? `${collision.byUser} is viewing this customer now. Log anyway?`
+              : `${collision?.byUser} contacted this customer recently. Log anyway?`}
+          </p>
+        ) : null}
 
         {/* Submit */}
         <div className="mt-3 flex justify-end">
