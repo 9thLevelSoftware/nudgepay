@@ -11,6 +11,11 @@ import type { ActivityPeek } from "../lib/activity-peek";
 import { loadPayerSource } from "../lib/payer-behavior.server";
 import type { PayerStats } from "../lib/payer-behavior";
 import { dashboardHref, parseDensity, parseSort } from "../lib/queue-chrome";
+import { loadArKpiSource } from "../lib/ar-kpis.server";
+import { buildArKpis, DASHBOARD_AR_RANGE_DAYS } from "../lib/ar-kpis";
+import { loadContactPromiseRates } from "../lib/contact-promise-rates.server";
+import { addCalendarDays } from "../lib/business-days";
+import { isCaseSuppressed } from "../lib/exceptions";
 import { loadOrgConfig } from "../lib/org-config.server";
 import { todayInTz } from "../lib/tz";
 import type { OrgMember } from "../lib/orgs.server";
@@ -33,6 +38,7 @@ import { FirstRunBanner } from "../components/FirstRunBanner";
 import { FlashBanner } from "../components/FlashBanner";
 import { SyncIssues } from "../components/SyncIssues";
 import { mapSyncIssues } from "../lib/workspace.server";
+import { ArKpiBand } from "../components/ArKpiBand";
 import { KpiBand } from "../components/KpiBand";
 import { TriageStrip } from "../components/TriageStrip";
 import { WorkQueue } from "../components/WorkQueue";
@@ -201,6 +207,7 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
     { data: connMeta },
     { data: ecfg },
     { data: syncErrorRows },
+    arSrc,
   ] = await Promise.all([
     loadCaseQueueSource({
       supabase, service, orgId: org.org_id, today, includePresence: true, orgConfig: orgConfigForToday,
@@ -212,6 +219,9 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
     supabase.from("sync_errors")
       .select("id, source, scope, message, occurred_at").eq("org_id", org.org_id)
       .is("resolved_at", null).order("occurred_at", { ascending: false }).limit(20),
+    loadArKpiSource({
+      supabase, orgId: org.org_id, today, rangeDays: DASHBOARD_AR_RANGE_DAYS,
+    }),
   ]);
 
   const connected = conn?.status === "connected";
@@ -326,6 +336,16 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
     const cse = caseById.get(p.caseId);
     if (cse) brokenPromiseByCustomer.set(cse.customerId, true);
   }
+  const openCaseIds = cases
+    .filter((c) => !isCaseSuppressed({
+      status: c.status,
+      exceptionReason: c.exceptionReason,
+      nextActionAt: c.nextActionAt,
+      today,
+    }))
+    .map((c) => c.id);
+  const contactWindowStartIso = `${addCalendarDays(today, -DASHBOARD_AR_RANGE_DAYS)}T00:00:00.000Z`;
+
   const peekP = loadPeekSource({
     supabase,
     orgId: org.org_id,
@@ -345,7 +365,25 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
     brokenPromiseByCustomer,
     replyByCustomer: replySrc.replyByCustomer,
   }));
-  const [peekSrc, payerByCustomer] = await Promise.all([peekP, payerP]);
+  const ratesP = loadContactPromiseRates({
+    supabase,
+    orgId: org.org_id,
+    windowStartIso: contactWindowStartIso,
+    openCaseIds,
+  });
+  const [peekSrc, payerByCustomer, rates] = await Promise.all([peekP, payerP, ratesP]);
+
+  const arKpis = buildArKpis({
+    open: arSrc.open,
+    salesLookback: arSrc.salesLookback,
+    payments: arSrc.payments,
+    today,
+    rangeDays: DASHBOARD_AR_RANGE_DAYS,
+    openCaseIds,
+    contactedCaseIdsInWindow: rates.contactedOpenCaseIds,
+    promisesCreatedInWindow: rates.promisesCreated,
+    truncated: arSrc.truncated,
+  });
 
   const dashboardData: DashboardData = buildCaseData(
     cases, invoicesInput, customersInput, lastContactsInput, promisesInput,
@@ -503,6 +541,7 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
       comingDueDays: orgConfig.workflow.comingDueDays,
       today,
       timeZone: orgConfig.companyProfile.timezone,
+      arKpis,
       ...dashboardData,
     },
     { headers },
@@ -568,6 +607,7 @@ export default function Dashboard() {
     comingDueGroups,
     comingDueDays,
     today,
+    arKpis,
     repInvoiceId,
     smsTemplates,
     emailTemplates,
@@ -661,7 +701,8 @@ export default function Dashboard() {
 
       <div className="flex flex-col h-full">
           {/* KPI band */}
-          <div className="px-6 py-3 border-b border-border bg-panel shrink-0">
+          <div className="px-6 py-3 border-b border-border bg-panel shrink-0 space-y-3">
+            <ArKpiBand kpis={arKpis} isOwner={isOwner} />
             <KpiBand metrics={metrics} view={view} sort={sort} search={q} density={hrefDensity} scopeLabel={scopeLabel} clearHref={clearHref} />
           </div>
 
