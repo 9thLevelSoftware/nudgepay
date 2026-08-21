@@ -18,6 +18,7 @@ import { DEFAULT_COMM_PREFS, type CommPrefs } from "./comm-prefs";
 import { suggestFollowUpDate } from "./follow-up-cadence";
 import type { OrgConfig } from "./org-config";
 import { computeLateFee } from "./late-fees";
+import type { ActivityPeek } from "./activity-peek";
 
 export type CasePromiseInput = {
   caseId: string;
@@ -97,6 +98,9 @@ export type CaseItem = {
   lateFeeTotal: number;
   searchText: string;
   invoices: CaseInvoice[];
+  // Defaults; dashboard mapper overwrites after dedicated peek / payer queries.
+  peeks: ActivityPeek[];
+  payer: null;
 };
 
 export type ReconcileOp =
@@ -243,6 +247,8 @@ export function buildCaseItems(
       searchText: [name, ...invList.map((i) => i.docNumber ?? ""), cust?.phone ?? "", cust?.email ?? "", owner]
         .filter(Boolean).join(" ").toLowerCase(),
       invoices: invList,
+      peeks: [],
+      payer: null,
     };
   });
 }
