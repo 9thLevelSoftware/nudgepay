@@ -5,6 +5,7 @@ import {
   arKpisToCsv,
   type TeamReport,
 } from "../app/lib/reports";
+import { loadReportArKpis } from "../app/lib/reports.server";
 
 const ROSTER = [
   { userId: "u1", label: "alice" },
@@ -300,7 +301,10 @@ test("reports.server loads AR KPIs with the selected range, not Stage-2 last-con
   expect(server).toContain("loadArKpiSource");
   expect(server).toContain("loadContactPromiseRates");
   expect(server).toContain("rangeDays: range");
-  expect(server).toContain("contact: rates.truncated");
+  expect(server).toContain("pageAll");
+  expect(server).toContain("orderPage");
+  expect(server).toContain('count: "exact"');
+  expect(server).toContain("rates.truncated || openCases.truncated");
   expect(server).not.toContain("lastContactsInput");
   expect(server).not.toContain("CasePromiseInput");
   expect(server).not.toContain("DASHBOARD_AR_RANGE_DAYS");
@@ -322,4 +326,164 @@ test("reports.csv sheet=ar uses arKpisToCsv; default team skips AR queries", () 
   expect(arBranch).not.toContain("loadTeamReport");
   expect(teamBranch).toContain("loadTeamReport");
   expect(teamBranch).not.toContain("loadReportArKpis");
+});
+
+// ── loadReportArKpis open-case paging ────────────────────────────────────────
+
+type TableRows = { rows: Record<string, unknown>[]; count?: number; error?: { message: string } | null };
+type FilterCall = { method: string; args: unknown[] };
+type OrderCall = { column: string; ascending: boolean };
+type QueryCall = { table: string; select: string; count?: string; filters: FilterCall[]; orders: OrderCall[] };
+
+const STABLE_PAGE_ORDER: OrderCall[] = [
+  { column: "created_at", ascending: false },
+  { column: "id", ascending: false },
+];
+
+function makeClient(tables: Record<string, TableRows>) {
+  const calls: QueryCall[] = [];
+  const client = {
+    from(table: string) {
+      const src = tables[table] ?? { rows: [] };
+      const state = {
+        select: "",
+        count: undefined as string | undefined,
+        filters: [] as FilterCall[],
+        orders: [] as OrderCall[],
+        from: 0,
+        to: Number.POSITIVE_INFINITY,
+      };
+      const applyFilters = () => {
+        let rows = src.rows;
+        for (const f of state.filters) {
+          if (f.method === "eq") {
+            const [col, val] = f.args as [string, unknown];
+            rows = rows.filter((r) => r[col] === val);
+          } else if (f.method === "gt") {
+            const [col, val] = f.args as [string, number];
+            rows = rows.filter((r) => Number(r[col]) > val);
+          } else if (f.method === "gte") {
+            const [col, val] = f.args as [string, string | number];
+            rows = rows.filter((r) => r[col] != null && (r[col] as string | number) >= val);
+          } else if (f.method === "lte") {
+            const [col, val] = f.args as [string, string | number];
+            rows = rows.filter((r) => r[col] != null && (r[col] as string | number) <= val);
+          } else if (f.method === "neq") {
+            const [col, val] = f.args as [string, unknown];
+            rows = rows.filter((r) => r[col] !== val);
+          } else if (f.method === "not") {
+            const [col, op] = f.args as [string, string];
+            if (op === "is") rows = rows.filter((r) => r[col] != null);
+          } else if (f.method === "in") {
+            const [col, ids] = f.args as [string, string[]];
+            const idSet = new Set(ids);
+            rows = rows.filter((r) => typeof r[col] === "string" && idSet.has(r[col] as string));
+          } else if (f.method === "is") {
+            const [col, val] = f.args as [string, unknown];
+            rows = rows.filter((r) => r[col] == val);
+          }
+        }
+        return rows;
+      };
+      const q: Record<string, unknown> = {
+        select(cols: string, opts?: { count?: string }) {
+          state.select = cols;
+          state.count = opts?.count;
+          return q;
+        },
+        eq(...args: unknown[]) { state.filters.push({ method: "eq", args }); return q; },
+        gt(...args: unknown[]) { state.filters.push({ method: "gt", args }); return q; },
+        gte(...args: unknown[]) { state.filters.push({ method: "gte", args }); return q; },
+        lte(...args: unknown[]) { state.filters.push({ method: "lte", args }); return q; },
+        neq(...args: unknown[]) { state.filters.push({ method: "neq", args }); return q; },
+        not(...args: unknown[]) { state.filters.push({ method: "not", args }); return q; },
+        in(col: string, ids: string[]) { state.filters.push({ method: "in", args: [col, ids] }); return q; },
+        is(...args: unknown[]) { state.filters.push({ method: "is", args }); return q; },
+        order(column: string, opts?: { ascending?: boolean }) {
+          state.orders.push({ column, ascending: opts?.ascending ?? true });
+          return q;
+        },
+        range(from: number, to: number) { state.from = from; state.to = to; return q; },
+        maybeSingle() {
+          const rows = applyFilters();
+          return Promise.resolve({ data: rows[0] ?? null, error: src.error ?? null });
+        },
+        then(resolve: (v: unknown) => unknown, reject?: (e: unknown) => unknown) {
+          const rows = applyFilters();
+          calls.push({
+            table,
+            select: state.select,
+            count: state.count,
+            filters: [...state.filters],
+            orders: [...state.orders],
+          });
+          return Promise.resolve({
+            data: rows.slice(state.from, state.to + 1),
+            count: src.count ?? rows.length,
+            error: src.error ?? null,
+          }).then(resolve, reject);
+        },
+      };
+      return q;
+    },
+  };
+  return { client: client as any, calls };
+}
+
+const AR_FIXTURE = {
+  invoices: {
+    rows: [
+      { org_id: "org-1", amount: 100, balance: 100, invoice_date: "2026-08-11", due_date: "2026-08-21", customer_id: "cust-1", created_at: "t1", id: "i1" },
+    ],
+  },
+  payments: { rows: [] as Record<string, unknown>[] },
+  org_settings: { rows: [] as Record<string, unknown>[] },
+  org_holidays: { rows: [] as Record<string, unknown>[] },
+  contact_logs: {
+    rows: [{ org_id: "org-1", case_id: "c1", method: "call", created_at: new Date(Date.now() - 86_400_000).toISOString() }],
+  },
+  text_messages: { rows: [] as Record<string, unknown>[] },
+  email_messages: { rows: [] as Record<string, unknown>[] },
+  promises: { rows: [] as Record<string, unknown>[] },
+};
+
+test("loadReportArKpis pages open cases with stable ORDER BY and count", async () => {
+  const { client, calls } = makeClient({
+    ...AR_FIXTURE,
+    collection_cases: {
+      rows: [{ org_id: "org-1", id: "c1", status: "working", exception_reason: null, next_action_at: null, created_at: "t1", closed_at: null }],
+    },
+  });
+  const kpis = await loadReportArKpis({ supabase: client, orgId: "org-1", range: 30 });
+  expect(kpis.contactRate).toBe(1);
+  expect(kpis.coverage).not.toBe("empty");
+
+  const caseCalls = calls.filter((c) => c.table === "collection_cases");
+  expect(caseCalls.length).toBeGreaterThan(0);
+  expect(caseCalls[0].count).toBe("exact");
+  expect(caseCalls[0].filters.some((f) => f.method === "is" && f.args[0] === "closed_at")).toBe(true);
+  expect(caseCalls.every((c) => JSON.stringify(c.orders) === JSON.stringify(STABLE_PAGE_ORDER))).toBe(true);
+});
+
+test("loadReportArKpis truncated open-case page nulls rates instead of looking complete", async () => {
+  const { client } = makeClient({
+    ...AR_FIXTURE,
+    collection_cases: {
+      rows: [{ org_id: "org-1", id: "c1", status: "working", exception_reason: null, next_action_at: null, created_at: "t1", closed_at: null }],
+      count: 6000,
+    },
+  });
+  const kpis = await loadReportArKpis({ supabase: client, orgId: "org-1", range: 7 });
+  expect(kpis.rangeDays).toBe(7);
+  expect(kpis.contactRate).toBeNull();
+  expect(kpis.promiseRate).toBeNull();
+  expect(kpis.coverage).toBe("partial");
+});
+
+test("loadReportArKpis throws when the open-case query errors", async () => {
+  const { client } = makeClient({
+    ...AR_FIXTURE,
+    collection_cases: { rows: [], error: { message: "boom" } },
+  });
+  await expect(loadReportArKpis({ supabase: client, orgId: "org-1", range: 30 })).rejects.toMatchObject({ message: "boom" });
 });
