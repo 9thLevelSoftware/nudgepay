@@ -1,4 +1,5 @@
-import { useLoaderData, data, type LoaderFunctionArgs } from "react-router";
+import { useEffect } from "react";
+import { useLoaderData, useFetcher, useRevalidator, data, type LoaderFunctionArgs } from "react-router";
 import { useFlashCleanup } from "../lib/use-flash-cleanup";
 import { getEnv } from "../lib/env.server";
 import { loadWorkspaceChrome } from "../lib/workspace.server";
@@ -12,7 +13,7 @@ import { loadOrgConfig } from "../lib/org-config.server";
 import { loadTemplates } from "../lib/message-templates.server";
 import {
   buildThreadRows, applyMessageTab, sortThreadRows, computeMessageMetrics,
-  applyChannelFilter,
+  applyChannelFilter, threadReadKey,
   MESSAGE_TABS, MESSAGE_SORTS, CHANNEL_FILTERS,
   type MessageTab, type MessageSort, type ChannelFilter,
   type ThreadCustomerInput, type ThreadMessageInput,
@@ -46,7 +47,7 @@ function mapSms(r: any): Omit<ThreadMessageInput, "channel" | "subject"> {
 export async function loader({ request, context }: LoaderFunctionArgs) {
   const env = getEnv(context as any);
   const {
-    supabase, service, headers, isOwner, org,
+    supabase, service, headers, isOwner, org, user,
     orgName, initials, userLabel, connected, syncLabel,
     syncIssues,
   } = await loadWorkspaceChrome(request, env);
@@ -167,7 +168,17 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
     paymentLink: orgConfig.companyProfile.paymentPortalUrl ?? "",
   };
 
-  const allRows = buildThreadRows(customersInput, messagesInput, ownerLabels);
+  const lastReadByKey = new Map<string, string>();
+  const { data: readRows } = await supabase
+    .from("thread_reads")
+    .select("customer_id, channel, last_read_at")
+    .eq("org_id", org.org_id)
+    .eq("user_id", user.id);
+  for (const r of (readRows as { customer_id: string; channel: "sms" | "email"; last_read_at: string }[] | null) ?? []) {
+    lastReadByKey.set(threadReadKey(r.customer_id, r.channel), r.last_read_at);
+  }
+
+  const allRows = buildThreadRows(customersInput, messagesInput, ownerLabels, lastReadByKey);
   const query = q.trim().toLowerCase();
   const searched = query === "" ? allRows : allRows.filter((r) => r.searchText.includes(query));
 
@@ -266,6 +277,23 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
 export default function Messages() {
   const d = useLoaderData<typeof loader>();
   useFlashCleanup();
+  const revalidator = useRevalidator();
+  const readFetcher = useFetcher();
+  useEffect(() => {
+    const id = window.setInterval(() => {
+      if (revalidator.state === "idle") revalidator.revalidate();
+    }, 20_000);
+    return () => window.clearInterval(id);
+  }, [revalidator]);
+  useEffect(() => {
+    if (!d.selected) return;
+    const fd = new FormData();
+    fd.set("customerId", d.selected.customerId);
+    fd.set("channel", d.selected.channel);
+    readFetcher.submit(fd, { method: "post", action: "/api/thread-read" });
+    // Mark-read once per open thread; do not retrigger on fetcher identity.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [d.selected?.customerId, d.selected?.channel]);
   return (
     <AppShell
       orgName={d.orgName}

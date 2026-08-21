@@ -1,6 +1,6 @@
 import { expect, test } from "vitest";
 import {
-  mapQboCustomer, mapQboInvoice, invoiceStatus,
+  mapQboCustomer, mapQboInvoice, invoiceStatus, invoiceStatusOn, isQboVoidOrDeleted, qboCustomerName,
 } from "../app/lib/qbo-mappers.server";
 
 const NOW = new Date("2026-06-22T12:00:00Z");
@@ -31,6 +31,23 @@ test("invoiceStatus: paid when balance <= 0, overdue when past due, else open", 
   expect(invoiceStatus(100, "2026-06-01", NOW)).toBe("overdue"); // due before now
   expect(invoiceStatus(100, "2026-12-01", NOW)).toBe("open");    // due after now
   expect(invoiceStatus(100, null, NOW)).toBe("open");            // no due date
+});
+
+test("invoiceStatusOn treats due-today as open (calendar day, not UTC midnight)", () => {
+  expect(invoiceStatusOn(50, "2026-06-22", "2026-06-22")).toBe("open");
+  expect(invoiceStatusOn(50, "2026-06-21", "2026-06-22")).toBe("overdue");
+  expect(invoiceStatusOn(0, "2026-06-21", "2026-06-22")).toBe("paid");
+});
+
+test("isQboVoidOrDeleted zeros voids and skips unnamed CDC skeletons", () => {
+  expect(isQboVoidOrDeleted({ status: "Deleted" })).toBe(true);
+  expect(isQboVoidOrDeleted({ Status: "Void" })).toBe(true);
+  expect(isQboVoidOrDeleted({ Active: false })).toBe(true);
+  expect(isQboVoidOrDeleted({ Balance: 10 })).toBe(false);
+  const voided = mapQboInvoice({ Id: "1", Balance: 80, Status: "Void", DueDate: "2026-01-01" }, "o", "c", NOW);
+  expect(voided.balance).toBe(0);
+  expect(voided.status).toBe("paid");
+  expect(qboCustomerName({ Id: "x" })).toBe("");
 });
 
 test("mapQboInvoice maps money with NaN guard and anchors status on due date", () => {

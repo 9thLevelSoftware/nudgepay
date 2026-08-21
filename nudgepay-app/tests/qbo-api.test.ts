@@ -1,6 +1,6 @@
 import { expect, test, vi } from "vitest";
 import {
-  qboApiBaseUrl, qboQuery, qboReadEntity, qboReadCompanyInfo, qboCdc,
+  qboApiBaseUrl, qboQuery, qboQueryAll, qboReadEntity, qboReadCompanyInfo, qboCdc,
   retryAfterWaitMs, QBO_429_WAIT_CAP_MS,
 } from "../app/lib/qbo-api.server";
 
@@ -24,6 +24,19 @@ test("qboQuery hits the query endpoint with bearer auth and returns the entity a
   expect(String(url)).toContain("/v3/company/realm-9/query?query=");
   expect(String(url)).toContain("minorversion=");
   expect((init as any).headers.Authorization).toBe("Bearer AT");
+});
+
+test("qboQueryAll pages until a short page", async () => {
+  const page1 = Array.from({ length: 2 }, (_, i) => ({ Id: String(i + 1) }));
+  const page2 = [{ Id: "3" }];
+  const fetchFn = vi.fn(async (url: string) => {
+    const decoded = decodeURIComponent(String(url));
+    if (decoded.includes("startposition 3")) return jsonResponse({ QueryResponse: { Invoice: page2 } });
+    return jsonResponse({ QueryResponse: { Invoice: page1 } });
+  });
+  const rows = await qboQueryAll(fetchFn as any, api, "AT", "r", "select * from Invoice", "Invoice", {}, 2);
+  expect(rows.map((r) => r.Id)).toEqual(["1", "2", "3"]);
+  expect(fetchFn).toHaveBeenCalledTimes(2);
 });
 
 test("qboQuery returns [] when the entity key is absent", async () => {

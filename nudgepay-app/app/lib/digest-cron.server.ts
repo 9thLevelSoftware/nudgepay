@@ -5,7 +5,7 @@
 
 import { getEnv, getEmailEnvOrNull } from "./env.server";
 import { createSupabaseServiceClient } from "./supabase.server";
-import { runDailyDigest } from "./notifications.server";
+import { runDailyDigest, retryUnsentBrokenPromiseAlerts } from "./notifications.server";
 import { recordSyncError } from "./sync-errors.server";
 import { todayInTz, shouldSendDigestNow } from "./tz";
 import { DEFAULT_COMPANY_PROFILE } from "./org-profile";
@@ -48,6 +48,16 @@ export async function runScheduledDigest(
       const tz = row?.timezone && row.timezone.length > 0 ? row.timezone : DEFAULT_COMPANY_PROFILE.timezone;
       const digestHourLocal = row?.digest_hour_local ?? 8;
       const lastDigestDate = row?.last_digest_date ?? null;
+      const todayForRetry = todayInTz(tz, now);
+      try {
+        await retryUnsentBrokenPromiseAlerts(
+          { fetchFn: fetch, service, email: { apiKey: emailEnv.RESEND_API_KEY }, appUrl: emailEnv.APP_PUBLIC_BASE_URL ?? "" },
+          orgId,
+          todayForRetry,
+        );
+      } catch (retryErr) {
+        console.error(`[digest] broken-promise retry failed for org ${orgId}:`, retryErr);
+      }
 
       if (!shouldSendDigestNow(tz, digestHourLocal, lastDigestDate, now)) continue;
 

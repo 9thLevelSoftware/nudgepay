@@ -1,8 +1,8 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { getValidAccessToken } from "./qbo-connection.server";
-import { qboQuery, qboReadEntity, qboCdc, type QboApiConfig } from "./qbo-api.server";
+import { qboQueryAll, qboReadEntity, qboCdc, type QboApiConfig } from "./qbo-api.server";
 import {
-  mapQboCustomer, mapQboInvoice, mapQboPayment,
+  mapQboCustomer, mapQboInvoice, mapQboPayment, qboCustomerName,
   type CustomerUpsert, type InvoiceUpsert, type PaymentUpsert,
 } from "./qbo-mappers.server";
 import type { QboHttpConfig } from "./qbo-client.server";
@@ -69,9 +69,9 @@ export async function repullCustomerInvoices(
   const ids = [...new Set(qboCustomerIds.filter(Boolean))];
   if (ids.length === 0) return;
   const idList = ids.map((id) => `'${id}'`).join(",");
-  const invoices = await qboQuery(
+  const invoices = await qboQueryAll(
     deps.fetchFn, deps.api, accessToken, realmId,
-    `select * from Invoice where CustomerRef in (${idList}) startposition 1 maxresults ${QUERY_LIMIT}`,
+    `select * from Invoice where CustomerRef in (${idList})`,
     "Invoice",
   );
   if (invoices.length === 0) return;
@@ -143,9 +143,9 @@ export async function syncOverdueInvoices(
 
   // Overdue invoices (critical path — feeds case pipeline). Separate query
   // so coming-due rows can never displace overdue rows at the cap.
-  const overdueInvoices = await qboQuery(
+  const overdueInvoices = await qboQueryAll(
     deps.fetchFn, deps.api, accessToken, realmId,
-    `select * from Invoice where Balance > '0' and DueDate < '${today}' startposition 1 maxresults ${QUERY_LIMIT}`,
+    `select * from Invoice where Balance > '0' and DueDate < '${today}'`,
     "Invoice",
   );
 
@@ -153,9 +153,9 @@ export async function syncOverdueInvoices(
   // separate capped query).
   const todayMs = new Date(today + "T00:00:00Z").getTime();
   const plus7 = new Date(todayMs + orgConfig.workflow.comingDueDays * 86_400_000).toISOString().slice(0, 10);
-  const comingDueInvoices = await qboQuery(
+  const comingDueInvoices = await qboQueryAll(
     deps.fetchFn, deps.api, accessToken, realmId,
-    `select * from Invoice where Balance > '0' and DueDate >= '${today}' and DueDate <= '${plus7}' startposition 1 maxresults ${QUERY_LIMIT}`,
+    `select * from Invoice where Balance > '0' and DueDate >= '${today}' and DueDate <= '${plus7}'`,
     "Invoice",
   );
 
@@ -182,18 +182,18 @@ export async function syncOverdueInvoices(
   let customerRows: CustomerUpsert[] = [];
   if (overdueCustIds.length > 0) {
     const idList = overdueCustIds.map((id) => `'${id}'`).join(",");
-    const customers = await qboQuery(
+    const customers = await qboQueryAll(
       deps.fetchFn, deps.api, accessToken, realmId,
-      `select * from Customer where Id in (${idList}) startposition 1 maxresults ${QUERY_LIMIT}`,
+      `select * from Customer where Id in (${idList})`,
       "Customer",
     );
     customerRows.push(...customers.map((c) => mapQboCustomer(c, orgId)));
   }
   if (extraCustIds.length > 0) {
     const idList = extraCustIds.map((id) => `'${id}'`).join(",");
-    const customers = await qboQuery(
+    const customers = await qboQueryAll(
       deps.fetchFn, deps.api, accessToken, realmId,
-      `select * from Customer where Id in (${idList}) startposition 1 maxresults ${QUERY_LIMIT}`,
+      `select * from Customer where Id in (${idList})`,
       "Customer",
     );
     customerRows.push(...customers.map((c) => mapQboCustomer(c, orgId)));
@@ -224,7 +224,7 @@ export async function syncOverdueInvoices(
   return {
     customers: customerRows.length,
     invoices: invoiceRows.length,
-    truncated: overdueInvoices.length >= QUERY_LIMIT,
+    truncated: false,
   };
 }
 
@@ -248,7 +248,15 @@ export async function applyInvoiceWebhook(
     deps.fetchFn, deps.service, deps.cfg, deps.key, orgId,
   );
   const inv = await qboReadEntity(deps.fetchFn, deps.api, accessToken, realmId, "Invoice", qboInvoiceId);
-  if (!inv) return;
+  if (!inv) {
+    // Missing at Intuit (deleted): zero local balance so recon can close the case.
+    const { error } = await deps.service.from("invoices")
+      .update({ balance: 0, status: "paid" })
+      .eq("org_id", orgId)
+      .eq("qbo_id", qboInvoiceId);
+    if (error) throw error;
+    return;
+  }
 
   // Ensure the invoice's customer exists locally so the FK resolves.
   const qboCustomerId = inv?.CustomerRef?.value ? String(inv.CustomerRef.value) : null;
@@ -294,8 +302,19 @@ export async function runCdcCatchup(
   const changedSince = new Date(Math.max(sinceMs, minMs)).toISOString();
 
   const { invoices, customers, payments, creditMemos } = await qboCdc(deps.fetchFn, deps.api, accessToken, realmId, changedSince);
+  const CDC_CAP = 1000;
+  if (
+    invoices.length >= CDC_CAP
+    || customers.length >= CDC_CAP
+    || payments.length >= CDC_CAP
+    || creditMemos.length >= CDC_CAP
+  ) {
+    throw new Error("CDC truncated: do not advance watermark");
+  }
 
-  const customerRows = customers.map((c) => mapQboCustomer(c, orgId));
+  const customerRows = customers
+    .filter((c) => qboCustomerName(c).length > 0)
+    .map((c) => mapQboCustomer(c, orgId));
   await upsertCustomers(deps.service, customerRows);
 
   const custIds = invoices.map((i) => i?.CustomerRef?.value).filter(Boolean).map(String);

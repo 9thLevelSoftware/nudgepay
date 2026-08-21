@@ -24,6 +24,8 @@ import { readPresence } from "./presence.server";
 import type { RecentContactInput } from "./collision";
 import { loadTemplates } from "./message-templates.server";
 import type { OrgTemplates } from "./message-templates";
+import { assertNotTruncated } from "./page-all";
+import { countsAsCustomerContact } from "./last-contact";
 
 // ---------------------------------------------------------------------------
 // Row shapes returned by the Supabase queries (internal)
@@ -136,13 +138,13 @@ export async function loadCaseQueueSource(args: LoadCaseQueueArgs): Promise<Case
   ] = await Promise.all([
     supabase
       .from("invoices")
-      .select("id, qbo_doc_number, balance, due_date, customer_id, customers!invoices_org_customer_fk(name, phone, email, owner, sms_consent, preferred_channel, do_not_call, do_not_text)")
+      .select("id, qbo_doc_number, balance, due_date, customer_id, customers!invoices_org_customer_fk(name, phone, email, owner, sms_consent, preferred_channel, do_not_call, do_not_text)", { count: "exact" })
       .eq("org_id", orgId)
       .gt("balance", 0)
       .lte("due_date", plus7),
     supabase
       .from("collection_cases")
-      .select("id, customer_id, status, next_action_type, next_action_at, opened_at, exception_reason, exception_note, priority_override, priority_override_reason, priority_override_by, priority_override_at")
+      .select("id, customer_id, status, next_action_type, next_action_at, opened_at, exception_reason, exception_note, priority_override, priority_override_reason, priority_override_by, priority_override_at", { count: "exact" })
       .eq("org_id", orgId)
       .is("closed_at", null),
     listOrgMembers(service, orgId).catch(() => [] as OrgMember[]),
@@ -153,6 +155,8 @@ export async function loadCaseQueueSource(args: LoadCaseQueueArgs): Promise<Case
   if (invRes.error) throw invRes.error;
   if (caseRes.error) throw caseRes.error;
   if (mcfgRes.error) throw mcfgRes.error;
+  assertNotTruncated(invRes.data?.length ?? 0, invRes.count, "invoices");
+  assertNotTruncated(caseRes.data?.length ?? 0, caseRes.count, "cases");
   const invRows = invRes.data;
   const caseRows = caseRes.data;
   const mcfg = mcfgRes.data;
@@ -250,7 +254,9 @@ export async function loadCaseQueueSource(args: LoadCaseQueueArgs): Promise<Case
     const methodLabel: Record<string, string> = { call: "Call", email: "Email", text: "Text", note: "Note" };
     for (const r of (logRows as any[]) ?? []) {
       if (r.case_id) {
-        lastContactsInput.push({ caseId: r.case_id, date: r.created_at, channel: methodLabel[r.method] ?? "Note" });
+        if (countsAsCustomerContact(r.method as string)) {
+          lastContactsInput.push({ caseId: r.case_id, date: r.created_at, channel: methodLabel[r.method] ?? "Note" });
+        }
         pushRecent(r.case_id, r.user_id ?? null, r.created_at);
       }
     }

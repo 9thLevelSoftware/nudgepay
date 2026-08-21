@@ -649,6 +649,12 @@ export function WorkQueue({
           >
             Apply
           </button>
+          <a
+            href={`/queue.csv?${new URLSearchParams({ view, sort, ...(search ? { q: search } : {}) }).toString()}`}
+            className="rounded-md border border-border bg-panel px-3 h-9 inline-flex items-center text-xs font-sans text-muted hover:text-text hover:border-copper transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-copper"
+          >
+            Export CSV
+          </a>
         </Form>
       </div>
 

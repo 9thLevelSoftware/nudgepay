@@ -115,10 +115,27 @@ function emailGate(c: ThreadCustomerInput, anchorInvoiceId: string | null): { ca
   };
 }
 
+/** Thread key used for last_read_at lookups. */
+export function threadReadKey(customerId: string, channel: MessageChannel): string {
+  return `${customerId}::${channel}`;
+}
+
+/** Unread inbound: last message is inbound and newer than last_read_at (or never read). */
+export function inboundIsUnread(
+  lastDirection: "inbound" | "outbound",
+  lastCreatedAt: string,
+  lastReadAt: string | null | undefined,
+): boolean {
+  if (lastDirection !== "inbound") return false;
+  if (!lastReadAt) return true;
+  return lastCreatedAt > lastReadAt;
+}
+
 export function buildThreadRows(
   customers: ThreadCustomerInput[],
   messages: ThreadMessageInput[],
   ownerLabels: Map<string, string>,
+  lastReadByKey: Map<string, string> = new Map(),
 ): ThreadRow[] {
   // Group messages by customer + channel.
   const byKey = new Map<string, ThreadMessageInput[]>();
@@ -158,7 +175,8 @@ export function buildThreadRows(
     }
     if (anchorInvoiceId == null) anchorInvoiceId = c.latestInvoiceId;
 
-    const needsReply = last.direction === "inbound";
+    const lastReadAt = lastReadByKey.get(threadReadKey(customerId, channel)) ?? null;
+    const needsReply = inboundIsUnread(last.direction, last.createdAt, lastReadAt);
     const needsAttention = last.direction === "outbound" && isFailed(last.status, last.errorCode);
 
     const gate = channel === "sms" ? smsGate(c, anchorInvoiceId) : emailGate(c, anchorInvoiceId);

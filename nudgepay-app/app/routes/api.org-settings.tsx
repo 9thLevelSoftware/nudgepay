@@ -4,7 +4,7 @@ import { requireUser, resolveOrg } from "../lib/session.server";
 import { safeReturnTo } from "../lib/return-to";
 import { parseOrgSettingsUpdate, parseHolidayDate, parseHolidayLabel, parseLateFeeSettingsUpdate, parsePriorityThresholdsUpdate, parseWorkflowKnobsUpdate } from "../lib/org-settings";
 import { parseChannelSettingsUpdate, parseQuietHoursUpdate } from "../lib/channel-settings";
-import { parseAllowedFromList, parseEmailSettingsUpdate } from "../lib/email-settings";
+import { parseAllowedFromList, parseEmailSettingsUpdate, emailConfigUpsertRow } from "../lib/email-settings";
 import { parseCompanyProfileUpdate } from "../lib/org-profile";
 import { parseTemplateUpsert, parseTemplateDelete } from "../lib/message-templates";
 import { DEFAULT_SMS_TEMPLATES } from "../lib/sms-templates";
@@ -131,7 +131,7 @@ export async function action({ request, context }: ActionFunctionArgs) {
     const parsed = parseEmailSettingsUpdate(form, allowlist);
     if (!parsed.ok) return redirect(flag(returnTo, "error", "email"), { headers });
     const { error } = await supabase.from("email_config")
-      .upsert({ org_id: org.org_id, ...parsed.value }, { onConflict: "org_id" });
+      .upsert(emailConfigUpsertRow(org.org_id, parsed.value, new Date().toISOString()), { onConflict: "org_id" });
     if (error) return redirect(flag(returnTo, "error", "save"), { headers });
     // Distinct success marker so the email panel's "Saved." banner does not light
     // up after unrelated settings saves.

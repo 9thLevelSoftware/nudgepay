@@ -28,27 +28,49 @@ function money(v: unknown): number {
   return Number.isNaN(n) ? 0 : n;
 }
 
+export function qboCustomerName(c: any): string {
+  const name = String(c?.DisplayName ?? c?.FullyQualifiedName ?? c?.CompanyName ?? "").trim();
+  return name;
+}
+
 export function mapQboCustomer(c: any, orgId: string): CustomerUpsert {
   return {
     org_id: orgId,
     qbo_id: String(c.Id),
-    name: c.DisplayName ?? c.FullyQualifiedName ?? c.CompanyName ?? "(unnamed)",
+    name: qboCustomerName(c) || "(unnamed)",
     email: c.PrimaryEmailAddr?.Address ?? null,
     phone: c.PrimaryPhone?.FreeFormNumber ?? null,
   };
 }
 
-export function invoiceStatus(balance: number, dueDate: string | null, now: Date): string {
+/** Calendar compare (YYYY-MM-DD). Due today is still open — never UTC-midnight skew. */
+export function invoiceStatusOn(balance: number, dueDate: string | null, today: string): string {
   if (balance <= 0) return "paid";
-  if (dueDate && new Date(`${dueDate}T00:00:00Z`).getTime() < now.getTime()) return "overdue";
+  if (dueDate && dueDate < today) return "overdue";
   return "open";
+}
+
+export function invoiceStatus(balance: number, dueDate: string | null, now: Date): string {
+  return invoiceStatusOn(balance, dueDate, now.toISOString().slice(0, 10));
+}
+
+export function isQboVoidOrDeleted(raw: unknown): boolean {
+  if (raw == null || typeof raw !== "object") return false;
+  const rec = raw as Record<string, unknown>;
+  const status = String(rec.status ?? rec.Status ?? "");
+  if (/^(deleted|void)$/i.test(status)) return true;
+  if (rec.active === false || rec.Active === false) return true;
+  return false;
 }
 
 export function mapQboInvoice(
   inv: any, orgId: string, customerId: string | null, now: Date = new Date(),
+  today?: string,
 ): InvoiceUpsert {
-  const balance = money(inv.Balance);
+  const voided = isQboVoidOrDeleted(inv);
+  const balance = voided ? 0 : money(inv.Balance);
   const due_date = inv.DueDate ?? null;
+  const day = today ?? now.toISOString().slice(0, 10);
   return {
     org_id: orgId,
     qbo_id: String(inv.Id),
@@ -58,7 +80,7 @@ export function mapQboInvoice(
     balance,
     due_date,
     invoice_date: inv.TxnDate ?? null,
-    status: invoiceStatus(balance, due_date, now),
+    status: invoiceStatusOn(balance, due_date, day),
     qbo_sync_at: now.toISOString(),
   };
 }

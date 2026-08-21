@@ -22,11 +22,12 @@ export function buildFocusQueue(
   currentUserId: string | null,
 ): { queue: CaseItem[]; scope: FocusScope } {
   const mine = applyCaseView(items, "my-work" as ViewId, today, currentUserId)
-    .filter((i) => !i.suppressed);
+    .filter((i) => !i.suppressed && i.status !== "waiting" && i.status !== "on_hold");
   if (mine.length > 0) {
     return { queue: sortCaseItems(mine, "recommended" as SortId), scope: "my-work" };
   }
-  const all = applyCaseView(items, "all-open" as ViewId, today, currentUserId);
+  const all = applyCaseView(items, "all-open" as ViewId, today, currentUserId)
+    .filter((i) => i.status !== "waiting" && i.status !== "on_hold");
   return { queue: sortCaseItems(all, "recommended" as SortId), scope: "all-open" };
 }
 

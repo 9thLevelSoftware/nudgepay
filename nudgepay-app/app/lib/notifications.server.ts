@@ -9,6 +9,7 @@ import { brokenPromiseEmail, digestEmail, type DigestCaseLine } from "./notifica
 import type { BrokenPromiseDetail } from "./promise-evaluation.server";
 import { isCaseSuppressed } from "./exceptions";
 import type { ExceptionReason } from "./contact-log";
+import { shouldSkipBrokenPromiseSend } from "./alert-retry";
 
 // ---------------------------------------------------------------------------
 // Deps
@@ -99,7 +100,7 @@ export async function sendBrokenPromiseAlerts(
         .eq("org_id", orgId)
         .eq("kind", "broken_promise")
         .eq("dedupe_key", dedupeKey);
-      if ((count ?? 0) > 0) continue; // already sent
+      if (shouldSkipBrokenPromiseSend(count ?? 0)) continue; // already sent
 
       try {
         await sendEmail(deps.fetchFn, deps.email, {
@@ -114,12 +115,34 @@ export async function sendBrokenPromiseAlerts(
           .insert({ org_id: orgId, kind: "broken_promise", dedupe_key: dedupeKey, recipient_email: member.email });
       } catch (e) {
         console.error(`broken-promise email failed for ${member.email}`, e);
-        // No ledger row inserted — the alert remains retryable, but the
-        // promise transition is one-shot so a manual re-trigger or retry
-        // job would be needed. Log for operator visibility.
+        // No success ledger row — retryUnsentBrokenPromiseAlerts will send again.
       }
     }
   }
+}
+
+/** Hourly: re-send broken-promise alerts that never got a success ledger row. */
+export async function retryUnsentBrokenPromiseAlerts(
+  deps: NotificationDeps,
+  orgId: string,
+  today: string,
+): Promise<void> {
+  const { data: rows, error } = await deps.service
+    .from("promises")
+    .select("id, case_id, promised_amount, promised_date")
+    .eq("org_id", orgId)
+    .eq("status", "broken");
+  if (error) throw error;
+  const details: BrokenPromiseDetail[] = (rows ?? []).map((r: {
+    id: string; case_id: string; promised_amount: number; promised_date: string;
+  }) => ({
+    promiseId: r.id,
+    caseId: r.case_id,
+    promisedAmount: Number(r.promised_amount),
+    promisedDate: r.promised_date,
+  }));
+  if (details.length === 0) return;
+  await sendBrokenPromiseAlerts(deps, orgId, details, today);
 }
 
 // ---------------------------------------------------------------------------
