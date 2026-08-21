@@ -2,6 +2,21 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { displayLabel } from "./names";
 import { DEFAULT_SMS_TEMPLATES } from "./sms-templates";
 import { DEFAULT_EMAIL_TEMPLATES } from "./email-templates";
+import {
+  AlreadyInWorkspaceError,
+  canJoinOrg,
+} from "./org-membership";
+
+function isUniqueViolation(err: { code?: string } | null | undefined): boolean {
+  return err?.code === "23505";
+}
+
+async function existingOrgId(service: SupabaseClient, userId: string): Promise<string | null> {
+  const { data, error } = await service
+    .from("memberships").select("org_id").eq("user_id", userId).maybeSingle();
+  if (error) throw error;
+  return (data?.org_id as string | undefined) ?? null;
+}
 
 export async function acceptInvite(
   service: SupabaseClient,
@@ -21,15 +36,26 @@ export async function acceptInvite(
     throw new Error("Invite expired");
   }
 
-  const { error: memErr } = await service
-    .from("memberships").insert({ org_id: inv.org_id, user_id: userId, role: "member" });
-  // 23505 = unique_violation: user already a member (race or repeat) -> treat as success
-  if (memErr && (memErr as any).code !== "23505") throw memErr;
+  const targetOrgId = inv.org_id as string;
+  const decision = canJoinOrg(await existingOrgId(service, userId), targetOrgId);
+  if (decision === "already_in_workspace") throw new AlreadyInWorkspaceError();
+  if (decision === "join") {
+    const { error: memErr } = await service
+      .from("memberships").insert({ org_id: targetOrgId, user_id: userId, role: "member" });
+    if (memErr) {
+      // 23505: same-org race → success; different-org unique(user_id) → reject.
+      if (!isUniqueViolation(memErr)) throw memErr;
+      const again = await existingOrgId(service, userId);
+      if (canJoinOrg(again, targetOrgId) !== "already_member") {
+        throw new AlreadyInWorkspaceError();
+      }
+    }
+  }
 
   const { error: stampErr } = await service.from("invites")
     .update({ accepted_at: new Date().toISOString() }).eq("id", inv.id).is("accepted_at", null);
   if (stampErr) throw stampErr;
-  return inv.org_id as string;
+  return targetOrgId;
 }
 
 export async function createOrgForUser(
@@ -37,6 +63,10 @@ export async function createOrgForUser(
   userId: string,
   name: string
 ): Promise<string> {
+  if (canJoinOrg(await existingOrgId(service, userId)) !== "join") {
+    throw new AlreadyInWorkspaceError();
+  }
+
   const { data: org, error: orgErr } = await service
     .from("organizations").insert({ name }).select("id").single();
   if (orgErr || !org) throw orgErr ?? new Error("org insert failed");
@@ -45,6 +75,7 @@ export async function createOrgForUser(
     .from("memberships").insert({ org_id: org.id, user_id: userId, role: "owner" });
   if (memErr) {
     await service.from("organizations").delete().eq("id", org.id); // compensate
+    if (isUniqueViolation(memErr)) throw new AlreadyInWorkspaceError();
     throw memErr;
   }
 

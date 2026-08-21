@@ -1,6 +1,7 @@
 import { expect, test } from "vitest";
 import { serviceClient, makeUserClient } from "./helpers";
-import { acceptInvite, listOrgMembers } from "../app/lib/orgs.server";
+import { acceptInvite, createOrgForUser, listOrgMembers } from "../app/lib/orgs.server";
+import { ALREADY_IN_WORKSPACE } from "../app/lib/org-membership";
 
 test("listOrgMembers returns the org roster with email-local-part labels", async () => {
   const svc = serviceClient();
@@ -50,4 +51,54 @@ test("acceptInvite rejects expired invite tokens", async () => {
     .eq("org_id", org!.id)
     .eq("user_id", invited.userId);
   expect(memberships ?? []).toHaveLength(0);
+});
+
+test("acceptInvite of the same org is success when the user is already a member", async () => {
+  const svc = serviceClient();
+  const owner = await makeUserClient("invite-same-owner@example.com");
+  const orgId = await createOrgForUser(svc, owner.userId, "Same Org Invite");
+  const invitee = await makeUserClient("invite-same-member@example.com");
+  await svc.from("memberships").insert({ org_id: orgId, user_id: invitee.userId, role: "member" });
+  const { data: inv } = await svc.from("invites")
+    .insert({ org_id: orgId, email: "invite-same-member@example.com" }).select("id, token").single();
+
+  await expect(acceptInvite(svc, inv!.token as string, invitee.userId, "invite-same-member@example.com"))
+    .resolves.toBe(orgId);
+
+  const { data: mems } = await svc.from("memberships").select("org_id").eq("user_id", invitee.userId);
+  expect(mems).toHaveLength(1);
+  const { data: stamped } = await svc.from("invites").select("accepted_at").eq("id", inv!.id).single();
+  expect(stamped?.accepted_at).toBeTruthy();
+});
+
+test("acceptInvite rejects a second workspace", async () => {
+  const svc = serviceClient();
+  const owner = await makeUserClient("invite-other-owner@example.com");
+  const orgA = await createOrgForUser(svc, owner.userId, "Invite Other A");
+  const invitee = await makeUserClient("invite-other-member@example.com");
+  await createOrgForUser(svc, invitee.userId, "Invitee Own Workspace");
+  const { data: inv } = await svc.from("invites")
+    .insert({ org_id: orgA, email: "invite-other-member@example.com" }).select("token").single();
+
+  await expect(
+    acceptInvite(svc, inv!.token as string, invitee.userId, "invite-other-member@example.com"),
+  ).rejects.toThrow(ALREADY_IN_WORKSPACE);
+
+  const { data: mems } = await svc.from("memberships")
+    .select("org_id").eq("user_id", invitee.userId).eq("org_id", orgA);
+  expect(mems ?? []).toHaveLength(0);
+});
+
+test("memberships unique on user_id rejects a second org", async () => {
+  const svc = serviceClient();
+  const user = await makeUserClient("one-membership@example.com");
+  const { data: orgA } = await svc.from("organizations").insert({ name: "Unique Mem A" }).select("id").single();
+  const { error: firstErr } = await svc.from("memberships")
+    .insert({ org_id: orgA!.id, user_id: user.userId, role: "owner" });
+  expect(firstErr).toBeNull();
+  const { data: orgB } = await svc.from("organizations").insert({ name: "Unique Mem B" }).select("id").single();
+  const { error } = await svc.from("memberships")
+    .insert({ org_id: orgB!.id, user_id: user.userId, role: "member" });
+  expect(error).not.toBeNull();
+  expect(error!.code).toBe("23505");
 });

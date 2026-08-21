@@ -400,6 +400,7 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
     {
       orgName: orgRow?.name ?? "(unknown)",
       userInitials: initials,
+      userLabel,
       isOwner: org.role === "owner",
       connected,
       syncIssues: mapSyncIssues(syncErrorRows as {
@@ -465,6 +466,7 @@ export default function Dashboard() {
   const {
     orgName,
     userInitials,
+    userLabel,
     isOwner,
     connected,
     syncIssues,
@@ -537,6 +539,7 @@ export default function Dashboard() {
     <AppShell
       orgName={orgName}
       userInitials={userInitials}
+      userLabel={userLabel}
       syncLabel={syncLabel}
       connected={connected}
       isOwner={isOwner}
@@ -627,6 +630,7 @@ export default function Dashboard() {
                 orgPhone={orgPhone}
                 orgPaymentLink={orgPaymentLink}
                 maxBatch={maxBatch}
+                connected={connected}
               />
             </div>
 

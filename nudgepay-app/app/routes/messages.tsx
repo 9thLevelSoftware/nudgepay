@@ -47,7 +47,7 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
   const env = getEnv(context as any);
   const {
     supabase, service, headers, isOwner, org,
-    orgName, initials, connected, syncLabel,
+    orgName, initials, userLabel, connected, syncLabel,
     syncIssues,
   } = await loadWorkspaceChrome(request, env);
 
@@ -249,7 +249,7 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
   return data(
     {
       orgName,
-      initials, syncLabel, connected, isOwner, syncIssues,
+      initials, userLabel, syncLabel, connected, isOwner, syncIssues,
       rows, metrics, counts, tab, sort, q,
       channel, channelCounts, emailEnabled,
       selected, selectedMessages, selectedEmailMessages,
@@ -269,6 +269,7 @@ export default function Messages() {
     <AppShell
       orgName={d.orgName}
       userInitials={d.initials}
+      userLabel={d.userLabel}
       syncLabel={d.syncLabel}
       connected={d.connected}
       isOwner={d.isOwner}

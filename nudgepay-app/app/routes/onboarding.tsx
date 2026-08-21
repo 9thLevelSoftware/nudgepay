@@ -10,6 +10,7 @@ import { getEnv } from "../lib/env.server";
 import { createSupabaseServiceClient } from "../lib/supabase.server";
 import { requireUser, resolveOrg } from "../lib/session.server";
 import { createOrgForUser } from "../lib/orgs.server";
+import { isAlreadyInWorkspaceError } from "../lib/org-membership";
 import { PublicLayout } from "../components/PublicLayout";
 import { Button, inputClass } from "../components/ui";
 import { pageTitle } from "../lib/meta";
@@ -35,7 +36,12 @@ export async function action({ request, context }: ActionFunctionArgs) {
   const name = typeof raw === "string" ? raw.trim() : "";
   if (!name) return { error: "Organization name is required" };
   const service = createSupabaseServiceClient(env);
-  await createOrgForUser(service, user.id, name);
+  try {
+    await createOrgForUser(service, user.id, name);
+  } catch (e) {
+    if (isAlreadyInWorkspaceError(e)) return redirect("/dashboard", { headers });
+    throw e;
+  }
   return redirect("/dashboard", { headers });
 }
 

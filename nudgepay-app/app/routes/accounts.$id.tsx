@@ -294,6 +294,7 @@ export async function loader({ request, params, context }: LoaderFunctionArgs) {
     {
       orgName: orgRow?.name ?? "(unknown)",
       initials,
+      userLabel,
       syncLabel,
       connected,
       isOwner,
@@ -338,6 +339,7 @@ export default function AccountProfilePage() {
     <AppShell
       orgName={d.orgName}
       userInitials={d.initials}
+      userLabel={d.userLabel}
       syncLabel={d.syncLabel}
       connected={d.connected}
       isOwner={d.isOwner}

@@ -1,10 +1,12 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Form, Link, useNavigation } from "react-router";
 import { Icon } from "./Icons";
 
 interface AppShellProps {
   orgName: string;
   userInitials: string;
+  /** Display name already resolved by the loader; initials are used if omitted. */
+  userLabel?: string;
   syncLabel: string;
   connected: boolean;
   /** Reserved for future owner-gated header actions (Task 6+). */
@@ -32,28 +34,35 @@ const NAV_ITEMS: NavItem[] = [
   { name: "reports", icon: "note", label: "Reports" },
 ];
 
+/** Accessible name for Reports in the side nav. Members hear owner-gating, not "coming soon". */
+export function reportsNavLabel(isOwner: boolean): string {
+  return isOwner ? "Reports" : "Reports (Owner only)";
+}
+
 /**
  * AppShell — the application frame for the NudgePay collections workspace.
  *
  * Layout:
  *   - `ink` top bar: brand mark, workspace title "Collections", sync chip,
- *     settings icon, user avatar with initials.
+ *     settings icon, user avatar that opens an account menu.
  *   - `ink` left icon side-nav: Collections / Accounts / Promises / Messages
  *     (live links, copper left-edge indicator on the active section);
  *     Reports (link, owners only). Settings is reached from the top bar
- *     (gear icon + sync chip), not the side-nav.
+ *     (gear icon + sync chip + account menu), not the side-nav.
  *   - Main area: `bg-panel`, renders `children`.
  *
  * Responsive: side-nav hidden below `md`, toggled via the menu button in the
  * top bar. A backdrop overlay closes the drawer on mobile.
  *
  * Accessibility: copper focus rings on all interactive elements,
- * aria-disabled on restricted nav items (Reports for non-owners), aria-label on icon-only controls,
- * aria-expanded on the menu toggle.
+ * aria-disabled on restricted nav items (Reports for non-owners, labeled
+ * "Owner only"), aria-label on icon-only controls, aria-expanded on the
+ * menu toggle and account menu.
  */
 export function AppShell({
   orgName,
   userInitials,
+  userLabel,
   syncLabel,
   connected,
   isOwner,
@@ -150,17 +159,7 @@ export function AppShell({
             <Icon name="settings" size={16} />
           </Link>
 
-          {/* User avatar → sign out (POST so the action runs) */}
-          <Form method="post" action="/logout" className="contents">
-            <button
-              type="submit"
-              className="flex items-center justify-center w-7 h-7 rounded-full bg-copper/20 border border-copper/40 text-copper font-sans text-[11px] font-semibold uppercase leading-none select-none hover:bg-copper/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-copper"
-              aria-label={`Sign out (${userInitials})`}
-              title="Sign out"
-            >
-              {userInitials}
-            </button>
-          </Form>
+          <UserMenu userInitials={userInitials} userLabel={userLabel} />
         </div>
       </header>
 
@@ -197,6 +196,7 @@ export function AppShell({
               // target for owners so it can show the copper active state, while
               // non-owners still fall through to the disabled item below.
               const target = NAV_TARGETS[item.name] ?? (isReportsForOwner ? "/reports" : undefined);
+              const ariaLabel = item.name === "reports" ? reportsNavLabel(isOwner) : item.label;
 
               if (isActive && target) {
                 return (
@@ -205,7 +205,7 @@ export function AppShell({
                       to={target}
                       className="relative flex flex-col items-center justify-center w-full py-3 gap-1 text-surface focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-copper focus-visible:ring-inset"
                       aria-current="page"
-                      aria-label={item.label}
+                      aria-label={ariaLabel}
                       onClick={() => setNavOpen(false)}
                     >
                       <span className="absolute left-0 inset-y-0 w-0.5 bg-copper rounded-r" aria-hidden="true" />
@@ -225,7 +225,7 @@ export function AppShell({
                     <Link
                       to={to}
                       className="flex flex-col items-center justify-center w-full py-3 gap-1 text-surface/70 hover:text-surface focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-copper focus-visible:ring-inset"
-                      aria-label={item.label}
+                      aria-label={ariaLabel}
                       onClick={() => setNavOpen(false)}
                     >
                       <Icon name={item.icon} size={18} />
@@ -242,7 +242,8 @@ export function AppShell({
                     href="#"
                     className="flex flex-col items-center justify-center w-full py-3 gap-1 text-surface/40 cursor-default focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-copper focus-visible:ring-inset"
                     aria-disabled="true"
-                    aria-label={`${item.label} (coming soon)`}
+                    aria-label={ariaLabel}
+                    title="Owner only"
                     tabIndex={-1}
                     onClick={(e) => e.preventDefault()}
                   >
@@ -264,6 +265,106 @@ export function AppShell({
           {children}
         </main>
       </div>
+    </div>
+  );
+}
+
+const menuItemClass =
+  "block w-full px-3 py-2 text-left text-[13px] font-sans text-surface/80 hover:bg-surface/5 hover:text-surface focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-copper focus-visible:ring-inset";
+
+function UserMenu({ userInitials, userLabel }: { userInitials: string; userLabel?: string }) {
+  const [open, setOpen] = useState(false);
+  const [confirmSignOut, setConfirmSignOut] = useState(false);
+  const rootRef = useRef<HTMLDivElement>(null);
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const confirmRef = useRef<HTMLButtonElement>(null);
+  const displayName = userLabel?.trim() || userInitials;
+
+  useEffect(() => {
+    if (!open) {
+      setConfirmSignOut(false);
+      return;
+    }
+    function onKey(e: KeyboardEvent) {
+      if (e.key === "Escape") setOpen(false);
+    }
+    function onPointer(e: MouseEvent) {
+      if (rootRef.current && !rootRef.current.contains(e.target as Node)) setOpen(false);
+    }
+    document.addEventListener("keydown", onKey);
+    document.addEventListener("mousedown", onPointer);
+    return () => {
+      document.removeEventListener("keydown", onKey);
+      document.removeEventListener("mousedown", onPointer);
+      triggerRef.current?.focus();
+    };
+  }, [open]);
+
+  useEffect(() => {
+    if (confirmSignOut) confirmRef.current?.focus();
+  }, [confirmSignOut]);
+
+  return (
+    <div className="relative" ref={rootRef}>
+      <button
+        ref={triggerRef}
+        type="button"
+        className="flex items-center justify-center w-7 h-7 rounded-full bg-copper/20 border border-copper/40 text-copper font-sans text-[11px] font-semibold uppercase leading-none select-none hover:bg-copper/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-copper"
+        aria-haspopup="true"
+        aria-expanded={open}
+        aria-controls="account-menu"
+        aria-label={`Account menu (${displayName})`}
+        title="Account menu"
+        onClick={() => setOpen((v) => !v)}
+      >
+        {userInitials}
+      </button>
+
+      {open ? (
+        <div
+          id="account-menu"
+          className="absolute right-0 top-full mt-1.5 z-50 w-48 rounded-md border border-surface/10 bg-ink py-1 shadow-panel"
+        >
+          <div className="flex items-center gap-2 px-3 py-2 border-b border-surface/10" role="presentation">
+            <span
+              className="flex items-center justify-center w-7 h-7 shrink-0 rounded-full bg-copper/20 border border-copper/40 text-copper font-sans text-[11px] font-semibold uppercase leading-none"
+              aria-hidden="true"
+            >
+              {userInitials}
+            </span>
+            <span className="min-w-0 truncate text-[13px] font-sans font-medium text-surface">{displayName}</span>
+          </div>
+          <Link
+            to="/settings"
+            className={menuItemClass}
+            onClick={() => setOpen(false)}
+          >
+            Settings
+          </Link>
+          {confirmSignOut ? (
+            <Form method="post" action="/logout">
+              <button ref={confirmRef} type="submit" className={`${menuItemClass} text-hot hover:text-hot`}>
+                Confirm sign out
+              </button>
+              <button
+                type="button"
+                className={menuItemClass}
+                onClick={() => setConfirmSignOut(false)}
+              >
+                Cancel
+              </button>
+            </Form>
+          ) : (
+            <button
+              type="button"
+              className={menuItemClass}
+              onClick={() => setConfirmSignOut(true)}
+            >
+              Sign out
+            </button>
+          )}
+        </div>
+      ) : null}
     </div>
   );
 }

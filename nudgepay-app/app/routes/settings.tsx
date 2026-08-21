@@ -35,7 +35,7 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
   const env = getEnv(context as any);
   const {
     supabase, service, headers, isOwner, org, user,
-    orgName, initials, connected, lastSyncAt, syncIssues,
+    orgName, initials, userLabel, connected, lastSyncAt, syncIssues,
   } = await loadWorkspaceChrome(request, env, { requireQbo: false });
 
   const qboConfigured = getQboEnvOrNull(context as any) !== null;
@@ -106,7 +106,7 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
     currentUserId: user.id,
     displayName,
     ownerEmail: user.email ?? "",
-    initials, isOwner, connected, lastSyncAt, syncIssues,
+    initials, userLabel, isOwner, connected, lastSyncAt, syncIssues,
     qboConfigured,
     qboRedirectHint: appBaseUrl
       ? `${appBaseUrl.replace(/\/$/, "")}/auth/qbo/callback`
@@ -203,6 +203,10 @@ export default function Settings() {
   const syncLabel = d.connected ? `Synced ${relTime(d.lastSyncAt)}` : "Not connected";
   const navigation = useNavigation();
   const formBusy = (action: string) => navigation.state !== "idle" && navigation.formAction === action;
+  const profileBusy = (intent: string) =>
+    navigation.state !== "idle" &&
+    navigation.formAction === "/api/profile" &&
+    navigation.formData?.get("intent") === intent;
 
   useFlashCleanup();
 
@@ -217,6 +221,7 @@ export default function Settings() {
     <AppShell
       orgName={d.orgName}
       userInitials={d.initials}
+      userLabel={d.userLabel}
       syncLabel={syncLabel}
       connected={d.connected}
       isOwner={d.isOwner}
@@ -242,6 +247,7 @@ export default function Settings() {
                 <h2 className="font-display text-base font-semibold text-text">Profile</h2>
                 <Form method="post" action="/api/profile" className="mt-3 flex items-end gap-3">
                   <input type="hidden" name="returnTo" value={returnTo} />
+                  <input type="hidden" name="intent" value="profile" />
                   <label className="flex-1 grid gap-1 text-sm font-medium text-text">
                     Display name
                     <input
@@ -250,14 +256,61 @@ export default function Settings() {
                     />
                   </label>
                   <button
-                    type="submit" disabled={formBusy("/api/profile")}
+                    type="submit" disabled={profileBusy("profile")}
                     className="h-9 rounded-md bg-copper px-4 text-sm font-medium text-white hover:bg-copper/90 disabled:opacity-60 disabled:cursor-not-allowed"
                   >
-                    {formBusy("/api/profile") ? "Saving…" : "Save"}
+                    {profileBusy("profile") ? "Saving…" : "Save"}
                   </button>
                 </Form>
                 {sp.get("saved") === "profile" && <p className="mt-2 text-xs text-cool">Name updated.</p>}
                 <p className="mt-2 text-xs text-muted">Your display name appears in contact logs, owner assignments, and reports.</p>
+              </section>
+
+              <section className="rounded-lg border border-border bg-surface p-5">
+                <h2 className="font-display text-base font-semibold text-text">Password</h2>
+                <p className="mt-0.5 text-xs text-muted">Change the password you use to sign in. Requires your current password.</p>
+                <Form method="post" action="/api/profile" className="mt-3 flex flex-col gap-3">
+                  <input type="hidden" name="returnTo" value={returnTo} />
+                  <input type="hidden" name="intent" value="password" />
+                  <label className="grid gap-1 text-sm font-medium text-text">
+                    Current password
+                    <input
+                      name="current_password" type="password" required autoComplete="current-password"
+                      className="h-9 rounded-md border border-border bg-panel px-3 text-sm text-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-copper"
+                    />
+                  </label>
+                  <label className="grid gap-1 text-sm font-medium text-text">
+                    New password
+                    <input
+                      name="new_password" type="password" required minLength={8} autoComplete="new-password"
+                      className="h-9 rounded-md border border-border bg-panel px-3 text-sm text-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-copper"
+                    />
+                  </label>
+                  <label className="grid gap-1 text-sm font-medium text-text">
+                    Confirm new password
+                    <input
+                      name="confirm_password" type="password" required minLength={8} autoComplete="new-password"
+                      className="h-9 rounded-md border border-border bg-panel px-3 text-sm text-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-copper"
+                    />
+                  </label>
+                  <button
+                    type="submit" disabled={profileBusy("password")}
+                    className="h-9 w-fit rounded-md bg-copper px-4 text-sm font-medium text-white hover:bg-copper/90 disabled:opacity-60 disabled:cursor-not-allowed"
+                  >
+                    {profileBusy("password") ? "Updating…" : "Update password"}
+                  </button>
+                </Form>
+                {sp.get("saved") === "password" ? (
+                  <p className="mt-2 text-xs text-cool" role="status">Password updated.</p>
+                ) : null}
+                {sp.get("error") === "password" ? (
+                  <p className="mt-2 text-xs text-hot" role="alert">
+                    Could not change password. Use at least 8 characters, different from your current password, and make sure they match.
+                  </p>
+                ) : null}
+                {sp.get("error") === "wrong-password" ? (
+                  <p className="mt-2 text-xs text-hot" role="alert">Current password is incorrect.</p>
+                ) : null}
               </section>
 
               {/* Company profile */}

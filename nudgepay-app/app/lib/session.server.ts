@@ -31,12 +31,11 @@ export async function resolveOrg(
   supabase: SupabaseClient,
   userId: string
 ): Promise<{ org_id: string; role: string } | null> {
+  // At most one membership per user (unique on memberships.user_id).
   const { data } = await supabase
     .from("memberships")
     .select("org_id, role")
     .eq("user_id", userId)
-    .order("created_at", { ascending: true })
-    .limit(1)
     .maybeSingle();
   return data ? { org_id: data.org_id as string, role: data.role as string } : null;
 }

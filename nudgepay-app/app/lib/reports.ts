@@ -1,6 +1,6 @@
 // Pure team-reporting aggregation (C8). No I/O, no node:*, no .server. Turns
-// already-shaped, already-windowed primitive rows into a TeamReport. The route
-// loader owns the reads + window filtering; this module owns the math.
+// already-shaped, already-windowed primitive rows into a TeamReport. Reads and
+// window filtering live in reports.server.ts; this module owns the math + CSV.
 
 import { isCaseSuppressed } from "./exceptions";
 import type { PromiseStatus } from "./promises";
@@ -8,6 +8,11 @@ import type { ExceptionReason } from "./contact-log";
 
 export const REPORT_RANGES = [7, 30, 90] as const;
 export type ReportRange = (typeof REPORT_RANGES)[number];
+
+export function parseReportRange(raw: string | null | undefined): ReportRange {
+  const n = Number(raw);
+  return (REPORT_RANGES as readonly number[]).includes(n) ? (n as ReportRange) : 30;
+}
 
 export type ReportRosterMember = { userId: string; label: string };
 export type ReportContactLog = { userId: string; caseId: string | null; createdAt: string };
@@ -165,4 +170,32 @@ export function buildTeamReport(input: {
   }
 
   return { range, perRep, firstContact, workload };
+}
+
+const CSV_COLUMNS = [
+  "label", "contactsLogged", "casesTouched",
+  "kept", "partiallyKept", "broken", "resolved", "keptRate",
+] as const;
+
+function csvField(value: string): string {
+  if (/[",\r\n]/.test(value)) return `"${value.replace(/"/g, '""')}"`;
+  return value;
+}
+
+// Per-rep table only (workload is a live snapshot, not range-scoped).
+export function teamReportToCsv(report: TeamReport): string {
+  const lines = [CSV_COLUMNS.join(",")];
+  for (const row of report.perRep) {
+    lines.push([
+      csvField(row.label),
+      String(row.contactsLogged),
+      String(row.casesTouched),
+      String(row.kept),
+      String(row.partiallyKept),
+      String(row.broken),
+      String(row.resolved),
+      row.keptRate == null ? "" : String(row.keptRate),
+    ].join(","));
+  }
+  return lines.join("\n") + "\n";
 }

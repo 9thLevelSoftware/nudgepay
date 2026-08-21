@@ -1,0 +1,106 @@
+// Shared reads + window filtering for the team report. Used by /reports and
+// /reports.csv. Aggregation stays in reports.ts (pure).
+
+import type { SupabaseClient } from "@supabase/supabase-js";
+import { listOrgMembers } from "./orgs.server";
+import { addCalendarDays } from "./business-days";
+import { loadOrgConfig } from "./org-config.server";
+import { todayInTz } from "./tz";
+import {
+  activeBrokenCaseIds, buildTeamReport, type ReportRange,
+  type ReportContactLog, type ReportPromise, type ReportOpenedCase, type ReportWorkloadCase,
+  type TeamReport,
+} from "./reports";
+
+export async function loadTeamReport(args: {
+  supabase: SupabaseClient;
+  service: SupabaseClient;
+  orgId: string;
+  range: ReportRange;
+}): Promise<TeamReport> {
+  const { supabase, service, orgId, range } = args;
+
+  const orgConfig = await loadOrgConfig(supabase, orgId);
+  const today = todayInTz(orgConfig.companyProfile.timezone);
+  const windowStart = addCalendarDays(today, -range);
+
+  const roster = (await listOrgMembers(service, orgId)).map((m) => ({ userId: m.userId, label: m.label }));
+
+  const { data: logRows } = await supabase
+    .from("contact_logs")
+    .select("user_id, case_id, created_at")
+    .eq("org_id", orgId)
+    .gte("created_at", windowStart);
+  const contactLogs: ReportContactLog[] = ((logRows as any[]) ?? []).map((r) => ({
+    userId: r.user_id, caseId: r.case_id ?? null, createdAt: r.created_at,
+  }));
+
+  const { data: promRows } = await supabase
+    .from("promises")
+    .select("created_by, status, resolved_at")
+    .eq("org_id", orgId)
+    .in("status", ["kept", "partially_kept", "broken"])
+    .gte("resolved_at", windowStart);
+  const promises: ReportPromise[] = ((promRows as any[]) ?? []).map((r) => ({
+    createdBy: r.created_by ?? null, status: r.status, resolvedAt: r.resolved_at ?? null,
+  }));
+
+  const { data: openedRows } = await supabase
+    .from("collection_cases")
+    .select("id, opened_at")
+    .eq("org_id", orgId)
+    .gte("opened_at", windowStart);
+  const openedCases: ReportOpenedCase[] = ((openedRows as any[]) ?? []).map((r) => ({
+    caseId: r.id, openedAt: r.opened_at,
+  }));
+
+  const { data: openCaseRows } = await supabase
+    .from("collection_cases")
+    .select("id, customer_id, status, exception_reason, next_action_at")
+    .eq("org_id", orgId)
+    .is("closed_at", null);
+  const openCases = ((openCaseRows as any[]) ?? []);
+  const customerIds = [...new Set(openCases.map((c) => c.customer_id).filter(Boolean))];
+
+  const ownerByCustomer = new Map<string, string | null>();
+  if (customerIds.length > 0) {
+    const { data: custRows } = await supabase
+      .from("customers").select("id, owner").eq("org_id", orgId).in("id", customerIds);
+    for (const r of (custRows as any[]) ?? []) ownerByCustomer.set(r.id, r.owner ?? null);
+  }
+
+  const overdueByCustomer = new Map<string, number>();
+  const { data: invRows } = await supabase
+    .from("invoices").select("customer_id, balance").eq("org_id", orgId)
+    .gt("balance", 0).lt("due_date", today);
+  for (const r of (invRows as any[]) ?? []) {
+    if (!r.customer_id) continue;
+    overdueByCustomer.set(r.customer_id, (overdueByCustomer.get(r.customer_id) ?? 0) + (Number(r.balance) || 0));
+  }
+
+  const openCaseIds = openCases.map((c) => c.id);
+  let brokenCaseIds = new Set<string>();
+  if (openCaseIds.length > 0) {
+    const { data: promForCases } = await supabase
+      .from("promises")
+      .select("case_id, status, created_at")
+      .eq("org_id", orgId)
+      .in("case_id", openCaseIds)
+      .neq("status", "cancelled");
+    brokenCaseIds = activeBrokenCaseIds(
+      ((promForCases as any[]) ?? []).map((r) => ({ caseId: r.case_id, status: r.status, createdAt: r.created_at })),
+    );
+  }
+
+  const workloadCases: ReportWorkloadCase[] = openCases.map((c) => ({
+    caseId: c.id,
+    ownerId: c.customer_id ? (ownerByCustomer.get(c.customer_id) ?? null) : null,
+    status: c.status,
+    exceptionReason: c.exception_reason ?? null,
+    nextActionAt: c.next_action_at ?? null,
+    overdueTotal: c.customer_id ? (overdueByCustomer.get(c.customer_id) ?? 0) : 0,
+    hasBrokenPromise: brokenCaseIds.has(c.id),
+  }));
+
+  return buildTeamReport({ range, roster, contactLogs, promises, openedCases, workloadCases, today });
+}

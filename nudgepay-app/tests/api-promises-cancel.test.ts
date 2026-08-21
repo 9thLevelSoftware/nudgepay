@@ -43,17 +43,14 @@ test("cancelPromise rejects a non-pending promise", async () => {
   expect(res.ok).toBe(false);
 });
 
-test("cancelPromise rejects a pending promise outside the active org even for a multi-org user", async () => {
+test("cancelPromise rejects a pending promise outside the active org", async () => {
   const svc = serviceClient();
   const user = await makeUserClient("promise-cancel-multi@example.com");
   const { data: orgA } = await svc.from("organizations").insert({ name: `PCancelA ${user.userId}` }).select("id").single();
   const { data: orgB } = await svc.from("organizations").insert({ name: `PCancelB ${user.userId}` }).select("id").single();
   const orgAId = orgA!.id as string;
   const orgBId = orgB!.id as string;
-  await svc.from("memberships").insert([
-    { org_id: orgAId, user_id: user.userId, role: "owner" },
-    { org_id: orgBId, user_id: user.userId, role: "member" },
-  ]);
+  await svc.from("memberships").insert({ org_id: orgAId, user_id: user.userId, role: "owner" });
   const { data: custB } = await svc.from("customers").insert({ org_id: orgBId, qbo_id: `pcx-b-${user.userId}`, name: "Org B Acme" }).select("id").single();
   const { data: caseB } = await svc.from("collection_cases").insert({
     org_id: orgBId, customer_id: custB!.id, status: "promised", next_action_type: "promise", next_action_at: "2026-07-03",

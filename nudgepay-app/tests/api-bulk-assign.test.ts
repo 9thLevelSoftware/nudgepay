@@ -42,9 +42,7 @@ test("a foreign-org case id is dropped by the org-scoped case read", async () =>
   const { data: orgA } = await svc.from("organizations").insert({ name: "Bulk Assign Scope A" }).select("id").single();
   const a = await makeUserClient("bulk-assign-scope-a@example.com");
   await svc.from("memberships").insert({ org_id: orgA!.id, user_id: a.userId, role: "owner" });
-  // Org B: caller is also a member (RLS alone would permit reads).
   const { data: orgB } = await svc.from("organizations").insert({ name: "Bulk Assign Scope B" }).select("id").single();
-  await svc.from("memberships").insert({ org_id: orgB!.id, user_id: a.userId, role: "member" });
   const { data: custB } = await svc.from("customers").insert({ org_id: orgB!.id, qbo_id: "bscope-b1", name: "Org B Co" }).select("id").single();
   const { data: caseB } = await svc.from("collection_cases").insert({ org_id: orgB!.id, customer_id: custB!.id, status: "working" }).select("id").single();
 
