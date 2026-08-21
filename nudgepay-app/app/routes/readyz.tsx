@@ -9,16 +9,17 @@ import { createSupabaseServiceClient } from "../lib/supabase.server";
 export async function loader({ context }: LoaderFunctionArgs) {
   const raw = (context as { cloudflare?: { env?: Record<string, string> } }).cloudflare?.env ?? {};
   const url = raw.SUPABASE_URL ?? "";
-  if (!url || url.includes("<your-prod-project-ref>")) {
-    return Response.json({ ok: false }, { status: 503 });
+  if (!url) return Response.json({ ok: false, reason: "url" }, { status: 503 });
+  if (url.includes("<your-prod-project-ref>")) {
+    return Response.json({ ok: false, reason: "placeholder" }, { status: 503 });
   }
   try {
     const env = getEnv(context as any);
     const svc = createSupabaseServiceClient(env);
     const { error } = await svc.from("organizations").select("id").limit(1);
-    if (error) return Response.json({ ok: false }, { status: 503 });
+    if (error) return Response.json({ ok: false, reason: "db" }, { status: 503 });
   } catch {
-    return Response.json({ ok: false }, { status: 503 });
+    return Response.json({ ok: false, reason: "config" }, { status: 503 });
   }
   return Response.json({ ok: true });
 }
