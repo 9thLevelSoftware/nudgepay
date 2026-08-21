@@ -1,6 +1,9 @@
 import { readFileSync } from "node:fs";
 import { expect, test } from "vitest";
-import { QBO_FLASH, SMS_FLASH, SYNC_FLASH, smsFlash, smsFlashCopy } from "../app/lib/flash-copy";
+import {
+  QBO_FLASH, SMS_FLASH, SYNC_FLASH, smsFlash, smsFlashCopy,
+  BULK_ERROR_NAME_CAP, encodeBulkErrorNames, parseBulkErrorNames, bulkSmsFailureSummary,
+} from "../app/lib/flash-copy";
 import { SMS_SEND_REASON_CODES } from "../app/lib/sms-send-reason";
 
 test("QBO_FLASH covers connect result flags", () => {
@@ -59,4 +62,37 @@ test("dashboard and inbox SMS banners import the shared map", () => {
     expect(src, rel).toContain("smsFlash");
     expect(src, rel).not.toMatch(/const SMS_BANNER/);
   }
+});
+
+test("bulkSmsFailureSummary lists up to N names and the remainder", () => {
+  expect(bulkSmsFailureSummary(0, [])).toBeNull();
+  expect(bulkSmsFailureSummary(0, ["Acme"])).toBeNull();
+  expect(bulkSmsFailureSummary(1, ["Acme"])).toBe("1 failed: Acme");
+  expect(bulkSmsFailureSummary(3, ["Acme", "Beta"])).toBe("3 failed: Acme, Beta, +1 more");
+  expect(bulkSmsFailureSummary(7, ["A", "B", "C", "D", "E"])).toBe("7 failed: A, B, C, D, E, +2 more");
+  expect(bulkSmsFailureSummary(2, [])).toBe("2 failed");
+  expect(bulkSmsFailureSummary(2, ["", "  "])).toBe("2 failed");
+});
+
+test("encodeBulkErrorNames caps names and strips commas so the query stays split-safe", () => {
+  expect(encodeBulkErrorNames([])).toBe("");
+  expect(encodeBulkErrorNames(["Acme", "Beta, Inc", "Gamma"])).toBe("Acme,Beta Inc,Gamma");
+  const six = ["A", "B", "C", "D", "E", "F"];
+  expect(encodeBulkErrorNames(six)).toBe("A,B,C,D,E");
+  expect(encodeBulkErrorNames(six).split(",")).toHaveLength(BULK_ERROR_NAME_CAP);
+  expect(parseBulkErrorNames(encodeBulkErrorNames(["Acme", "Beta, Inc"]))).toEqual(["Acme", "Beta Inc"]);
+  expect(parseBulkErrorNames(null)).toEqual([]);
+  expect(parseBulkErrorNames("")).toEqual([]);
+});
+
+test("bulk SMS redirect and dashboard flash use the shared name encoder/summary", () => {
+  const route = readFileSync(new URL("../app/routes/api.bulk-sms.tsx", import.meta.url), "utf8");
+  expect(route).toContain("encodeBulkErrorNames");
+  expect(route).toContain("bulkErrors");
+  const dash = readFileSync(new URL("../app/routes/dashboard.tsx", import.meta.url), "utf8");
+  expect(dash).toContain("bulkSmsFailureSummary");
+  expect(dash).toContain("parseBulkErrorNames");
+  expect(dash).toContain("bulkErrors");
+  const cleanup = readFileSync(new URL("../app/lib/use-flash-cleanup.ts", import.meta.url), "utf8");
+  expect(cleanup).toContain("bulkErrors");
 });

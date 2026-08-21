@@ -1,4 +1,4 @@
-import { Form, useNavigation } from "react-router";
+import { Form, useNavigation, useSearchParams } from "react-router";
 
 const WEEKDAYS: Array<{ value: number; label: string }> = [
   { value: 0, label: "Sun" }, { value: 1, label: "Mon" }, { value: 2, label: "Tue" },
@@ -18,6 +18,9 @@ export function CollectionsRulesForm({
   const days = new Set(workingDays);
   const ro = !isOwner;
   const navigation = useNavigation();
+  const [sp] = useSearchParams();
+  const saved = sp.get("saved");
+  const error = sp.get("error");
   const intentBusy = (intent: string) =>
     navigation.state !== "idle" &&
     navigation.formAction === "/api/org-settings" &&
@@ -67,10 +70,14 @@ export function CollectionsRulesForm({
         </fieldset>
 
         {isOwner ? (
-          <div>
+          <div className="flex items-center gap-3">
             <button type="submit" disabled={intentBusy("save_rules")} className="rounded-md bg-copper px-3 py-1.5 text-xs font-semibold text-ink hover:bg-copper/90 disabled:opacity-60 disabled:cursor-not-allowed">
               {intentBusy("save_rules") ? "Saving…" : "Save rules"}
             </button>
+            {saved === "rules" && <span className="text-xs text-cool" role="status">Saved.</span>}
+            {error === "grace" && <span className="text-xs text-hot" role="alert">Promise grace must be a whole number of days (0 or more).</span>}
+            {error === "working_days" && <span className="text-xs text-hot" role="alert">Select at least one working day.</span>}
+            {error === "cadence" && <span className="text-xs text-hot" role="alert">Follow-up cadence must be a whole number of days greater than 0.</span>}
           </div>
         ) : null}
       </Form>
@@ -109,6 +116,8 @@ export function CollectionsRulesForm({
             <button type="submit" disabled={intentBusy("add_holiday")} className="rounded-md border border-border px-3 py-1.5 text-xs font-medium text-text hover:border-copper disabled:opacity-60 disabled:cursor-not-allowed">
               {intentBusy("add_holiday") ? "Adding…" : "Add holiday"}
             </button>
+            {saved === "holiday" && <span className="text-xs text-cool" role="status">Saved.</span>}
+            {error === "holiday" && <span className="text-xs text-hot" role="alert">Enter a valid holiday date.</span>}
           </Form>
         ) : null}
       </div>

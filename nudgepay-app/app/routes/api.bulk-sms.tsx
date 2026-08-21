@@ -7,6 +7,7 @@ import type { TwilioSender } from "../lib/twilio-client.server";
 import { safeReturnTo } from "../lib/return-to";
 import { runBulkSms } from "../lib/bulk-send.server";
 import { clampBatch } from "../lib/bulk";
+import { encodeBulkErrorNames } from "../lib/flash-copy";
 import { loadOrgConfig } from "../lib/org-config.server";
 import { todayInTz } from "../lib/tz";
 import { isWithinSendWindow } from "../lib/quiet-hours";
@@ -81,14 +82,20 @@ export async function action({ request, context }: ActionFunctionArgs) {
     quietHoursWindow,
   };
   const today = todayInTz(orgConfig.companyProfile.timezone);
-  const { sent, failed, skipped } = await runBulkSms(deps, {
+  const { sent, failed, skipped, failures } = await runBulkSms(deps, {
     orgId: org.org_id, userId: user.id, caseIds, today, templateBody, orgConfig,
   });
 
-  return redirect(
-    withParams(returnTo, { bulkSms: "done", sent: String(sent), failed: String(failed), skipped: String(skipped) }),
-    { headers },
-  );
+  const params: Record<string, string> = {
+    bulkSms: "done",
+    sent: String(sent),
+    failed: String(failed),
+    skipped: String(skipped),
+  };
+  const bulkErrors = encodeBulkErrorNames(failures.map((f) => f.name));
+  if (bulkErrors) params.bulkErrors = bulkErrors;
+
+  return redirect(withParams(returnTo, params), { headers });
 }
 
 export function loader() {

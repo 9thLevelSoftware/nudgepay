@@ -75,7 +75,7 @@ export function PriorityThresholdsForm({
           >
             {busy ? "Saving…" : "Save"}
           </button>
-          {sp.get("saved") === "1" && <span className="text-xs text-cool" role="status">Saved.</span>}
+          {sp.get("saved") === "priority" && <span className="text-xs text-cool" role="status">Saved.</span>}
           {error === "high_value_threshold" && <span className="text-xs text-hot" role="alert">High-value threshold must be at least $1,000.</span>}
           {error === "priority_thresholds" && <span className="text-xs text-hot" role="alert">Enter whole numbers for each threshold.</span>}
           {error === "priority_thresholds_order" && <span className="text-xs text-hot" role="alert">Thresholds must be ordered: critical &gt; high &gt; medium &gt; 0.</span>}

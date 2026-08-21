@@ -54,7 +54,7 @@ test("runBulkSms sends to eligible cases, skips no-consent/no-phone, records one
     templateBody: "Hi {customer}, you owe {balance}.", orgConfig: DEFAULT_ORG_CONFIG,
   });
 
-  expect(res).toEqual({ sent: 1, failed: 0, skipped: 2 });
+  expect(res).toEqual({ sent: 1, failed: 0, skipped: 2, failures: [] });
   expect(fetchFn).toHaveBeenCalledOnce();
   const { data: rows } = await svc.from("text_messages").select("case_id, invoice_id, body").eq("case_id", yes.caseId);
   expect(rows).toHaveLength(1);
@@ -69,12 +69,40 @@ test("runBulkSms tallies a failed send without aborting siblings", async () => {
   const orgId = org!.id as string;
   const a = await seedCase(orgId, { name: "A Co", phone: "+12295550110", consent: true, doc: "2001", due: "2026-05-01", balance: 100 });
   const b = await seedCase(orgId, { name: "B Co", phone: "+12295550111", consent: true, doc: "2002", due: "2026-05-01", balance: 100 });
-  let n = 0;
-  const fetchFn = vi.fn(async () => { n++; if (n === 1) throw new Error("twilio down"); return jsonResponse({ sid: "SM-OK", status: "queued" }); });
+  const fetchFn = vi.fn(async (_url, init) => {
+    if (String(init?.body ?? "").includes("12295550110")) throw new Error("twilio down");
+    return jsonResponse({ sid: "SM-OK", status: "queued" });
+  });
   const res = await runBulkSms(deps(fetchFn), { orgId, userId, caseIds: [a.caseId, b.caseId], today, templateBody: "Hi {customer}", orgConfig: DEFAULT_ORG_CONFIG });
   expect(res.sent).toBe(1);
   expect(res.failed).toBe(1);
   expect(res.skipped).toBe(0);
+  expect(res.failed).toBe(res.failures.length);
+  expect(res.failures).toEqual([
+    { caseId: a.caseId, name: "A Co", error: "Could not send the text." },
+  ]);
+  expect(res.failures[0].error).not.toMatch(/twilio down/i);
+});
+
+test("runBulkSms records a missing-invoice eligible case as a failure, not skipped", async () => {
+  const { data: org } = await svc.from("organizations").insert({ name: "Bulk No Inv Org" }).select("id").single();
+  const orgId = org!.id as string;
+  const { data: cust } = await svc.from("customers")
+    .insert({ org_id: orgId, qbo_id: "q-noinv", name: "NoInv Co", phone: "+12295550300", sms_consent: true }).select("id").single();
+  const { data: cse } = await svc.from("collection_cases")
+    .insert({ org_id: orgId, customer_id: cust!.id, status: "working" }).select("id").single();
+  const fetchFn = vi.fn(async () => jsonResponse({ sid: "SM-NO", status: "queued" }));
+  const res = await runBulkSms(deps(fetchFn), {
+    orgId, userId, caseIds: [cse!.id as string], today, templateBody: "Hi {customer}", orgConfig: DEFAULT_ORG_CONFIG,
+  });
+  expect(res.failed).toBe(res.failures.length);
+  expect(res).toEqual({
+    sent: 0,
+    failed: 1,
+    skipped: 0,
+    failures: [{ caseId: cse!.id, name: "NoInv Co", error: "Could not send the text." }],
+  });
+  expect(fetchFn).not.toHaveBeenCalled();
 });
 
 test("runBulkSms ignores a foreign-org case id (org-scoped reads drop it)", async () => {
@@ -84,7 +112,7 @@ test("runBulkSms ignores a foreign-org case id (org-scoped reads drop it)", asyn
   const fetchFn = vi.fn(async () => jsonResponse({ sid: "SM-X", status: "queued" }));
   // Caller resolved to org A but passes org B's case id.
   const res = await runBulkSms(deps(fetchFn), { orgId: orgA!.id as string, userId, caseIds: [inB.caseId], today, templateBody: "Hi {customer}", orgConfig: DEFAULT_ORG_CONFIG });
-  expect(res).toEqual({ sent: 0, failed: 0, skipped: 0 });
+  expect(res).toEqual({ sent: 0, failed: 0, skipped: 0, failures: [] });
   expect(fetchFn).not.toHaveBeenCalled();
 });
 
@@ -135,7 +163,15 @@ test("runBulkSms tallies every case as failed when outside quiet hours, even tho
   const res = await runBulkSms(outsideDeps, {
     orgId, userId, caseIds: [a.caseId, b.caseId], today, templateBody: "Hi {customer}", orgConfig: DEFAULT_ORG_CONFIG,
   });
-  expect(res).toEqual({ sent: 0, failed: 2, skipped: 0 });
+  expect(res.sent).toBe(0);
+  expect(res.failed).toBe(2);
+  expect(res.skipped).toBe(0);
+  expect(res.failed).toBe(res.failures.length);
+  expect(res.failures).toEqual(expect.arrayContaining([
+    { caseId: a.caseId, name: "Quiet A", error: "Not sent — outside quiet hours." },
+    { caseId: b.caseId, name: "Quiet B", error: "Not sent — outside quiet hours." },
+  ]));
+  expect(res.failures).toHaveLength(2);
   expect(fetchFn).not.toHaveBeenCalled();
 });
 

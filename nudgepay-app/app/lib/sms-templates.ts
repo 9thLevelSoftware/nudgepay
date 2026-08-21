@@ -23,6 +23,27 @@ const TOKEN_REGEX = new RegExp(
   `\\{(${TEMPLATE_TOKEN_KEYS.join("|")})\\}`, "g"
 );
 
+const KNOWN_TOKEN_SET: ReadonlySet<string> = new Set(TEMPLATE_TOKEN_KEYS);
+
+// Brace pairs that applyTemplate will not substitute. Nested/unclosed braces
+// are ignored; complete `{...}` values not in TEMPLATE_TOKEN_KEYS are returned
+// once each, in first-seen order. Unknown tokens pass through at send time.
+export function unknownTokens(body: string): string[] {
+  if (!body) return [];
+  const seen = new Set<string>();
+  const out: string[] = [];
+  // Fresh /g regex per call so lastIndex cannot leak across invocations.
+  const re = /\{([^{}]+)\}/g;
+  for (const match of body.matchAll(re)) {
+    const key = match[1];
+    if (!KNOWN_TOKEN_SET.has(key) && !seen.has(key)) {
+      seen.add(key);
+      out.push(key);
+    }
+  }
+  return out;
+}
+
 export const DEFAULT_SMS_TEMPLATES: SmsTemplate[] = [
   {
     id: "friendly-reminder",

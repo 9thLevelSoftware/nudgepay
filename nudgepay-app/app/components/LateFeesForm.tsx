@@ -65,7 +65,7 @@ export function LateFeesForm({
           >
             {busy ? "Saving…" : "Save"}
           </button>
-          {sp.get("saved") === "1" && <span className="text-xs text-cool" role="status">Saved.</span>}
+          {sp.get("saved") === "late_fees" && <span className="text-xs text-cool" role="status">Saved.</span>}
         </div>
       </Form>
     </section>

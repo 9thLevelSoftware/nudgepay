@@ -24,7 +24,7 @@ export default function Eula() {
         CAN-SPAM unsubscribe, including RFC 8058 one-click.</p>
 
       <h2 className="text-base font-semibold text-text mt-6 mb-2">3. Disclaimer</h2>
-      <p className="text-sm text-text leading-relaxed mb-3">NudgePay is provided "as is" during private beta, without warranties of
+      <p className="text-sm text-text leading-relaxed mb-3">NudgePay is provided "as is", without warranties of
         any kind, express or implied.</p>
 
       <h2 className="text-base font-semibold text-text mt-6 mb-2">4. Limitation of liability</h2>

@@ -66,7 +66,7 @@ export function WorkflowSettingsForm({
           >
             {busy ? "Saving…" : "Save"}
           </button>
-          {sp.get("saved") === "1" && <span className="text-xs text-cool" role="status">Saved.</span>}
+          {sp.get("saved") === "workflow" && <span className="text-xs text-cool" role="status">Saved.</span>}
           {error === "coming_due_days" && <span className="text-xs text-hot" role="alert">Coming-due window must be a whole number of days between 1 and 60.</span>}
           {error === "due_soon_business_days" && <span className="text-xs text-hot" role="alert">Due-soon window must be a whole number of business days between 1 and 30.</span>}
           {error === "sms_batch_limit" && <span className="text-xs text-hot" role="alert">Bulk-action batch limit must be a whole number between 1 and 200.</span>}
