@@ -1,5 +1,8 @@
+import { useRef, useState } from "react";
 import { useLoaderData, useNavigation, useSearchParams, Form, data, type LoaderFunctionArgs } from "react-router";
 import { useFlashCleanup } from "../lib/use-flash-cleanup";
+import { useDialog } from "../lib/use-dialog";
+import { orgNameMatches } from "../lib/qbo-disconnect";
 import { getEnv, getTwilioEnvOrNull, getEmailEnvOrNull, getPublicBaseUrls, getQboEnvOrNull } from "../lib/env.server";
 import { loadWorkspaceChrome } from "../lib/workspace.server";
 import { listOrgMembers } from "../lib/orgs.server";
@@ -400,12 +403,11 @@ export default function Settings() {
                               </button>
                             </Form>
                           ) : null}
-                          <Form method="post" action="/api/qbo/disconnect">
-                            <input type="hidden" name="returnTo" value={returnTo} />
-                            <button type="submit" disabled={formBusy("/api/qbo/disconnect")} className="rounded-md border border-border px-3 py-1.5 text-xs font-medium text-hot hover:border-hot disabled:opacity-60 disabled:cursor-not-allowed">
-                              {formBusy("/api/qbo/disconnect") ? "Disconnecting…" : "Disconnect"}
-                            </button>
-                          </Form>
+                          <QboDisconnectConfirm
+                            orgName={d.orgName}
+                            returnTo={returnTo}
+                            busy={formBusy("/api/qbo/disconnect")}
+                          />
                         </>
                       ) : null}
                     </>
@@ -515,5 +517,100 @@ export default function Settings() {
         </div>
       </div>
     </AppShell>
+  );
+}
+
+function QboDisconnectConfirm({
+  orgName,
+  returnTo,
+  busy,
+}: {
+  orgName: string;
+  returnTo: string;
+  busy: boolean;
+}) {
+  const [open, setOpen] = useState(false);
+  const [typed, setTyped] = useState("");
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  function close() {
+    setOpen(false);
+    setTyped("");
+  }
+
+  const { panelRef } = useDialog({
+    onClose: close,
+    enabled: open,
+    initialFocusRef: inputRef as React.RefObject<HTMLElement | null>,
+  });
+
+  const canSubmit = orgNameMatches(typed, orgName);
+
+  return (
+    <>
+      <button
+        type="button"
+        onClick={() => setOpen(true)}
+        className="rounded-md border border-border px-3 py-1.5 text-xs font-medium text-hot hover:border-hot disabled:opacity-60 disabled:cursor-not-allowed"
+      >
+        Disconnect
+      </button>
+      {open ? (
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="qbo-disconnect-title"
+          aria-describedby="qbo-disconnect-desc"
+          className="fixed inset-0 z-40 flex items-end sm:items-center justify-center bg-ink/40 p-4"
+          onClick={close}
+        >
+          <div
+            ref={panelRef}
+            className="w-full max-w-md rounded-lg border border-border bg-surface p-4 shadow-panel"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h3 id="qbo-disconnect-title" className="font-display text-base font-semibold text-text">
+              Disconnect QuickBooks
+            </h3>
+            <p id="qbo-disconnect-desc" className="mt-1.5 text-sm text-muted">
+              This stops invoice sync for this workspace. Type{" "}
+              <span className="font-medium text-text">{orgName}</span> to confirm.
+            </p>
+            <Form method="post" action="/api/qbo/disconnect" className="mt-3">
+              <input type="hidden" name="returnTo" value={returnTo} />
+              <label className="grid gap-1 text-sm font-medium text-text">
+                Workspace name
+                <input
+                  ref={inputRef}
+                  name="confirm"
+                  type="text"
+                  required
+                  autoComplete="off"
+                  value={typed}
+                  onChange={(e) => setTyped(e.target.value)}
+                  className="h-9 rounded-md border border-border bg-panel px-3 text-sm text-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-copper"
+                />
+              </label>
+              <div className="mt-3 flex justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={close}
+                  className="rounded-md border border-border px-3 py-1.5 text-xs font-medium text-text hover:border-copper"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={!canSubmit || busy}
+                  className="rounded-md border border-hot px-3 py-1.5 text-xs font-medium text-hot disabled:opacity-60 disabled:cursor-not-allowed"
+                >
+                  {busy ? "Disconnecting…" : "Disconnect"}
+                </button>
+              </div>
+            </Form>
+          </div>
+        </div>
+      ) : null}
+    </>
   );
 }

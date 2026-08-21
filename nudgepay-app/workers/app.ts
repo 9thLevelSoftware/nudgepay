@@ -2,6 +2,7 @@ import { createRequestHandler } from "react-router";
 import { runScheduledCdc } from "../app/lib/qbo-cron.server";
 import { runScheduledDigest } from "../app/lib/digest-cron.server";
 import { withSecurityHeaders } from "../app/lib/security-headers";
+import { withUnhandledLogging } from "../app/lib/worker-observability";
 
 declare module "react-router" {
 	export interface AppLoadContext {
@@ -19,20 +20,27 @@ const requestHandler = createRequestHandler(
 
 export default {
 	async fetch(request, env, ctx) {
-		const response = await requestHandler(request, {
-			cloudflare: { env, ctx },
+		return withUnhandledLogging("fetch", { url: request.url }, async () => {
+			const response = await requestHandler(request, {
+				cloudflare: { env, ctx },
+			});
+			return withSecurityHeaders(response);
 		});
-		return withSecurityHeaders(response);
 	},
 	scheduled(controller, env, ctx) {
 		const envRecord = env as unknown as Record<string, string>;
-		if (controller.cron === "0 * * * *") {
+		const cron = controller.cron;
+		if (cron === "0 * * * *") {
 			// Hourly digest gate — each org fires once local time reaches its
 			// configured digest_hour_local (see digest-cron.server.ts).
-			ctx.waitUntil(runScheduledDigest(envRecord));
+			ctx.waitUntil(
+				withUnhandledLogging("scheduled", { cron }, () => runScheduledDigest(envRecord)),
+			);
 		} else {
 			// Default: bounded CDC catch-up for all connected orgs.
-			ctx.waitUntil(runScheduledCdc(envRecord));
+			ctx.waitUntil(
+				withUnhandledLogging("scheduled", { cron }, () => runScheduledCdc(envRecord)),
+			);
 		}
 	},
 } satisfies ExportedHandler<Env>;

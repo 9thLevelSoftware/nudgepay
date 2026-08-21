@@ -25,6 +25,12 @@ describe("csrf origin proof", () => {
     expect(() => requireSameOrigin(req)).toThrow();
   });
 
+  it("rejects an unsafe method with neither Origin nor Referer", () => {
+    const req = new Request("https://app.example/login", { method: "POST" });
+    expect(hasSameOriginProof(req)).toBe(false);
+    expect(() => requireSameOrigin(req)).toThrow();
+  });
+
   it("falls back to Referer when Origin is absent", () => {
     const ok = new Request("https://app.example/logout", {
       method: "POST",

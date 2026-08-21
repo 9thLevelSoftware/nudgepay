@@ -1,5 +1,5 @@
 import { expect, test } from "vitest";
-import { parseOrgSettingsUpdate, parseHolidayDate, parseHolidayLabel, parsePriorityThresholdsUpdate, parseWorkflowKnobsUpdate } from "../app/lib/org-settings";
+import { parseOrgSettingsUpdate, parseHolidayDate, parseHolidayLabel, parsePriorityThresholdsUpdate, parseWorkflowKnobsUpdate, HIGH_VALUE_THRESHOLD_MIN } from "../app/lib/org-settings";
 
 function fd(entries: Array<[string, string]>): FormData {
   const f = new FormData();
@@ -128,6 +128,7 @@ test("ordering violation: medium <= 0 is rejected", () => {
 });
 
 test("high_value_threshold below $1,000 floor is rejected", () => {
+  expect(HIGH_VALUE_THRESHOLD_MIN).toBe(1_000);
   expect(parsePriorityThresholdsUpdate(priorityFd(
     validPriority.map(([k, v]) => k === "high_value_threshold" ? [k, "999"] : [k, v]),
   ))).toEqual({ ok: false, error: "high_value_threshold" });
@@ -136,6 +137,23 @@ test("high_value_threshold below $1,000 floor is rejected", () => {
     validPriority.map(([k, v]) => k === "high_value_threshold" ? [k, "1000"] : [k, v]),
   ));
   expect(r.ok).toBe(true);
+});
+
+test("high_value_threshold at or above $10,000 is accepted (no 10k cap)", () => {
+  const at10k = parsePriorityThresholdsUpdate(priorityFd(
+    validPriority.map(([k, v]) => k === "high_value_threshold" ? [k, "10000"] : [k, v]),
+  ));
+  expect(at10k).toEqual({
+    ok: true,
+    patch: { high_value_threshold: 10000, priority_critical_min: 80, priority_high_min: 50, priority_medium_min: 25 },
+  });
+  const at15k = parsePriorityThresholdsUpdate(priorityFd(
+    validPriority.map(([k, v]) => k === "high_value_threshold" ? [k, "15000"] : [k, v]),
+  ));
+  expect(at15k).toEqual({
+    ok: true,
+    patch: { high_value_threshold: 15000, priority_critical_min: 80, priority_high_min: 50, priority_medium_min: 25 },
+  });
 });
 
 test("level thresholds above 200 are rejected", () => {

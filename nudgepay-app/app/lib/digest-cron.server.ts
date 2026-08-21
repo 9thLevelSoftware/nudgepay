@@ -70,6 +70,10 @@ export async function runScheduledDigest(
         .select("org_id");
       if (claimErr) {
         console.error(`[digest] failed to claim last_digest_date for org ${orgId}:`, claimErr);
+        await recordSyncError(service, {
+          orgId, source: "cron", scope: "digest",
+          message: claimErr instanceof Error ? claimErr.message : String(claimErr),
+        }).catch(() => {});
         continue;
       }
       const rowExisted = row !== null; // SELECT above returned a row
@@ -81,6 +85,10 @@ export async function runScheduledDigest(
           .upsert({ org_id: orgId, last_digest_date: today }, { onConflict: "org_id" });
         if (insertErr) {
           console.error(`[digest] failed to create org_settings for org ${orgId}:`, insertErr);
+          await recordSyncError(service, {
+            orgId, source: "cron", scope: "digest",
+            message: insertErr instanceof Error ? insertErr.message : String(insertErr),
+          }).catch(() => {});
           continue;
         }
       }

@@ -103,8 +103,14 @@ export function parseLateFeeSettingsUpdate(form: FormData): LateFeeParseResult {
 // ---------------------------------------------------------------------------
 // Priority thresholds (Phase 4): org-configurable high-value + level cutoffs.
 // Mirrors the pattern above. Ordering mirrors the DB CHECK in migration 0027:
-// critical > high > medium > 0; high_value_threshold > 0.
+// critical > high > medium > 0. Parser floor is $1,000 (stricter than the
+// DB's > 0) so the configurable 12-point band cannot shadow the fixed $1k
+// tier in priority.ts:balancePoints. No upper cap — org threshold ≥ $10k is
+// a valid 12-point boundary (hardcoded 25k/10k bands yield to it).
 // ---------------------------------------------------------------------------
+
+// Floor so the configurable 12-point band cannot shadow the fixed $1,000 tier.
+export const HIGH_VALUE_THRESHOLD_MIN = 1_000;
 
 export type PriorityThresholdsPatch = {
   high_value_threshold: number;
@@ -120,9 +126,9 @@ export type PriorityThresholdsParseResult =
 export function parsePriorityThresholdsUpdate(form: FormData): PriorityThresholdsParseResult {
   const rawHighValue = form.get("high_value_threshold");
   const highValue = typeof rawHighValue === "string" ? Number(rawHighValue) : NaN;
-  // Floor of $1,000 prevents the configurable high-value tier from shadowing
-  // the fixed $1,000 / $0 balance tiers in priority.ts:balancePoints.
-  if (!Number.isFinite(highValue) || highValue < 1_000) return { ok: false, error: "high_value_threshold" };
+  if (!Number.isFinite(highValue) || highValue < HIGH_VALUE_THRESHOLD_MIN) {
+    return { ok: false, error: "high_value_threshold" };
+  }
 
   const critical = intField(form, "priority_critical_min");
   const high = intField(form, "priority_high_min");

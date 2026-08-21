@@ -1,16 +1,58 @@
 // Scheduled CDC catch-up across all connected orgs. Invoked from the Worker's
 // `scheduled` handler. Uses the global fetch (top of the call stack); all
 // lower layers stay injectable for tests.
+import type { SupabaseClient } from "@supabase/supabase-js";
 import { getEnv, getQboEnv, getEmailEnvOrNull } from "./env.server";
 import { createSupabaseServiceClient } from "./supabase.server";
 import { qboApiBaseUrl } from "./qbo-api.server";
 import { runCdcCatchup, type SyncDeps } from "./qbo-sync.server";
 import { recordSyncError, resolveSyncErrors } from "./sync-errors.server";
 import { sendBrokenPromiseAlerts } from "./notifications.server";
+import {
+  CDC_CHECKPOINT_JOB,
+  nextCdcLoopStep,
+  parseCdcBudgetMs,
+  planOrderedOrgIds,
+} from "./cdc-budget";
+
+export type RunScheduledCdcOpts = {
+  nowMs?: () => number;
+  startedAtMs?: number;
+  budgetMs?: number;
+};
+
+export type RunScheduledCdcResult = {
+  orgs: number;
+  processed: number;
+  nextOrgId: string | null;
+};
+
+async function loadCdcCheckpoint(service: SupabaseClient): Promise<string | null> {
+  const { data, error } = await service.from("cron_checkpoints")
+    .select("next_org_id").eq("job", CDC_CHECKPOINT_JOB).maybeSingle();
+  if (error) throw error;
+  return (data?.next_org_id as string | null) ?? null;
+}
+
+async function writeCdcCheckpoint(
+  service: SupabaseClient, nextOrgId: string | null,
+): Promise<void> {
+  const { error } = await service.from("cron_checkpoints").upsert({
+    job: CDC_CHECKPOINT_JOB,
+    next_org_id: nextOrgId,
+    updated_at: new Date().toISOString(),
+  });
+  if (error) throw error;
+}
 
 export async function runScheduledCdc(
   cfEnv: Record<string, string>,
-): Promise<{ orgs: number }> {
+  opts: RunScheduledCdcOpts = {},
+): Promise<RunScheduledCdcResult> {
+  const nowMs = opts.nowMs ?? Date.now;
+  const budgetMs = opts.budgetMs ?? parseCdcBudgetMs(cfEnv.CDC_CRON_BUDGET_MS);
+  const startedAtMs = opts.startedAtMs ?? nowMs();
+
   const context = { cloudflare: { env: cfEnv } } as any;
   const env = getEnv(context);
   const qbo = getQboEnv(context);
@@ -19,6 +61,10 @@ export async function runScheduledCdc(
   const { data: conns, error } = await service.from("qbo_connections")
     .select("org_id").eq("status", "connected");
   if (error) throw error;
+
+  const orgIds = (conns ?? []).map((c) => c.org_id as string);
+  const checkpoint = await loadCdcCheckpoint(service);
+  const ordered = planOrderedOrgIds(orgIds, checkpoint);
 
   // Wire broken-promise notification when email secrets are available.
   const emailEnv = getEmailEnvOrNull(context);
@@ -39,8 +85,18 @@ export async function runScheduledCdc(
     notify,
   };
 
-  for (const c of conns ?? []) {
-    const orgId = c.org_id as string;
+  let processed = 0;
+  for (let i = 0; ; i++) {
+    const step = nextCdcLoopStep(ordered, i, startedAtMs, nowMs(), budgetMs);
+    if (step.action === "complete") {
+      if (checkpoint !== null) await writeCdcCheckpoint(service, null);
+      return { orgs: orgIds.length, processed, nextOrgId: null };
+    }
+    if (step.action === "checkpoint") {
+      await writeCdcCheckpoint(service, step.nextOrgId);
+      return { orgs: orgIds.length, processed, nextOrgId: step.nextOrgId };
+    }
+    const orgId = step.orgId;
     try {
       await runCdcCatchup(deps, orgId);
       await resolveSyncErrors(service, { orgId }); // CDC catch-up heals all prior errors
@@ -53,6 +109,6 @@ export async function runScheduledCdc(
         message: err instanceof Error ? err.message : String(err),
       }).catch(() => {});
     }
+    processed += 1;
   }
-  return { orgs: (conns ?? []).length };
 }

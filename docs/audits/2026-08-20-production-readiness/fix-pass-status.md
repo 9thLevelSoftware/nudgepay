@@ -46,3 +46,9 @@ Tracks implementation against the frozen 2026-08-20 audit pack. Do **not** rewri
 | NP-AUD-2026-035-SMS-RATE | 9 | code | per-org/customer caps + Twilio Idempotency-Key |
 | NP-AUD-2026-035-EMAIL-RATE | 9 | code | per-org/customer caps + Resend Idempotency-Key |
 | NP-AUD-2026-037 | 5 | code | `0037_validate_tenant_fks.sql` |
+| NP-AUD-2026-040 | 12 | code | react-router 7.18.2; `tests/react-router-advisory.test.ts` |
+| NP-AUD-2026-043 | 12 | code | typed org-name disconnect confirm |
+| NP-AUD-2026-041 | 12 | code | CDC time budget + `cron_checkpoints` |
+| NP-AUD-2026-029 | 12 | code | CDC watermark captured before apply |
+| NP-AUD-2026-042 | 12 | code | Workers Observability + unhandled logging |
+| NP-AUD-2026-045 | 12 | code | org high-value band before hardcoded 10k/25k |

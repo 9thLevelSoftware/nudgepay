@@ -134,10 +134,34 @@ test("custom highValueThreshold shifts the 12-point balance tier", () => {
   );
   expect(custom2.factors.find((f) => f.key === "balance")?.points).toBe(12); // exactly at the raised threshold
 
-  // 25k/10k/1k tiers stay fixed regardless of the org's high-value threshold.
+  // Hardcoded 25k/10k/1k tiers still apply when they sit above the org threshold.
   const unaffected = scorePriority(
     { ageDays: 0, balance: 25000, brokenPromise: false, daysSinceContact: 0, followUpDue: false },
     { highValueThreshold: 100 },
   );
   expect(unaffected.factors.find((f) => f.key === "balance")?.points).toBe(25);
+});
+
+test("org high-value threshold at or above $10k still creates a distinct 12-point band", () => {
+  const base = { ageDays: 0, brokenPromise: false, daysSinceContact: 0, followUpDue: false };
+  const bal = (b: number, t: number) =>
+    scorePriority({ ...base, balance: b }, { highValueThreshold: t }).factors.find((f) => f.key === "balance")?.points;
+
+  // $15k org threshold: $12k is below it (1k tier), $15k is the 12-point band, $25k still 25.
+  expect(bal(12_000, 15_000)).toBe(6);
+  expect(bal(14_999, 15_000)).toBe(6);
+  expect(bal(15_000, 15_000)).toBe(12);
+  expect(bal(24_999, 15_000)).toBe(12);
+  expect(bal(25_000, 15_000)).toBe(25);
+
+  // Exactly $10k: the 10k/18-point step is not strictly above the org threshold.
+  expect(bal(9_999, 10_000)).toBe(6);
+  expect(bal(10_000, 10_000)).toBe(12);
+  expect(bal(24_999, 10_000)).toBe(12);
+  expect(bal(25_000, 10_000)).toBe(25);
+
+  // Threshold at $25k: the 25-point step yields to the org 12-point band.
+  expect(bal(24_999, 25_000)).toBe(6);
+  expect(bal(25_000, 25_000)).toBe(12);
+  expect(bal(30_000, 25_000)).toBe(12);
 });
