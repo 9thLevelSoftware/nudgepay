@@ -272,7 +272,11 @@ export function applyCaseView(
 
 export function sortCaseItems(items: CaseItem[], sort: SortId): CaseItem[] {
   const copy = [...items];
-  if (sort === "most-overdue") return copy.sort((a, b) => b.oldestAgeDays - a.oldestAgeDays);
+  // Stale ?sort=due-date in customer mode: same as most-overdue so the list
+  // does not silently jump to Recommended. The Due date option is invoice-only.
+  if (sort === "most-overdue" || sort === "due-date") {
+    return copy.sort((a, b) => b.oldestAgeDays - a.oldestAgeDays);
+  }
   if (sort === "highest-balance") return copy.sort((a, b) => b.totalOverdue - a.totalOverdue);
   if (sort === "customer") return copy.sort((a, b) => a.customerName.localeCompare(b.customerName));
   return copy.sort((a, b) =>

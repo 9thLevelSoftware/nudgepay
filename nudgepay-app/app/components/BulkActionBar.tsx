@@ -12,6 +12,8 @@ export function BulkActionBar({
   onClear,
   onOpenSms,
   maxBatch,
+  statusLabel,
+  skipReason,
 }: {
   selectedCaseIds: string[];
   eligibleCount: number;
@@ -21,6 +23,8 @@ export function BulkActionBar({
   onOpenSms: () => void;
   /** Org-configured max cases per bulk action — must match the server clamp. */
   maxBatch: number;
+  statusLabel?: string;
+  skipReason?: string;
 }) {
   const nav = useNavigation();
   const busy = nav.state !== "idle";
@@ -30,9 +34,10 @@ export function BulkActionBar({
   return (
     <div className="sticky bottom-0 z-30 flex flex-wrap items-center gap-3 border-t border-border bg-surface px-6 py-3 shadow-panel">
       <span role="status" className="font-sans text-sm text-text font-medium">
-        {n} selected
+        {statusLabel ?? `${n} selected`}
         <span className="text-muted"> · {eligibleCount} can be texted</span>
         {n >= maxBatch ? <span className="text-muted"> · max {maxBatch} per batch</span> : null}
+        {skipReason ? <span className="text-muted"> · {skipReason}</span> : null}
       </span>
 
       <Form method="post" action="/api/bulk-assign" className="flex items-center gap-2 ml-auto">

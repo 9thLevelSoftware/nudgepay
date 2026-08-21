@@ -1,4 +1,5 @@
 import { test, expect } from "vitest";
+import { readFileSync } from "node:fs";
 import { isComingDue, buildComingDueGroups, comingDueMetric, comingDueEmptyCopy } from "../app/lib/coming-due";
 import type { InvoiceInput, CustomerInput } from "../app/lib/worklist";
 
@@ -49,9 +50,9 @@ const customers: CustomerInput[] = [
 
 test("groups invoices by customer and sorts by nextDueDate", () => {
   const invoices: InvoiceInput[] = [
-    { id: "i1", qbo_doc_number: "1001", customer_id: "c1", balance: 500, due_date: "2026-07-05" },
-    { id: "i2", qbo_doc_number: "1002", customer_id: "c1", balance: 300, due_date: "2026-07-03" },
-    { id: "i3", qbo_doc_number: "1003", customer_id: "c2", balance: 200, due_date: "2026-07-02" },
+    { id: "i1", qbo_doc_number: "1001", customer_id: "c1", balance: 500, due_date: "2026-07-05", amount: 500, invoice_date: "2026-06-05", status: "open", paid_date: null },
+    { id: "i2", qbo_doc_number: "1002", customer_id: "c1", balance: 300, due_date: "2026-07-03", amount: 300, invoice_date: "2026-06-03", status: "open", paid_date: null },
+    { id: "i3", qbo_doc_number: "1003", customer_id: "c2", balance: 200, due_date: "2026-07-02", amount: 200, invoice_date: "2026-06-02", status: "open", paid_date: null },
   ];
   const groups = buildComingDueGroups(invoices, customers, today);
   expect(groups).toHaveLength(2);
@@ -141,4 +142,21 @@ test("comingDueEmptyCopy interpolates the org-configured window", () => {
 
 test("comingDueEmptyCopy defaults to COMING_DUE_DAYS", () => {
   expect(comingDueEmptyCopy()).toBe("No invoices coming due in the next 7 days.");
+});
+
+test("extra InvoiceInput fields do not change coming-due grouping", () => {
+  const invoices: InvoiceInput[] = [
+    { id: "i1", qbo_doc_number: "1001", customer_id: "c1", balance: 500, due_date: "2026-07-05", amount: 500, invoice_date: "2026-06-01", status: "open", paid_date: null },
+  ];
+  const groups = buildComingDueGroups(invoices, customers, today);
+  expect(groups).toHaveLength(1);
+  expect(groups[0].invoices[0].invoiceId).toBe("i1");
+});
+
+test("coming-due stays ComingDueList and ignores entity", () => {
+  const src = readFileSync(new URL("../app/components/WorkQueue.tsx", import.meta.url), "utf8");
+  expect(src).toContain("view === \"coming-due\"");
+  expect(src).toContain("<ComingDueList");
+  expect(src).toContain("invoiceMode = entity === \"invoices\" && view !== \"coming-due\"");
+  expect(src).toContain("Coming due is invoice-grouped. Switch to All open to use Customers vs Invoices.");
 });

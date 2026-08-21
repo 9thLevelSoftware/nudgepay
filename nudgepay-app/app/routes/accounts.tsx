@@ -82,7 +82,7 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
   // Open invoices (balance > 0)
   const { data: invRows } = await supabase
     .from("invoices")
-    .select("id, qbo_doc_number, customer_id, balance, due_date")
+    .select("id, qbo_doc_number, customer_id, balance, due_date, amount, invoice_date, status, paid_date")
     .eq("org_id", org.org_id)
     .gt("balance", 0);
   const invoicesInput: InvoiceInput[] = ((invRows as any[]) ?? []).map((r) => ({
@@ -91,6 +91,10 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
     customer_id: r.customer_id ?? null,
     balance: Number(r.balance ?? 0),
     due_date: r.due_date ?? null,
+    amount: Number(r.amount ?? 0),
+    invoice_date: r.invoice_date ?? null,
+    status: r.status ?? null,
+    paid_date: r.paid_date ?? null,
   }));
 
   // All collection_cases (open + closed — needed for caseToCustomer map)

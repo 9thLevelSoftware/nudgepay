@@ -36,9 +36,19 @@ export type WorkItem = {
 export type Metric = { count: number; amount: number };
 export type Metrics = { thirtyPlus: Metric; highValue: Metric; neverContacted: Metric; allOpen: Metric; followUpsDue: Metric; brokenPromises: Metric; onHold: Metric; comingDue: Metric };
 export type ViewId = "all-open" | "30-plus" | "high-value" | "never-contacted" | "follow-ups-due" | "broken-promises" | "waiting" | "on-hold" | "my-work" | "coming-due";
-export type SortId = "recommended" | "most-overdue" | "highest-balance" | "customer";
+export type SortId = "recommended" | "most-overdue" | "highest-balance" | "customer" | "due-date";
 
-export type InvoiceInput = { id: string; qbo_doc_number: string | null; customer_id: string | null; balance: number; due_date: string | null };
+export type InvoiceInput = {
+  id: string;
+  qbo_doc_number: string | null;
+  customer_id: string | null;
+  balance: number;
+  due_date: string | null;
+  amount?: number;
+  invoice_date?: string | null;
+  status?: string | null;
+  paid_date?: string | null;
+};
 export type CustomerInput = { id: string; name: string; phone: string | null; email: string | null; owner?: string | null; smsConsent?: boolean | null; commPrefs?: CommPrefs };
 export type LastContactInput = { invoiceId: string; date: string; channel: string };
 export type PromiseSignalInput = {
@@ -175,6 +185,14 @@ export function sortItems(items: WorkItem[], sort: SortId): WorkItem[] {
   if (sort === "most-overdue") return copy.sort((a, b) => b.ageDays - a.ageDays);
   if (sort === "highest-balance") return copy.sort((a, b) => b.balance - a.balance);
   if (sort === "customer") return copy.sort((a, b) => a.customerName.localeCompare(b.customerName));
+  if (sort === "due-date") {
+    return copy.sort((a, b) => {
+      if (a.dueDate == null && b.dueDate == null) return 0;
+      if (a.dueDate == null) return 1;
+      if (b.dueDate == null) return -1;
+      return a.dueDate < b.dueDate ? -1 : a.dueDate > b.dueDate ? 1 : 0;
+    });
+  }
   return copy.sort((a, b) => a.priority.rank - b.priority.rank || b.ageDays - a.ageDays || b.balance - a.balance);
 }
 

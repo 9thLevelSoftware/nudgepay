@@ -72,7 +72,7 @@ describe("dashboard wiring (NP-AUD-2026-110)", () => {
     expect(detail).toContain("hidden md:flex items-center justify-center w-6 h-6");
     expect(detail).toContain("dashboardHref");
     expect(detail).toContain("dashboardSearchParams");
-    const closeHref = /dashboardHref\(\{\s*view,\s*sort,\s*q:\s*q \|\| undefined,\s*density\s*\}\)/g;
+    const closeHref = /dashboardHref\(\{\s*view,\s*sort,\s*q:\s*q \|\| undefined,\s*entity,\s*density\s*\}\)/g;
     expect(detail.match(closeHref)?.length).toBeGreaterThanOrEqual(2);
     expect(detail).not.toMatch(/new URLSearchParams\(\{\s*view,\s*sort,\s*\.\.\.\(q \? \{ q \} : \{\}\)\s*\}\)/);
     expect(detail).not.toMatch(/lg:hidden px-4 pt-3 pb-1/);

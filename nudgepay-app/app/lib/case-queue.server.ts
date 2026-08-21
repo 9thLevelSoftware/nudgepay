@@ -37,6 +37,10 @@ type InvoiceRow = {
   balance: number | string | null;
   due_date: string | null;
   customer_id: string | null;
+  amount: number | string | null;
+  invoice_date: string | null;
+  status: string | null;
+  paid_date: string | null;
   customers: {
     name: string | null;
     phone: string | null;
@@ -138,7 +142,7 @@ export async function loadCaseQueueSource(args: LoadCaseQueueArgs): Promise<Case
   ] = await Promise.all([
     supabase
       .from("invoices")
-      .select("id, qbo_doc_number, balance, due_date, customer_id, customers!invoices_org_customer_fk(name, phone, email, owner, sms_consent, preferred_channel, do_not_call, do_not_text)", { count: "exact" })
+      .select("id, qbo_doc_number, balance, due_date, customer_id, amount, invoice_date, status, paid_date, customers!invoices_org_customer_fk(name, phone, email, owner, sms_consent, preferred_channel, do_not_call, do_not_text)", { count: "exact" })
       .eq("org_id", orgId)
       .gt("balance", 0)
       .lte("due_date", plus7),
@@ -169,6 +173,10 @@ export async function loadCaseQueueSource(args: LoadCaseQueueArgs): Promise<Case
     customer_id: r.customer_id,
     balance: Number(r.balance ?? 0),
     due_date: r.due_date,
+    amount: Number(r.amount ?? 0),
+    invoice_date: r.invoice_date ?? null,
+    status: r.status ?? null,
+    paid_date: r.paid_date ?? null,
   }));
   const invoicesInput = allInvoicesInput.filter((i) => i.due_date != null && i.due_date < today);
   const comingDueInvoices = allInvoicesInput.filter((i) => i.due_date != null && i.due_date >= today);

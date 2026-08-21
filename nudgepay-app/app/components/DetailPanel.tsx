@@ -3,7 +3,7 @@ import { Link, useNavigate, useNavigation, useSearchParams } from "react-router"
 import { HEARTBEAT_INTERVAL_MS, type Collision } from "~/lib/collision";
 import { type CaseItem } from "~/lib/cases";
 import type { ViewId, SortId } from "~/lib/worklist";
-import { dashboardHref, dashboardSearchParams, type DensityId } from "~/lib/queue-chrome";
+import { dashboardHref, dashboardSearchParams, type DensityId, type EntityMode } from "~/lib/queue-chrome";
 import { Icon } from "~/components/Icons";
 import { MessageBubbles } from "~/components/MessageBubbles";
 import { applyTemplate, type TemplateVars } from "~/lib/sms-templates";
@@ -108,12 +108,13 @@ function panelHref(
   sort: SortId,
   q: string,
   density: DensityId | undefined,
-  extra?: { case?: string; tab?: string; log?: string; method?: string; prefs?: string },
+  extra?: { case?: string; tab?: string; log?: string; method?: string; prefs?: string; entity?: EntityMode },
 ): string {
   const sp = dashboardSearchParams({
     view,
     sort,
     q: q || undefined,
+    entity: extra?.entity,
     density,
     case: extra?.case,
     tab: extra?.tab,
@@ -126,7 +127,7 @@ function panelHref(
 
 function MessagesTab({
   selected, repInvoiceId, messages, consent, prefs, phone, sms, smsEnabled, smsQuietNow, quietHoursLabel,
-  view, sort, q, density, collision,
+  view, sort, q, density, entity, collision,
   smsTemplates, orgCompany, orgPhone, orgPaymentLink, timeZone,
 }: {
   selected: CaseItem;
@@ -143,6 +144,7 @@ function MessagesTab({
   sort: SortId;
   q: string;
   density?: DensityId;
+  entity?: EntityMode;
   collision: Collision | null;
   smsTemplates: MessageTemplateRow[];
   orgCompany: string;
@@ -150,8 +152,8 @@ function MessagesTab({
   orgPaymentLink: string;
   timeZone?: string | null;
 }) {
-  const returnTo = `/dashboard${panelHref(view, sort, q, density, { case: selected.caseId, tab: "messages" })}`;
-  const prefsHref = panelHref(view, sort, q, density, { case: selected.caseId, tab: "messages", prefs: "1" });
+  const returnTo = `/dashboard${panelHref(view, sort, q, density, { case: selected.caseId, tab: "messages", entity })}`;
+  const prefsHref = panelHref(view, sort, q, density, { case: selected.caseId, tab: "messages", prefs: "1", entity });
 
   const repInvoice = repInvoiceId
     ? selected.invoices.find((i) => i.invoiceId === repInvoiceId)
@@ -341,7 +343,7 @@ function MessagesTab({
 
 function EmailTab({
   selected, repInvoiceId, emailMessages, prefs, customerEmail, emailEnabled,
-  view, sort, q, density, emailTemplates, orgCompany, orgPhone, orgPaymentLink, timeZone,
+  view, sort, q, density, entity, emailTemplates, orgCompany, orgPhone, orgPaymentLink, timeZone,
 }: {
   selected: CaseItem;
   repInvoiceId: string | null;
@@ -353,6 +355,7 @@ function EmailTab({
   sort: SortId;
   q: string;
   density?: DensityId;
+  entity?: EntityMode;
   emailTemplates: MessageTemplateRow[];
   orgCompany: string;
   orgPhone: string;
@@ -363,7 +366,7 @@ function EmailTab({
   const emailResult = searchParams.get("email");
   const banner = emailResult ? (EMAIL_BANNER[emailResult] ?? null) : null;
 
-  const returnTo = `/dashboard${panelHref(view, sort, q, density, { case: selected.caseId, tab: "email" })}`;
+  const returnTo = `/dashboard${panelHref(view, sort, q, density, { case: selected.caseId, tab: "email", entity })}`;
 
   const repInvoice = repInvoiceId
     ? selected.invoices.find((i) => i.invoiceId === repInvoiceId)
@@ -578,6 +581,7 @@ export function DetailPanel({
   sort,
   q,
   density,
+  entity,
   selectedPromiseId,
   collision,
   smsTemplates,
@@ -609,6 +613,7 @@ export function DetailPanel({
   sort: SortId;
   q: string;
   density?: DensityId;
+  entity?: EntityMode;
   selectedPromiseId: string | null;
   collision: Collision | null;
   smsTemplates: MessageTemplateRow[];
@@ -674,11 +679,11 @@ export function DetailPanel({
   }
 
   // ── Derived values ─────────────────────────────────────────────────────────
-  const logHref = panelHref(view, sort, q, density, { case: selected.caseId, tab: "activity", log: "1" });
-  const overviewReturnTo = `/dashboard${panelHref(view, sort, q, density, { case: selected.caseId, tab: "overview" })}`;
+  const logHref = panelHref(view, sort, q, density, { case: selected.caseId, tab: "activity", log: "1", entity });
+  const overviewReturnTo = `/dashboard${panelHref(view, sort, q, density, { case: selected.caseId, tab: "overview", entity })}`;
 
   const callAction = resolveCallAction(prefs, selected.phone, selected.contactBlocked);
-  const callLogHref = panelHref(view, sort, q, density, { case: selected.caseId, tab: "activity", log: "1", method: "call" });
+  const callLogHref = panelHref(view, sort, q, density, { case: selected.caseId, tab: "activity", log: "1", method: "call", entity });
 
   return (
     <aside
@@ -688,7 +693,7 @@ export function DetailPanel({
       {/* Mobile/tablet: back to queue */}
       <div className="md:hidden px-4 pt-3 pb-1">
         <Link
-          to={dashboardHref({ view, sort, q: q || undefined, density })}
+          to={dashboardHref({ view, sort, q: q || undefined, entity, density })}
           className="inline-flex items-center gap-1 text-xs text-muted hover:text-copper focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-copper rounded"
         >
           <Icon name="chevronRight" size={13} className="rotate-180" aria-hidden />
@@ -703,7 +708,7 @@ export function DetailPanel({
             Selected account
           </p>
           <Link
-            to={dashboardHref({ view, sort, q: q || undefined, density })}
+            to={dashboardHref({ view, sort, q: q || undefined, entity, density })}
             aria-label="Close detail panel"
             className="hidden md:flex items-center justify-center w-6 h-6 rounded text-surface/60 hover:text-surface focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-copper"
           >
@@ -774,7 +779,7 @@ export function DetailPanel({
 
         {/* Text → Messages tab */}
         <Link
-          to={panelHref(view, sort, q, density, { case: selected.caseId, tab: "messages" })}
+          to={panelHref(view, sort, q, density, { case: selected.caseId, tab: "messages", entity })}
           className="flex-1 flex flex-col items-center gap-1.5 py-2.5 rounded-card bg-surface border border-border text-copper hover:border-copper focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-copper transition-colors"
         >
           <Icon name="message" size={16} aria-hidden />
@@ -792,7 +797,7 @@ export function DetailPanel({
       </div>
 
       {/* ── Next best action card ─────────────────────────────────────────── */}
-      <NbaCard selected={selected} smsEnabled={smsEnabled} prefs={prefs} phone={phone} view={view} sort={sort} q={q} density={density} logHref={logHref} timeZone={timeZone} />
+      <NbaCard selected={selected} smsEnabled={smsEnabled} prefs={prefs} phone={phone} view={view} sort={sort} q={q} density={density} entity={entity} logHref={logHref} timeZone={timeZone} />
 
       {/* ── Tab bar ─────────────────────────────────────────────────────────── */}
       <nav
@@ -804,7 +809,7 @@ export function DetailPanel({
           return (
             <Link
               key={tab.id}
-              to={panelHref(view, sort, q, density, { case: selected.caseId, tab: tab.id })}
+              to={panelHref(view, sort, q, density, { case: selected.caseId, tab: tab.id, entity })}
               id={`${tab.id}-tab`}
               aria-current={isActive ? "page" : undefined}
               className={[
@@ -866,7 +871,7 @@ export function DetailPanel({
                 <input
                   type="hidden"
                   name="returnTo"
-                  value={`/dashboard${panelHref(view, sort, q, density, { case: selected.caseId, tab: "overview" })}`}
+                  value={`/dashboard${panelHref(view, sort, q, density, { case: selected.caseId, tab: "overview", entity })}`}
                 />
                 <select
                   name="ownerId"
@@ -1162,6 +1167,7 @@ export function DetailPanel({
           sort={sort}
           q={q}
           density={density}
+          entity={entity}
           collision={collision}
           smsTemplates={smsTemplates}
           orgCompany={orgCompany}
@@ -1184,6 +1190,7 @@ export function DetailPanel({
           sort={sort}
           q={q}
           density={density}
+          entity={entity}
           emailTemplates={emailTemplates}
           orgCompany={orgCompany}
           orgPhone={orgPhone}
@@ -1200,7 +1207,7 @@ export function DetailPanel({
 // ---------------------------------------------------------------------------
 
 function NbaCard({
-  selected, smsEnabled, prefs, phone, view, sort, q, density, logHref, timeZone,
+  selected, smsEnabled, prefs, phone, view, sort, q, density, entity, logHref, timeZone,
 }: {
   selected: CaseItem;
   smsEnabled: boolean;
@@ -1210,6 +1217,7 @@ function NbaCard({
   sort: SortId;
   q: string;
   density?: DensityId;
+  entity?: EntityMode;
   logHref: string;
   timeZone?: string | null;
 }) {
@@ -1228,8 +1236,8 @@ function NbaCard({
   const canText = gate === null;
   const callAction = resolveCallAction(prefs, phone, selected.contactBlocked);
   const canCall = callAction.kind === "live";
-  const textHref = panelHref(view, sort, q, density, { case: selected.caseId, tab: "messages" });
-  const callHref = panelHref(view, sort, q, density, { case: selected.caseId, tab: "activity", log: "1", method: "call" });
+  const textHref = panelHref(view, sort, q, density, { case: selected.caseId, tab: "messages", entity });
+  const callHref = panelHref(view, sort, q, density, { case: selected.caseId, tab: "activity", log: "1", method: "call", entity });
 
   return (
     <div className="mx-4 my-3 rounded-lg border border-copper/30 bg-copper/5 px-4 py-3">
