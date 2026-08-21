@@ -33,4 +33,22 @@ describe("email templates", () => {
       expect(t.body).not.toContain("Chancey");
     }
   });
+  it("no starter template asks the customer to reply (NP-AUD-2026-032)", () => {
+    for (const t of DEFAULT_EMAIL_TEMPLATES) {
+      expect(t.subject, t.id).not.toMatch(/\breply\b/i);
+      expect(t.body, t.id).not.toMatch(/\breply\b/i);
+      expect(t.body, t.id).toContain("This mailbox is not monitored.");
+    }
+  });
+  it("dunning starters direct customers to paymentLink and phone", () => {
+    for (const t of DEFAULT_EMAIL_TEMPLATES) {
+      if (t.id === "payment-received") continue;
+      expect(t.body, t.id).toContain("{paymentLink}");
+      expect(t.body, t.id).toContain("{phone}");
+      const out = applyEmailTemplate(t.body, baseVars);
+      expect(out).toContain(baseVars.paymentLink);
+      expect(out).toContain(baseVars.phone);
+      expect(out).not.toMatch(/\{(paymentLink|phone)\}/);
+    }
+  });
 });

@@ -1,6 +1,7 @@
 import { expect, test, vi } from "vitest";
 import {
-  qboApiBaseUrl, qboQuery, qboReadEntity, qboCdc,
+  qboApiBaseUrl, qboQuery, qboReadEntity, qboReadCompanyInfo, qboCdc,
+  retryAfterWaitMs, QBO_429_WAIT_CAP_MS,
 } from "../app/lib/qbo-api.server";
 
 const api = { baseUrl: "https://sandbox-quickbooks.api.intuit.com" };
@@ -42,6 +43,29 @@ test("qboReadEntity returns null when the entity is missing", async () => {
   expect(await qboReadEntity(fetchFn as any, api, "AT", "r", "Customer", "99")).toBeNull();
 });
 
+test("qboReadCompanyInfo reads CompanyInfo id 1 and unwraps it", async () => {
+  const fetchFn = vi.fn(async () => jsonResponse({
+    CompanyInfo: { Id: "1", Country: "US", CompanyName: "Acme HVAC" },
+  }));
+  const info = await qboReadCompanyInfo(fetchFn as any, api, "AT", "realm-1");
+  expect(info.Country).toBe("US");
+  expect(info.CompanyName).toBe("Acme HVAC");
+  const [url, init] = fetchFn.mock.calls[0];
+  expect(String(url)).toContain("/v3/company/realm-1/companyinfo/1");
+  expect(String(url)).toContain("minorversion=");
+  expect((init as any).headers.Authorization).toBe("Bearer AT");
+});
+
+test("qboReadCompanyInfo returns null when CompanyInfo is missing", async () => {
+  const fetchFn = vi.fn(async () => jsonResponse({ time: "now" }));
+  expect(await qboReadCompanyInfo(fetchFn as any, api, "AT", "r")).toBeNull();
+});
+
+test("qboReadCompanyInfo throws on a non-2xx response", async () => {
+  const fetchFn = vi.fn(async () => jsonResponse({ Fault: {} }, 401));
+  await expect(qboReadCompanyInfo(fetchFn as any, api, "AT", "r")).rejects.toThrow();
+});
+
 test("qboCdc groups changed invoices and customers", async () => {
   const fetchFn = vi.fn(async () =>
     jsonResponse({ CDCResponse: [{ QueryResponse: [{ Invoice: [{ Id: "1" }] }, { Customer: [{ Id: "7" }] }] }] }));
@@ -54,6 +78,52 @@ test("qboCdc groups changed invoices and customers", async () => {
 test("qboQuery throws on a non-2xx response", async () => {
   const fetchFn = vi.fn(async () => jsonResponse({ Fault: {} }, 401));
   await expect(qboQuery(fetchFn as any, api, "AT", "r", "q", "Invoice")).rejects.toThrow();
+});
+
+test("retryAfterWaitMs reads delta-seconds and caps at 2s", () => {
+  expect(retryAfterWaitMs("1")).toBe(1000);
+  expect(retryAfterWaitMs("30")).toBe(QBO_429_WAIT_CAP_MS);
+  expect(retryAfterWaitMs("0")).toBe(0);
+  expect(retryAfterWaitMs(null)).toBe(0);
+  expect(retryAfterWaitMs("Wed, 21 Oct 2015 07:28:00 GMT")).toBe(0);
+});
+
+test("qboQuery retries a 429 that honors Retry-After, then succeeds", async () => {
+  const waits: number[] = [];
+  const clock = {
+    now: () => 0,
+    sleep: async (ms: number) => { waits.push(ms); },
+  };
+  const fetchFn = vi.fn()
+    .mockResolvedValueOnce(new Response("throttled", { status: 429, headers: { "Retry-After": "30" } }))
+    .mockResolvedValueOnce(jsonResponse({ QueryResponse: { Invoice: [{ Id: "9" }] } }));
+  const rows = await qboQuery(fetchFn as any, api, "AT", "r", "q", "Invoice", clock);
+  expect(rows.map((r) => r.Id)).toEqual(["9"]);
+  expect(fetchFn).toHaveBeenCalledTimes(2);
+  expect(waits).toEqual([QBO_429_WAIT_CAP_MS]);
+});
+
+test("qboQuery throws after 3 attempts when 429 persists", async () => {
+  const waits: number[] = [];
+  const clock = {
+    now: () => 0,
+    sleep: async (ms: number) => { waits.push(ms); },
+  };
+  const fetchFn = vi.fn(async () =>
+    new Response("throttled", { status: 429, headers: { "Retry-After": "1" } }));
+  await expect(qboQuery(fetchFn as any, api, "AT", "r", "q", "Invoice", clock))
+    .rejects.toThrow("QBO API request failed: 429");
+  expect(fetchFn).toHaveBeenCalledTimes(3);
+  expect(waits).toEqual([1000, 1000]);
+});
+
+test("qboQuery does not retry 401", async () => {
+  const sleep = vi.fn(async () => {});
+  const fetchFn = vi.fn(async () => jsonResponse({ Fault: {} }, 401));
+  await expect(qboQuery(fetchFn as any, api, "AT", "r", "q", "Invoice", { sleep, now: () => 0 }))
+    .rejects.toThrow("QBO API request failed: 401");
+  expect(fetchFn).toHaveBeenCalledTimes(1);
+  expect(sleep).not.toHaveBeenCalled();
 });
 
 test("qboCdc requests payments + credit memos and flattens all four entities", async () => {

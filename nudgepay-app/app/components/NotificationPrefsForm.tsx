@@ -4,11 +4,11 @@ import { Form, useNavigation, useSearchParams } from "react-router";
 
 export function NotificationPrefsForm({
   orgId,
-  emailEnabled,
+  alertsReady,
   prefs,
 }: {
   orgId: string;
-  emailEnabled: boolean;
+  alertsReady: boolean;
   prefs: { brokenPromiseEmail: boolean; dailyDigestEmail: boolean };
 }) {
   const navigation = useNavigation();
@@ -20,8 +20,8 @@ export function NotificationPrefsForm({
       <h2 className="font-display text-base font-semibold text-text">Notifications</h2>
       <p className="mt-1 text-xs text-muted">
         Choose which team alert emails you receive.
-        {!emailEnabled && (
-          <span className="ml-1 text-hot">Org email is disabled — alerts won't send until enabled.</span>
+        {!alertsReady && (
+          <span className="ml-1 text-hot">Team alerts need a From address and Resend configured — they do not use the customer email switch.</span>
         )}
       </p>
       <Form method="post" action="/api/notification-prefs" className="mt-3 flex flex-col gap-3">

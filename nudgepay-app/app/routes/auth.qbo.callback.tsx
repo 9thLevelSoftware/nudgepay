@@ -4,8 +4,9 @@ import { createSupabaseServiceClient } from "../lib/supabase.server";
 import { requireUser, resolveOrg } from "../lib/session.server";
 import { consumeOAuthState } from "../lib/oauth-state.server";
 import { exchangeCodeForTokens } from "../lib/qbo-client.server";
-import { storeConnection } from "../lib/qbo-connection.server";
-import { qboApiBaseUrl } from "../lib/qbo-api.server";
+import { storeConnection, disconnectConnection } from "../lib/qbo-connection.server";
+import { qboApiBaseUrl, qboReadCompanyInfo } from "../lib/qbo-api.server";
+import { isSupportedQboCompany } from "../lib/qbo-company";
 import { syncOverdueInvoices, type SyncDeps } from "../lib/qbo-sync.server";
 import { sendBrokenPromiseAlerts } from "../lib/notifications.server";
 import { recordSyncError } from "../lib/sync-errors.server";
@@ -35,6 +36,19 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
     }
     const tokens = await exchangeCodeForTokens(fetch, cfg, code);
     await storeConnection(service, qbo.QBO_ENCRYPTION_KEY, oauthState.orgId, realmId, tokens);
+    const orgId = oauthState.orgId;
+    const api = { baseUrl: qboApiBaseUrl(qbo.QBO_SANDBOX) };
+    const key = qbo.QBO_ENCRYPTION_KEY;
+    try {
+      const company = await qboReadCompanyInfo(fetch, api, tokens.accessToken, realmId);
+      if (!company || !isSupportedQboCompany(company)) {
+        await disconnectConnection(fetch, service, cfg, key, orgId).catch(() => {});
+        return redirect(company ? "/dashboard?qbo=unsupported" : "/dashboard?qbo=error", { headers });
+      }
+    } catch {
+      await disconnectConnection(fetch, service, cfg, key, orgId).catch(() => {});
+      return redirect("/dashboard?qbo=error", { headers });
+    }
     const ctx = (context as { cloudflare?: { ctx?: { waitUntil?: (p: Promise<unknown>) => void } } })
       .cloudflare?.ctx;
     const emailEnv = getEmailEnvOrNull(context as any);
@@ -49,11 +63,10 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
       fetchFn: fetch,
       service,
       cfg,
-      api: { baseUrl: qboApiBaseUrl(qbo.QBO_SANDBOX) },
-      key: qbo.QBO_ENCRYPTION_KEY,
+      api,
+      key,
       notify,
     };
-    const orgId = oauthState.orgId;
     const backfill = syncOverdueInvoices(deps, orgId).catch(async (err) => {
       console.error("[qbo-callback] first sync failed for org", orgId, err);
       await recordSyncError(service, {

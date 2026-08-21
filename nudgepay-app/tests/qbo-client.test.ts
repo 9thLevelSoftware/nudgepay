@@ -2,6 +2,7 @@ import { expect, test, vi } from "vitest";
 import {
   buildAuthorizeUrl, exchangeCodeForTokens, refreshTokens, revokeToken,
 } from "../app/lib/qbo-client.server";
+import { QBO_429_WAIT_CAP_MS } from "../app/lib/qbo-api.server";
 
 const cfg = { clientId: "cid", clientSecret: "secret", redirectUri: "http://localhost:5173/auth/qbo/callback" };
 
@@ -41,6 +42,30 @@ test("refreshTokens sends grant_type=refresh_token and parses rotated tokens", a
 test("exchangeCodeForTokens throws on non-200", async () => {
   const fetchFn = vi.fn(async () => jsonResponse({ error: "invalid_grant" }, 400));
   await expect(exchangeCodeForTokens(fetchFn as any, cfg, "bad")).rejects.toThrow();
+});
+
+test("exchangeCodeForTokens retries 429 then succeeds", async () => {
+  const waits: number[] = [];
+  const clock = {
+    now: () => 0,
+    sleep: async (ms: number) => { waits.push(ms); },
+  };
+  const fetchFn = vi.fn()
+    .mockResolvedValueOnce(new Response("throttled", { status: 429, headers: { "Retry-After": "5" } }))
+    .mockResolvedValueOnce(jsonResponse({ access_token: "at", refresh_token: "rt", expires_in: 3600 }));
+  const tokens = await exchangeCodeForTokens(fetchFn as any, cfg, "auth-code", clock);
+  expect(tokens.accessToken).toBe("at");
+  expect(fetchFn).toHaveBeenCalledTimes(2);
+  expect(waits).toEqual([QBO_429_WAIT_CAP_MS]);
+});
+
+test("exchangeCodeForTokens does not retry invalid_grant", async () => {
+  const sleep = vi.fn(async () => {});
+  const fetchFn = vi.fn(async () => jsonResponse({ error: "invalid_grant" }, 400));
+  await expect(exchangeCodeForTokens(fetchFn as any, cfg, "bad", { sleep, now: () => 0 }))
+    .rejects.toThrow("QBO token request failed: 400");
+  expect(fetchFn).toHaveBeenCalledTimes(1);
+  expect(sleep).not.toHaveBeenCalled();
 });
 
 test("revokeToken posts JSON {token} with application/json and Basic auth", async () => {

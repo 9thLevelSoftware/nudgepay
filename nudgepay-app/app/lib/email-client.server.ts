@@ -9,6 +9,8 @@ export type SendEmailArgs = {
   text?: string;
   html?: string;
   headers?: Record<string, string>;
+  // Only set when a received mailbox exists. There is no inbound mailbox env today.
+  replyTo?: string;
 };
 
 export async function sendEmail(
@@ -17,6 +19,7 @@ export async function sendEmail(
   const payload: Record<string, unknown> = { from: args.from, to: args.to, subject: args.subject };
   if (args.html) payload.html = args.html;
   if (args.text) payload.text = args.text;
+  if (args.replyTo) payload.reply_to = args.replyTo;
   if (args.headers && Object.keys(args.headers).length > 0) payload.headers = args.headers;
   const headers: Record<string, string> = {
     Authorization: `Bearer ${cfg.apiKey}`,

@@ -44,12 +44,14 @@ export type QboWebhookEntity = {
 };
 
 // Canonical entity casing keyed by the lowercase token Intuit uses in CloudEvents
-// `type` strings (qbo.<entity>.<event>.v1).
+// `type` strings (qbo.<entity>.<event>.v1). `credit_memo` is the underscored
+// form of the same Intuit entity, not a second payload shape.
 const ENTITY_CASING: Record<string, string> = {
   invoice: "Invoice",
   customer: "Customer",
   payment: "Payment",
   creditmemo: "CreditMemo",
+  credit_memo: "CreditMemo",
 };
 
 function parseLegacy(payload: any): QboWebhookEntity[] {
@@ -68,7 +70,7 @@ function parseCloudEvents(payload: any): QboWebhookEntity[] {
   const out: QboWebhookEntity[] = [];
   for (const ev of events) {
     const type = typeof ev?.type === "string" ? ev.type : "";
-    const m = /^qbo\.([a-z]+)\.([a-z]+)\.v\d+$/.exec(type);
+    const m = /^qbo\.([a-z_]+)\.([a-z]+)\.v\d+$/.exec(type);
     if (!m) continue;
     const entityName = ENTITY_CASING[m[1]] ?? "";
     if (!entityName) continue;
@@ -82,10 +84,14 @@ function parseCloudEvents(payload: any): QboWebhookEntity[] {
   return out;
 }
 
-// Supports both the legacy eventNotifications shape and the newer CloudEvents
-// shape during Intuit's transition. Detection: presence of `eventNotifications`.
-// NOTE: confirm exact CloudEvents field casing/nesting against a real Intuit
-// payload before production cutover; both parsers are kept regardless.
+// Locked production shape: Intuit CloudEvents v1.0 array as documented
+// (developer sample / Nov 2025 webhook change):
+//   [{ specversion, id, source, type: "qbo.<entity>.<event>.v1",
+//      datacontenttype, time, intuitentityid, intuitaccountid, data }]
+// Official Intuit samples use lowercase `intuitentityid` / `intuitaccountid`
+// and past-tense events (`created`/`updated`). The same envelope also accepts
+// present-tense `create`/`update`/`delete` type tokens. Legacy
+// `eventNotifications` is still parsed during Intuit's cutover.
 export function parseQboWebhook(rawBody: string): QboWebhookEntity[] {
   let payload: any;
   try {

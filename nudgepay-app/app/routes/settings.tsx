@@ -169,6 +169,32 @@ function relTime(iso: string | null): string {
   return hr < 24 ? `${hr}h ago` : `${Math.floor(hr / 24)}d ago`;
 }
 
+function InviteLinkStatus({ link, sent }: { link: string; sent: boolean }) {
+  const [copied, setCopied] = useState(false);
+  const copy = async () => {
+    try {
+      await navigator.clipboard.writeText(link);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch { /* clipboard unavailable — link is still selectable */ }
+  };
+  return (
+    <p className="mt-3 text-sm text-cool" role="status">
+      {sent
+        ? "Invite email sent. Link (expires in 14 days): "
+        : "Invite created. Copy this link (expires in 14 days): "}
+      <code className="break-all rounded bg-panel px-1.5 py-0.5 text-xs text-text">{link}</code>
+      <button
+        type="button"
+        onClick={copy}
+        className="ml-2 shrink-0 rounded-md border border-border px-2 py-1 text-[11px] font-medium text-text hover:border-copper"
+      >
+        {copied ? "Copied" : "Copy"}
+      </button>
+    </p>
+  );
+}
+
 export default function Settings() {
   const d = useLoaderData<typeof loader>();
   const [sp] = useSearchParams();
@@ -248,7 +274,7 @@ export default function Settings() {
               <NotificationPrefsForm
                 key={d.orgId}
                 orgId={d.orgId}
-                emailEnabled={d.emailSettings.emailEnabled}
+                alertsReady={Boolean(d.providerStatus.resendConfigured && d.emailSettings.fromAddress)}
                 prefs={d.notificationPrefs}
               />
 
@@ -334,10 +360,7 @@ export default function Settings() {
                   </Form>
                 ) : null}
                 {inviteLink ? (
-                  <p className="mt-3 text-sm text-cool" role="status">
-                    Invite link (expires in 14 days):{" "}
-                    <code className="break-all rounded bg-panel px-1.5 py-0.5 text-xs text-text">{inviteLink}</code>
-                  </p>
+                  <InviteLinkStatus link={inviteLink} sent={sp.get("invite_sent") === "1"} />
                 ) : null}
                 {sp.get("saved") === "member" ? (
                   <p className="mt-2 text-xs text-cool" role="status">Member updated.</p>

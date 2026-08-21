@@ -1,4 +1,5 @@
 // tests/accounts.test.ts
+import { readFileSync } from "node:fs";
 import { expect, test } from "vitest";
 import {
   deriveStanding, buildAccountRows,
@@ -91,4 +92,12 @@ test("computeAccountMetrics totals customers, open AR, unassigned, paid-up", () 
   expect(m.totalOpenAR).toBe(7100); // 6300 + 800
   expect(m.unassignedCount).toBe(1);
   expect(m.paidUpCount).toBe(1);
+});
+
+test("AccountsMetrics labels the count as collections customers, not the QBO directory", () => {
+  const src = readFileSync(new URL("../app/components/AccountsMetrics.tsx", import.meta.url), "utf8");
+  expect(src).toContain('label="Customers in collections"');
+  expect(src).toContain('sub="in this workspace"');
+  expect(src).not.toContain("Total customers");
+  expect(src).not.toMatch(/in directory/i);
 });

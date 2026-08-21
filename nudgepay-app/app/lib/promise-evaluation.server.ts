@@ -37,6 +37,7 @@ export async function applyPromiseEvaluation(
   const invoiceIds = [...new Set((links ?? []).map((l) => l.invoice_id as string))];
   const balanceByInvoice = new Map<string, number>();
   if (invoiceIds.length > 0) {
+    // Credit memos that reduce invoice balance still count: QBO balance is the source of truth.
     const { data: invs, error: iErr } = await client
       .from("invoices").select("id, balance").eq("org_id", orgId).in("id", invoiceIds);
     if (iErr) throw iErr;
