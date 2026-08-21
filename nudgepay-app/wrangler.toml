@@ -56,6 +56,6 @@ custom_domain = true
 #   RESEND_WEBHOOK_SECRET        Resend webhook signing secret
 #   UNSUBSCRIBE_SECRET           HMAC key for CAN-SPAM unsubscribe tokens
 #   APP_PUBLIC_BASE_URL          ${APP_BASE_URL}  (public origin for unsubscribe links + alert deep links)
-# DEPLOY GATE: getQboEnv requires QBO_WEBHOOK_VERIFIER_TOKEN and getTwilioEnv requires the Twilio
-# secrets — QBO/Twilio routes throw 500 at runtime until every secret above is set.
-# Email/alert secrets are optional — getEmailEnvOrNull returns null when absent, so alert paths degrade gracefully.
+# DEPLOY GATE: Connect/Refresh/Disconnect degrade via getQboEnvOrNull (no 500) until
+# QBO secrets are set. getTwilioEnv still throws on send/webhook paths until Twilio
+# secrets are set. Email/alert secrets are optional — getEmailEnvOrNull returns null.

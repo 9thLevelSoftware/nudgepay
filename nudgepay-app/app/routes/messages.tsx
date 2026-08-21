@@ -23,6 +23,7 @@ import type { TemplateVars } from "../lib/sms-templates";
 import { formatUSD } from "../lib/format";
 import { formatDate } from "../lib/dates";
 import { AppShell } from "../components/AppShell";
+import { SyncIssues } from "../components/SyncIssues";
 import { MessagesMetrics } from "../components/MessagesMetrics";
 import { MessagesInbox } from "../components/MessagesInbox";
 import { MessageThreadPanel } from "../components/MessageThreadPanel";
@@ -48,8 +49,8 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
   const {
     supabase, service, headers, isOwner, org,
     orgName, initials, connected, syncLabel,
+    syncIssues,
   } = await loadWorkspaceChrome(request, env);
-  // requireQbo defaults true — gate already handled inside helper
 
   // --- URL params ---
   const url = new URL(request.url);
@@ -249,7 +250,7 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
   return data(
     {
       orgName,
-      initials, syncLabel, connected, isOwner,
+      initials, syncLabel, connected, isOwner, syncIssues,
       rows, metrics, counts, tab, sort, q,
       channel, channelCounts, emailEnabled,
       selected, selectedMessages, selectedEmailMessages,
@@ -273,6 +274,7 @@ export default function Messages() {
       connected={d.connected}
       isOwner={d.isOwner}
       activeNav="messages"
+      syncIssues={<SyncIssues issues={d.syncIssues} returnTo="/messages" />}
     >
       <div className="p-4 sm:p-6 space-y-4 sm:space-y-6">
         <MessagesMetrics metrics={d.metrics} />

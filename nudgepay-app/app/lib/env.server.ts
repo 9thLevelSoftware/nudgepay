@@ -26,23 +26,29 @@ export type QboEnv = {
   QBO_SANDBOX: boolean;
 };
 
-export function getQboEnv(context: { cloudflare: { env: Record<string, string> } }): QboEnv {
+export function getQboEnvOrNull(
+  context: { cloudflare: { env: Record<string, string> } },
+): QboEnv | null {
   const e = context.cloudflare.env;
   const required = [
     "QBO_CLIENT_ID", "QBO_CLIENT_SECRET", "QBO_REDIRECT_URI",
     "QBO_ENCRYPTION_KEY", "QBO_WEBHOOK_VERIFIER_TOKEN",
   ];
-  for (const k of required) {
-    if (!e[k]) throw new Error(`Missing required env var: ${k}`);
-  }
+  if (required.some((k) => !e[k])) return null;
   return {
     QBO_CLIENT_ID: e.QBO_CLIENT_ID,
     QBO_CLIENT_SECRET: e.QBO_CLIENT_SECRET,
     QBO_REDIRECT_URI: e.QBO_REDIRECT_URI,
     QBO_ENCRYPTION_KEY: e.QBO_ENCRYPTION_KEY,
     QBO_WEBHOOK_VERIFIER_TOKEN: e.QBO_WEBHOOK_VERIFIER_TOKEN,
-    QBO_SANDBOX: e.QBO_SANDBOX !== "false", // default true
+    QBO_SANDBOX: e.QBO_SANDBOX !== "false",
   };
+}
+
+export function getQboEnv(context: { cloudflare: { env: Record<string, string> } }): QboEnv {
+  const qbo = getQboEnvOrNull(context);
+  if (!qbo) throw new Error("Missing required QBO env vars");
+  return qbo;
 }
 
 export type EmailEnv = {

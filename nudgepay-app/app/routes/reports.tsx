@@ -6,6 +6,7 @@ import { addCalendarDays } from "../lib/business-days";
 import { loadOrgConfig } from "../lib/org-config.server";
 import { todayInTz } from "../lib/tz";
 import { AppShell } from "../components/AppShell";
+import { SyncIssues } from "../components/SyncIssues";
 import {
   buildTeamReport, REPORT_RANGES, activeBrokenCaseIds, type ReportRange,
   type ReportContactLog, type ReportPromise, type ReportOpenedCase, type ReportWorkloadCase,
@@ -22,7 +23,7 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
   const env = getEnv(context as any);
   const {
     supabase, service, headers, org,
-    orgName, initials, connected, syncLabel,
+    orgName, initials, connected, syncLabel, syncIssues,
   } = await loadWorkspaceChrome(request, env, { requireQbo: false, requireOwner: true });
   // Owner-only surface gate is enforced inside the helper
   // (redirects to /dashboard?denied=reports for non-owners).
@@ -124,7 +125,7 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
   const report = buildTeamReport({ range, roster, contactLogs, promises, openedCases, workloadCases, today });
 
   return data(
-    { report, orgName, initials, connected, syncLabel },
+    { report, orgName, initials, connected, syncLabel, syncIssues },
     { headers },
   );
 }
@@ -140,14 +141,14 @@ function fmtHours(x: number | null): string {
 }
 
 export default function Reports() {
-  const { report, orgName, initials, connected, syncLabel } = useLoaderData<typeof loader>();
+  const { report, orgName, initials, connected, syncLabel, syncIssues } = useLoaderData<typeof loader>();
   const teamContacts = report.perRep.reduce((s, r) => s + r.contactsLogged, 0);
   const teamKept = report.perRep.reduce((s, r) => s + r.kept, 0);
   const teamResolved = report.perRep.reduce((s, r) => s + r.resolved, 0);
   const teamKeptRate = teamResolved === 0 ? null : teamKept / teamResolved;
 
   return (
-    <AppShell orgName={orgName} userInitials={initials} syncLabel={syncLabel} connected={connected} isOwner={true} activeNav="reports" syncIssues={null}>
+    <AppShell orgName={orgName} userInitials={initials} syncLabel={syncLabel} connected={connected} isOwner={true} activeNav="reports" syncIssues={<SyncIssues issues={syncIssues} returnTo="/reports" />}>
       <div className="px-6 py-5 flex flex-col gap-6">
         <div className="flex items-center justify-between">
           <h1 className="font-display text-xl font-semibold text-text">Team performance</h1>

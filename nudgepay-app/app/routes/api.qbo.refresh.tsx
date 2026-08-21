@@ -1,5 +1,5 @@
 import { redirect, type ActionFunctionArgs } from "react-router";
-import { getEnv, getQboEnv, getEmailEnvOrNull } from "../lib/env.server";
+import { getEnv, getQboEnvOrNull, getEmailEnvOrNull } from "../lib/env.server";
 import { createSupabaseServiceClient } from "../lib/supabase.server";
 import { requireUser, resolveOrg } from "../lib/session.server";
 import { qboApiBaseUrl } from "../lib/qbo-api.server";
@@ -10,7 +10,6 @@ import { safeReturnTo } from "../lib/return-to";
 
 export async function action({ request, context }: ActionFunctionArgs) {
   const env = getEnv(context as any);
-  const qbo = getQboEnv(context as any);
   const { supabase, headers, user } = await requireUser(request, env);
   const org = await resolveOrg(supabase, user.id);
   if (!org) return redirect("/onboarding", { headers });
@@ -18,6 +17,8 @@ export async function action({ request, context }: ActionFunctionArgs) {
   const form = await request.formData();
   const returnTo = safeReturnTo(form.get("returnTo"));
   const sep = returnTo.includes("?") ? "&" : "?";
+  const qbo = getQboEnvOrNull(context as any);
+  if (!qbo) return redirect(`${returnTo}${sep}qbo=unconfigured`, { headers });
 
   const service = createSupabaseServiceClient(env);
 

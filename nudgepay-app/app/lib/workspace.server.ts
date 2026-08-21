@@ -5,12 +5,35 @@ import { getConnectionStatus } from "./qbo-connection.server";
 import type { AppEnv } from "./env.server";
 import { displayLabel, initialsFrom } from "./names";
 
+export type ChromeSyncIssue = {
+  id: string;
+  source: string;
+  scope: string;
+  message: string;
+  occurredAt: string;
+};
+
+export function mapSyncIssues(
+  rows: { id: string; source: string; scope: string; message: string; occurred_at: string }[] | null | undefined,
+): ChromeSyncIssue[] {
+  return (rows ?? []).map((r) => ({
+    id: r.id,
+    source: r.source,
+    scope: r.scope,
+    message: r.message,
+    occurredAt: r.occurred_at,
+  }));
+}
+
 // Shared "chrome" prelude for authenticated workspace routes: auth + org
 // membership + QBO connection status + sync label. Dedupes the ~45-line
 // prelude that used to be copy-pasted across accounts/promises/messages/
 // reports/settings. dashboard.tsx intentionally keeps its own batch
 // structure (it parallelizes far more than this) and does NOT use this
 // helper.
+//
+// requireQbo is opt-in. A disconnected first-run workspace should still open
+// collections/accounts/settings instead of bouncing to Integrations.
 export async function loadWorkspaceChrome(
   request: Request,
   env: AppEnv,
@@ -25,15 +48,18 @@ export async function loadWorkspaceChrome(
 
   const service = createSupabaseServiceClient(env);
 
-  // Parallel: org name + connection status + connection metadata
-  const [orgRowRes, conn, connMetaRes] = await Promise.all([
+  // Parallel: org name + connection status + connection metadata + unresolved sync errors
+  const [orgRowRes, conn, connMetaRes, syncErrorRes] = await Promise.all([
     supabase.from("organizations").select("name").eq("id", org.org_id).single(),
     getConnectionStatus(service, org.org_id),
     service.from("qbo_connections").select("last_sync_at").eq("org_id", org.org_id).maybeSingle(),
+    supabase.from("sync_errors")
+      .select("id, source, scope, message, occurred_at").eq("org_id", org.org_id)
+      .is("resolved_at", null).order("occurred_at", { ascending: false }).limit(20),
   ]);
 
   const connected = conn?.status === "connected";
-  if (opts?.requireQbo !== false && !connected) {
+  if (opts?.requireQbo === true && !connected) {
     throw redirect("/settings?tab=integrations", { headers });
   }
 
@@ -64,5 +90,8 @@ export async function loadWorkspaceChrome(
   return {
     supabase, service, headers, user, org, isOwner,
     orgName, initials, connected, syncLabel, lastSyncAt,
+    syncIssues: mapSyncIssues(syncErrorRes.data as {
+      id: string; source: string; scope: string; message: string; occurred_at: string;
+    }[] | null),
   };
 }

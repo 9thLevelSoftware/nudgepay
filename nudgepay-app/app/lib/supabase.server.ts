@@ -27,7 +27,7 @@ export function createSupabaseUserClient(request: Request, env: AppEnv) {
         for (const { name, value, options } of cookiesToSet) {
           headers.append(
             "Set-Cookie",
-            serializeCookieHeader(name, value, { ...cookieDefaults, ...options }),
+            serializeCookieHeader(name, value, { ...options, ...cookieDefaults }),
           );
         }
         // Also apply any cache-control / pragma headers the library passes for

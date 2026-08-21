@@ -18,7 +18,9 @@ test("listOrgMembers returns the org roster with email-local-part labels", async
   expect(members.length).toBe(2);
   expect(byId.get(a.userId)!.label).toBe("roster-alice");
   expect(byId.get(a.userId)!.email).toBe("roster-alice@example.com");
+  expect(byId.get(a.userId)!.role).toBe("owner");
   expect(byId.get(b.userId)!.label).toBe("roster-bob");
+  expect(byId.get(b.userId)!.role).toBe("member");
   // sorted by label ascending
   expect(members.map((m) => m.label)).toEqual([...members.map((m) => m.label)].sort());
 });

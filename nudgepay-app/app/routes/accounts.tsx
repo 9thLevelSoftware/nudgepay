@@ -20,6 +20,7 @@ import {
 } from "../lib/accounts";
 import type { CustomerInput, InvoiceInput } from "../lib/worklist";
 import { AppShell } from "../components/AppShell";
+import { SyncIssues } from "../components/SyncIssues";
 import { AccountsMetrics } from "../components/AccountsMetrics";
 import { AccountsDirectory } from "../components/AccountsDirectory";
 import { AccountQuickPanel } from "../components/AccountQuickPanel";
@@ -37,8 +38,8 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
   const {
     supabase, service, headers, isOwner, org,
     orgName, initials, connected, syncLabel,
+    syncIssues,
   } = await loadWorkspaceChrome(request, env);
-  // requireQbo defaults true — gate already handled inside helper
 
   // --- URL params ---
   const url = new URL(request.url);
@@ -173,6 +174,7 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
       syncLabel,
       connected,
       isOwner,
+      syncIssues,
       rows,
       metrics,
       counts,
@@ -199,6 +201,7 @@ export default function Accounts() {
       connected={d.connected}
       isOwner={d.isOwner}
       activeNav="accounts"
+      syncIssues={<SyncIssues issues={d.syncIssues} returnTo="/accounts" />}
     >
       <div className="p-4 sm:p-6 space-y-4 sm:space-y-6">
         <AccountsMetrics metrics={d.metrics} />

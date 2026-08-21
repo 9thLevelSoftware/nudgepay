@@ -48,7 +48,7 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
   // QBO-connected guard
   const service = createSupabaseServiceClient(env);
   const conn = await getConnectionStatus(service, org.org_id);
-  if (conn?.status !== "connected") throw redirect("/settings?tab=integrations", { headers });
+  // Disconnected orgs can open Focus and see an empty deck instead of a bounce.
 
   const orgConfigForToday = await loadOrgConfig(supabase, org.org_id).catch(() => DEFAULT_ORG_CONFIG);
   const today = todayInTz(orgConfigForToday.companyProfile.timezone);
