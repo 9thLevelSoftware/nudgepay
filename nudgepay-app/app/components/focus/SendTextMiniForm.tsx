@@ -18,7 +18,7 @@ interface SendTextMiniFormProps {
   quietHoursLabel: string;
   onDone: () => void;
   onCancel: () => void;
-  /** Called when the send fails — parent shows a toast with the error code. */
+  /** Called when the send fails with a machine result code. Parent maps it to human copy. */
   onError: (code: string) => void;
   smsTemplates: MessageTemplateRow[];
   orgCompany: string;

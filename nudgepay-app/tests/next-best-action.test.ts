@@ -89,6 +89,14 @@ test("whyNow: falls back to age when no special facts", () => {
   expect(r.reason).toContain("Last contact");
 });
 
+test("whyNow: last-contact instant uses the org timezone", () => {
+  const r = whyNow(stub({
+    caseId: "c1",
+    lastContact: { date: "2026-08-20T19:04:00.000Z", channel: "Text" },
+  }), "America/New_York");
+  expect(r.reason).toContain("Aug 20, 2026, 3:04 PM");
+});
+
 // ---------------------------------------------------------------------------
 // pickTriage
 // ---------------------------------------------------------------------------

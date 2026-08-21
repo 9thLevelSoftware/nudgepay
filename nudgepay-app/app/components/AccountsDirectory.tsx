@@ -2,7 +2,7 @@
 import { Form, Link } from "react-router";
 import type { AccountRow, AccountStanding, AccountFilter, AccountSort } from "../lib/accounts";
 import { formatUSD } from "../lib/format";
-import { formatDate } from "../lib/dates";
+import { formatInstant } from "../lib/dates";
 
 export const STANDING_LABEL: Record<AccountStanding, string> = {
   current: "Current", overdue: "Overdue", in_collections: "In collections", on_hold: "On hold",
@@ -35,9 +35,10 @@ interface Props {
   search: string;
   counts: Record<AccountFilter, number>;
   selectedId: string | null;
+  timeZone?: string | null;
 }
 
-export function AccountsDirectory({ rows, filter, sort, search, counts, selectedId }: Props) {
+export function AccountsDirectory({ rows, filter, sort, search, counts, selectedId, timeZone }: Props) {
   const link = (customerId: string) => {
     const p = new URLSearchParams({ filter, sort, ...(search ? { q: search } : {}) });
     p.set("customerId", customerId);
@@ -122,7 +123,7 @@ export function AccountsDirectory({ rows, filter, sort, search, counts, selected
                   <span><span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${STANDING_CHIP[r.standing]}`}>{STANDING_LABEL[r.standing]}</span></span>
                   <span className="text-sm text-muted truncate">{r.owner}</span>
                   <span className="text-sm text-text text-right tabular-nums">{formatUSD(r.openBalance)}</span>
-                  <span className="text-sm text-muted">{r.lastContact ? `${r.lastContact.channel} · ${formatDate(r.lastContact.date)}` : "—"}</span>
+                  <span className="text-sm text-muted">{r.lastContact ? `${r.lastContact.channel} · ${formatInstant(r.lastContact.date, timeZone)}` : "—"}</span>
                 </Link>
               </li>
             );

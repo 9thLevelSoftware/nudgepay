@@ -2,7 +2,7 @@
 // and Dashboard v2 (triage strip, NBA panel). No I/O, no .server suffix.
 
 import type { CaseItem } from "./cases";
-import { formatDate } from "./dates";
+import { formatDate, formatInstant } from "./dates";
 
 export type WhyNow = { headline: string; reason: string };
 
@@ -13,7 +13,7 @@ export type WhyNow = { headline: string; reason: string };
  * Broken promise"). Reason: a more conversational nudge stitched from case
  * facts, capped at ~one sentence.
  */
-export function whyNow(item: CaseItem): WhyNow {
+export function whyNow(item: CaseItem, timeZone?: string | null): WhyNow {
   const headline = item.priority.reason || `${item.effectiveLevel} priority`;
 
   const parts: string[] = [];
@@ -27,7 +27,7 @@ export function whyNow(item: CaseItem): WhyNow {
   if (item.lastContact == null) {
     parts.push("Never contacted");
   } else if (item.lastContact.date) {
-    parts.push(`Last contact: ${item.lastContact.channel.toLowerCase()} · ${formatDate(item.lastContact.date)}`);
+    parts.push(`Last contact: ${item.lastContact.channel.toLowerCase()} · ${formatInstant(item.lastContact.date, timeZone)}`);
   }
 
   if (item.commPrefs.preferredChannel === "call") {

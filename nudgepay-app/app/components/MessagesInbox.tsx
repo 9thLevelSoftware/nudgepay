@@ -1,7 +1,7 @@
 // app/components/MessagesInbox.tsx
 import { Form, Link } from "react-router";
 import type { ThreadRow, MessageTab, MessageSort, ChannelFilter } from "../lib/message-inbox";
-import { formatDate } from "../lib/dates";
+import { formatInstant } from "../lib/dates";
 
 const TABS: { id: MessageTab; label: string }[] = [
   { id: "needs-reply", label: "Needs reply" },
@@ -31,9 +31,10 @@ interface Props {
   selectedChannel: string | null;
   channel: ChannelFilter;
   channelCounts: { all: number; sms: number; email: number };
+  timeZone?: string | null;
 }
 
-export function MessagesInbox({ rows, tab, sort, search, counts, selectedId, selectedChannel, channel, channelCounts }: Props) {
+export function MessagesInbox({ rows, tab, sort, search, counts, selectedId, selectedChannel, channel, channelCounts, timeZone }: Props) {
   const tabHref = (id: MessageTab) =>
     `?${new URLSearchParams({ tab: id, sort, channel, ...(search ? { q: search } : {}) }).toString()}`;
   const channelHref = (ch: ChannelFilter) =>
@@ -147,7 +148,7 @@ export function MessagesInbox({ rows, tab, sort, search, counts, selectedId, sel
                         </>
                       ) : "No messages"}
                     </span>
-                    {r.lastMessage ? <span className="ml-auto shrink-0 font-mono">{formatDate(r.lastMessage.createdAt)}</span> : null}
+                    {r.lastMessage ? <span className="ml-auto shrink-0 font-mono">{formatInstant(r.lastMessage.createdAt, timeZone)}</span> : null}
                   </div>
                 </Link>
               </li>

@@ -4,7 +4,7 @@ import type { ViewId, SortId } from "../lib/worklist";
 import type { CaseItem } from "../lib/cases";
 import type { Collision } from "../lib/collision";
 import type { MessageTemplateRow } from "../lib/message-templates";
-import { formatDate } from "../lib/dates";
+import { formatDate, formatInstant } from "../lib/dates";
 import { STATUS_LABEL, formatUSD } from "../lib/format";
 import { exceptionLabel } from "../lib/exceptions";
 import { partitionEligibility, clampBatch } from "../lib/bulk";
@@ -162,6 +162,7 @@ interface WorkQueueProps {
   maxBatch: number;
   /** QBO connection — empty-state copy branches on first-run vs filter-miss. */
   connected: boolean;
+  timeZone?: string | null;
 }
 
 // ---------------------------------------------------------------------------
@@ -178,6 +179,7 @@ function QueueRow({
   onToggle,
   disabled,
   collision,
+  timeZone,
 }: {
   item: CaseItem;
   selected: boolean;
@@ -188,6 +190,7 @@ function QueueRow({
   onToggle: (id: string) => void;
   disabled: boolean;
   collision?: Collision;
+  timeZone?: string | null;
 }) {
   const params = new URLSearchParams({ case: item.caseId, view, sort, ...(search ? { q: search } : {}) });
   const href = `?${params.toString()}`;
@@ -267,7 +270,7 @@ function QueueRow({
         <span data-label="Last contact" className="hidden lg:block min-w-0">
           {item.lastContact ? (
             <>
-              <span className="block text-text text-xs">{formatDate(item.lastContact.date)}</span>
+              <span className="block text-text text-xs">{formatInstant(item.lastContact.date, timeZone)}</span>
               <span className="block text-muted text-xs capitalize">{item.lastContact.channel}</span>
             </>
           ) : (
@@ -327,10 +330,11 @@ function QueueRow({
 // ---------------------------------------------------------------------------
 
 function MobileCard({
-  item, selected, view, sort, search, checked, onToggle, disabled, collision,
+  item, selected, view, sort, search, checked, onToggle, disabled, collision, timeZone,
 }: {
   item: CaseItem; selected: boolean; view: ViewId; sort: SortId; search: string;
   checked: boolean; onToggle: (id: string) => void; disabled: boolean; collision?: Collision;
+  timeZone?: string | null;
 }) {
   const params = new URLSearchParams({ case: item.caseId, view, sort, ...(search ? { q: search } : {}) });
   const href = `?${params.toString()}`;
@@ -373,7 +377,7 @@ function MobileCard({
         </div>
         <div className="mt-1 text-xs">
           {item.lastContact ? (
-            <span className="text-muted">{formatDate(item.lastContact.date)} · {item.lastContact.channel}</span>
+            <span className="text-muted">{formatInstant(item.lastContact.date, timeZone)} · {item.lastContact.channel}</span>
           ) : (
             <span className="text-muted">Never contacted</span>
           )}
@@ -459,6 +463,7 @@ export function WorkQueue({
   orgPaymentLink,
   maxBatch,
   connected,
+  timeZone,
 }: WorkQueueProps) {
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [smsOpen, setSmsOpen] = useState(false);
@@ -755,6 +760,7 @@ export function WorkQueue({
                       onToggle={toggle}
                       disabled={!selected.has(item.caseId) && capReached}
                       collision={collisions[item.caseId]}
+                      timeZone={timeZone}
                     />
                   </div>
                 ))}
@@ -780,6 +786,7 @@ export function WorkQueue({
                     onToggle={toggle}
                     disabled={!selected.has(item.caseId) && capReached}
                     collision={collisions[item.caseId]}
+                    timeZone={timeZone}
                   />
                 </div>
               ))}

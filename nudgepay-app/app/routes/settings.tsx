@@ -3,6 +3,7 @@ import { useLoaderData, useNavigation, useSearchParams, Form, data, type LoaderF
 import { useFlashCleanup } from "../lib/use-flash-cleanup";
 import { useDialog } from "../lib/use-dialog";
 import { orgNameMatches } from "../lib/qbo-disconnect";
+import { DELETE_CONFIRM_TOKEN, deletionConfirmMatches, isLastOwnerMember } from "../lib/account-deletion";
 import { getEnv, getTwilioEnvOrNull, getEmailEnvOrNull, getPublicBaseUrls, getQboEnvOrNull } from "../lib/env.server";
 import { loadWorkspaceChrome } from "../lib/workspace.server";
 import { listOrgMembers } from "../lib/orgs.server";
@@ -215,7 +216,8 @@ export default function Settings() {
   const inviteLink = sp.get("invite_link");
   const memberError = sp.get("error");
   const ownerCount = d.members.filter((m) => m.role === "owner").length;
-  const canLeave = !(d.isOwner && ownerCount < 2);
+  const lastOwner = isLastOwnerMember(d.isOwner, ownerCount);
+  const canLeave = !lastOwner;
 
   return (
     <AppShell
@@ -312,6 +314,45 @@ export default function Settings() {
                   <p className="mt-2 text-xs text-hot" role="alert">Current password is incorrect.</p>
                 ) : null}
               </section>
+
+              <section className="rounded-lg border border-border bg-surface p-5">
+                <h2 className="font-display text-base font-semibold text-text">Email</h2>
+                <p className="mt-0.5 text-xs text-muted">
+                  Current address: <span className="font-medium text-text">{d.ownerEmail || "not set"}</span>.
+                  We send a confirmation to the new address; this stays current until you confirm.
+                </p>
+                <Form method="post" action="/api/profile" className="mt-3 flex flex-col gap-3">
+                  <input type="hidden" name="returnTo" value={returnTo} />
+                  <input type="hidden" name="intent" value="email" />
+                  <label className="grid gap-1 text-sm font-medium text-text">
+                    New email
+                    <input
+                      name="new_email" type="email" required autoComplete="email"
+                      className="h-9 rounded-md border border-border bg-panel px-3 text-sm text-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-copper"
+                    />
+                  </label>
+                  <button
+                    type="submit" disabled={profileBusy("email")}
+                    className="h-9 w-fit rounded-md bg-copper px-4 text-sm font-medium text-white hover:bg-copper/90 disabled:opacity-60 disabled:cursor-not-allowed"
+                  >
+                    {profileBusy("email") ? "Sending…" : "Change email"}
+                  </button>
+                </Form>
+                {sp.get("saved") === "email" ? (
+                  <p className="mt-2 text-xs text-cool" role="status">Check your inbox to confirm the new email</p>
+                ) : null}
+                {sp.get("error") === "email" ? (
+                  <p className="mt-2 text-xs text-hot" role="alert">Enter a valid email address different from your current one.</p>
+                ) : null}
+              </section>
+
+              <DeleteAccountForm
+                currentEmail={d.ownerEmail}
+                lastOwner={lastOwner}
+                returnTo={returnTo}
+                busy={profileBusy("delete")}
+                error={sp.get("error")}
+              />
 
               {/* Company profile */}
               <CompanyProfileForm
@@ -593,6 +634,71 @@ export default function Settings() {
         </div>
       </div>
     </AppShell>
+  );
+}
+
+function DeleteAccountForm({
+  currentEmail,
+  lastOwner,
+  returnTo,
+  busy,
+  error,
+}: {
+  currentEmail: string;
+  lastOwner: boolean;
+  returnTo: string;
+  busy: boolean;
+  error: string | null;
+}) {
+  const [typed, setTyped] = useState("");
+  const canSubmit = deletionConfirmMatches(typed, currentEmail);
+
+  return (
+    <section className="rounded-lg border border-border bg-surface p-5">
+      <h2 className="font-display text-base font-semibold text-text">Delete account</h2>
+      <p className="mt-0.5 text-xs text-muted">
+        Removes you from this workspace and signs you out. Type your email or{" "}
+        <span className="font-medium text-text">{DELETE_CONFIRM_TOKEN}</span> to confirm.
+      </p>
+      {lastOwner ? (
+        <p className="mt-3 text-xs text-muted">
+          The last owner cannot delete their account. Transfer ownership first.
+        </p>
+      ) : (
+        <Form method="post" action="/api/profile" className="mt-3 flex flex-col gap-3">
+          <input type="hidden" name="returnTo" value={returnTo} />
+          <input type="hidden" name="intent" value="delete" />
+          <label className="grid gap-1 text-sm font-medium text-text">
+            Confirm
+            <input
+              name="confirm"
+              type="text"
+              required
+              autoComplete="off"
+              value={typed}
+              onChange={(e) => setTyped(e.target.value)}
+              className="h-9 rounded-md border border-border bg-panel px-3 text-sm text-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-copper"
+            />
+          </label>
+          <button
+            type="submit"
+            disabled={!canSubmit || busy}
+            className="h-9 w-fit rounded-md border border-hot px-4 text-sm font-medium text-hot disabled:opacity-60 disabled:cursor-not-allowed"
+          >
+            {busy ? "Deleting…" : "Delete account"}
+          </button>
+        </Form>
+      )}
+      {error === "confirm" ? (
+        <p className="mt-2 text-xs text-hot" role="alert">Type your email or DELETE to confirm.</p>
+      ) : null}
+      {error === "last-owner" ? (
+        <p className="mt-2 text-xs text-hot" role="alert">The last owner cannot delete their account. Transfer ownership first.</p>
+      ) : null}
+      {error === "delete" ? (
+        <p className="mt-2 text-xs text-hot" role="alert">Could not delete your account. Try again.</p>
+      ) : null}
+    </section>
   );
 }
 

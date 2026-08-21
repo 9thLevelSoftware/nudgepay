@@ -5,7 +5,21 @@
 //
 // Order matters: check the most specific/most-likely-first-thrown reasons
 // first so overlapping substrings (e.g. "consent") don't misclassify.
-export function smsSendReason(message: string): string {
+// Display copy lives in flash-copy.ts (SMS_FLASH) — never show these codes raw.
+
+export const SMS_SEND_REASON_CODES = [
+  "disabled",
+  "quiet",
+  "blocked",
+  "optout",
+  "noconsent",
+  "limited",
+  "error",
+] as const;
+
+export type SmsSendReason = (typeof SMS_SEND_REASON_CODES)[number];
+
+export function smsSendReason(message: string): SmsSendReason {
   if (/disabled/i.test(message)) return "disabled";
   if (/quiet/i.test(message)) return "quiet";
   if (/blocked/i.test(message)) return "blocked";

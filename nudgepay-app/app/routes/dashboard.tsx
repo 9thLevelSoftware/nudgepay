@@ -32,6 +32,7 @@ import { KpiBand } from "../components/KpiBand";
 import { TriageStrip } from "../components/TriageStrip";
 import { WorkQueue } from "../components/WorkQueue";
 import { DetailPanel } from "../components/DetailPanel";
+import { detailPaneClass, isMobileCaseOpen, queuePaneClass } from "../lib/dashboard-panes";
 import { LogContactDrawer } from "../components/LogContactDrawer";
 import { CommPrefsDrawer } from "../components/CommPrefsDrawer";
 import { buildTimeline, type TimelineEntry, type TimelineLogInput, type TimelineSmsInput } from "~/lib/timeline";
@@ -454,6 +455,7 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
       maxBatch: orgConfig.workflow.smsBatchLimit,
       comingDueDays: orgConfig.workflow.comingDueDays,
       today,
+      timeZone: orgConfig.companyProfile.timezone,
       ...dashboardData,
     },
     { headers },
@@ -522,6 +524,7 @@ export default function Dashboard() {
     orgPhone,
     orgPaymentLink,
     maxBatch,
+    timeZone,
   } = useLoaderData<typeof loader>();
 
   useFlashCleanup();
@@ -608,12 +611,12 @@ export default function Dashboard() {
           </div>
 
           {/* Triage strip — top-3 actionable cases */}
-          <TriageStrip items={items} view={view} sort={sort} search={q} />
+          <TriageStrip items={items} view={view} sort={sort} search={q} timeZone={timeZone} />
 
-          {/* Workspace: queue full-width until a case is selected, then two-pane */}
+          {/* Workspace: queue full-width until a case is selected; md+ two-pane, <md detail fills */}
           <div className="flex flex-1 overflow-hidden">
-            {/* Work queue — left pane */}
-            <div className="flex flex-col min-w-0 flex-1 overflow-hidden">
+            {/* Work queue — left pane (CSS-hidden below md while a case is open; stays mounted) */}
+            <div className={queuePaneClass(isMobileCaseOpen(selected))}>
               <WorkQueue
                 items={items}
                 view={view}
@@ -636,12 +639,13 @@ export default function Dashboard() {
                 orgPaymentLink={orgPaymentLink}
                 maxBatch={maxBatch}
                 connected={connected}
+                timeZone={timeZone}
               />
             </div>
 
-            {/* Detail panel — slide-in right pane, mounted only when a case is selected */}
+            {/* Detail panel — full-width below md; fixed two-pane width at md+ */}
             {selected ? (
-              <div className="w-96 xl:w-[28rem] shrink-0 overflow-hidden border-l border-border shadow-panel">
+              <div className={detailPaneClass()}>
                 <DetailPanel
                   selected={selected ?? null}
                   repInvoiceId={repInvoiceId ?? null}
@@ -671,6 +675,7 @@ export default function Dashboard() {
                   orgPhone={orgPhone}
                   orgPaymentLink={orgPaymentLink}
                   today={today}
+                  timeZone={timeZone}
                 />
               </div>
             ) : null}

@@ -4,7 +4,7 @@ import type { AccountStanding } from "../lib/accounts";
 import type { TimelineEntry } from "../lib/timeline";
 import { STANDING_LABEL, STANDING_CHIP } from "./AccountsDirectory";
 import { formatUSD, STATUS_LABEL } from "../lib/format";
-import { formatDate } from "../lib/dates";
+import { formatDate, formatInstant } from "../lib/dates";
 import { CHANNELS } from "../lib/comm-prefs";
 import { Icon } from "./Icons";
 
@@ -37,6 +37,7 @@ interface Props {
   roster: { userId: string; label: string }[];
   activeCaseId: string | null;
   returnTo: string;
+  timeZone?: string | null;
 }
 
 export function AccountProfile(p: Props) {
@@ -215,7 +216,7 @@ export function AccountProfile(p: Props) {
                   <p className="text-sm text-text">
                     {e.kind === "log" ? (e.outcomeLabel ?? "Logged") : e.outcomeLabel}
                     {e.kind === "log" && e.authorLabel ? <span className="text-muted"> · by {e.authorLabel}</span> : null}
-                    <span className="text-muted"> · {formatDate(e.at)}</span>
+                    <span className="text-muted"> · {formatInstant(e.at, p.timeZone)}</span>
                   </p>
                   {e.kind === "log" && e.notes ? <p className="text-sm text-muted">{e.notes}</p> : null}
                   {e.kind === "sms" && e.body ? <p className="text-sm text-muted">{e.body}</p> : null}

@@ -324,6 +324,7 @@ export async function loader({ request, params, context }: LoaderFunctionArgs) {
       roster,
       activeCaseId,
       returnTo,
+      timeZone: orgConfig.companyProfile.timezone,
     },
     { headers },
   );
@@ -366,6 +367,7 @@ export default function AccountProfilePage() {
         roster={d.roster}
         activeCaseId={d.activeCaseId}
         returnTo={d.returnTo}
+        timeZone={d.timeZone}
       />
     </AppShell>
   );

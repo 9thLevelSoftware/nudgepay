@@ -74,3 +74,9 @@ Tracks implementation against the frozen 2026-08-20 audit pack. Do **not** rewri
 | NP-AUD-2026-112 | 15 | code | timeline broken badge uses org-local `today` |
 | NP-AUD-2026-120 | 15 | code | hourly retention cron (`tests/retention-cron.test.ts`) |
 | NP-AUD-2026-131 | 15 | code | `robots.txt` + meta description + OG on `/` |
+| NP-AUD-2026-020 | 16 | code | change-email via confirm + in-app account deletion |
+| NP-AUD-2026-103 | 16 | code | expanded GoTrue `humanAuthError` map |
+| NP-AUD-2026-106 | 16 | code | Focus SMS toasts use `smsFlashCopy` |
+| NP-AUD-2026-110 | 16 | code | detail stacks full-width below `md` |
+| NP-AUD-2026-114 | 16 | code | `formatDateTime` in org IANA zone |
+| NP-AUD-2026-118 | 16 | code | SMS bubble timestamps + scroll to last |
