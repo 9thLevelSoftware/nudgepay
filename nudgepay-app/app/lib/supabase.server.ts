@@ -7,14 +7,14 @@ export function createSupabaseUserClient(request: Request, env: AppEnv) {
   const https = (() => {
     try { return new URL(request.url).protocol === "https:"; } catch { return false; }
   })();
+  const cookieDefaults = {
+    httpOnly: true,
+    secure: https,
+    sameSite: "lax" as const,
+    path: "/",
+    maxAge: 60 * 60 * 24 * 14,
+  };
   const supabase = createServerClient(env.SUPABASE_URL, env.SUPABASE_ANON_KEY, {
-    cookieOptions: {
-      httpOnly: true,
-      secure: https,
-      sameSite: "lax",
-      path: "/",
-      maxAge: 60 * 60 * 24 * 14,
-    },
     cookies: {
       getAll() {
         // parseCookieHeader returns { name, value? }[] — filter to entries with
@@ -25,7 +25,10 @@ export function createSupabaseUserClient(request: Request, env: AppEnv) {
       },
       setAll(cookiesToSet, responseHeaders) {
         for (const { name, value, options } of cookiesToSet) {
-          headers.append("Set-Cookie", serializeCookieHeader(name, value, options));
+          headers.append(
+            "Set-Cookie",
+            serializeCookieHeader(name, value, { ...cookieDefaults, ...options }),
+          );
         }
         // Also apply any cache-control / pragma headers the library passes for
         // CDN protection (e.g. Cache-Control: private, no-store).
