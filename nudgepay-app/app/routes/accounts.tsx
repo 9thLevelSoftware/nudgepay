@@ -21,7 +21,7 @@ import {
 import type { CustomerInput, InvoiceInput } from "../lib/worklist";
 import { loadReplySource, peekWindowStartIso } from "../lib/activity-peek.server";
 import { loadPayerSource } from "../lib/payer-behavior.server";
-import { parseDensity } from "../lib/queue-chrome";
+import { parseAccountsDensity } from "../lib/queue-chrome";
 import { AppShell } from "../components/AppShell";
 import { SyncIssues } from "../components/SyncIssues";
 import { AccountsMetrics } from "../components/AccountsMetrics";
@@ -57,7 +57,7 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
   const customerId = sp.get("customerId");
   const densityRaw = sp.get("density");
   const densityFromUrl = densityRaw != null;
-  const density = parseDensity(densityRaw);
+  const density = parseAccountsDensity(densityRaw);
 
   const orgConfig = await loadOrgConfig(supabase, org.org_id);
   const today = todayInTz(orgConfig.companyProfile.timezone);

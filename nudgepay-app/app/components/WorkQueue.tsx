@@ -212,6 +212,8 @@ interface WorkQueueProps {
   search: string;
   density: DensityId;
   densityFromUrl: boolean;
+  tab?: "overview" | "activity" | "messages" | "email";
+  invoice?: string | null;
   selectedCaseId: string | null;
   totalCount: number;
   viewCounts: Record<ViewId, number>;
@@ -564,6 +566,8 @@ export function WorkQueue({
   search,
   density,
   densityFromUrl,
+  tab,
+  invoice,
   selectedCaseId,
   totalCount,
   viewCounts,
@@ -697,7 +701,7 @@ export function WorkQueue({
     if (stored !== "general" && stored !== "detailed" && stored !== "risk") return;
     persistDensity(next);
     navigate(dashboardHref({
-      view, sort, q: search || undefined, density: next, case: selectedCaseId,
+      view, sort, q: search || undefined, density: next, case: selectedCaseId, tab, invoice,
     }), { replace: true });
   // First landing only — URL is source of truth after a density click.
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -745,7 +749,7 @@ export function WorkQueue({
           {DENSITY_IDS.map((id) => (
             <Link
               key={id}
-              to={dashboardHref({ view, sort, q: search || undefined, density: id, case: selectedCaseId })}
+              to={dashboardHref({ view, sort, q: search || undefined, density: id, case: selectedCaseId, tab, invoice })}
               aria-pressed={density === id}
               onClick={() => persistDensity(id)}
               className={[

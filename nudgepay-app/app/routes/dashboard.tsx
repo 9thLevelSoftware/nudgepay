@@ -10,7 +10,7 @@ import { loadPeekSource, loadReplySource, peekWindowStartIso } from "../lib/acti
 import type { ActivityPeek } from "../lib/activity-peek";
 import { loadPayerSource } from "../lib/payer-behavior.server";
 import type { PayerStats } from "../lib/payer-behavior";
-import { dashboardHref, parseDensity, parseSort, type DensityId } from "../lib/queue-chrome";
+import { dashboardHref, parseDensity, parseSort } from "../lib/queue-chrome";
 import { loadOrgConfig } from "../lib/org-config.server";
 import { todayInTz } from "../lib/tz";
 import type { OrgMember } from "../lib/orgs.server";
@@ -63,7 +63,6 @@ type DashboardParams = {
   view: ViewId;
   sort: SortId;
   q: string;
-  density?: DensityId;
   caseId: string | null;
   invoice?: string | null;
   tab?: "overview" | "activity" | "messages" | "email";
@@ -350,7 +349,7 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
 
   const dashboardData: DashboardData = buildCaseData(
     cases, invoicesInput, customersInput, lastContactsInput, promisesInput,
-    { view, sort, q, density: densityFromUrl ? density : undefined, caseId, invoice, tab }, today, ownerLabels, user.id, orgConfig,
+    { view, sort, q, caseId, invoice, tab }, today, ownerLabels, user.id, orgConfig,
     comingDueInvoices, peekSrc.peeksByCase, payerByCustomer,
   );
 
@@ -531,6 +530,7 @@ export default function Dashboard() {
     q,
     density,
     densityFromUrl,
+    invoice,
     tab,
     log,
     logMethod,
@@ -679,6 +679,8 @@ export default function Dashboard() {
                 search={q}
                 density={density}
                 densityFromUrl={densityFromUrl}
+                tab={tab}
+                invoice={invoice}
                 selectedCaseId={selected?.caseId ?? null}
                 totalCount={viewCounts["all-open"]}
                 viewCounts={viewCounts}

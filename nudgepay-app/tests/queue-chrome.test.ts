@@ -8,6 +8,7 @@ import {
   accountsSearchParams,
   dashboardHref,
   dashboardSearchParams,
+  parseAccountsDensity,
   parseDensity,
   parseSort,
 } from "../app/lib/queue-chrome";
@@ -19,6 +20,13 @@ test("parseDensity accepts general/detailed/risk and falls back to general", () 
   expect(parseDensity(null)).toBe("general");
   expect(parseDensity(undefined)).toBe("general");
   expect(parseDensity("nope")).toBe("general");
+});
+
+test("parseAccountsDensity maps detailed to general so Accounts never carries Detailed", () => {
+  expect(parseAccountsDensity("risk")).toBe("risk");
+  expect(parseAccountsDensity("detailed")).toBe("general");
+  expect(parseAccountsDensity("general")).toBe("general");
+  expect(parseAccountsDensity(null)).toBe("general");
 });
 
 test("parseSort stays on the current customer-mode sorts and ignores due-date", () => {
@@ -35,7 +43,8 @@ test("dashboardSearchParams always emits density when set, including general", (
   }).toString()).toBe("view=all-open&sort=recommended&density=general");
   expect(dashboardSearchParams({
     view: "30-plus", sort: "customer", q: "acme", density: "risk", case: "c1",
-  }).toString()).toBe("view=30-plus&sort=customer&q=acme&density=risk&case=c1");
+    tab: "messages", invoice: "inv-1",
+  }).toString()).toBe("view=30-plus&sort=customer&q=acme&density=risk&case=c1&invoice=inv-1&tab=messages");
 });
 
 test("dashboardSearchParams omits density only when undefined", () => {
@@ -80,6 +89,7 @@ test("WorkQueue density Links sit outside the GET form and hide view+density onl
   expect(src).toContain('<input type="hidden" name="view" value={view} />');
   expect(src).toContain('name="density" value={hrefDensity}');
   expect(src).not.toMatch(/<input type="hidden" name="sort"/);
+  expect(src).toContain("case: selectedCaseId, tab, invoice");
   const densityBeforeForm = src.indexOf("aria-label=\"Queue density\"");
   const formAt = src.indexOf('<Form method="get"');
   expect(densityBeforeForm).toBeGreaterThan(-1);

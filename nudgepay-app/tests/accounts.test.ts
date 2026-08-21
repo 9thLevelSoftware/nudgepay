@@ -101,9 +101,13 @@ test("AccountsDirectory is General | Risk only and preserves density", () => {
   expect(src).toContain("Oldest overdue");
   expect(src).toContain("Open A/R");
   expect(src).not.toContain("Detailed");
+  expect(src).toContain("persistAccountsDensity");
+  expect(src).toContain('if (stored === "detailed")');
+  expect(src).toContain("if (stored === \"detailed\") return");
   const route = readFileSync(new URL("../app/routes/accounts.tsx", import.meta.url), "utf8");
   expect(route).toContain("loadPayerSource");
   expect(route).toContain("loadReplySource");
+  expect(route).toContain("parseAccountsDensity");
 });
 
 test("AccountsMetrics labels the count as collections customers, not the QBO directory", () => {

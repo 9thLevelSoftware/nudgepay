@@ -8,7 +8,7 @@ import { todayInTz } from "../lib/tz";
 import { buildCaseItems, applyCaseView, sortCaseItems } from "../lib/cases";
 import { queueItemsToCsv } from "../lib/queue-csv";
 import type { ViewId } from "../lib/worklist";
-import { parseDensity, parseSort } from "../lib/queue-chrome";
+import { parseSort } from "../lib/queue-chrome";
 
 export async function loader({ request, context }: LoaderFunctionArgs) {
   const env = getEnv(context as any);
@@ -22,7 +22,6 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
   const url = new URL(request.url);
   const view = (url.searchParams.get("view") ?? "all-open") as ViewId;
   const sort = parseSort(url.searchParams.get("sort"));
-  parseDensity(url.searchParams.get("density"));
   const items = sortCaseItems(
     applyCaseView(
       buildCaseItems(

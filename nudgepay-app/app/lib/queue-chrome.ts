@@ -27,6 +27,11 @@ export function parseDensity(raw: string | null | undefined): DensityId {
   return raw === "detailed" || raw === "risk" ? raw : "general";
 }
 
+/** Accounts is General | Risk. `detailed` displays as General and is not written back. */
+export function parseAccountsDensity(raw: string | null | undefined): DensityId {
+  return raw === "risk" ? "risk" : "general";
+}
+
 export function parseSort(raw: string | null | undefined): SortId {
   return (VALID_SORTS as string[]).includes(raw ?? "") ? (raw as SortId) : "recommended";
 }

@@ -8,7 +8,6 @@ import {
   ACCOUNTS_DENSITY_IDS,
   DENSITY_STORAGE_KEY,
   accountsHref,
-  parseDensity,
   type DensityId,
 } from "../lib/queue-chrome";
 import {
@@ -57,6 +56,18 @@ function persistDensity(id: DensityId) {
   try { localStorage.setItem(DENSITY_STORAGE_KEY, id); } catch { /* private mode */ }
 }
 
+/** Never write `detailed` from Accounts, and never overwrite queue `detailed` with general. */
+function persistAccountsDensity(id: DensityId) {
+  if (id === "risk") {
+    persistDensity("risk");
+    return;
+  }
+  let stored: string | null = null;
+  try { stored = localStorage.getItem(DENSITY_STORAGE_KEY); } catch { persistDensity("general"); return; }
+  if (stored === "detailed") return;
+  persistDensity("general");
+}
+
 function formatDtp(days: number | null | undefined): string {
   return days == null || !Number.isFinite(days) ? "—" : `${Math.round(days)}d`;
 }
@@ -90,10 +101,13 @@ export function AccountsDirectory({
     if (densityFromUrl) return;
     let stored: string | null = null;
     try { stored = localStorage.getItem(DENSITY_STORAGE_KEY); } catch { return; }
-    if (stored !== "general" && stored !== "detailed" && stored !== "risk") return;
-    const next = parseDensity(stored);
-    persistDensity(next);
-    navigate(accountsHref({ ...chrome, density: next, customerId: selectedId }), { replace: true });
+    if (stored === "detailed") {
+      navigate(accountsHref({ ...chrome, density: "general", customerId: selectedId }), { replace: true });
+      return;
+    }
+    if (stored !== "general" && stored !== "risk") return;
+    persistDensity(stored);
+    navigate(accountsHref({ ...chrome, density: stored, customerId: selectedId }), { replace: true });
     // Hydrate once on mount so a later General click cannot bounce back to LS.
     // eslint-disable-next-line react-hooks/exhaustive-deps -- first landing only
   }, []);
@@ -115,7 +129,7 @@ export function AccountsDirectory({
                 key={id}
                 to={accountsHref({ filter, sort, q: search || undefined, density: id, customerId: selectedId })}
                 aria-pressed={pressed}
-                onClick={() => persistDensity(id)}
+                onClick={() => persistAccountsDensity(id)}
                 className={[
                   "px-2.5 h-7 inline-flex items-center rounded text-xs font-medium transition-colors",
                   "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-copper",
