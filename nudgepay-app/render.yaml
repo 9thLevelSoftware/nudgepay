@@ -31,8 +31,10 @@ services:
     name: nudgepay-app
     runtime: node
     # Free instances sleep after idle and are not production callback capacity
-    # (NP-AUD-2026-D03). Use starter (or higher) for staging/failover webhooks.
-    plan: starter
+    # (NP-AUD-2026-D03). Keep `free` on this live Blueprint so a plan change
+    # does not drop dashboard-entered secrets. Use starter for a dedicated
+    # staging/failover service that owns webhooks.
+    plan: free
     region: oregon
     rootDir: nudgepay-app
     branch: main

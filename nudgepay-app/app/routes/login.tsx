@@ -22,7 +22,12 @@ export const meta: Route.MetaFunction = () => pageTitle("Log in");
 
 export async function action({ request, context }: ActionFunctionArgs) {
   requireSameOrigin(request);
-  const env = getEnv(context as any);
+  let env;
+  try {
+    env = getEnv(context as any);
+  } catch {
+    return { error: "Sign-in is unavailable until this environment is configured." };
+  }
   const form = await request.formData();
   const rawEmail = form.get("email");
   const email = typeof rawEmail === "string" ? rawEmail.trim() : "";
