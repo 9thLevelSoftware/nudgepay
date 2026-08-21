@@ -114,6 +114,22 @@ test("computeCaseMetrics highValue bucket honors a custom highValue param", () =
   expect(computeCaseMetrics(items, TODAY, 500).highValue.count).toBe(2);
 });
 
+test("email-only last contact is not never-contacted and does not add silence points", () => {
+  const lastContacts: CaseLastContactInput[] = [
+    { caseId: "case-1", date: "2026-06-19T00:00:00Z", channel: "Email" },
+  ];
+  const items = buildCaseItems(
+    CASES, INVOICES, CUSTOMERS,
+    lastContacts, [],
+    TODAY, LABELS,
+    DEFAULT_ORG_CONFIG,
+  );
+  expect(items.find((c) => c.caseId === "case-1")!.lastContact).toEqual({
+    date: "2026-06-19T00:00:00Z", channel: "Email",
+  });
+  expect(applyCaseView(items, "never-contacted", TODAY, null).map((c) => c.customerId)).toEqual(["c2"]);
+});
+
 test("buildCaseItems sets lastContact from the most-recent contact per case and excludes it from never-contacted", () => {
   const lastContacts: CaseLastContactInput[] = [
     { caseId: "case-1", date: "2026-06-17T00:00:00Z", channel: "Email" },

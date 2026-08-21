@@ -11,5 +11,6 @@ export function smsSendReason(message: string): string {
   if (/blocked/i.test(message)) return "blocked";
   if (/opted out/i.test(message)) return "optout";
   if (/consent/i.test(message)) return "noconsent";
+  if (/rate cap/i.test(message)) return "limited";
   return "error";
 }

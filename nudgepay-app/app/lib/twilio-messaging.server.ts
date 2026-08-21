@@ -1,5 +1,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { sendSms, type TwilioConfig, type TwilioSender } from "./twilio-client.server";
+import { assertSmsBudget } from "./send-limits.server";
+import { sendIdempotencyKey } from "./send-limits";
 import { isContactBlocked, type ExceptionState } from "./exceptions";
 import { isWithinSendWindow, resolveQuietHours, quietHoursWindowLabel } from "./quiet-hours";
 import { DEFAULT_COMPANY_PROFILE } from "./org-profile";
@@ -135,8 +137,10 @@ export async function sendInvoiceText(
   const sender = await resolveSender(deps.service, args.orgId, deps.defaultSender);
   const caseId = activeCase.id;
   const body = ensureStopLanguage(args.body);
+  await assertSmsBudget(deps.service, { orgId: args.orgId, customerId: cust.id as string, now });
   const result = await sendSms(deps.fetchFn, deps.twilio, {
     to: cust.phone as string, body, sender, statusCallback: deps.statusCallback ?? null,
+    idempotencyKey: sendIdempotencyKey("sms", [args.orgId, args.invoiceId, body], now),
   });
 
   const { data: row, error: insErr } = await deps.service.from("text_messages").insert({

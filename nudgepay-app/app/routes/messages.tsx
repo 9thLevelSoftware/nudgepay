@@ -10,7 +10,6 @@ import { isWithinSendWindow, quietHoursWindowLabel } from "../lib/quiet-hours";
 import { resolveEmailSettings } from "../lib/email-settings";
 import { loadOrgConfig } from "../lib/org-config.server";
 import { loadTemplates } from "../lib/message-templates.server";
-import { resolveTemplates } from "../lib/message-templates";
 import {
   buildThreadRows, applyMessageTab, sortThreadRows, computeMessageMetrics,
   applyChannelFilter,
@@ -159,7 +158,7 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
   const [roster, orgConfig, templates] = await Promise.all([
     listOrgMembers(service, org.org_id),
     loadOrgConfig(supabase, org.org_id),
-    loadTemplates(supabase, org.org_id).catch(() => resolveTemplates([])),
+    loadTemplates(supabase, org.org_id).catch(() => ({ sms: [], email: [] })),
   ]);
   const ownerLabels = new Map(roster.map((m) => [m.userId, m.label]));
   const orgVars = {

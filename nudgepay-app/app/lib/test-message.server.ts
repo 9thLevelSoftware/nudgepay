@@ -26,15 +26,29 @@ export type TestSmsDeps = {
  */
 export async function sendTestSms(
   deps: TestSmsDeps,
-  args: { orgId: string; to: string },
+  args: { orgId: string; to: string; userId?: string },
 ): Promise<TwilioSendResult> {
   const sender = await resolveSender(deps.service, args.orgId, deps.defaultSender);
-  return sendSms(deps.fetchFn, deps.twilio, {
+  const body = "NudgePay test message — your SMS sender configuration works.";
+  const result = await sendSms(deps.fetchFn, deps.twilio, {
     to: args.to,
-    body: "NudgePay test message — your SMS sender configuration works.",
+    body,
     sender,
     statusCallback: null,
+    idempotencyKey: `test-sms:${args.orgId}:${args.to}:${Math.floor(Date.now() / 60_000)}`,
   });
+  const { error } = await deps.service.from("text_messages").insert({
+    org_id: args.orgId,
+    sent_by_user_id: args.userId ?? null,
+    direction: "outbound",
+    twilio_message_sid: result.sid,
+    status: result.status,
+    from_number: "from" in sender ? sender.from : null,
+    to_number: args.to,
+    body,
+  });
+  if (error) throw error;
+  return result;
 }
 
 // ---------------------------------------------------------------------------
@@ -58,7 +72,7 @@ export type TestEmailResult = { ok: true; id: string } | { ok: false; error: "no
  */
 export async function sendTestEmail(
   deps: TestEmailDeps,
-  args: { orgId: string; to: string },
+  args: { orgId: string; to: string; userId?: string },
 ): Promise<TestEmailResult> {
   const { data: ecfg } = await deps.service
     .from("email_config")
@@ -76,6 +90,19 @@ export async function sendTestEmail(
     to: args.to,
     subject: "NudgePay test email",
     html: "<p>Your email sender configuration works. This is a test message from NudgePay.</p>",
+    idempotencyKey: `test-email:${args.orgId}:${args.to}:${Math.floor(Date.now() / 60_000)}`,
   });
+  const { error } = await deps.service.from("email_messages").insert({
+    org_id: args.orgId,
+    sent_by_user_id: args.userId ?? null,
+    direction: "outbound",
+    provider_message_id: result.id,
+    status: "sent",
+    from_address: fromAddress,
+    to_address: args.to,
+    subject: "NudgePay test email",
+    body: "Your email sender configuration works. This is a test message from NudgePay.",
+  });
+  if (error) throw error;
   return { ok: true, id: result.id };
 }

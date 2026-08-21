@@ -106,6 +106,9 @@ export function SmsSettingsSection(d: SmsSettingsProps) {
           {testResult === "sent" && <p className="text-xs text-cool" role="status">Test SMS sent.</p>}
           {testResult === "invalid" && <p className="text-xs text-hot" role="alert">Enter a valid phone number.</p>}
           {testResult === "env" && <p className="text-xs text-hot" role="alert">Twilio isn't configured on the server yet — set the TWILIO_* secrets.</p>}
+          {testResult === "disabled" && <p className="text-xs text-hot" role="alert">Outbound texts are turned off for this workspace.</p>}
+          {testResult === "quiet" && <p className="text-xs text-warm" role="alert">Outside quiet hours — try again during the send window.</p>}
+          {testResult === "limited" && <p className="text-xs text-hot" role="alert">Test send limit reached. Try again later.</p>}
           {testResult === "error" && <p className="text-xs text-hot" role="alert">Test SMS failed — check the server logs.</p>}
         </Form>
       )}

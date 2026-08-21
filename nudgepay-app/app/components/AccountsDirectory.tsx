@@ -58,8 +58,9 @@ export function AccountsDirectory({ rows, filter, sort, search, counts, selected
           {/* Preserve filter+sort across a search submit */}
           <input type="hidden" name="filter" value={filter} />
           <input type="hidden" name="sort" value={sort} />
+          <label className="sr-only" htmlFor="acct-search">Search accounts</label>
           <input
-            type="search" name="q" defaultValue={search} placeholder="Search name, phone, email…"
+            id="acct-search" type="search" name="q" defaultValue={search} placeholder="Search name, phone, email…"
             className="h-8 w-48 px-2 rounded border border-border bg-surface text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-copper"
           />
           <button type="submit" className="h-8 px-3 rounded bg-ink text-surface text-xs font-medium">Search</button>

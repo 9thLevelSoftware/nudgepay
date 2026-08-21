@@ -23,7 +23,6 @@ import { resolveChannelSettings, resolveSmsSenderSettings } from "../lib/channel
 import { resolveEmailSettings } from "../lib/email-settings";
 import { deriveWebhookUrls } from "../lib/provider-status";
 import { loadTemplates } from "../lib/message-templates.server";
-import { resolveTemplates } from "../lib/message-templates";
 import { pageTitle } from "../lib/meta";
 import type { Route } from "./+types/settings";
 
@@ -89,7 +88,7 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
     supabase.from("email_messages")
       .select("id", { count: "exact", head: true }).eq("org_id", org.org_id).eq("direction", "outbound")
       .in("status", ["bounced", "complained"]).gte("created_at", since),
-    loadTemplates(supabase, org.org_id).catch(() => resolveTemplates([])),
+    loadTemplates(supabase, org.org_id).catch(() => ({ sms: [], email: [] })),
     listOrgMembers(service, org.org_id),
     supabase.from("invites")
       .select("id, email, expires_at, created_at")

@@ -8,7 +8,7 @@ export type TwilioSendResult = { sid: string; status: string };
 export async function sendSms(
   fetchFn: typeof fetch,
   cfg: TwilioConfig,
-  params: { to: string; body: string; sender: TwilioSender; statusCallback?: string | null },
+  params: { to: string; body: string; sender: TwilioSender; statusCallback?: string | null; idempotencyKey?: string },
 ): Promise<TwilioSendResult> {
   const url = `https://api.twilio.com/2010-04-01/Accounts/${cfg.accountSid}/Messages.json`;
   const form = new URLSearchParams();
@@ -21,13 +21,16 @@ export async function sendSms(
   }
   if (params.statusCallback) form.set("StatusCallback", params.statusCallback);
 
+  const headers: Record<string, string> = {
+    "Content-Type": "application/x-www-form-urlencoded",
+    Accept: "application/json",
+    Authorization: "Basic " + btoa(`${cfg.accountSid}:${cfg.authToken}`),
+  };
+  if (params.idempotencyKey) headers["Idempotency-Key"] = params.idempotencyKey;
+
   const res = await fetchFn(url, {
     method: "POST",
-    headers: {
-      "Content-Type": "application/x-www-form-urlencoded",
-      Accept: "application/json",
-      Authorization: "Basic " + btoa(`${cfg.accountSid}:${cfg.authToken}`),
-    },
+    headers,
     body: form.toString(),
   });
   if (!res.ok) throw new Error(`Twilio send failed: ${res.status}`);

@@ -40,6 +40,9 @@ function mockService(overrides: Record<string, any> = {}) {
           }),
         };
       }
+      if (table === "text_messages" || table === "email_messages") {
+        return { insert: vi.fn().mockResolvedValue({ error: null }) };
+      }
       return builder;
     }),
   } as any;

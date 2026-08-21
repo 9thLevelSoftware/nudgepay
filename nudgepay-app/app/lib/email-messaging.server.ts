@@ -1,5 +1,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { sendEmail, type EmailConfig } from "./email-client.server";
+import { assertEmailBudget } from "./send-limits.server";
+import { sendIdempotencyKey } from "./send-limits";
 import { signUnsubscribeToken } from "./unsubscribe-token";
 import { activeCaseForSend, activeCaseId } from "./twilio-messaging.server";
 import { isContactBlocked } from "./exceptions";
@@ -56,12 +58,14 @@ export async function sendInvoiceEmail(
   const bodyWithFooter = `${args.body}\n\n${footerLines.join("\n")}`;
   const from = formatSender(ec.from_address as string, (ec.from_name as string | null) ?? "");
 
+  await assertEmailBudget(deps.service, { orgId: args.orgId, customerId: cust.id as string });
   const result = await sendEmail(deps.fetchFn, deps.email, {
     from, to: cust.email as string, subject: args.subject, text: bodyWithFooter,
     headers: {
       "List-Unsubscribe": `<${unsubUrl}>`,
       "List-Unsubscribe-Post": "List-Unsubscribe=One-Click",
     },
+    idempotencyKey: sendIdempotencyKey("email", [args.orgId, args.invoiceId, args.subject, args.body]),
   });
 
   const { data: row, error: insErr } = await deps.service.from("email_messages").insert({
