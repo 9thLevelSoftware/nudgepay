@@ -18,6 +18,7 @@ import {
   type DayConfig,
 } from "../lib/promise-ledger";
 import { AppShell } from "../components/AppShell";
+import { SyncIssues } from "../components/SyncIssues";
 import { PromisesMetrics } from "../components/PromisesMetrics";
 import { PromisesLedger } from "../components/PromisesLedger";
 import { PromiseQuickPanel } from "../components/PromiseQuickPanel";
@@ -31,8 +32,8 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
   const {
     supabase, service, headers, isOwner, org,
     orgName, initials, connected, syncLabel,
+    syncIssues,
   } = await loadWorkspaceChrome(request, env);
-  // requireQbo defaults true — gate already handled inside helper
 
   // --- URL params ---
   const url = new URL(request.url);
@@ -175,7 +176,7 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
   return data(
     {
       orgName,
-      initials, syncLabel, connected, isOwner,
+      initials, syncLabel, connected, isOwner, syncIssues,
       rows, metrics, counts, tab, sort,
       selected, selectedInvoices, selectedNote,
     },
@@ -193,6 +194,7 @@ export default function Promises() {
       connected={d.connected}
       isOwner={d.isOwner}
       activeNav="promises"
+      syncIssues={<SyncIssues issues={d.syncIssues} returnTo="/promises" />}
     >
       <div className="p-4 sm:p-6 space-y-4 sm:space-y-6">
         <PromisesMetrics metrics={d.metrics} />

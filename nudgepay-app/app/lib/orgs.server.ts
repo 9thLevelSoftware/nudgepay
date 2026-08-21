@@ -69,32 +69,32 @@ export async function createOrgForUser(
   return org.id as string;
 }
 
-export type OrgMember = { userId: string; email: string; label: string };
+export type OrgMember = { userId: string; email: string; label: string; role: string };
 
 // Roster of the org's members with display labels. Uses the SERVICE client
 // because member emails live in auth.users, which the RLS user client cannot
-// read (same own-org exception as connection status). Label = display_name from
-// user_metadata when set, falling back to email local-part.
+// read. Looks up each membership user id (never the project-wide 1,000-user list).
 export async function listOrgMembers(
   service: SupabaseClient,
   orgId: string,
 ): Promise<OrgMember[]> {
   const { data: rows, error } = await service
-    .from("memberships").select("user_id").eq("org_id", orgId);
+    .from("memberships").select("user_id, role").eq("org_id", orgId);
   if (error) throw error;
-  const memberIds = new Set((rows ?? []).map((r) => r.user_id as string));
-  if (memberIds.size === 0) return [];
-
-  const { data: list, error: listErr } = await service.auth.admin.listUsers({ perPage: 1000 });
-  if (listErr) throw listErr;
-  const userById = new Map(list.users.map((u) => [u.id, u]));
-
-  const members: OrgMember[] = [...memberIds].map((userId) => {
-    const u = userById.get(userId);
+  const members: OrgMember[] = [];
+  for (const row of rows ?? []) {
+    const userId = row.user_id as string;
+    const { data, error: userErr } = await service.auth.admin.getUserById(userId);
+    if (userErr) throw userErr;
+    const u = data.user;
     const email = u?.email ?? "";
-    const label = displayLabel(u?.user_metadata?.display_name, email, userId);
-    return { userId, email, label };
-  });
+    members.push({
+      userId,
+      email,
+      label: displayLabel(u?.user_metadata?.display_name, email, userId),
+      role: (row.role as string) || "member",
+    });
+  }
   members.sort((a, b) => a.label.localeCompare(b.label));
   return members;
 }

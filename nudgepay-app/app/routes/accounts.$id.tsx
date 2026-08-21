@@ -1,6 +1,8 @@
 import { useLoaderData, redirect, data, type LoaderFunctionArgs } from "react-router";
 import { AppShell } from "../components/AppShell";
 import { AccountProfile } from "../components/AccountProfile";
+import { SyncIssues } from "../components/SyncIssues";
+import { mapSyncIssues } from "../lib/workspace.server";
 import { getEnv } from "../lib/env.server";
 import { requireUser, resolveOrg } from "../lib/session.server";
 import { getConnectionStatus } from "../lib/qbo-connection.server";
@@ -101,17 +103,18 @@ export async function loader({ request, params, context }: LoaderFunctionArgs) {
   const service = createSupabaseServiceClient(env);
   const conn = await getConnectionStatus(service, org.org_id);
   const connected = conn?.status === "connected";
-  if (!connected) throw redirect("/settings?tab=integrations", { headers });
 
-  // Sync label from last_sync_at (connected is guaranteed true here — redirect above)
-  const { data: connMeta } = await service
-    .from("qbo_connections")
-    .select("last_sync_at")
-    .eq("org_id", org.org_id)
-    .maybeSingle();
+  const [{ data: connMeta }, { data: syncErrorRows }] = await Promise.all([
+    service.from("qbo_connections").select("last_sync_at").eq("org_id", org.org_id).maybeSingle(),
+    supabase.from("sync_errors")
+      .select("id, source, scope, message, occurred_at").eq("org_id", org.org_id)
+      .is("resolved_at", null).order("occurred_at", { ascending: false }).limit(20),
+  ]);
   const lastSyncAt = (connMeta?.last_sync_at as string | null) ?? null;
   let syncLabel: string;
-  if (lastSyncAt) {
+  if (!connected) {
+    syncLabel = conn?.status === "error" ? "Needs reconnect" : "Not connected";
+  } else if (lastSyncAt) {
     const diffMs = Date.now() - new Date(lastSyncAt).getTime();
     const diffMin = Math.floor(diffMs / 60_000);
     const diffHr = Math.floor(diffMin / 60);
@@ -123,6 +126,9 @@ export async function loader({ request, params, context }: LoaderFunctionArgs) {
   } else {
     syncLabel = "Connected";
   }
+  const syncIssues = mapSyncIssues(syncErrorRows as {
+    id: string; source: string; scope: string; message: string; occurred_at: string;
+  }[] | null);
 
   const isOwner = org.role === "owner";
   const orgConfig = await loadOrgConfig(supabase, org.org_id);
@@ -291,6 +297,7 @@ export async function loader({ request, params, context }: LoaderFunctionArgs) {
       syncLabel,
       connected,
       isOwner,
+      syncIssues,
       account: {
         id: customerRow.id,
         name: customerRow.name ?? "(unknown)",
@@ -335,6 +342,7 @@ export default function AccountProfilePage() {
       connected={d.connected}
       isOwner={d.isOwner}
       activeNav="accounts"
+      syncIssues={<SyncIssues issues={d.syncIssues} returnTo={d.returnTo} />}
     >
       <AccountProfile
         customerId={d.account.id}

@@ -1,9 +1,13 @@
 import { useLoaderData, useNavigation, useSearchParams, Form, data, type LoaderFunctionArgs } from "react-router";
 import { useFlashCleanup } from "../lib/use-flash-cleanup";
-import { getEnv, getTwilioEnvOrNull, getEmailEnvOrNull, getPublicBaseUrls } from "../lib/env.server";
+import { getEnv, getTwilioEnvOrNull, getEmailEnvOrNull, getPublicBaseUrls, getQboEnvOrNull } from "../lib/env.server";
 import { loadWorkspaceChrome } from "../lib/workspace.server";
+import { listOrgMembers } from "../lib/orgs.server";
 import { loadOrgConfig } from "../lib/org-config.server";
+import { QBO_FLASH, SYNC_FLASH } from "../lib/flash-copy";
 import { AppShell } from "../components/AppShell";
+import { FlashBanner } from "../components/FlashBanner";
+import { SyncIssues } from "../components/SyncIssues";
 import { SettingsTabs, resolveSettingsTab, settingsReturnTo } from "../components/SettingsTabs";
 import { CollectionsRulesForm } from "../components/CollectionsRulesForm";
 import { SmsSettingsSection } from "../components/SmsSettingsSection";
@@ -28,17 +32,12 @@ export const meta: Route.MetaFunction = () => pageTitle("Settings");
 export async function loader({ request, context }: LoaderFunctionArgs) {
   const env = getEnv(context as any);
   const {
-    supabase, headers, isOwner, org, user,
-    orgName, initials, connected, lastSyncAt,
+    supabase, service, headers, isOwner, org, user,
+    orgName, initials, connected, lastSyncAt, syncIssues,
   } = await loadWorkspaceChrome(request, env, { requireQbo: false });
 
-  const { data: syncErrorRows } = await supabase.from("sync_errors")
-    .select("id, source, scope, message, occurred_at").eq("org_id", org.org_id)
-    .is("resolved_at", null).order("occurred_at", { ascending: false }).limit(20);
-  const syncIssues = ((syncErrorRows as any[]) ?? []).map((r) => ({
-    id: r.id as string, source: r.source as string, scope: r.scope as string,
-    message: r.message as string, occurredAt: r.occurred_at as string,
-  }));
+  const qboConfigured = getQboEnvOrNull(context as any) !== null;
+  const sp = new URL(request.url).searchParams;
 
   const { data: msg } = await supabase.from("messaging_config")
     .select("sender, messaging_service_sid, sms_enabled").eq("org_id", org.org_id).maybeSingle();
@@ -77,7 +76,7 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
   const webhookUrls = deriveWebhookUrls(twilioBaseUrl, appBaseUrl);
 
   const since = new Date(Date.now() - 7 * 86_400_000).toISOString();
-  const [smsLast, smsFailures, emailLast, emailFailures, templates] = await Promise.all([
+  const [smsLast, smsFailures, emailLast, emailFailures, templates, members, inviteRows] = await Promise.all([
     supabase.from("text_messages")
       .select("created_at, status").eq("org_id", org.org_id).eq("direction", "outbound")
       .order("created_at", { ascending: false }).limit(1).maybeSingle(),
@@ -91,14 +90,30 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
       .select("id", { count: "exact", head: true }).eq("org_id", org.org_id).eq("direction", "outbound")
       .in("status", ["bounced", "complained"]).gte("created_at", since),
     loadTemplates(supabase, org.org_id).catch(() => resolveTemplates([])),
+    listOrgMembers(service, org.org_id),
+    supabase.from("invites")
+      .select("id, email, expires_at, created_at")
+      .eq("org_id", org.org_id)
+      .is("accepted_at", null)
+      .order("created_at", { ascending: false }),
   ]);
 
   return data({
     orgName,
     orgId: org.org_id,
+    currentUserId: user.id,
     displayName,
     ownerEmail: user.email ?? "",
     initials, isOwner, connected, lastSyncAt, syncIssues,
+    qboConfigured,
+    qboRedirectHint: appBaseUrl
+      ? `${appBaseUrl.replace(/\/$/, "")}/auth/qbo/callback`
+      : "/auth/qbo/callback",
+    qboFlash: sp.get("qbo"),
+    syncFlash: sp.get("sync"),
+    members,
+    pendingInvites: ((inviteRows.data as { id: string; email: string; expires_at: string; created_at: string }[] | null) ?? [])
+      .map((r) => ({ id: r.id, email: r.email, expiresAt: r.expires_at })),
     messaging: {
       sender: senderSettings.sender,
       messagingServiceSid: senderSettings.messagingServiceSid,
@@ -165,8 +180,27 @@ export default function Settings() {
 
   const ps = d.providerStatus;
 
+  const inviteLink = sp.get("invite_link");
+  const memberError = sp.get("error");
+  const ownerCount = d.members.filter((m) => m.role === "owner").length;
+  const canLeave = !(d.isOwner && ownerCount < 2);
+
   return (
-    <AppShell orgName={d.orgName} userInitials={d.initials} syncLabel={syncLabel} connected={d.connected} isOwner={d.isOwner} activeNav="settings">
+    <AppShell
+      orgName={d.orgName}
+      userInitials={d.initials}
+      syncLabel={syncLabel}
+      connected={d.connected}
+      isOwner={d.isOwner}
+      activeNav="settings"
+      syncIssues={<SyncIssues issues={d.syncIssues} returnTo={returnTo} />}
+    >
+      {d.qboFlash && QBO_FLASH[d.qboFlash] ? (
+        <FlashBanner tone={QBO_FLASH[d.qboFlash].tone} text={QBO_FLASH[d.qboFlash].text} />
+      ) : null}
+      {d.syncFlash && SYNC_FLASH[d.syncFlash] ? (
+        <FlashBanner tone={SYNC_FLASH[d.syncFlash].tone} text={SYNC_FLASH[d.syncFlash].text} />
+      ) : null}
       <div className="h-full overflow-auto bg-panel p-6">
         <div className="mx-auto flex max-w-3xl flex-col gap-5">
           <h1 className="font-display text-xl font-semibold text-text">Settings</h1>
@@ -215,6 +249,118 @@ export default function Settings() {
                 emailEnabled={d.emailSettings.emailEnabled}
                 prefs={d.notificationPrefs}
               />
+
+              <section className="rounded-lg border border-border bg-surface p-5">
+                <h2 className="font-display text-base font-semibold text-text">Workspace members</h2>
+                <p className="mt-0.5 text-xs text-muted">
+                  Owners can invite teammates and change roles. The last owner cannot leave or be removed.
+                </p>
+                <ul className="mt-3 flex flex-col gap-2" role="list">
+                  {d.members.map((m) => (
+                    <li key={m.userId} className="flex flex-wrap items-center gap-2 rounded-md border border-border p-2 text-sm">
+                      <span className="font-medium text-text">{m.label}</span>
+                      <span className="text-xs text-muted">{m.email}</span>
+                      <span className="text-xs capitalize text-muted">{m.role}</span>
+                      {d.isOwner && m.userId !== d.currentUserId ? (
+                        <>
+                          <Form method="post" action="/api/members" className="ml-auto flex items-center gap-2">
+                            <input type="hidden" name="returnTo" value={returnTo} />
+                            <input type="hidden" name="intent" value="role" />
+                            <input type="hidden" name="userId" value={m.userId} />
+                            <label className="grid gap-0.5 text-[11px] font-medium text-muted">
+                              Role
+                              <select
+                                name="role"
+                                defaultValue={m.role}
+                                className="h-8 rounded-md border border-border bg-panel px-2 text-xs text-text"
+                              >
+                                <option value="member">Member</option>
+                                <option value="owner">Owner</option>
+                              </select>
+                            </label>
+                            <button type="submit" className="text-xs font-medium text-copper hover:underline">
+                              Update
+                            </button>
+                          </Form>
+                          <Form method="post" action="/api/members">
+                            <input type="hidden" name="returnTo" value={returnTo} />
+                            <input type="hidden" name="intent" value="remove" />
+                            <input type="hidden" name="userId" value={m.userId} />
+                            <button type="submit" className="text-xs font-medium text-hot hover:underline">
+                              Remove
+                            </button>
+                          </Form>
+                        </>
+                      ) : null}
+                    </li>
+                  ))}
+                </ul>
+                {d.pendingInvites.length > 0 ? (
+                  <div className="mt-3">
+                    <h3 className="text-xs font-semibold uppercase tracking-wide text-muted">Pending invites</h3>
+                    <ul className="mt-1 flex flex-col gap-1" role="list">
+                      {d.pendingInvites.map((inv) => (
+                        <li key={inv.id} className="text-xs text-muted">
+                          {inv.email}
+                          {inv.expiresAt ? ` · expires ${inv.expiresAt.slice(0, 10)}` : ""}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                ) : null}
+                {d.isOwner ? (
+                  <Form method="post" action="/api/members" className="mt-4 flex items-end gap-3">
+                    <input type="hidden" name="returnTo" value={returnTo} />
+                    <input type="hidden" name="intent" value="invite" />
+                    <label className="flex-1 grid gap-1 text-sm font-medium text-text">
+                      Invite email
+                      <input
+                        name="email"
+                        type="email"
+                        required
+                        placeholder="teammate@company.com"
+                        className="h-9 rounded-md border border-border bg-panel px-3 text-sm text-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-copper"
+                      />
+                    </label>
+                    <button
+                      type="submit"
+                      disabled={formBusy("/api/members")}
+                      className="h-9 rounded-md bg-copper px-4 text-sm font-medium text-white hover:bg-copper/90 disabled:opacity-60 disabled:cursor-not-allowed"
+                    >
+                      {formBusy("/api/members") ? "Creating…" : "Create invite link"}
+                    </button>
+                  </Form>
+                ) : null}
+                {inviteLink ? (
+                  <p className="mt-3 text-sm text-cool" role="status">
+                    Invite link (expires in 14 days):{" "}
+                    <code className="break-all rounded bg-panel px-1.5 py-0.5 text-xs text-text">{inviteLink}</code>
+                  </p>
+                ) : null}
+                {sp.get("saved") === "member" ? (
+                  <p className="mt-2 text-xs text-cool" role="status">Member updated.</p>
+                ) : null}
+                {memberError === "forbidden" ? (
+                  <p className="mt-2 text-xs text-hot" role="alert">Only owners can manage members.</p>
+                ) : null}
+                {memberError === "invite" ? (
+                  <p className="mt-2 text-xs text-hot" role="alert">Could not create that invite. Check the email and try again.</p>
+                ) : null}
+                {memberError === "member" ? (
+                  <p className="mt-2 text-xs text-hot" role="alert">Could not change membership. The last owner cannot be removed or demoted.</p>
+                ) : null}
+                {canLeave ? (
+                  <Form method="post" action="/api/members" className="mt-4">
+                    <input type="hidden" name="returnTo" value={returnTo} />
+                    <input type="hidden" name="intent" value="leave" />
+                    <button type="submit" className="text-xs font-medium text-hot hover:underline">
+                      Leave workspace
+                    </button>
+                  </Form>
+                ) : (
+                  <p className="mt-4 text-xs text-muted">The last owner cannot leave the workspace.</p>
+                )}
+              </section>
             </>
           )}
 
@@ -229,6 +375,14 @@ export default function Settings() {
                     {d.connected ? `Connected · ${syncLabel}` : "Not connected"}
                   </span>
                 </div>
+                {!d.qboConfigured ? (
+                  <p className="mt-3 text-sm text-muted">
+                    QuickBooks is not configured on this server yet. An operator needs to set the QBO Worker
+                    secrets (client ID, secret, redirect URI, encryption key, webhook verifier) and register
+                    this Intuit redirect URI:{" "}
+                    <code className="break-all rounded bg-panel px-1.5 py-0.5 text-xs text-text">{d.qboRedirectHint}</code>
+                  </p>
+                ) : null}
                 <div className="mt-3 flex flex-wrap gap-2">
                   {d.connected ? (
                     <>
@@ -240,11 +394,13 @@ export default function Settings() {
                       </Form>
                       {d.isOwner ? (
                         <>
-                          <Form method="post" action="/api/qbo/connect">
-                            <button type="submit" disabled={formBusy("/api/qbo/connect")} className="rounded-md border border-border px-3 py-1.5 text-xs font-medium text-text hover:border-copper disabled:opacity-60 disabled:cursor-not-allowed">
-                              {formBusy("/api/qbo/connect") ? "Reconnecting…" : "Reconnect"}
-                            </button>
-                          </Form>
+                          {d.qboConfigured ? (
+                            <Form method="post" action="/api/qbo/connect">
+                              <button type="submit" disabled={formBusy("/api/qbo/connect")} className="rounded-md border border-border px-3 py-1.5 text-xs font-medium text-text hover:border-copper disabled:opacity-60 disabled:cursor-not-allowed">
+                                {formBusy("/api/qbo/connect") ? "Reconnecting…" : "Reconnect"}
+                              </button>
+                            </Form>
+                          ) : null}
                           <Form method="post" action="/api/qbo/disconnect">
                             <input type="hidden" name="returnTo" value={returnTo} />
                             <button type="submit" disabled={formBusy("/api/qbo/disconnect")} className="rounded-md border border-border px-3 py-1.5 text-xs font-medium text-hot hover:border-hot disabled:opacity-60 disabled:cursor-not-allowed">
@@ -254,7 +410,7 @@ export default function Settings() {
                         </>
                       ) : null}
                     </>
-                  ) : d.isOwner ? (
+                  ) : !d.qboConfigured ? null : d.isOwner ? (
                     <Form method="post" action="/api/qbo/connect">
                       <button type="submit" disabled={formBusy("/api/qbo/connect")} className="rounded-md bg-copper px-3 py-1.5 text-xs font-semibold text-ink hover:bg-copper/90 disabled:opacity-60 disabled:cursor-not-allowed">
                         {formBusy("/api/qbo/connect") ? "Connecting…" : "Connect QuickBooks"}

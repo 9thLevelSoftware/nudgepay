@@ -1,25 +1,26 @@
 import { redirect, type ActionFunctionArgs, type LoaderFunctionArgs } from "react-router";
-import { getEnv, getQboEnv } from "../lib/env.server";
+import { getEnv, getQboEnvOrNull, type QboEnv } from "../lib/env.server";
 import { createSupabaseServiceClient } from "../lib/supabase.server";
 import { getOptionalUser, requireUser, resolveOrg } from "../lib/session.server";
 import { disconnectConnection } from "../lib/qbo-connection.server";
 import { intuitDisconnectPlan } from "../lib/auth-flow.server";
 import { safeReturnTo } from "../lib/return-to";
 
-function qboCfg(qbo: ReturnType<typeof getQboEnv>) {
+function qboCfg(qbo: QboEnv) {
   return { clientId: qbo.QBO_CLIENT_ID, clientSecret: qbo.QBO_CLIENT_SECRET, redirectUri: qbo.QBO_REDIRECT_URI };
 }
 
 // In-app "Disconnect" button: owner-gated POST.
 export async function action({ request, context }: ActionFunctionArgs) {
   const env = getEnv(context as any);
-  const qbo = getQboEnv(context as any);
   const { supabase, headers, user } = await requireUser(request, env);
   const org = await resolveOrg(supabase, user.id);
   if (!org || org.role !== "owner") return redirect("/dashboard?qbo=forbidden", { headers });
   const form = await request.formData();
   const returnTo = safeReturnTo(form.get("returnTo"));
   const sep = returnTo.includes("?") ? "&" : "?";
+  const qbo = getQboEnvOrNull(context as any);
+  if (!qbo) return redirect(`${returnTo}${sep}qbo=unconfigured`, { headers });
   const service = createSupabaseServiceClient(env);
   await disconnectConnection(fetch, service, qboCfg(qbo), qbo.QBO_ENCRYPTION_KEY, org.org_id);
   return redirect(`${returnTo}${sep}qbo=disconnected`, { headers });

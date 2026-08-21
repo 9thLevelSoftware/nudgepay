@@ -1,6 +1,7 @@
 import { useLoaderData, redirect, data, Link, type LoaderFunctionArgs } from "react-router";
 import { useFlashCleanup } from "../lib/use-flash-cleanup";
-import { getEnv } from "../lib/env.server";
+import { getEnv, getQboEnvOrNull } from "../lib/env.server";
+import { QBO_FLASH, SYNC_FLASH } from "../lib/flash-copy";
 import { requireOrgUser } from "../lib/session.server";
 import { getConnectionStatus } from "../lib/qbo-connection.server";
 import { createSupabaseServiceClient } from "../lib/supabase.server";
@@ -23,6 +24,10 @@ import {
 import type { PriorityOverrideLevel } from "../lib/priority";
 import type { ExceptionReason } from "../lib/contact-log";
 import { AppShell } from "../components/AppShell";
+import { FirstRunBanner } from "../components/FirstRunBanner";
+import { FlashBanner } from "../components/FlashBanner";
+import { SyncIssues } from "../components/SyncIssues";
+import { mapSyncIssues } from "../lib/workspace.server";
 import { KpiBand } from "../components/KpiBand";
 import { TriageStrip } from "../components/TriageStrip";
 import { WorkQueue } from "../components/WorkQueue";
@@ -176,14 +181,13 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
   const today = todayInTz(orgConfigForToday.companyProfile.timezone);
 
   // Batch A: shared queue source + dashboard-only queries in parallel.
-  // Disconnected orgs pay a few wasted queries (redirect gate runs right
-  // after this batch settles) — acceptable, same as the pre-extraction behaviour.
   const [
     src,
     { data: orgRow },
     conn,
     { data: connMeta },
     { data: ecfg },
+    { data: syncErrorRows },
   ] = await Promise.all([
     loadCaseQueueSource({
       supabase, service, orgId: org.org_id, today, includePresence: true, orgConfig: orgConfigForToday,
@@ -192,15 +196,19 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
     getConnectionStatus(service, org.org_id),
     service.from("qbo_connections").select("last_sync_at").eq("org_id", org.org_id).maybeSingle(),
     supabase.from("email_config").select("email_enabled").eq("org_id", org.org_id).maybeSingle(),
+    supabase.from("sync_errors")
+      .select("id, source, scope, message, occurred_at").eq("org_id", org.org_id)
+      .is("resolved_at", null).order("occurred_at", { ascending: false }).limit(20),
   ]);
 
   const connected = conn?.status === "connected";
-  if (!connected) throw redirect("/settings?tab=integrations", { headers });
+  const qboConfigured = getQboEnvOrNull(context as any) !== null;
 
-  // Sync label from last_sync_at (connected is guaranteed true here — redirect above)
   const lastSyncAt = (connMeta?.last_sync_at as string | null) ?? null;
   let syncLabel: string;
-  if (lastSyncAt) {
+  if (!connected) {
+    syncLabel = conn?.status === "error" ? "Needs reconnect" : "Not connected";
+  } else if (lastSyncAt) {
     const diffMs = Date.now() - new Date(lastSyncAt).getTime();
     const diffMin = Math.floor(diffMs / 60_000);
     const diffHr = Math.floor(diffMin / 60);
@@ -394,6 +402,12 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
       userInitials: initials,
       isOwner: org.role === "owner",
       connected,
+      syncIssues: mapSyncIssues(syncErrorRows as {
+        id: string; source: string; scope: string; message: string; occurred_at: string;
+      }[] | null),
+      qboConfigured,
+      qboFlash: sp.get("qbo"),
+      syncFlash: sp.get("sync"),
       syncLabel,
       view,
       sort,
@@ -453,6 +467,10 @@ export default function Dashboard() {
     userInitials,
     isOwner,
     connected,
+    syncIssues,
+    qboConfigured,
+    qboFlash,
+    syncFlash,
     syncLabel,
     view,
     sort,
@@ -531,7 +549,15 @@ export default function Dashboard() {
           Focus mode
         </Link>
       }
+      syncIssues={<SyncIssues issues={syncIssues} returnTo="/dashboard" />}
     >
+      {qboFlash && QBO_FLASH[qboFlash] ? (
+        <FlashBanner tone={QBO_FLASH[qboFlash].tone} text={QBO_FLASH[qboFlash].text} />
+      ) : null}
+      {syncFlash && SYNC_FLASH[syncFlash] ? (
+        <FlashBanner tone={SYNC_FLASH[syncFlash].tone} text={SYNC_FLASH[syncFlash].text} />
+      ) : null}
+      {!connected ? <FirstRunBanner isOwner={isOwner} qboConfigured={qboConfigured} /> : null}
       {saved ? (
         <div className="px-6 py-2 bg-cool/10 border-b border-cool/30 text-sm font-sans font-medium text-cool" role="status">
           Contact logged successfully.

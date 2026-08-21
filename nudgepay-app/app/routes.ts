@@ -45,6 +45,7 @@ export default [
   route("webhooks/twilio/status", "routes/webhooks.twilio.status.tsx"),
   route("webhooks/resend", "routes/webhooks.resend.tsx"),
   route("api/profile", "routes/api.profile.tsx"),
+  route("api/members", "routes/api.members.tsx"),
   route("api/notification-prefs", "routes/api.notification-prefs.tsx"),
   route("api/test-message", "routes/api.test-message.tsx"),
   route("healthz", "routes/healthz.tsx"),
