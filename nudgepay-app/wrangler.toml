@@ -2,6 +2,7 @@ name = "nudgepay-app"
 compatibility_date = "2025-06-01"
 compatibility_flags = ["nodejs_compat"]
 main = "./workers/app.ts"
+workers_dev = true
 
 [vars]
 # Non-secret defaults only. Secrets set via `wrangler secret put`.
@@ -14,6 +15,10 @@ QBO_SANDBOX = "true"
 # TWILIO_PUBLIC_BASE_URL,
 # RESEND_API_KEY, RESEND_WEBHOOK_SECRET, UNSUBSCRIBE_SECRET, APP_PUBLIC_BASE_URL
 
+[[routes]]
+pattern = "nudgepay.9thlevelsoftware.com"
+custom_domain = true
+
 [triggers]
 # CDC catch-up every 30 min + hourly digest gate (fires per-org once local
 # time reaches each org's configured digest_hour_local — see digest-cron.server.ts).
@@ -23,12 +28,16 @@ crons = ["*/30 * * * *", "0 * * * *"]
 # Deploy with: npx wrangler deploy --env production
 # Non-secret production vars (secrets are set separately via `wrangler secret put`).
 [env.production.vars]
-SUPABASE_URL = "https://<your-prod-project-ref>.supabase.co"
+SUPABASE_URL = "https://epjumsnmpvilgasycpau.supabase.co"
 QBO_SANDBOX = "false"   # production QBO: gates ONLY the Data API base URL
 
 # [env.production.triggers] mirrors the top-level crons.
 [env.production.triggers]
 crons = ["*/30 * * * *", "0 * * * *"]
+
+[[env.production.routes]]
+pattern = "nudgepay.9thlevelsoftware.com"
+custom_domain = true
 
 # Secrets required in production (set each: `npx wrangler secret put <NAME> --env production`):
 #   SUPABASE_ANON_KEY            Supabase anon/publishable key

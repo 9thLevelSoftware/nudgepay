@@ -2,9 +2,6 @@
 # Worker production domain. The legacy SPA is retired; these redirects keep
 # Intuit app-card links (/privacy, /eula) working.
 #
-# TODO(deploy): replace WORKER_PROD_URL_PLACEHOLDER with the actual Worker
-# production URL before deploying.
-
-/privacy  https://WORKER_PROD_URL_PLACEHOLDER/privacy  301!
-/eula     https://WORKER_PROD_URL_PLACEHOLDER/eula     301!
-/*        https://WORKER_PROD_URL_PLACEHOLDER/          302
+/privacy  https://nudgepay.9thlevelsoftware.com/privacy  301!
+/eula     https://nudgepay.9thlevelsoftware.com/eula     301!
+/*        https://nudgepay.9thlevelsoftware.com/          302
