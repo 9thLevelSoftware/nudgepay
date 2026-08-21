@@ -93,10 +93,10 @@ export function AppShell({
       {busy && (
         <div
           role="progressbar"
-          className="absolute inset-x-0 top-0 z-50 h-0.5 overflow-hidden opacity-0 animate-[fade-in_200ms_ease-in_150ms_forwards]"
+          aria-label="Loading"
+          className="absolute inset-x-0 top-0 z-50 h-0.5 overflow-hidden opacity-0 motion-reduce:opacity-100 animate-[fade-in_200ms_ease-in_150ms_forwards]"
         >
-          <span className="sr-only">Loading</span>
-          <div className="h-full w-1/3 bg-copper animate-[progress-slide_1s_ease-in-out_infinite]" />
+          <div className="h-full w-1/3 bg-copper animate-[progress-slide_1s_ease-in-out_infinite] motion-reduce:w-full" />
         </div>
       )}
       {/* ── Top bar ─────────────────────────────────────────────────────── */}

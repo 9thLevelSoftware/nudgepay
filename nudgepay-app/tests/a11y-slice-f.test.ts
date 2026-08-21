@@ -19,6 +19,7 @@ describe("TEMP-UX-014 reduced motion", () => {
 
 describe("TEMP-UX-015 queue table roles", () => {
   const src = read("../app/components/WorkQueue.tsx");
+  const row = src.slice(src.indexOf("function QueueRow"), src.indexOf("function MobileCard"));
 
   it("uses table/row/columnheader/cell on the md+ QUEUE_GRID", () => {
     expect(src).toContain('role="table"');
@@ -26,6 +27,20 @@ describe("TEMP-UX-015 queue table roles", () => {
     expect(src).toContain('role="columnheader"');
     expect(src).toContain('role="cell"');
     expect(src).toContain("QUEUE_GRID");
+  });
+
+  it("owns Heat/Customer cells from the row, not via a spanning Open link", () => {
+    expect(row).toContain('role="row"');
+    expect(row).not.toMatch(/aria-label=\{`Open \$\{item\.customerName\}`\}/);
+    const heatCell = row.indexOf('role="cell" data-label="Heat"');
+    const customerCell = row.indexOf('role="cell" data-label="Customer"');
+    const customerLink = row.indexOf("<Link");
+    const overdueCell = row.indexOf('role="cell" data-label="Total overdue"');
+    expect(heatCell).toBeGreaterThan(-1);
+    expect(customerCell).toBeGreaterThan(heatCell);
+    expect(customerLink).toBeGreaterThan(customerCell);
+    expect(overdueCell).toBeGreaterThan(customerLink);
+    expect(row.slice(customerLink, overdueCell)).not.toContain('role="cell"');
   });
 
   it("keeps mobile cards as a list", () => {
@@ -49,7 +64,8 @@ describe("TEMP-UX-016 live regions", () => {
   it("exposes the AppShell loading bar to AT", () => {
     const src = read("../app/components/AppShell.tsx");
     expect(src).toContain('role="progressbar"');
-    expect(src).toMatch(/sr-only">Loading/);
+    expect(src).toContain('aria-label="Loading"');
+    expect(src).toContain("motion-reduce:opacity-100");
     expect(src).not.toMatch(/role="progressbar"[^>]*aria-hidden="true"/);
   });
 });

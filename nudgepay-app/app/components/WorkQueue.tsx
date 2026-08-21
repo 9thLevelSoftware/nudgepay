@@ -218,16 +218,10 @@ function QueueRow({
           className="h-4 w-4 rounded border-border text-copper focus-visible:ring-2 focus-visible:ring-copper"
         />
       </label>
-      <Link
-        to={href}
-        aria-label={`Open ${item.customerName}`}
-        aria-current={selected ? "true" : undefined}
-        className={[
-          "flex-1 grid items-center gap-x-6 gap-y-0",
-          QUEUE_GRID,
-          "px-4 py-2 text-sm",
-          "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-copper focus-visible:ring-inset",
-        ].join(" ")}
+      {/* role=presentation flattens this grid wrapper so cells are owned by the row. */}
+      <div
+        role="presentation"
+        className={`flex-1 grid items-center gap-x-6 gap-y-0 ${QUEUE_GRID} px-4 py-2 text-sm`}
       >
         {/* Heat */}
         <span role="cell" data-label="Heat" className="hidden md:flex">
@@ -236,7 +230,13 @@ function QueueRow({
 
         {/* Customer */}
         <span role="cell" data-label="Customer" className="min-w-0">
-          <span className="block font-sans text-text truncate">{item.customerName}</span>
+          <Link
+            to={href}
+            aria-current={selected ? "true" : undefined}
+            className="block font-sans text-text truncate focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-copper focus-visible:ring-inset rounded"
+          >
+            {item.customerName}
+          </Link>
           <span className="flex items-center gap-1.5">
             <span className="font-mono text-xs text-muted">{plural(item.invoiceCount, "invoice")}</span>
             <span className={`inline-flex items-center gap-0.5 rounded px-1.5 py-0.5 text-[10px] font-sans font-semibold ${LEVEL_BADGE[item.effectiveLevel] ?? "text-muted"}`}>
@@ -304,7 +304,7 @@ function QueueRow({
           <Icon name="user" size={12} aria-hidden />
           {item.owner}
         </span>
-      </Link>
+      </div>
       {/* Quick-action buttons — visible on row hover */}
       <span role="cell" className="hidden md:flex items-center gap-1 pr-3 opacity-0 group-hover:opacity-100 focus-within:opacity-100 pointer-events-none group-hover:pointer-events-auto focus-within:pointer-events-auto transition-opacity">
         <Link
