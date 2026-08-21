@@ -1,6 +1,8 @@
 import { expect, test } from "vitest";
+import { readFileSync } from "node:fs";
 import {
-  buildTeamReport, activeBrokenCaseIds, parseReportRange, teamReportToCsv,
+  buildTeamReport, activeBrokenCaseIds, parseReportRange, parseReportSheet, teamReportToCsv,
+  arKpisToCsv,
   type TeamReport,
 } from "../app/lib/reports";
 
@@ -205,6 +207,16 @@ test("parseReportRange: accepts 7/30/90 and defaults everything else to 30", () 
   expect(parseReportRange("abc")).toBe(30);
 });
 
+test("parseReportSheet: ar is explicit; everything else defaults to team", () => {
+  expect(parseReportSheet("ar")).toBe("ar");
+  expect(parseReportSheet("team")).toBe("team");
+  expect(parseReportSheet(null)).toBe("team");
+  expect(parseReportSheet(undefined)).toBe("team");
+  expect(parseReportSheet("")).toBe("team");
+  expect(parseReportSheet("AR")).toBe("team");
+  expect(parseReportSheet("receivables")).toBe("team");
+});
+
 test("teamReportToCsv: header + per-rep rows; null keptRate is blank", () => {
   const input = base();
   input.contactLogs = [
@@ -245,4 +257,69 @@ test("teamReportToCsv: quotes fields that contain commas, quotes, or newlines", 
     "\"Smith, \"\"Ace\"\"\",1,1,0,0,0,0,\n" +
     "\"line\nbreak\",0,0,1,0,0,1,0.5\n",
   );
+});
+
+test("arKpisToCsv is reused from ar-kpis (blank nulls, coverage column)", () => {
+  const csv = arKpisToCsv({
+    rangeDays: 7,
+    asOf: "2026-08-21",
+    dso: null,
+    bestPossibleDso: null,
+    cei: null,
+    contactRate: null,
+    promiseRate: null,
+    collected: 0,
+    coverage: "empty",
+    inputs: {
+      endingTotalAr: 0, endingCurrentAr: 0, creditSales: 0, collections: 0,
+      openCases: 0, contactedOpenCases: 0, promisesCreated: 0,
+    },
+  });
+  expect(csv).toBe(
+    "asOf,rangeDays,endingTotalAr,endingCurrentAr,creditSales,collections,openCases,contactedOpenCases,promisesCreated,dso,bestPossibleDso,cei,contactRate,promiseRate,collected,coverage\n" +
+    "2026-08-21,7,0,0,0,0,0,0,0,,,,,,0,empty\n",
+  );
+});
+
+// ── Reports page / CSV wiring ────────────────────────────────────────────────
+
+test("reports page renders ArKpiBand for the selected range and stays owner-only", () => {
+  const page = readFileSync(new URL("../app/routes/reports.tsx", import.meta.url), "utf8");
+  expect(page).toContain("requireOwner: true");
+  expect(page).toContain("loadReportArKpis");
+  expect(page).toContain("loadTeamReport");
+  expect(page).toContain("<ArKpiBand");
+  expect(page).toContain("sheet=ar");
+  expect(page).not.toContain("lastContactsInput");
+  expect(page).not.toContain("CasePromiseInput");
+  expect(page).not.toContain("DASHBOARD_AR_RANGE_DAYS");
+});
+
+test("reports.server loads AR KPIs with the selected range, not Stage-2 last-contact", () => {
+  const server = readFileSync(new URL("../app/lib/reports.server.ts", import.meta.url), "utf8");
+  expect(server).toContain("loadArKpiSource");
+  expect(server).toContain("loadContactPromiseRates");
+  expect(server).toContain("rangeDays: range");
+  expect(server).toContain("contact: rates.truncated");
+  expect(server).not.toContain("lastContactsInput");
+  expect(server).not.toContain("CasePromiseInput");
+  expect(server).not.toContain("DASHBOARD_AR_RANGE_DAYS");
+});
+
+test("reports.csv sheet=ar uses arKpisToCsv; default team skips AR queries", () => {
+  const csvRoute = readFileSync(new URL("../app/routes/reports.csv.tsx", import.meta.url), "utf8");
+  expect(csvRoute).toContain("requireOwner: true");
+  expect(csvRoute).toContain("parseReportSheet");
+  expect(csvRoute).toContain('sheet === "ar"');
+  expect(csvRoute).toContain("arKpisToCsv");
+  expect(csvRoute).toContain("teamReportToCsv");
+  expect(csvRoute).toContain("loadReportArKpis");
+  expect(csvRoute).toContain("nudgepay-ar-");
+  // Team branch must not pull AR source (unused queries still run).
+  const arBranch = csvRoute.slice(csvRoute.indexOf('sheet === "ar"'), csvRoute.indexOf("} else {"));
+  const teamBranch = csvRoute.slice(csvRoute.indexOf("} else {"));
+  expect(arBranch).toContain("loadReportArKpis");
+  expect(arBranch).not.toContain("loadTeamReport");
+  expect(teamBranch).toContain("loadTeamReport");
+  expect(teamBranch).not.toContain("loadReportArKpis");
 });
