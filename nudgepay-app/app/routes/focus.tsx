@@ -28,8 +28,9 @@ import { useFocusKeys, type FocusKey } from "../lib/use-focus-keys";
 import { FocusCard } from "../components/focus/FocusCard";
 import { LogCallMiniForm } from "../components/focus/LogCallMiniForm";
 import { SendTextMiniForm } from "../components/focus/SendTextMiniForm";
-import { formatDate } from "../lib/dates";
+import { formatDate, formatInstant } from "../lib/dates";
 import { pageTitle } from "../lib/meta";
+import { smsFlashCopy } from "../lib/flash-copy";
 import type { Route } from "./+types/focus";
 
 export const meta: Route.MetaFunction = () => pageTitle("Focus Mode");
@@ -154,6 +155,7 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
     orgCompany: orgName,
     orgPhone: src.orgConfig.companyProfile.phone ?? "",
     orgPaymentLink: src.orgConfig.companyProfile.paymentPortalUrl ?? "",
+    timeZone: src.orgConfig.companyProfile.timezone,
   }, { headers });
 }
 
@@ -164,7 +166,7 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
 export default function FocusMode() {
   const {
     queue, scope, heldLabels, timelines, smsEnabled, smsQuietNow, quietHoursLabel, today,
-    smsTemplates, orgCompany, orgPhone, orgPaymentLink,
+    smsTemplates, orgCompany, orgPhone, orgPaymentLink, timeZone,
   } = useLoaderData<typeof loader>();
 
   // Session state
@@ -373,7 +375,7 @@ export default function FocusMode() {
             <div className="flex-1 max-w-2xl">
               <FocusCard
                 item={currentItem}
-                whyNow={computeWhyNow(currentItem)}
+                whyNow={computeWhyNow(currentItem, timeZone)}
                 index={session.index}
                 total={totalCount}
                 openForm={openForm}
@@ -386,6 +388,7 @@ export default function FocusMode() {
                 }}
                 busy={snoozeFetcher.state !== "idle"}
                 smsEnabled={smsEnabled}
+                timeZone={timeZone}
               />
 
               {/* Mini-forms */}
@@ -404,7 +407,7 @@ export default function FocusMode() {
                   quietHoursLabel={quietHoursLabel}
                   onDone={() => dispatch({ type: "resolve", result: "texted" })}
                   onCancel={() => setOpenForm(null)}
-                  onError={(code) => addToast(`Text failed: ${code}`)}
+                  onError={(code) => addToast(smsFlashCopy(code))}
                   smsTemplates={smsTemplates}
                   orgCompany={orgCompany}
                   orgPhone={orgPhone}
@@ -423,7 +426,7 @@ export default function FocusMode() {
               ) : (
                 <div className="space-y-2">
                   {currentTimeline.map((entry) => (
-                    <TimelineRow key={entry.id} entry={entry} />
+                    <TimelineRow key={entry.id} entry={entry} timeZone={timeZone} />
                   ))}
                 </div>
               )}
@@ -456,14 +459,14 @@ export default function FocusMode() {
 
 // ── Timeline row (compact) ──────────────────────────────────────────────────
 
-function TimelineRow({ entry }: { entry: TimelineEntry }) {
+function TimelineRow({ entry, timeZone }: { entry: TimelineEntry; timeZone?: string | null }) {
   const label = entry.kind === "log"
     ? (entry.outcomeLabel ?? OUTCOME_LABELS[entry.outcome ?? ""] ?? "Logged")
     : (OUTCOME_LABELS[entry.outcome] ?? "Text");
   const detail = entry.kind === "log"
     ? entry.notes
     : entry.body;
-  const dateStr = formatDate(entry.at);
+  const dateStr = formatInstant(entry.at, timeZone);
   const author = entry.kind === "log" ? entry.authorLabel : null;
 
   return (

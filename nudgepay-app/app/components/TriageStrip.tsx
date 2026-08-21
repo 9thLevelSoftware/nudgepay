@@ -22,9 +22,10 @@ interface TriageStripProps {
   view: ViewId;
   sort: SortId;
   search: string;
+  timeZone?: string | null;
 }
 
-export function TriageStrip({ items, view, sort, search }: TriageStripProps) {
+export function TriageStrip({ items, view, sort, search, timeZone }: TriageStripProps) {
   const top = pickTriage(items, 3);
   if (top.length === 0) return null;
 
@@ -35,7 +36,7 @@ export function TriageStrip({ items, view, sort, search }: TriageStripProps) {
       </p>
       <div className="flex gap-3 overflow-x-auto snap-x snap-mandatory scrollbar-none">
         {top.map((item) => {
-          const nba = whyNow(item);
+          const nba = whyNow(item, timeZone);
           const params = new URLSearchParams({
             case: item.caseId,
             view,

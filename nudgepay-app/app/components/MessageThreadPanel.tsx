@@ -7,20 +7,10 @@ import { MessageBubbles } from "./MessageBubbles";
 import { applyTemplate, type TemplateVars } from "../lib/sms-templates";
 import { applyEmailTemplate } from "../lib/email-templates";
 import type { MessageTemplateRow } from "../lib/message-templates";
-import { formatDate } from "../lib/dates";
+import { formatInstant } from "../lib/dates";
 import { emailFailureLabel, isHardBounce } from "../lib/labels";
+import { smsFlash } from "../lib/flash-copy";
 import { Icon } from "./Icons";
-
-const SMS_BANNER: Record<string, { text: string; tone: string }> = {
-  sent: { text: "Text sent.", tone: "text-cool" },
-  noconsent: { text: "Not sent — customer has not consented to SMS.", tone: "text-hot" },
-  optout: { text: "Not sent — customer opted out of texts.", tone: "text-hot" },
-  error: { text: "Could not send the text.", tone: "text-hot" },
-  blocked: { text: "Not sent — this case is marked do-not-contact / legal.", tone: "text-hot" },
-  disabled: { text: "Not sent — text messaging is turned off for this workspace.", tone: "text-hot" },
-  quiet: { text: "Not sent — outside quiet hours.", tone: "text-warm" },
-  limited: { text: "Not sent — send limit reached. Try again later.", tone: "text-hot" },
-};
 
 const EMAIL_BANNER: Record<string, { text: string; tone: string }> = {
   sent: { text: "Email sent.", tone: "text-cool" },
@@ -49,12 +39,13 @@ interface Props {
   q: string;
   smsTemplates: MessageTemplateRow[];
   emailTemplates: MessageTemplateRow[];
+  timeZone?: string | null;
 }
 
 export function MessageThreadPanel({
   thread, messages, emailMessages, consent, phone, vars, sms, smsEnabled,
   smsQuietNow, quietHoursLabel,
-  emailEnabled, selectedEmail, tab, sort, q, smsTemplates, emailTemplates,
+  emailEnabled, selectedEmail, tab, sort, q, smsTemplates, emailTemplates, timeZone,
 }: Props) {
   const [body, setBody] = useState("");
   const [subject, setSubject] = useState("");
@@ -94,7 +85,7 @@ export function MessageThreadPanel({
   });
   const returnTo = `/messages?${params.toString()}`;
 
-  const smsBanner = sms ? SMS_BANNER[sms] : null;
+  const smsBanner = smsFlash(sms);
   const emailBanner = emailResult ? (EMAIL_BANNER[emailResult] ?? null) : null;
   const banner = isEmail ? emailBanner : smsBanner;
 
@@ -177,7 +168,7 @@ export function MessageThreadPanel({
                       <p className="text-xs font-semibold text-muted mb-1">{msg.subject}</p>
                     ) : null}
                     <p className="text-xs whitespace-pre-wrap">{msg.body}</p>
-                    <p className="mt-1 text-[11px] text-muted">{formatDate(msg.createdAt)}</p>
+                    <p className="mt-1 text-[11px] text-muted">{formatInstant(msg.createdAt, timeZone)}</p>
                     {msg.errorCode ? <p className="text-xs text-hot">{emailFailureLabel(msg.errorCode)}</p> : null}
                   </div>
                 </li>
@@ -191,7 +182,7 @@ export function MessageThreadPanel({
               <p className="text-sm font-semibold text-text">No messages yet.</p>
             </div>
           ) : (
-            <MessageBubbles messages={messages} />
+            <MessageBubbles messages={messages} timeZone={timeZone} />
           )
         )}
       </div>

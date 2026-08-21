@@ -7,7 +7,7 @@ import { MessageBubbles } from "~/components/MessageBubbles";
 import { applyTemplate, type TemplateVars } from "~/lib/sms-templates";
 import { applyEmailTemplate } from "~/lib/email-templates";
 import type { MessageTemplateRow } from "~/lib/message-templates";
-import { formatDate } from "~/lib/dates";
+import { formatDate, formatInstant } from "~/lib/dates";
 import { STATUS_LABEL, EXCEPTION_REASON_LABEL, formatUSD } from "~/lib/format";
 import { isContactBlocked, isTerminal, exceptionLabel } from "~/lib/exceptions";
 import { smsGateFor } from "~/lib/sms-gate";
@@ -18,6 +18,7 @@ import { isTimelinePromiseBroken, type TimelineEntry } from "~/lib/timeline";
 import { canSendEmail, type CommPrefs } from "~/lib/comm-prefs";
 import { resolveCallAction } from "~/lib/channel-actions";
 import { statusChipTone, type ChipTone } from "~/lib/status-style";
+import { smsFlash } from "~/lib/flash-copy";
 
 // Static tone-to-text-color map — heat.band → Tailwind class.
 // Must be literal strings so Tailwind can tree-shake them; no dynamic construction.
@@ -85,17 +86,6 @@ const TL_NODE: Record<string, { bg: string; color: string }> = {
 const METHOD_ICON: Record<string, "phone" | "mail" | "message" | "note"> = {
   call: "phone", email: "mail", text: "message", note: "note",
 };
-const SMS_BANNER: Record<string, { text: string; tone: string }> = {
-  sent:      { text: "Text sent.",                                                    tone: "text-cool" },
-  noconsent: { text: "Not sent — customer has not consented to SMS.",                 tone: "text-hot" },
-  optout:    { text: "Not sent — customer opted out of texts.",                       tone: "text-hot" },
-  error:     { text: "Could not send the text.",                                      tone: "text-hot" },
-  blocked:   { text: "Not sent — this case is marked do-not-contact / legal.",        tone: "text-hot" },
-  disabled:  { text: "Not sent — text messaging is turned off for this workspace.",   tone: "text-hot" },
-  quiet:     { text: "Not sent — outside quiet hours.",                              tone: "text-warm" },
-  limited:   { text: "Not sent — send limit reached. Try again later.",              tone: "text-hot" },
-};
-
 const EMAIL_BANNER: Record<string, { text: string; tone: string }> = {
   sent:     { text: "Email sent.",                                                  tone: "text-cool" },
   disabled: { text: "Not sent — email is turned off for this workspace.",           tone: "text-hot" },
@@ -114,7 +104,7 @@ const PROMISE_ERROR_TEXT: Record<string, string> = {
 function MessagesTab({
   selected, repInvoiceId, messages, consent, prefs, phone, sms, smsEnabled, smsQuietNow, quietHoursLabel,
   view, sort, q, collision,
-  smsTemplates, orgCompany, orgPhone, orgPaymentLink,
+  smsTemplates, orgCompany, orgPhone, orgPaymentLink, timeZone,
 }: {
   selected: CaseItem;
   repInvoiceId: string | null;
@@ -134,6 +124,7 @@ function MessagesTab({
   orgCompany: string;
   orgPhone: string;
   orgPaymentLink: string;
+  timeZone?: string | null;
 }) {
   const returnTo = `/dashboard?${new URLSearchParams({
     case: selected.caseId, tab: "messages", view, sort, ...(q ? { q } : {}),
@@ -157,7 +148,7 @@ function MessagesTab({
   const [body, setBody] = useState("");
   const [confirmSend, setConfirmSend] = useState(false);
   const needsConfirm = !!collision && collision.level !== "none";
-  const banner = sms ? SMS_BANNER[sms] : null;
+  const banner = smsFlash(sms);
   const noInvoice = repInvoiceId === null;
   const contactBlocked = isContactBlocked(selected.exceptionReason);
   const navigation = useNavigation();
@@ -238,7 +229,7 @@ function MessagesTab({
             <p className="text-xs text-muted max-w-xs">Pick a template or write a message below.</p>
           </div>
         ) : (
-          <MessageBubbles messages={messages} />
+          <MessageBubbles messages={messages} timeZone={timeZone} />
         )}
       </div>
 
@@ -327,7 +318,7 @@ function MessagesTab({
 
 function EmailTab({
   selected, repInvoiceId, emailMessages, prefs, customerEmail, emailEnabled,
-  view, sort, q, emailTemplates, orgCompany, orgPhone, orgPaymentLink,
+  view, sort, q, emailTemplates, orgCompany, orgPhone, orgPaymentLink, timeZone,
 }: {
   selected: CaseItem;
   repInvoiceId: string | null;
@@ -342,6 +333,7 @@ function EmailTab({
   orgCompany: string;
   orgPhone: string;
   orgPaymentLink: string;
+  timeZone?: string | null;
 }) {
   const [searchParams] = useSearchParams();
   const emailResult = searchParams.get("email");
@@ -435,7 +427,7 @@ function EmailTab({
                     <p className="text-xs font-sans font-semibold text-muted mb-1">{msg.subject}</p>
                   ) : null}
                   <p className="text-xs font-sans whitespace-pre-wrap">{msg.body}</p>
-                  <p className="mt-1 text-[11px] text-muted">{formatDate(msg.createdAt)}</p>
+                  <p className="mt-1 text-[11px] text-muted">{formatInstant(msg.createdAt, timeZone)}</p>
                   {msg.errorCode ? (
                     <p className="text-xs font-sans text-hot">{emailFailureLabel(msg.errorCode)}</p>
                   ) : null}
@@ -571,6 +563,7 @@ export function DetailPanel({
   orgPhone,
   orgPaymentLink,
   today,
+  timeZone,
 }: {
   selected: CaseItem | null;
   repInvoiceId: string | null;
@@ -601,6 +594,7 @@ export function DetailPanel({
   orgPaymentLink: string;
   /** Org-local calendar day (YYYY-MM-DD) from todayInTz — never UTC. */
   today: string;
+  timeZone?: string | null;
 }) {
   // ── Hooks (must be unconditional, before any early return) ─────────────────
   // Presence: beat immediately on customer change, then every HEARTBEAT_INTERVAL_MS.
@@ -668,7 +662,7 @@ export function DetailPanel({
       className="flex flex-col bg-surface border-l border-border h-full overflow-y-auto"
     >
       {/* Mobile/tablet: back to queue */}
-      <div className="lg:hidden px-4 pt-3 pb-1">
+      <div className="md:hidden px-4 pt-3 pb-1">
         <Link
           to={`?${new URLSearchParams({ view, sort, ...(q ? { q } : {}) }).toString()}`}
           className="inline-flex items-center gap-1 text-xs text-muted hover:text-copper focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-copper rounded"
@@ -774,7 +768,7 @@ export function DetailPanel({
       </div>
 
       {/* ── Next best action card ─────────────────────────────────────────── */}
-      <NbaCard selected={selected} smsEnabled={smsEnabled} prefs={prefs} phone={phone} view={view} sort={sort} q={q} logHref={logHref} />
+      <NbaCard selected={selected} smsEnabled={smsEnabled} prefs={prefs} phone={phone} view={view} sort={sort} q={q} logHref={logHref} timeZone={timeZone} />
 
       {/* ── Tab bar ─────────────────────────────────────────────────────────── */}
       <nav
@@ -1082,7 +1076,7 @@ export function DetailPanel({
                           <span className={`text-sm font-sans font-semibold ${e.direction === "inbound" ? "text-cool" : "text-text"}`}>
                             {e.outcomeLabel}
                           </span>
-                          <span className="font-mono text-xs text-muted">{formatDate(e.at)}</span>
+                          <span className="font-mono text-xs text-muted">{formatInstant(e.at, timeZone)}</span>
                           {e.body ? (
                             <span className="text-xs text-muted whitespace-pre-wrap line-clamp-3">{e.body}</span>
                           ) : null}
@@ -1108,7 +1102,7 @@ export function DetailPanel({
                           {e.outcomeLabel ?? "Logged"}
                           {e.authorLabel ? <span className="font-normal text-muted"> · by {e.authorLabel}</span> : null}
                         </span>
-                        <span className="font-mono text-xs text-muted">{formatDate(e.at)}</span>
+                        <span className="font-mono text-xs text-muted">{formatInstant(e.at, timeZone)}</span>
                         {e.promisedAmount != null && e.promisedDate != null && (
                           <span className={`text-xs font-sans font-medium ${broken ? "text-hot" : "text-text"}`}>
                             Promised {formatUSD(e.promisedAmount)} by {formatDate(e.promisedDate)}
@@ -1148,6 +1142,7 @@ export function DetailPanel({
           orgCompany={orgCompany}
           orgPhone={orgPhone}
           orgPaymentLink={orgPaymentLink}
+          timeZone={timeZone}
         />
       ) : null}
 
@@ -1167,6 +1162,7 @@ export function DetailPanel({
           orgCompany={orgCompany}
           orgPhone={orgPhone}
           orgPaymentLink={orgPaymentLink}
+          timeZone={timeZone}
         />
       ) : null}
     </aside>
@@ -1178,7 +1174,7 @@ export function DetailPanel({
 // ---------------------------------------------------------------------------
 
 function NbaCard({
-  selected, smsEnabled, prefs, phone, view, sort, q, logHref,
+  selected, smsEnabled, prefs, phone, view, sort, q, logHref, timeZone,
 }: {
   selected: CaseItem;
   smsEnabled: boolean;
@@ -1188,8 +1184,9 @@ function NbaCard({
   sort: string;
   q: string;
   logHref: string;
+  timeZone?: string | null;
 }) {
-  const nba = whyNow(selected);
+  const nba = whyNow(selected, timeZone);
 
   // Determine primary action: prefer text tab if sendable, else log call
   const gate = smsGateFor({

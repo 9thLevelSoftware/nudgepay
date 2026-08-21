@@ -257,6 +257,7 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
       selectedVars, sms, smsEnabled, smsQuietNow, quietHoursLabel,
       smsTemplates: templates.sms,
       emailTemplates: templates.email,
+      timeZone: orgConfig.companyProfile.timezone,
     },
     { headers },
   );
@@ -289,6 +290,7 @@ export default function Messages() {
             selectedChannel={d.selected?.channel ?? null}
             channel={d.channel}
             channelCounts={d.channelCounts}
+            timeZone={d.timeZone}
           />
           <MessageThreadPanel
             thread={d.selected}
@@ -308,6 +310,7 @@ export default function Messages() {
             q={d.q}
             smsTemplates={d.smsTemplates}
             emailTemplates={d.emailTemplates}
+            timeZone={d.timeZone}
           />
         </div>
       </div>

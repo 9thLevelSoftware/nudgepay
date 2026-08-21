@@ -196,6 +196,7 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
       sort,
       q,
       selected,
+      timeZone: orgConfig.companyProfile.timezone,
     },
     { headers },
   );
@@ -228,6 +229,7 @@ export default function Accounts() {
             search={d.q}
             counts={d.counts}
             selectedId={d.selected?.customerId ?? null}
+            timeZone={d.timeZone}
           />
           <AccountQuickPanel account={d.selected} />
         </div>

@@ -5,7 +5,7 @@
 import type { CaseItem, CaseInvoice } from "../../lib/cases";
 import type { WhyNow } from "../../lib/next-best-action";
 import { formatUSD } from "../../lib/format";
-import { formatDate } from "../../lib/dates";
+import { formatDate, formatInstant } from "../../lib/dates";
 import { ThermalBand } from "../ThermalBand";
 
 // Static effective-level → badge classes (Tailwind v4 needs literal strings).
@@ -31,10 +31,11 @@ interface FocusCardProps {
   busy: boolean;
   /** Whether SMS sending is available at the workspace level. */
   smsEnabled: boolean;
+  timeZone?: string | null;
 }
 
 export function FocusCard({
-  item, whyNow, index, total, openForm, onAction, busy, smsEnabled,
+  item, whyNow, index, total, openForm, onAction, busy, smsEnabled, timeZone,
 }: FocusCardProps) {
   const badge = LEVEL_BADGE[item.effectiveLevel] ?? "bg-muted/10 text-muted";
   const invoices = item.invoices;
@@ -94,7 +95,7 @@ export function FocusCard({
           <div className="col-span-2">
             <span className="text-on-ink/80">Last contact</span>{" "}
             <span className="text-surface">
-              {item.lastContact.channel} · {formatDate(item.lastContact.date)}
+              {item.lastContact.channel} · {formatInstant(item.lastContact.date, timeZone)}
             </span>
           </div>
         )}
