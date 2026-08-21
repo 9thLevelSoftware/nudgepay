@@ -16,7 +16,6 @@ function isConfirmType(v: string): v is ConfirmType {
 }
 
 export async function loader({ request, context }: LoaderFunctionArgs) {
-  const env = getEnv(context as any);
   const url = new URL(request.url);
   const tokenHash = url.searchParams.get("token_hash") ?? "";
   const typeRaw = url.searchParams.get("type") ?? "";
@@ -24,6 +23,7 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
   if (!tokenHash || !isConfirmType(typeRaw)) {
     return { error: true as const };
   }
+  const env = getEnv(context as any);
   const { supabase, headers } = createSupabaseUserClient(request, env);
   const { error } = await supabase.auth.verifyOtp({ type: typeRaw, token_hash: tokenHash });
   if (error) return { error: true as const };
@@ -32,7 +32,9 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
 }
 
 export default function AuthConfirm({ loaderData }: Route.ComponentProps) {
-  if (!("error" in loaderData) || !loaderData.error) return null;
+  if (!loaderData || typeof loaderData !== "object" || !("error" in loaderData) || !loaderData.error) {
+    return null;
+  }
   return (
     <PublicLayout title="Link expired" width="card">
       <p className="text-sm text-muted">This confirmation link is invalid or has expired. Request a new one from the log-in page.</p>
