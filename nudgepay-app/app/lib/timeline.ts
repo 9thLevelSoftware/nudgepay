@@ -124,3 +124,11 @@ export function buildTimeline(
     (a, b) => Date.parse(b.at) - Date.parse(a.at),
   );
 }
+
+/**
+ * Timeline "· broken" badge: promised-by date is strictly before org-local
+ * `today` (YYYY-MM-DD). Caller must pass todayInTz, never UTC toISOString.
+ */
+export function isTimelinePromiseBroken(promisedDate: string | null, today: string): boolean {
+  return promisedDate != null && promisedDate < today;
+}

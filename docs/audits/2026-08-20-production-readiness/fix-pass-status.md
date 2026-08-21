@@ -66,3 +66,11 @@ Tracks implementation against the frozen 2026-08-20 audit pack. Do **not** rewri
 | NP-AUD-2026-101 | 14 | code | Reports nav “Owner only” |
 | NP-AUD-2026-102 | 14 | code | avatar menu + confirm sign out |
 | NP-AUD-2026-105 | 14 | code | first-run vs filter-miss empty queue |
+| NP-AUD-2026-107 | 15 | code | Focus mode link visible below `sm` |
+| NP-AUD-2026-050 | 15 | code | work-queue virtual window (`tests/virtual-window.test.ts`) |
+| NP-AUD-2026-113 | 15 | code | Promises ledger cancel + flash cleanup |
+| NP-AUD-2026-108 | 15 | code | bulk skip summary includes `do-not-text` |
+| NP-AUD-2026-111 | 15 | code | coming-due empty copy uses org `comingDueDays` |
+| NP-AUD-2026-112 | 15 | code | timeline broken badge uses org-local `today` |
+| NP-AUD-2026-120 | 15 | code | hourly retention cron (`tests/retention-cron.test.ts`) |
+| NP-AUD-2026-131 | 15 | code | `robots.txt` + meta description + OG on `/` |

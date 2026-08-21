@@ -3,7 +3,7 @@
 // customer with invoice sub-rows showing due-date proximity.
 
 import { Link } from "react-router";
-import type { ComingDueGroup } from "../lib/coming-due";
+import { comingDueEmptyCopy, type ComingDueGroup } from "../lib/coming-due";
 import { formatUSD } from "../lib/format";
 import { Icon } from "./Icons";
 
@@ -19,14 +19,20 @@ function dueTone(daysUntilDue: number): string {
   return "text-muted";
 }
 
-export function ComingDueList({ groups }: { groups: ComingDueGroup[] }) {
+export function ComingDueList({
+  groups,
+  comingDueDays,
+}: {
+  groups: ComingDueGroup[];
+  comingDueDays: number;
+}) {
   if (groups.length === 0) {
     return (
       <div className="flex flex-col items-center justify-center gap-3 py-16 px-6 text-center">
         <div className="w-10 h-10 rounded-full bg-paper flex items-center justify-center">
           <Icon name="check" size={20} className="text-emerald-600" />
         </div>
-        <p className="font-sans text-text font-medium">No invoices coming due in the next 7 days.</p>
+        <p className="font-sans text-text font-medium">{comingDueEmptyCopy(comingDueDays)}</p>
         <p className="font-sans text-sm text-muted max-w-xs">
           Check back later, or switch to another view.
         </p>

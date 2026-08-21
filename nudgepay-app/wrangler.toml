@@ -20,8 +20,9 @@ pattern = "nudgepay.9thlevelsoftware.com"
 custom_domain = true
 
 [triggers]
-# CDC catch-up every 30 min + hourly digest gate (fires per-org once local
-# time reaches each org's configured digest_hour_local — see digest-cron.server.ts).
+# CDC catch-up every 30 min + hourly digest gate / retention purge
+# (digest fires per-org once local time reaches digest_hour_local;
+# see digest-cron.server.ts and retention-cron.server.ts).
 crons = ["*/30 * * * *", "0 * * * *"]
 
 # Workers Logs (no Sentry DSN). Dashboard: Workers & Pages → nudgepay-app → Observability.

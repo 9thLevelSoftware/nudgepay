@@ -1,5 +1,5 @@
 import { expect, test } from "vitest";
-import { buildTimeline, deriveSmsOutcome, OUTCOME_LABELS } from "../app/lib/timeline";
+import { buildTimeline, deriveSmsOutcome, isTimelinePromiseBroken, OUTCOME_LABELS } from "../app/lib/timeline";
 import type { TimelineLogInput, TimelineSmsInput } from "../app/lib/timeline";
 
 test("deriveSmsOutcome: inbound is customer-replied regardless of status", () => {
@@ -80,4 +80,15 @@ test("buildTimeline yields null outcomeLabel for an unmapped log outcome", () =>
   const [e] = buildTimeline(logs, []);
   expect(e.kind).toBe("log");
   if (e.kind === "log") expect(e.outcomeLabel).toBeNull();
+});
+
+test("isTimelinePromiseBroken uses the supplied org-local today, not UTC", () => {
+  // Due today (org-local) is not yet broken.
+  expect(isTimelinePromiseBroken("2026-01-01", "2026-01-01")).toBe(false);
+  // Next org-local day: broken.
+  expect(isTimelinePromiseBroken("2026-01-01", "2026-01-02")).toBe(true);
+  // UTC-midnight trap: org still 2025-12-31 while UTC is 2026-01-01.
+  expect(isTimelinePromiseBroken("2025-12-31", "2025-12-31")).toBe(false);
+  expect(isTimelinePromiseBroken("2025-12-31", "2026-01-01")).toBe(true);
+  expect(isTimelinePromiseBroken(null, "2026-01-01")).toBe(false);
 });

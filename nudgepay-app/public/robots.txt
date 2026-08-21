@@ -1,0 +1,16 @@
+User-agent: *
+Allow: /
+Allow: /privacy
+Allow: /eula
+Allow: /login
+Allow: /signup
+Disallow: /dashboard
+Disallow: /settings
+Disallow: /accounts
+Disallow: /focus
+Disallow: /promises
+Disallow: /messages
+Disallow: /reports
+Disallow: /onboarding
+Disallow: /api/
+Disallow: /webhooks/
