@@ -39,6 +39,14 @@ type ReplyRow = {
   direction: string | null;
 };
 
+type Orderable<Q> = { order: (column: string, opts: { ascending: boolean }) => Q };
+
+// Range pages without ORDER BY can skip/duplicate rows. created_at desc + id
+// desc is a stable unique key so equal timestamps cannot slip between pages.
+function orderPage<Q extends Orderable<Q>>(q: Q): Q {
+  return q.order("created_at", { ascending: false }).order("id", { ascending: false });
+}
+
 export function peekWindowStartIso(today: string, days = PEEK_WINDOW_DAYS): string {
   const start = new Date(`${today}T00:00:00.000Z`);
   start.setUTCDate(start.getUTCDate() - days);
@@ -60,40 +68,40 @@ export async function loadPeekSource(args: {
     pageAllChunked<PeekLogRow>(
       chunks,
       (ids, from, to) =>
-        supabase
-          .from("contact_logs")
-          .select("case_id, method, outcome, notes, created_at", { count: "exact" })
-          .eq("org_id", orgId)
-          .in("case_id", ids)
-          .gte("created_at", windowStartIso)
-          .order("created_at", { ascending: false })
-          .range(from, to),
+        orderPage(
+          supabase
+            .from("contact_logs")
+            .select("case_id, method, outcome, notes, created_at", { count: "exact" })
+            .eq("org_id", orgId)
+            .in("case_id", ids)
+            .gte("created_at", windowStartIso),
+        ).range(from, to),
       { maxRows: PAGE_ALL_MAX_ROWS },
     ),
     pageAllChunked<PeekTextRow>(
       chunks,
       (ids, from, to) =>
-        supabase
-          .from("text_messages")
-          .select("case_id, direction, body, created_at", { count: "exact" })
-          .eq("org_id", orgId)
-          .in("case_id", ids)
-          .gte("created_at", windowStartIso)
-          .order("created_at", { ascending: false })
-          .range(from, to),
+        orderPage(
+          supabase
+            .from("text_messages")
+            .select("case_id, direction, body, created_at", { count: "exact" })
+            .eq("org_id", orgId)
+            .in("case_id", ids)
+            .gte("created_at", windowStartIso),
+        ).range(from, to),
       { maxRows: PAGE_ALL_MAX_ROWS },
     ),
     pageAllChunked<PeekEmailRow>(
       chunks,
       (ids, from, to) =>
-        supabase
-          .from("email_messages")
-          .select("case_id, direction, subject, created_at", { count: "exact" })
-          .eq("org_id", orgId)
-          .in("case_id", ids)
-          .gte("created_at", windowStartIso)
-          .order("created_at", { ascending: false })
-          .range(from, to),
+        orderPage(
+          supabase
+            .from("email_messages")
+            .select("case_id, direction, subject, created_at", { count: "exact" })
+            .eq("org_id", orgId)
+            .in("case_id", ids)
+            .gte("created_at", windowStartIso),
+        ).range(from, to),
       { maxRows: PAGE_ALL_MAX_ROWS },
     ),
   ]);
@@ -154,25 +162,27 @@ export async function loadReplySource(args: {
     pageAllChunked<ReplyRow>(
       chunks,
       (ids, from, to) =>
-        supabase
-          .from("text_messages")
-          .select("customer_id, direction", { count: "exact" })
-          .eq("org_id", orgId)
-          .gte("created_at", windowStartIso)
-          .in("customer_id", ids)
-          .range(from, to),
+        orderPage(
+          supabase
+            .from("text_messages")
+            .select("customer_id, direction", { count: "exact" })
+            .eq("org_id", orgId)
+            .gte("created_at", windowStartIso)
+            .in("customer_id", ids),
+        ).range(from, to),
       { maxRows: PAGE_ALL_MAX_ROWS },
     ),
     pageAllChunked<ReplyRow>(
       chunks,
       (ids, from, to) =>
-        supabase
-          .from("email_messages")
-          .select("customer_id, direction", { count: "exact" })
-          .eq("org_id", orgId)
-          .gte("created_at", windowStartIso)
-          .in("customer_id", ids)
-          .range(from, to),
+        orderPage(
+          supabase
+            .from("email_messages")
+            .select("customer_id, direction", { count: "exact" })
+            .eq("org_id", orgId)
+            .gte("created_at", windowStartIso)
+            .in("customer_id", ids),
+        ).range(from, to),
       { maxRows: PAGE_ALL_MAX_ROWS },
     ),
   ]);

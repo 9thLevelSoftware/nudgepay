@@ -6,7 +6,7 @@ import { requireOrgUser } from "../lib/session.server";
 import { getConnectionStatus } from "../lib/qbo-connection.server";
 import { createSupabaseServiceClient } from "../lib/supabase.server";
 import { loadCaseQueueSource } from "../lib/case-queue.server";
-import { loadPeekSource, loadReplySource, peekWindowStartIso } from "../lib/activity-peek.server";
+import { loadPeekSource, peekWindowStartIso } from "../lib/activity-peek.server";
 import type { ActivityPeek } from "../lib/activity-peek";
 import { loadOrgConfig } from "../lib/org-config.server";
 import { todayInTz } from "../lib/tz";
@@ -313,19 +313,17 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
 
   const emailEnabled = resolveEmailSettings(ecfg as any).emailEnabled;
 
-  const windowStartIso = peekWindowStartIso(today);
-  const caseIds = cases.map((c) => c.id);
-  const customerIds = [...new Set(cases.map((c) => c.customerId))];
-  const [peekSrc] = await Promise.all([
-    loadPeekSource({ supabase, orgId: org.org_id, caseIds, windowStartIso }),
-    loadReplySource({ supabase, orgId: org.org_id, customerIds, windowStartIso }),
-  ]);
-  const payerByCustomer = new Map<string, CaseItem["payer"]>();
+  const peekSrc = await loadPeekSource({
+    supabase,
+    orgId: org.org_id,
+    caseIds: cases.map((c) => c.id),
+    windowStartIso: peekWindowStartIso(today),
+  });
 
   const dashboardData: DashboardData = buildCaseData(
     cases, invoicesInput, customersInput, lastContactsInput, promisesInput,
     { view, sort, q, caseId, invoice, tab }, today, ownerLabels, user.id, orgConfig,
-    comingDueInvoices, peekSrc.peeksByCase, payerByCustomer,
+    comingDueInvoices, peekSrc.peeksByCase,
   );
 
   const sel = dashboardData.selected;

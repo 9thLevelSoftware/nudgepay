@@ -14,7 +14,9 @@ import {
   peekWindowStartIso,
 } from "../app/lib/activity-peek.server";
 import { buildCaseItems } from "../app/lib/cases";
+import type { CaseRow } from "../app/lib/cases";
 import { DEFAULT_ORG_CONFIG } from "../app/lib/org-config";
+import { buildCaseData } from "../app/routes/dashboard";
 
 test("PEEK_MAX is three and summaries clip at 80", () => {
   expect(PEEK_MAX).toBe(3);
@@ -102,13 +104,26 @@ test("peekWindowStartIso is 90 days before the org-local today", () => {
 });
 
 type TableRows = { rows: Record<string, unknown>[]; count?: number };
+type OrderCall = { column: string; ascending: boolean };
+
+const STABLE_PAGE_ORDER: OrderCall[] = [
+  { column: "created_at", ascending: false },
+  { column: "id", ascending: false },
+];
 
 function makeClient(tables: Record<string, TableRows>) {
-  const calls: { table: string; select: string; inCol: string; ids: string[] }[] = [];
+  const calls: { table: string; select: string; inCol: string; ids: string[]; orders: OrderCall[] }[] = [];
   const client = {
     from(table: string) {
       const src = tables[table] ?? { rows: [] };
-      const state = { select: "", inCol: "", ids: [] as string[], from: 0, to: Number.POSITIVE_INFINITY };
+      const state = {
+        select: "",
+        inCol: "",
+        ids: [] as string[],
+        from: 0,
+        to: Number.POSITIVE_INFINITY,
+        orders: [] as OrderCall[],
+      };
       const q: Record<string, unknown> = {
         select(cols: string) {
           state.select = cols;
@@ -125,7 +140,8 @@ function makeClient(tables: Record<string, TableRows>) {
         gte() {
           return q;
         },
-        order() {
+        order(column: string, opts?: { ascending?: boolean }) {
+          state.orders.push({ column, ascending: opts?.ascending ?? true });
           return q;
         },
         range(from: number, to: number) {
@@ -139,7 +155,13 @@ function makeClient(tables: Record<string, TableRows>) {
             const key = state.inCol === "customer_id" ? r.customer_id : r.case_id;
             return typeof key === "string" && idSet.has(key);
           });
-          calls.push({ table, select: state.select, inCol: state.inCol, ids: state.ids });
+          calls.push({
+            table,
+            select: state.select,
+            inCol: state.inCol,
+            ids: state.ids,
+            orders: [...state.orders],
+          });
           return Promise.resolve({
             data: filtered.slice(state.from, state.to + 1),
             count: src.count ?? filtered.length,
@@ -206,6 +228,7 @@ test("loadPeekSource is case-scoped, includes bodies, and collapses per case", a
   expect(calls.find((c) => c.table === "text_messages")?.select).toContain("body");
   expect(calls.find((c) => c.table === "email_messages")?.select).toContain("subject");
   expect(calls.every((c) => c.inCol === "case_id")).toBe(true);
+  expect(calls.map((c) => c.orders)).toEqual(Array(calls.length).fill(STABLE_PAGE_ORDER));
 });
 
 test("loadPeekSource returns empty peeks when any source is truncated", async () => {
@@ -257,6 +280,7 @@ test("loadReplySource is customer-scoped, skips nulls, and has no bodies", async
   expect(calls.every((c) => c.inCol === "customer_id")).toBe(true);
   expect(calls.find((c) => c.table === "text_messages")?.select).toBe("customer_id, direction");
   expect(calls.find((c) => c.table === "email_messages")?.select).toBe("customer_id, direction");
+  expect(calls.map((c) => c.orders)).toEqual(Array(calls.length).fill(STABLE_PAGE_ORDER));
 });
 
 test("loadReplySource flags truncation and never invents a 0% from empty outbound", async () => {
@@ -279,27 +303,27 @@ test("loadReplySource flags truncation and never invents a 0% from empty outboun
   expect(result.replyByCustomer.has("cust-missing")).toBe(false);
 });
 
-test("mapper attaches peeks after buildCaseItems and defaults payer to null", () => {
-  const cases = [{
-    id: "case-1", customerId: "c1", status: "working" as const, nextActionType: "contact" as const,
-    nextActionAt: null, exceptionReason: null, exceptionNote: null,
+test("buildCaseData attaches peeks after buildCaseItems and defaults payer null", () => {
+  const cases: CaseRow[] = [{
+    id: "case-1", customerId: "c1", status: "working", nextActionType: "follow_up",
+    nextActionAt: "2026-06-20", exceptionReason: null, exceptionNote: null,
   }];
-  const invoices = [{ id: "i1", qbo_doc_number: "1001", customer_id: "c1", balance: 100, due_date: "2026-03-01" }];
-  const customers = [{ id: "c1", name: "Acme", phone: null, email: null, owner: null }];
-  const base = buildCaseItems(cases, invoices, customers, [], [], "2026-06-22", new Map(), DEFAULT_ORG_CONFIG);
+  const invoices = [{ id: "i1", qbo_doc_number: "1001", customer_id: "c1", balance: 6000, due_date: "2026-03-01" }];
+  const customers = [{ id: "c1", name: "Acme", phone: null, email: null, owner: "u1" }];
+  const base = buildCaseItems(cases, invoices, customers, [], [], "2026-06-22", new Map([["u1", "diskin"]]), DEFAULT_ORG_CONFIG);
   expect(base[0].peeks).toEqual([]);
   expect(base[0].payer).toBeNull();
   const peeksByCase = new Map<string, ActivityPeek[]>([
     ["case-1", [{ at: "2026-06-21T10:00:00Z", kind: "reply", summary: "Paying Friday" }]],
   ]);
-  const payerByCustomer = new Map<string, null>();
-  const items = base.map((i) => ({
-    ...i,
-    peeks: peeksByCase.get(i.caseId) ?? [],
-    payer: payerByCustomer.get(i.customerId) ?? null,
-  }));
-  expect(items[0].peeks).toEqual([
+  const data = buildCaseData(
+    cases, invoices, customers, [], [],
+    { view: "all-open", sort: "recommended", q: "", caseId: "case-1" }, "2026-06-22",
+    new Map([["u1", "diskin"]]), "u1", DEFAULT_ORG_CONFIG, [], peeksByCase,
+  );
+  expect(data.items[0].peeks).toEqual([
     { at: "2026-06-21T10:00:00Z", kind: "reply", summary: "Paying Friday" },
   ]);
-  expect(items[0].payer).toBeNull();
+  expect(data.items[0].payer).toBeNull();
+  expect(data.selected?.peeks[0]?.summary).toBe("Paying Friday");
 });

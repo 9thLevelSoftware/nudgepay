@@ -7,24 +7,6 @@ import { DEFAULT_ORG_CONFIG } from "../app/lib/org-config";
 
 const TODAY = "2026-06-22";
 
-test("buildCaseData attaches peeks after buildCaseItems and defaults payer null", () => {
-  const cases: CaseRow[] = [
-    { id: "case-1", customerId: "c1", status: "working", nextActionType: "follow_up", nextActionAt: "2026-06-20", exceptionReason: null, exceptionNote: null },
-  ];
-  const invoices = [
-    { id: "i1", qbo_doc_number: "1001", customer_id: "c1", balance: 6000, due_date: "2026-03-01" },
-  ];
-  const customers = [{ id: "c1", name: "Acme", phone: null, email: null, owner: "u1" }];
-  const peeksByCase = new Map([["case-1", [{ at: "2026-06-21T10:00:00Z", kind: "reply" as const, summary: "Paying Friday" }]]]);
-  const data = buildCaseData(cases, invoices, customers, [], [],
-    { view: "all-open", sort: "recommended", q: "", caseId: "case-1" }, "2026-06-22",
-    new Map([["u1", "diskin"]]), "u1", DEFAULT_ORG_CONFIG, [], peeksByCase);
-
-  expect(data.items[0].peeks).toEqual([{ at: "2026-06-21T10:00:00Z", kind: "reply", summary: "Paying Friday" }]);
-  expect(data.items[0].payer).toBeNull();
-  expect(data.selected?.peeks[0]?.summary).toBe("Paying Friday");
-});
-
 test("buildCaseData composes case items, metrics, viewCounts, and selection", () => {
   const cases: CaseRow[] = [
     { id: "case-1", customerId: "c1", status: "working", nextActionType: "follow_up", nextActionAt: "2026-06-20", exceptionReason: null, exceptionNote: null },
