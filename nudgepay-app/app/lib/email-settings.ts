@@ -57,3 +57,12 @@ export function parseEmailSettingsUpdate(
   }
   return { ok: true, value: { email_enabled, from_address, from_name, postal_address } };
 }
+
+/** Upsert row for email_config — always stamps updated_at (no DB trigger). */
+export function emailConfigUpsertRow(
+  orgId: string,
+  value: { email_enabled: boolean; from_address: string; from_name: string; postal_address: string },
+  nowIso: string,
+): Record<string, unknown> {
+  return { org_id: orgId, ...value, updated_at: nowIso };
+}

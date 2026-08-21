@@ -38,18 +38,28 @@ export async function action({ request, context }: ActionFunctionArgs) {
     notify,
   };
 
+  const waitUntil = (context as { cloudflare?: { ctx?: { waitUntil?: (p: Promise<unknown>) => void } } })
+    .cloudflare?.ctx?.waitUntil;
+  const work = applyQboWebhookEvents(deps, service, rawBody);
+  if (typeof waitUntil === "function") {
+    waitUntil(work.catch((err) => console.error("QBO webhook background apply failed", err)));
+    return new Response("ok", { status: 200 });
+  }
+  await work;
+  return new Response("ok", { status: 200 });
+}
+
+async function applyQboWebhookEvents(
+  deps: SyncDeps,
+  service: ReturnType<typeof createSupabaseServiceClient>,
+  rawBody: string,
+): Promise<void> {
   // Per-event isolation: a failed event records a durable sync_error and does not
-  // abort sibling events. If any event failed we still return 500 so Intuit
-  // re-delivers the batch (upserts are idempotent, so re-applied events are safe).
-  let hadFailure = false;
+  // abort sibling events. Upserts are idempotent so Intuit retries are safe.
   for (const ev of parseQboWebhook(rawBody)) {
     const { data: conn, error: connErr } = await service.from("qbo_connections")
       .select("org_id").eq("realm_id", ev.realmId).eq("status", "connected").maybeSingle();
     if (connErr) {
-      // A DB error here is NOT "unknown realm" — failing open via `continue` could
-      // let the batch return 200 and stop Intuit retrying, desyncing permanently.
-      // We can't recordSyncError (no org), so force a retry instead. No orgId to scope.
-      hadFailure = true;
       console.error("Failed to look up QBO connection for realm", ev.realmId, connErr);
       continue;
     }
@@ -64,7 +74,6 @@ export async function action({ request, context }: ActionFunctionArgs) {
       else continue; // other entity types are ignored — no record, no resolve
       await resolveSyncErrors(service, { orgId, scope }); // this entity is now consistent
     } catch (err) {
-      hadFailure = true;
       console.error("QBO webhook event failed", ev.entityName, ev.id, err);
       await recordSyncError(service, {
         orgId, source: "webhook", scope,
@@ -72,6 +81,4 @@ export async function action({ request, context }: ActionFunctionArgs) {
       }).catch(() => {});
     }
   }
-  if (hadFailure) return new Response("processing error", { status: 500 });
-  return new Response("ok", { status: 200 });
 }

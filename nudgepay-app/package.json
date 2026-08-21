@@ -1,7 +1,7 @@
 {
   "name": "nudgepay-app",
   "private": true,
-  "description": "Build a full-stack web application with React Router 7.",
+  "description": "NudgePay — collections workspace for QuickBooks (React Router 7 on Cloudflare Workers).",
   "type": "module",
   "scripts": {
     "build": "react-router build",
@@ -48,7 +48,7 @@
     "wrangler": "^4.88.0"
   },
   "cloudflare": {
-    "label": "React Router Framework Starter",
+    "label": "NudgePay",
     "products": [
       "Workers"
     ],
@@ -57,6 +57,6 @@
     ],
     "preview_icon_url": "https://imagedelivery.net/wSMYJvS3Xw-n339CbDyDIA/36a99c4a-8919-4e6e-ac9e-e55974407200/public",
     "preview_image_url": "https://imagedelivery.net/wSMYJvS3Xw-n339CbDyDIA/65455e96-7992-425f-44e4-30f3e7d7f900/preview",
-    "publish": true
+    "publish": false
   }
 }

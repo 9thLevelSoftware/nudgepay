@@ -80,6 +80,31 @@ export async function qboQuery(
   return (data?.QueryResponse?.[entityName] ?? []) as any[];
 }
 
+export const QBO_QUERY_PAGE = 1000;
+
+/**
+ * Page Intuit queries until a short page. `selectClause` must not include
+ * startposition/maxresults — those are appended here.
+ */
+export async function qboQueryAll(
+  fetchFn: typeof fetch, api: QboApiConfig, accessToken: string,
+  realmId: string, selectClause: string, entityName: "Invoice" | "Customer" | "Payment" | "CreditMemo",
+  clock: QboRetryClock = {},
+  pageSize: number = QBO_QUERY_PAGE,
+): Promise<any[]> {
+  const size = Math.max(1, Math.floor(pageSize));
+  const all: any[] = [];
+  let start = 1;
+  for (let n = 0; n < 50; n++) {
+    const q = `${selectClause} startposition ${start} maxresults ${size}`;
+    const page = await qboQuery(fetchFn, api, accessToken, realmId, q, entityName, clock);
+    all.push(...page);
+    if (page.length < size) break;
+    start += size;
+  }
+  return all;
+}
+
 export async function qboReadEntity(
   fetchFn: typeof fetch, api: QboApiConfig, accessToken: string,
   realmId: string, entityName: "Invoice" | "Customer" | "Payment" | "CreditMemo" | "CompanyInfo", id: string,

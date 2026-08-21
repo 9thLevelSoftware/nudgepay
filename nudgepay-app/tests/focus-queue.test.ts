@@ -80,6 +80,16 @@ test("suppressed cases excluded from my-work scope", () => {
   expect(queue.map((c) => c.caseId)).toEqual(["c2"]);
 });
 
+test("waiting and on_hold cases are excluded from the focus deck", () => {
+  const items = [
+    stub({ caseId: "wait", ownerId: USER, status: "waiting", score: 99 }),
+    stub({ caseId: "hold", ownerId: USER, status: "on_hold", score: 98 }),
+    stub({ caseId: "work", ownerId: USER, status: "working", score: 10 }),
+  ];
+  const { queue } = buildFocusQueue(items, TODAY, USER);
+  expect(queue.map((c) => c.caseId)).toEqual(["work"]);
+});
+
 test("when only suppressed cases are owned, falls back to all-open", () => {
   const items = [
     stub({ caseId: "c1", ownerId: USER, suppressed: true }),

@@ -1,7 +1,7 @@
 import { describe, expect, it, test } from "vitest";
 import {
   buildThreadRows, applyMessageTab, applyChannelFilter, sortThreadRows, computeMessageMetrics,
-  MESSAGE_TABS, MESSAGE_SORTS,
+  MESSAGE_TABS, MESSAGE_SORTS, inboundIsUnread, threadReadKey,
   type ThreadCustomerInput, type ThreadMessageInput,
 } from "../app/lib/message-inbox";
 import { DEFAULT_COMM_PREFS, resolveCommPrefs } from "../app/lib/comm-prefs";
@@ -241,4 +241,14 @@ describe("message-inbox gate parity (P5 fixes)", () => {
     expect(rows[0].canReply).toBe(false);
     expect(rows[0].replyDisabledReason).toMatch(/do-not-contact|legal/i);
   });
+});
+
+test("needs-reply is unread inbound only (last_read_at)", () => {
+  expect(inboundIsUnread("inbound", "2026-06-21T10:00:00Z", null)).toBe(true);
+  expect(inboundIsUnread("inbound", "2026-06-21T10:00:00Z", "2026-06-21T09:00:00Z")).toBe(true);
+  expect(inboundIsUnread("inbound", "2026-06-21T10:00:00Z", "2026-06-21T11:00:00Z")).toBe(false);
+  expect(inboundIsUnread("outbound", "2026-06-21T10:00:00Z", null)).toBe(false);
+  const reads = new Map([[threadReadKey("c1", "sms"), "2026-06-22T00:00:00Z"]]);
+  const rows = buildThreadRows(CUSTOMERS, MESSAGES, LABELS, reads);
+  expect(rows.find((r) => r.customerId === "c1")!.needsReply).toBe(false);
 });

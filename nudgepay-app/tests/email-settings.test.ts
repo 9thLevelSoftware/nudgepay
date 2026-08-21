@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { resolveEmailSettings, parseEmailSettingsUpdate } from "../app/lib/email-settings";
+import { resolveEmailSettings, parseEmailSettingsUpdate, emailConfigUpsertRow } from "../app/lib/email-settings";
 
 function fd(entries: Record<string, string>): FormData {
   const f = new FormData();
@@ -43,5 +43,16 @@ describe("email settings", () => {
     );
     expect(r.ok).toBe(false);
     if (!r.ok) expect(r.error).toBe("from_allowlist");
+  });
+  it("emailConfigUpsertRow always stamps updated_at", () => {
+    const parsed = parseEmailSettingsUpdate(fd({
+      email_enabled: "true", from_address: "billing@x.com", from_name: "A", postal_address: "1 Main",
+    }));
+    expect(parsed.ok).toBe(true);
+    if (!parsed.ok) return;
+    const row = emailConfigUpsertRow("org-1", parsed.value, "2026-08-21T00:00:00.000Z");
+    expect(row.updated_at).toBe("2026-08-21T00:00:00.000Z");
+    expect(row.org_id).toBe("org-1");
+    expect(row.from_address).toBe("billing@x.com");
   });
 });

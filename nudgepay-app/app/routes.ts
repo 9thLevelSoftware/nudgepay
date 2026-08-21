@@ -19,6 +19,8 @@ export default [
   route("messages", "routes/messages.tsx"),
   route("reports", "routes/reports.tsx"),
   route("reports.csv", "routes/reports.csv.tsx"),
+  route("queue.csv", "routes/queue.csv.tsx"),
+  route("api/thread-read", "routes/api.thread-read.tsx"),
   route("settings", "routes/settings.tsx"),
   route("privacy", "routes/privacy.tsx"),
   route("eula", "routes/eula.tsx"),

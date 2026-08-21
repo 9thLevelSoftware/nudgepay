@@ -86,3 +86,23 @@ Tracks implementation against the frozen 2026-08-20 audit pack. Do **not** rewri
 | NP-AUD-2026-123 | 17 | code | bulk SMS per-case failures + name flash |
 | NP-AUD-2026-104-EULA | 17 | code | EULA drops “private beta” |
 | NP-AUD-2026-104-LANDING | 17 | code | landing names collections vs payment processor |
+| NP-AUD-2026-047 | 18 | code | inbox last_read_at; needs-reply is unread inbound |
+| NP-AUD-2026-128 | 18 | code | email_config upsert stamps `updated_at` |
+| NP-AUD-2026-007-TRUNCATION | 18 | code | `assertNotTruncated` on case-queue pages |
+| NP-AUD-2026-119 | 18 | code | `invoiceStatusOn` calendar-day overdue |
+| NP-AUD-2026-124 | 18 | code | dashboard uses `scorePriority`, not `priorityOf` |
+| NP-AUD-2026-027 | 18 | code | storeConnection refuses realm switch |
+| NP-AUD-2026-028 | 18 | code | `qboQueryAll` paging; CDC cap does not advance watermark |
+| NP-AUD-2026-030 | 18 | code | void/deleted invoices zero balance; skip unnamed CDC |
+| NP-AUD-2026-031 | 18 | code | QBO webhook `waitUntil` then 200 |
+| NP-AUD-2026-045-VALIDATION-RANGE | 18 | code | form min = `HIGH_VALUE_THRESHOLD_MIN` |
+| NP-AUD-2026-109 | 18 | code | DetailPanel consent posts `customerId` |
+| NP-AUD-2026-126 | 18 | code | invite flash is generic copy |
+| NP-AUD-2026-130 | 18 | code | unique pending invite `(org_id, email)` |
+| NP-AUD-2026-049-RETRY | 18 | code | hourly `retryUnsentBrokenPromiseAlerts` |
+| NP-AUD-2026-048-CSV | 18 | code | `/queue.csv` work-queue export |
+| NP-AUD-2026-143-SNOOZE-CONTACT | 18 | code | notes excluded from last-contact; parked out of Focus |
+| NP-AUD-2026-132-README | 18 | code | app README is NudgePay |
+| NP-AUD-2026-132-AGENTS | 18 | code | Agents.md migrations 0001–0041 |
+| NP-AUD-2026-132-STARTER | 18 | code | package.json not RR starter; `publish: false` |
+| NP-AUD-2026-133 | 18 | code | root LICENSE |

@@ -5,6 +5,10 @@ import { refreshTokens, revokeToken, type QboHttpConfig, type QboTokens } from "
 export async function storeConnection(
   service: SupabaseClient, key: string, orgId: string, realmId: string, tokens: QboTokens,
 ): Promise<void> {
+  const existing = await getConnectionStatus(service, orgId);
+  if (existing?.realmId && existing.realmId !== realmId) {
+    throw new Error("QBO realm mismatch: disconnect before connecting a different company");
+  }
   const access_token_enc = await encryptSecret(tokens.accessToken, key);
   const refresh_token_enc = await encryptSecret(tokens.refreshToken, key);
   const token_expires_at = new Date(Date.now() + tokens.expiresIn * 1000).toISOString();
