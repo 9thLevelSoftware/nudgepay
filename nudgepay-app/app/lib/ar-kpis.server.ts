@@ -3,19 +3,13 @@
 
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { addCalendarDays } from "./business-days";
-import { pageAll, PAGE_ALL_MAX_ROWS } from "./page-all";
+import { orderPage, pageAll, PAGE_ALL_MAX_ROWS } from "./page-all";
 import {
   AR_SALES_LOOKBACK_DAYS,
   type ArInvoice,
   type ArPayment,
   type ArSalesRow,
 } from "./ar-kpis";
-
-// Range pages without ORDER BY can skip/duplicate rows. created_at desc + id
-// desc is a stable unique key so equal timestamps cannot slip between pages.
-function orderPage(q: { order: (column: string, opts: { ascending: boolean }) => any }): any {
-  return q.order("created_at", { ascending: false }).order("id", { ascending: false });
-}
 
 function money(v: unknown): number {
   const n = Number(v);
@@ -81,7 +75,8 @@ export async function loadArKpiSource(args: {
             .select("amount, invoice_date", { count: "exact" })
             .eq("org_id", orgId)
             .not("invoice_date", "is", null)
-            .gte("invoice_date", lookbackStart),
+            .gte("invoice_date", lookbackStart)
+            .lte("invoice_date", today),
         ).range(from, to),
       { maxRows: PAGE_ALL_MAX_ROWS },
     ),
@@ -92,7 +87,8 @@ export async function loadArKpiSource(args: {
             .from("payments")
             .select("amount, txn_date, type", { count: "exact" })
             .eq("org_id", orgId)
-            .gte("txn_date", windowStart),
+            .gte("txn_date", windowStart)
+            .lte("txn_date", today),
         ).range(from, to),
       { maxRows: PAGE_ALL_MAX_ROWS },
     ),

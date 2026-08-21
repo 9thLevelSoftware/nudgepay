@@ -3,13 +3,7 @@
 
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { countsAsCustomerContact } from "./last-contact";
-import { chunkIds, pageAll, pageAllChunked, PAGE_ALL_MAX_ROWS } from "./page-all";
-
-// Range pages without ORDER BY can skip/duplicate rows. created_at desc + id
-// desc is a stable unique key so equal timestamps cannot slip between pages.
-function orderPage(q: { order: (column: string, opts: { ascending: boolean }) => any }): any {
-  return q.order("created_at", { ascending: false }).order("id", { ascending: false });
-}
+import { chunkIds, orderPage, pageAll, pageAllChunked, PAGE_ALL_MAX_ROWS } from "./page-all";
 
 type LogRow = { case_id: string | null; method: string | null };
 type MsgRow = { case_id: string | null };
@@ -22,7 +16,7 @@ export async function loadContactPromiseRates(args: {
   orgId: string;
   windowStartIso: string;
   openCaseIds: string[];
-}): Promise<{ contactedOpenCaseIds: string[]; promisesCreated: number }> {
+}): Promise<{ contactedOpenCaseIds: string[]; promisesCreated: number; truncated: boolean }> {
   const { supabase, orgId, windowStartIso, openCaseIds } = args;
   const chunks = chunkIds(openCaseIds.filter(Boolean), 100);
 
@@ -100,5 +94,9 @@ export async function loadContactPromiseRates(args: {
   for (const r of texts.rows) add(r.case_id);
   for (const r of emails.rows) add(r.case_id);
 
-  return { contactedOpenCaseIds: [...contacted], promisesCreated: promises.rows.length };
+  return {
+    contactedOpenCaseIds: [...contacted],
+    promisesCreated: promises.rows.length,
+    truncated: logs.truncated || texts.truncated || emails.truncated || promises.truncated,
+  };
 }

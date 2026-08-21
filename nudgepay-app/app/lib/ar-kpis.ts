@@ -87,7 +87,7 @@ export function buildArKpis(input: {
   openCaseIds: string[];
   contactedCaseIdsInWindow: string[];
   promisesCreatedInWindow: number;
-  truncated: { a: boolean; b: boolean; c: boolean };
+  truncated: { a: boolean; b: boolean; c: boolean; contact?: boolean };
 }): ArKpis {
   const endingTotalAr = input.open.reduce((s, i) => s + i.balance, 0);
   const endingCurrentAr = input.open
@@ -102,8 +102,12 @@ export function buildArKpis(input: {
       && p.txnDate >= windowStart && p.txnDate <= input.today)
     .reduce((s, p) => s + p.amount, 0);
 
-  const salesByDate = salesByDateFrom(input.salesLookback);
-  const anyTrunc = input.truncated.a || input.truncated.b || input.truncated.c;
+  // Countback walks newest first; future TxnDate rows would yield a negative DSO.
+  const salesByDate = salesByDateFrom(
+    input.salesLookback.filter((r) => r.invoiceDate <= input.today),
+  );
+  const anyTrunc = input.truncated.a || input.truncated.b || input.truncated.c
+    || input.truncated.contact === true;
   const empty = input.open.length === 0 && input.salesLookback.length === 0;
 
   const dso = countbackDso(salesByDate, endingTotalAr, input.today);
@@ -116,8 +120,11 @@ export function buildArKpis(input: {
 
   const openCases = input.openCaseIds.length;
   const contactedOpenCases = input.contactedCaseIdsInWindow.length;
-  const contactRate = openCases === 0 ? null : contactedOpenCases / openCases;
-  const promiseRate = contactedOpenCases === 0 ? null : input.promisesCreatedInWindow / contactedOpenCases;
+  const contactTrunc = input.truncated.contact === true;
+  const contactRate = contactTrunc || openCases === 0 ? null : contactedOpenCases / openCases;
+  const promiseRate = contactTrunc || contactedOpenCases === 0
+    ? null
+    : input.promisesCreatedInWindow / contactedOpenCases;
 
   return {
     rangeDays: input.rangeDays,

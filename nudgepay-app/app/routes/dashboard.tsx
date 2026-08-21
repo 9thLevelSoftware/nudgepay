@@ -382,7 +382,7 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
     openCaseIds,
     contactedCaseIdsInWindow: rates.contactedOpenCaseIds,
     promisesCreatedInWindow: rates.promisesCreated,
-    truncated: arSrc.truncated,
+    truncated: { ...arSrc.truncated, contact: rates.truncated },
   });
 
   const dashboardData: DashboardData = buildCaseData(

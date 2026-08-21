@@ -71,6 +71,22 @@ test("countbackDso skips zero and negative day sales", () => {
   expect(countbackDso(sales, 500, TODAY)).toBe(ageInDays("2026-08-11", TODAY) + 0.5);
 });
 
+test("future-dated sales are ignored by countback so DSO stays on the historical path", () => {
+  const open: ArInvoice[] = [{
+    amount: 1000, balance: 1500, invoiceDate: "2026-08-11", dueDate: null, customerId: "c1",
+  }];
+  const result = kpis({
+    open,
+    salesLookback: [
+      { invoiceDate: "2026-08-31", amount: 5000 },
+      { invoiceDate: "2026-08-11", amount: 1000 },
+      { invoiceDate: "2026-08-01", amount: 1000 },
+    ],
+  });
+  expect(result.dso).toBe(20.5);
+  expect(result.dso).toBeGreaterThan(0);
+});
+
 test("buildArKpis never concatenates A∪B for sales / DSO", () => {
   const open: ArInvoice[] = [{
     amount: 1000, balance: 1500, invoiceDate: "2026-08-11", dueDate: null, customerId: "c1",
@@ -188,6 +204,17 @@ test("coverage is empty, partial, or full", () => {
     open: [{ amount: 100, balance: 100, invoiceDate: "2026-08-11", dueDate: TODAY, customerId: "c1" }],
     salesLookback: [{ invoiceDate: "2026-08-11", amount: 100 }],
   }).coverage).toBe("full");
+  const contactTrunc = kpis({
+    open: [{ amount: 100, balance: 100, invoiceDate: "2026-08-11", dueDate: TODAY, customerId: "c1" }],
+    salesLookback: [{ invoiceDate: "2026-08-11", amount: 100 }],
+    openCaseIds: ["c1", "c2"],
+    contactedCaseIdsInWindow: ["c1"],
+    promisesCreatedInWindow: 1,
+    truncated: { a: false, b: false, c: false, contact: true },
+  });
+  expect(contactTrunc.coverage).toBe("partial");
+  expect(contactTrunc.contactRate).toBeNull();
+  expect(contactTrunc.promiseRate).toBeNull();
 });
 
 test("0% CEI with full coverage and collected 0 is a valid empty-collections day", () => {
@@ -242,6 +269,7 @@ function makeClient(tables: Record<string, TableRows>) {
         eq(...args: unknown[]) { state.filters.push({ method: "eq", args }); return q; },
         gt(...args: unknown[]) { state.filters.push({ method: "gt", args }); return q; },
         gte(...args: unknown[]) { state.filters.push({ method: "gte", args }); return q; },
+        lte(...args: unknown[]) { state.filters.push({ method: "lte", args }); return q; },
         neq(...args: unknown[]) { state.filters.push({ method: "neq", args }); return q; },
         not(...args: unknown[]) { state.filters.push({ method: "not", args }); return q; },
         in(col: string, ids: string[]) { state.filters.push({ method: "in", args: [col, ids] }); return q; },
@@ -262,6 +290,9 @@ function makeClient(tables: Record<string, TableRows>) {
             } else if (f.method === "gte") {
               const [col, val] = f.args as [string, string | number];
               rows = rows.filter((r) => r[col] != null && (r[col] as string | number) >= val);
+            } else if (f.method === "lte") {
+              const [col, val] = f.args as [string, string | number];
+              rows = rows.filter((r) => r[col] != null && (r[col] as string | number) <= val);
             } else if (f.method === "neq") {
               const [col, val] = f.args as [string, unknown];
               rows = rows.filter((r) => r[col] !== val);
@@ -300,12 +331,14 @@ test("loadArKpiSource keeps A and B separate, does not filter A by invoice_date,
         { org_id: "org-1", amount: 1000, balance: 500, invoice_date: "2026-08-11", due_date: TODAY, customer_id: "c1", created_at: "t1", id: "i1" },
         { org_id: "org-1", amount: 200, balance: 200, invoice_date: null, due_date: null, customer_id: "c1", created_at: "t2", id: "i2" },
         { org_id: "org-1", amount: 300, balance: 0, invoice_date: "2026-08-01", due_date: "2026-08-15", customer_id: "c1", created_at: "t3", id: "i3" },
+        { org_id: "org-1", amount: 9000, balance: 0, invoice_date: "2026-09-01", due_date: "2026-09-15", customer_id: "c1", created_at: "t4", id: "i4" },
       ],
     },
     payments: {
       rows: [
         { org_id: "org-1", amount: 50, txn_date: "2026-08-10", type: "payment" },
         { org_id: "org-1", amount: 10, txn_date: "2026-08-10", type: "credit_memo" },
+        { org_id: "org-1", amount: 99, txn_date: "2026-09-01", type: "payment" },
       ],
     },
   });
@@ -326,11 +359,14 @@ test("loadArKpiSource keeps A and B separate, does not filter A by invoice_date,
   expect(invoiceCalls).toHaveLength(2);
   const a = invoiceCalls.find((c) => c.select.includes("balance"))!;
   const b = invoiceCalls.find((c) => !c.select.includes("balance"))!;
+  const c = calls.find((call) => call.table === "payments")!;
   expect(a.filters.some((f) => f.method === "gt" && f.args[0] === "balance")).toBe(true);
   expect(a.filters.some((f) => f.args[0] === "invoice_date")).toBe(false);
   expect(b.filters.some((f) => f.method === "gte" && f.args[0] === "invoice_date")).toBe(true);
+  expect(b.filters.some((f) => f.method === "lte" && f.args[0] === "invoice_date" && f.args[1] === TODAY)).toBe(true);
   expect(b.filters.some((f) => f.method === "not" && f.args[0] === "invoice_date")).toBe(true);
-  expect(calls.every((c) => JSON.stringify(c.orders) === JSON.stringify(STABLE_PAGE_ORDER))).toBe(true);
+  expect(c.filters.some((f) => f.method === "lte" && f.args[0] === "txn_date" && f.args[1] === TODAY)).toBe(true);
+  expect(calls.every((call) => JSON.stringify(call.orders) === JSON.stringify(STABLE_PAGE_ORDER))).toBe(true);
 });
 
 test("loadArKpiSource flags truncation per query and does not throw", async () => {
@@ -383,6 +419,7 @@ test("loadContactPromiseRates counts customer contacts, outbound messages, and c
   });
   expect(result.contactedOpenCaseIds.sort()).toEqual(["c1", "c2", "c3"]);
   expect(result.promisesCreated).toBe(2);
+  expect(result.truncated).toBe(false);
   expect(calls.filter((c) => c.table === "contact_logs")[0]?.filters.some((f) => f.method === "in" && f.args[0] === "method")).toBe(true);
   expect(calls.filter((c) => c.table === "text_messages")[0]?.filters.some((f) => f.method === "eq" && f.args[0] === "direction" && f.args[1] === "outbound")).toBe(true);
   expect(calls.filter((c) => c.table === "promises")[0]?.filters.some((f) => f.method === "neq" && f.args[0] === "status" && f.args[1] === "cancelled")).toBe(true);
@@ -401,7 +438,26 @@ test("loadContactPromiseRates skips contact queries when there are no open cases
   });
   expect(result.contactedOpenCaseIds).toEqual([]);
   expect(result.promisesCreated).toBe(1);
+  expect(result.truncated).toBe(false);
   expect(calls.map((c) => c.table)).toEqual(["promises"]);
+});
+
+test("loadContactPromiseRates flags truncation and does not throw", async () => {
+  const { client } = makeClient({
+    contact_logs: {
+      rows: [{ org_id: "org-1", case_id: "c1", method: "call", created_at: "2026-08-10T10:00:00Z" }],
+      count: 6000,
+    },
+    promises: { rows: [{ org_id: "org-1", id: "p1", status: "pending", created_at: "2026-08-10T10:00:00Z" }] },
+  });
+  const result = await loadContactPromiseRates({
+    supabase: client,
+    orgId: "org-1",
+    windowStartIso: "2026-07-22T00:00:00.000Z",
+    openCaseIds: ["c1"],
+  });
+  expect(result.truncated).toBe(true);
+  expect(result.contactedOpenCaseIds).toEqual(["c1"]);
 });
 
 test("dashboard places ArKpiBand above KpiBand and links reports for owners only", () => {
@@ -412,6 +468,7 @@ test("dashboard places ArKpiBand above KpiBand and links reports for owners only
   expect(dashboard).toContain("loadArKpiSource");
   expect(dashboard).toContain("loadContactPromiseRates");
   expect(dashboard).toContain("DASHBOARD_AR_RANGE_DAYS");
+  expect(dashboard).toContain("contact: rates.truncated");
   expect(band).toContain('to="/reports"');
   expect(band).toContain("isOwner");
   expect(band).not.toMatch(/<MetricTile[^>]*href=/);

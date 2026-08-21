@@ -91,3 +91,15 @@ export function chunkIds(ids: string[], size = 100): string[][] {
   for (let i = 0; i < ids.length; i += size) out.push(ids.slice(i, i + size));
   return out;
 }
+
+// Range pages without ORDER BY can skip/duplicate rows. created_at desc + id
+// desc is a stable unique key so equal timestamps cannot slip between pages.
+// Return type is `any` so long PostgREST builder chains do not trip TS2589.
+export function orderPage(q: {
+  order: (column: string, opts: { ascending: boolean }) => unknown;
+}): any {
+  const once = q.order("created_at", { ascending: false }) as {
+    order: (column: string, opts: { ascending: boolean }) => unknown;
+  };
+  return once.order("id", { ascending: false });
+}
