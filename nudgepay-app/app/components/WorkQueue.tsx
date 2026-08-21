@@ -200,6 +200,7 @@ function QueueRow({
 
   return (
     <div
+      role="row"
       className={[
         "group relative flex items-center border-b border-border transition-colors duration-100 hover:bg-paper",
         selected ? "bg-copper/5" : "",
@@ -207,7 +208,7 @@ function QueueRow({
     >
       <span aria-hidden="true" className={`absolute left-0 inset-y-0 w-1 ${HEAT_BAR[item.heat.band] ?? "bg-muted"}`} />
       {selected ? <span aria-hidden="true" className="absolute left-1 inset-y-0 w-0.5 bg-copper" /> : null}
-      <label className="flex items-center pl-4 pr-1 cursor-pointer" onClick={(e) => e.stopPropagation()}>
+      <label role="cell" className="flex items-center pl-4 pr-1 cursor-pointer" onClick={(e) => e.stopPropagation()}>
         <span className="sr-only">Select {item.customerName}</span>
         <input
           type="checkbox"
@@ -229,12 +230,12 @@ function QueueRow({
         ].join(" ")}
       >
         {/* Heat */}
-        <span data-label="Heat" className="hidden md:flex">
+        <span role="cell" data-label="Heat" className="hidden md:flex">
           <ThermalBand heat={item.heat} />
         </span>
 
         {/* Customer */}
-        <span data-label="Customer" className="min-w-0">
+        <span role="cell" data-label="Customer" className="min-w-0">
           <span className="block font-sans text-text truncate">{item.customerName}</span>
           <span className="flex items-center gap-1.5">
             <span className="font-mono text-xs text-muted">{plural(item.invoiceCount, "invoice")}</span>
@@ -247,12 +248,12 @@ function QueueRow({
         </span>
 
         {/* Total overdue */}
-        <span data-label="Total overdue" className="font-mono text-text tabular-nums text-right hidden md:block">
+        <span role="cell" data-label="Total overdue" className="font-mono text-text tabular-nums text-right hidden md:block">
           {formatUSD(item.totalOverdue)}
         </span>
 
         {/* Oldest age + aging bar */}
-        <span data-label="Oldest age" className="hidden md:flex flex-col gap-1 min-w-[56px]">
+        <span role="cell" data-label="Oldest age" className="hidden md:flex flex-col gap-1 min-w-[56px]">
           <span className="font-mono text-sm text-muted tabular-nums whitespace-nowrap">
             {item.oldestAgeDays > 0 ? `${item.oldestAgeDays}d` : "Due"}
           </span>
@@ -267,7 +268,7 @@ function QueueRow({
         </span>
 
         {/* Last contact */}
-        <span data-label="Last contact" className="hidden lg:block min-w-0">
+        <span role="cell" data-label="Last contact" className="hidden lg:block min-w-0">
           {item.lastContact ? (
             <>
               <span className="block text-text text-xs">{formatInstant(item.lastContact.date, timeZone)}</span>
@@ -280,7 +281,7 @@ function QueueRow({
         </span>
 
         {/* Status + next action date */}
-        <span data-label="Status" className="hidden lg:flex flex-col items-start gap-0.5 min-w-0">
+        <span role="cell" data-label="Status" className="hidden lg:flex flex-col items-start gap-0.5 min-w-0">
           {(() => {
             const tone = statusChipTone(item.status);
             return (
@@ -299,13 +300,13 @@ function QueueRow({
         </span>
 
         {/* Owner chip */}
-        <span data-label="Owner" className="hidden xl:inline-flex items-center gap-1 rounded-full bg-panel border border-border px-2 py-0.5 text-xs text-muted font-sans whitespace-nowrap">
+        <span role="cell" data-label="Owner" className="hidden xl:inline-flex items-center gap-1 rounded-full bg-panel border border-border px-2 py-0.5 text-xs text-muted font-sans whitespace-nowrap">
           <Icon name="user" size={12} aria-hidden />
           {item.owner}
         </span>
       </Link>
       {/* Quick-action buttons — visible on row hover */}
-      <span className="hidden md:flex items-center gap-1 pr-3 opacity-0 group-hover:opacity-100 focus-within:opacity-100 pointer-events-none group-hover:pointer-events-auto focus-within:pointer-events-auto transition-opacity">
+      <span role="cell" className="hidden md:flex items-center gap-1 pr-3 opacity-0 group-hover:opacity-100 focus-within:opacity-100 pointer-events-none group-hover:pointer-events-auto focus-within:pointer-events-auto transition-opacity">
         <Link
           to={msgHref}
           aria-label={`Send text to ${item.customerName}`}
@@ -698,11 +699,8 @@ export function WorkQueue({
 
       {/* Column header stays static above the scroller (not virtualized). Hidden < md. */}
       {view !== "coming-due" && items.length > 0 ? (
-        <div className="hidden md:block shrink-0" aria-label="Work queue table">
-          <div
-            className="flex items-center px-4 py-2 border-b border-border bg-paper"
-            aria-hidden="false"
-          >
+        <div className="hidden md:block shrink-0">
+          <div className="flex items-center px-4 py-2 border-b border-border bg-paper">
             <label className="flex items-center pl-4 pr-1 cursor-pointer">
               <span className="sr-only">Select all matching</span>
               <input
@@ -713,7 +711,7 @@ export function WorkQueue({
                 className="h-4 w-4 rounded border-border text-copper focus-visible:ring-2 focus-visible:ring-copper"
               />
             </label>
-            <div className={`flex-1 grid items-center gap-x-6 ${QUEUE_GRID}`}>
+            <div className={`flex-1 grid items-center gap-x-6 ${QUEUE_GRID}`} aria-hidden="true">
               <span className="font-sans text-xs text-muted uppercase tracking-wide">Heat</span>
               <span className="font-sans text-xs text-muted uppercase tracking-wide">Customer</span>
               <span className="font-sans text-xs text-muted uppercase tracking-wide text-right">Total overdue</span>
@@ -747,28 +745,37 @@ export function WorkQueue({
         ) : (
           <>
             {/* ── Desktop table (md+) ─────────────────────────────────── */}
-            <div className="hidden md:block">
+            <div className="hidden md:block" role="table" aria-label="Work queue">
+              <div role="row" className="sr-only">
+                <span role="columnheader">Select</span>
+                <span role="columnheader">Heat</span>
+                <span role="columnheader">Customer</span>
+                <span role="columnheader">Total overdue</span>
+                <span role="columnheader">Oldest age</span>
+                <span role="columnheader" className="hidden lg:inline">Last contact</span>
+                <span role="columnheader" className="hidden lg:inline">Status</span>
+                <span role="columnheader" className="hidden xl:inline">Owner</span>
+                <span role="columnheader">Actions</span>
+              </div>
               {/* Rows — only the visible window (+ overscan) is mounted. */}
               <div
-                role="list"
-                aria-label="Work queue items"
+                role="rowgroup"
                 style={{ paddingTop: desk.padTop, paddingBottom: desk.padBottom, overflowAnchor: "none" }}
               >
                 {items.slice(desk.start, desk.end).map((item) => (
-                  <div key={item.caseId} role="listitem">
-                    <QueueRow
-                      item={item}
-                      selected={selectedCaseId === item.caseId}
-                      view={view}
-                      sort={sort}
-                      search={search}
-                      checked={selected.has(item.caseId)}
-                      onToggle={toggle}
-                      disabled={!selected.has(item.caseId) && capReached}
-                      collision={collisions[item.caseId]}
-                      timeZone={timeZone}
-                    />
-                  </div>
+                  <QueueRow
+                    key={item.caseId}
+                    item={item}
+                    selected={selectedCaseId === item.caseId}
+                    view={view}
+                    sort={sort}
+                    search={search}
+                    checked={selected.has(item.caseId)}
+                    onToggle={toggle}
+                    disabled={!selected.has(item.caseId) && capReached}
+                    collision={collisions[item.caseId]}
+                    timeZone={timeZone}
+                  />
                 ))}
               </div>
             </div>

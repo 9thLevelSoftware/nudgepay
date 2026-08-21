@@ -29,7 +29,7 @@ export function BulkActionBar({
 
   return (
     <div className="sticky bottom-0 z-30 flex flex-wrap items-center gap-3 border-t border-border bg-surface px-6 py-3 shadow-panel">
-      <span className="font-sans text-sm text-text font-medium">
+      <span role="status" className="font-sans text-sm text-text font-medium">
         {n} selected
         <span className="text-muted"> · {eligibleCount} can be texted</span>
         {n >= maxBatch ? <span className="text-muted"> · max {maxBatch} per batch</span> : null}

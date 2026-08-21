@@ -26,7 +26,7 @@ export function CommPrefsDrawer({
   return (
     <div className="fixed inset-0 z-40 flex justify-end bg-ink/40" role="dialog" aria-modal="true" aria-label="Communication preferences">
       {/* Overlay click closes (Link to the case without ?prefs) */}
-      <Link to={closeHref} aria-hidden="true" tabIndex={-1} aria-label="Close" className="absolute inset-0" />
+      <Link to={closeHref} aria-hidden="true" tabIndex={-1} className="absolute inset-0" />
       <div ref={panelRef} className="relative z-50 flex h-full w-full max-w-md flex-col gap-4 overflow-y-auto border-l border-border bg-surface p-5 shadow-panel">
         <div className="flex items-center justify-between">
           <h2 className="font-sans text-sm font-semibold text-text">Communication preferences</h2>
