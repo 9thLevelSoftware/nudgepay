@@ -197,6 +197,7 @@ function MessagesTab({
           </Link>
           <form method="post" action="/api/sms-consent">
             <input type="hidden" name="invoiceId" value={repInvoiceId ?? ""} />
+            <input type="hidden" name="customerId" value={selected.customerId} />
             <input type="hidden" name="returnTo" value={returnTo} />
             <input type="hidden" name="consent" value={consent ? "false" : "true"} />
             <button

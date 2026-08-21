@@ -7,7 +7,11 @@ const read = (rel: string) =>
 
 test("DetailPanel consent posts customerId (NP-AUD-2026-109)", () => {
   const src = read("../app/components/DetailPanel.tsx");
-  expect(src).toMatch(/name="customerId"/);
+  const form = src.match(/<form method="post" action="\/api\/sms-consent">[\s\S]*?<\/form>/);
+  expect(form, "sms-consent form missing").toBeTruthy();
+  expect(form![0]).toMatch(/name="customerId"/);
+  expect(form![0]).toMatch(/selected\.customerId/);
+  expect(form![0]).not.toMatch(/name="assign"/);
 });
 
 test("invite flash is generic, not raw DB (NP-AUD-2026-126)", () => {
