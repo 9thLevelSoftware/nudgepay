@@ -1,5 +1,5 @@
-import { useEffect, useRef, useState } from "react";
-import { Link, useNavigate, useNavigation, useRevalidator, useSearchParams } from "react-router";
+import { useEffect, useState } from "react";
+import { Link, useNavigate, useNavigation, useSearchParams } from "react-router";
 import { HEARTBEAT_INTERVAL_MS, type Collision } from "~/lib/collision";
 import { type CaseItem } from "~/lib/cases";
 import { Icon } from "~/components/Icons";
@@ -604,13 +604,8 @@ export function DetailPanel({
   orgPaymentLink: string;
 }) {
   // ── Hooks (must be unconditional, before any early return) ─────────────────
-  // Keep the latest revalidate fn in a ref so the heartbeat effect depends ONLY
-  // on customerId. In RR7 the useRevalidator() object identity changes on every
-  // revalidation (idle→loading→idle); depending on it would tear the effect down
-  // and re-run it mid-cycle, firing extra heartbeats (~3 per cycle instead of 1).
-  const { revalidate } = useRevalidator();
-  const revalidateRef = useRef(revalidate);
-  useEffect(() => { revalidateRef.current = revalidate; }, [revalidate]);
+  // Presence: beat immediately on customer change, then every HEARTBEAT_INTERVAL_MS.
+  // Interval POSTs presence only — must not revalidate the dashboard loader.
   const customerId = selected?.customerId ?? null;
   useEffect(() => {
     if (!customerId) return;
@@ -624,7 +619,6 @@ export function DetailPanel({
     const id = setInterval(() => {
       if (cancelled) return;
       beat();
-      revalidateRef.current();
     }, HEARTBEAT_INTERVAL_MS);
     return () => { cancelled = true; clearInterval(id); };
   }, [customerId]);

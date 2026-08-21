@@ -31,14 +31,17 @@ export async function sendBrokenPromiseAlerts(
   brokenDetails: BrokenPromiseDetail[],
   today: string,
 ): Promise<void> {
-  // Gate: org must have email enabled with a from_address
+  // Operator mail: Resend env (caller) + from_address. Ignores email_enabled
+  // (customer collections channel).
   const { data: ecfg } = await deps.service
     .from("email_config")
-    .select("email_enabled, from_address, from_name")
+    .select("from_address, from_name")
     .eq("org_id", orgId)
     .maybeSingle();
-  if (!ecfg?.email_enabled || !ecfg.from_address) return;
-  const from = ecfg.from_name ? `${ecfg.from_name} <${ecfg.from_address}>` : ecfg.from_address;
+  const fromAddress = ((ecfg?.from_address as string) ?? "").trim();
+  if (!fromAddress) return;
+  const fromName = ((ecfg?.from_name as string) ?? "").trim();
+  const from = fromName ? `${fromName} <${fromAddress}>` : fromAddress;
 
   // Resolve members + their prefs
   const members = await listOrgMembers(deps.service, orgId);
@@ -128,14 +131,16 @@ export async function runDailyDigest(
   orgId: string,
   today: string,
 ): Promise<void> {
-  // Gate: org must have email enabled
+  // Operator mail: Resend env (caller) + from_address. Ignores email_enabled.
   const { data: ecfg } = await deps.service
     .from("email_config")
-    .select("email_enabled, from_address, from_name")
+    .select("from_address, from_name")
     .eq("org_id", orgId)
     .maybeSingle();
-  if (!ecfg?.email_enabled || !ecfg.from_address) return;
-  const from = ecfg.from_name ? `${ecfg.from_name} <${ecfg.from_address}>` : ecfg.from_address;
+  const fromAddress = ((ecfg?.from_address as string) ?? "").trim();
+  if (!fromAddress) return;
+  const fromName = ((ecfg?.from_name as string) ?? "").trim();
+  const from = fromName ? `${fromName} <${fromAddress}>` : fromAddress;
 
   // Open cases with follow-ups due today (next_action_at <= today)
   const { data: caseRows } = await deps.service

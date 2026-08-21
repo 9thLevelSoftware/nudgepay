@@ -1,5 +1,5 @@
 import { expect, test } from "vitest";
-import { evaluatePromise, evaluatePromises, type PromiseEvalRow } from "../app/lib/promises";
+import { dollarsToCents, evaluatePromise, evaluatePromises, type PromiseEvalRow } from "../app/lib/promises";
 
 const row = (over: Partial<PromiseEvalRow> = {}): PromiseEvalRow => ({
   id: "p1", status: "pending", promisedAmount: 500, baselineBalance: 1200, graceUntil: "2026-07-03", ...over,
@@ -46,4 +46,29 @@ test("evaluatePromises returns only changed rows", () => {
   const balances = new Map([["a", 700], ["b", 1000]]); // a kept, b pending pre-grace
   const ops = evaluatePromises(rows, balances, "2026-07-01");
   expect(ops.map((o) => o.promiseId)).toEqual(["a"]);
+});
+
+test("dollarsToCents uses Math.round; IEEE 1.005 → 100 not 101", () => {
+  expect(dollarsToCents(1.005)).toBe(100);
+  expect(dollarsToCents(10.1)).toBe(1010);
+  expect(dollarsToCents(0.1 + 0.2)).toBe(30);
+});
+
+test("10.1 − 10.1 is 0 cents; $0.00 promised is kept, not a float-dust partial", () => {
+  const r = row({ promisedAmount: 0, baselineBalance: 10.1 });
+  expect(evaluatePromise(r, 10.1, "2026-07-01")).toEqual({
+    promiseId: "p1", status: "kept", amountReceived: 0, resolvedAt: "2026-07-01",
+  });
+  expect(evaluatePromise(r, 10.1, "2026-07-06")).toEqual({
+    promiseId: "p1", status: "kept", amountReceived: 0, resolvedAt: "2026-07-06",
+  });
+});
+
+test("0.1+0.2 IEEE noise is 0 cents received, not a false partial", () => {
+  expect(0.1 + 0.2).not.toBe(0.3);
+  const r = row({ promisedAmount: 0.3, baselineBalance: 0.1 + 0.2 });
+  expect(evaluatePromise(r, 0.3, "2026-07-02")).toBeNull();
+  expect(evaluatePromise(r, 0.3, "2026-07-06")).toEqual({
+    promiseId: "p1", status: "broken", amountReceived: 0, resolvedAt: "2026-07-06",
+  });
 });

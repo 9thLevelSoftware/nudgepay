@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { expect, test } from "vitest";
 import {
   summarizeRecentContact, liveViewers, collisionState,
@@ -81,4 +82,21 @@ test("collisionState: none past the window, but still exposes byUser for passive
 test("collisionState: clean none when no signals", () => {
   const c = collisionState({ contacts: [], heartbeats: [], currentUserId: ME, nowMs: NOW, label });
   expect(c).toEqual({ level: "none", byUser: null, recentAt: null, liveUsers: [] });
+});
+
+test("DetailPanel heartbeat POSTs presence and does not revalidate the dashboard", () => {
+  const src = readFileSync(new URL("../app/components/DetailPanel.tsx", import.meta.url), "utf8");
+  expect(src).toContain('fetch("/api/presence/heartbeat"');
+  expect(src).toContain("beat(); // immediate");
+  expect(src).toMatch(/setInterval\(\(\) => \{\s*if \(cancelled\) return;\s*beat\(\);\s*\}, HEARTBEAT_INTERVAL_MS\)/);
+  expect(src).not.toMatch(/useRevalidator/);
+  expect(src).not.toMatch(/revalidateRef/);
+});
+
+test("Focus heartbeat POSTs presence without revalidating", () => {
+  const src = readFileSync(new URL("../app/routes/focus.tsx", import.meta.url), "utf8");
+  expect(src).toContain('fetch("/api/presence/heartbeat"');
+  expect(src).toMatch(/setInterval\(\(\) => \{\s*if \(cancelled\) return;\s*beat\(\);\s*\}, HEARTBEAT_MS\)/);
+  expect(src).not.toMatch(/useRevalidator/);
+  expect(src).not.toMatch(/revalidate\(/);
 });

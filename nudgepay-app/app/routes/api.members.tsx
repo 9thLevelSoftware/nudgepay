@@ -1,8 +1,9 @@
 import { redirect, type ActionFunctionArgs } from "react-router";
-import { getEnv, getPublicBaseUrls } from "../lib/env.server";
+import { getEnv, getPublicBaseUrls, getEmailEnvOrNull } from "../lib/env.server";
 import { requireUser, resolveOrg } from "../lib/session.server";
 import { createSupabaseServiceClient } from "../lib/supabase.server";
 import { safeReturnTo } from "../lib/return-to";
+import { trySendInviteEmail } from "../lib/invite-email.server";
 
 function flag(returnTo: string, key: string, val: string): string {
   return `${returnTo}${returnTo.includes("?") ? "&" : "?"}${key}=${val}`;
@@ -30,7 +31,32 @@ export async function action({ request, context }: ActionFunctionArgs) {
     if (error) return redirect(flag(returnTo, "error", "invite"), { headers });
     const base = getPublicBaseUrls(context as any).appBaseUrl ?? new URL(request.url).origin;
     const link = `${base.replace(/\/$/, "")}/accept/${data!.token}`;
-    return redirect(flag(returnTo, "invite_link", encodeURIComponent(link)), { headers });
+    let sentFlag = "0";
+    try {
+      const { data: orgRow } = await service.from("organizations")
+        .select("name").eq("id", org.org_id).maybeSingle();
+      const emailEnv = getEmailEnvOrNull(context as any);
+      const sent = await trySendInviteEmail(
+        {
+          fetchFn: fetch,
+          service,
+          email: emailEnv ? { apiKey: emailEnv.RESEND_API_KEY } : null,
+        },
+        {
+          orgId: org.org_id,
+          orgName: ((orgRow?.name as string) ?? "").trim() || "your workspace",
+          to: email,
+          acceptUrl: link,
+        },
+      );
+      sentFlag = sent === "sent" ? "1" : "0";
+    } catch {
+      // Invite row already exists — still return the copyable link.
+    }
+    return redirect(
+      flag(flag(returnTo, "invite_link", encodeURIComponent(link)), "invite_sent", sentFlag),
+      { headers },
+    );
   }
 
   if (intent === "remove") {

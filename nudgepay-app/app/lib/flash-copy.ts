@@ -8,6 +8,7 @@ export const QBO_FLASH: Record<string, { tone: "ok" | "warn" | "err"; text: stri
   forbidden: { tone: "err", text: "Only workspace owners can connect or disconnect QuickBooks." },
   unconfigured: { tone: "warn", text: "QuickBooks isn't configured on this server yet. An operator needs to set the QBO Worker secrets." },
   sync_error: { tone: "warn", text: "QuickBooks connected, but the first sync hit an error. Check Settings → Integrations." },
+  unsupported: { tone: "err", text: "This workspace only supports US QuickBooks companies billed in USD." },
 };
 
 export const SYNC_FLASH: Record<string, { tone: "ok" | "warn" | "err"; text: string }> = {

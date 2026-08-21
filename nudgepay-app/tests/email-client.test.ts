@@ -22,4 +22,16 @@ describe("sendEmail", () => {
     await expect(sendEmail(f as any, { apiKey: "k" },
       { from: "a@x.com", to: "b@y.com", subject: "s", text: "t" })).rejects.toThrow(/domain not verified/);
   });
+  it("omits reply_to unless a received mailbox is passed", async () => {
+    const f = mockFetch(200, { id: "re_1" });
+    await sendEmail(f as any, { apiKey: "key" },
+      { from: "a@x.com", to: "b@y.com", subject: "Hi", text: "body" });
+    expect(JSON.parse((f.mock.calls[0][1] as any).body)).not.toHaveProperty("reply_to");
+  });
+  it("includes reply_to when replyTo is set", async () => {
+    const f = mockFetch(200, { id: "re_2" });
+    await sendEmail(f as any, { apiKey: "key" },
+      { from: "a@x.com", to: "b@y.com", subject: "Hi", text: "body", replyTo: "inbox@x.com" });
+    expect(JSON.parse((f.mock.calls[0][1] as any).body).reply_to).toBe("inbox@x.com");
+  });
 });

@@ -63,3 +63,90 @@ test("parses CloudEvents payload (array of qbo.<entity>.<event>.v1)", () => {
     { realmId: "RID2", entityName: "Invoice", id: "42", operation: "update" },
   ]);
 });
+
+// Locked production shape: Intuit CloudEvents v1.0 as documented (Nov 2025
+// sample / SampleApp-Webhooks-Java-Cloudevents). Keys and casing are the
+// official payload; entity/event tokens are ones this app consumes.
+const INTUIT_CLOUDEVENTS_FIXTURE = Object.freeze([
+  Object.freeze({
+    specversion: "1.0",
+    id: "88cd52aa-33b6-4351-9aa4-47572edbd068",
+    source: "intuit.dsnBgbseACLLRZNxo2dfc4evmEJdxde58xeeYcZliOU=",
+    type: "qbo.invoice.updated.v1",
+    datacontenttype: "application/json",
+    time: "2025-09-10T21:31:25.179851517Z",
+    intuitentityid: "42",
+    intuitaccountid: "310687",
+    data: Object.freeze({}),
+  }),
+  Object.freeze({
+    specversion: "1.0",
+    id: "a1b2c3d4-33b6-4351-9aa4-47572edbd069",
+    source: "intuit.dsnBgbseACLLRZNxo2dfc4evmEJdxde58xeeYcZliOU=",
+    type: "qbo.customer.created.v1",
+    datacontenttype: "application/json",
+    time: "2025-09-10T21:31:25.179851517Z",
+    intuitentityid: "1234",
+    intuitaccountid: "310687",
+    data: Object.freeze({}),
+  }),
+  Object.freeze({
+    specversion: "1.0",
+    id: "b2c3d4e5-33b6-4351-9aa4-47572edbd070",
+    source: "intuit.dsnBgbseACLLRZNxo2dfc4evmEJdxde58xeeYcZliOU=",
+    type: "qbo.payment.deleted.v1",
+    datacontenttype: "application/json",
+    time: "2025-09-10T21:31:25.179851517Z",
+    intuitentityid: "501",
+    intuitaccountid: "310687",
+    data: Object.freeze({}),
+  }),
+  Object.freeze({
+    specversion: "1.0",
+    id: "c3d4e5f6-33b6-4351-9aa4-47572edbd071",
+    source: "intuit.dsnBgbseACLLRZNxo2dfc4evmEJdxde58xeeYcZliOU=",
+    type: "qbo.credit_memo.updated.v1",
+    datacontenttype: "application/json",
+    time: "2025-09-10T21:31:25.179851517Z",
+    intuitentityid: "777",
+    intuitaccountid: "310687",
+    data: Object.freeze({}),
+  }),
+]);
+
+test("parses the locked Intuit CloudEvents production fixture", () => {
+  expect(parseQboWebhook(JSON.stringify(INTUIT_CLOUDEVENTS_FIXTURE))).toEqual([
+    { realmId: "310687", entityName: "Invoice", id: "42", operation: "updated" },
+    { realmId: "310687", entityName: "Customer", id: "1234", operation: "created" },
+    { realmId: "310687", entityName: "Payment", id: "501", operation: "deleted" },
+    { realmId: "310687", entityName: "CreditMemo", id: "777", operation: "updated" },
+  ]);
+});
+
+test("CloudEvents parser ignores undocumented entity types in the Intuit envelope", () => {
+  const body = JSON.stringify([{
+    specversion: "1.0",
+    id: "88cd52aa-33b6-4351-9aa4-47572edbd068",
+    source: "intuit.dsnBgbseACLLRZNxo2dfc4evmEJdxde58xeeYcZliOU=",
+    type: "qbo.account.created.v1",
+    datacontenttype: "application/json",
+    time: "2025-09-10T21:31:25.179851517Z",
+    intuitentityid: "1234",
+    intuitaccountid: "310687",
+    data: {},
+  }]);
+  expect(parseQboWebhook(body)).toEqual([]);
+});
+
+test("parseQboWebhook still flattens legacy eventNotifications next to CloudEvents", () => {
+  const legacy = {
+    eventNotifications: [
+      { realmId: "9130", dataChangeEvent: { entities: [
+        { name: "Invoice", id: "100", operation: "Update" },
+      ] } },
+    ],
+  };
+  expect(parseQboWebhook(JSON.stringify(legacy))).toEqual([
+    { realmId: "9130", entityName: "Invoice", id: "100", operation: "Update" },
+  ]);
+});

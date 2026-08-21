@@ -52,3 +52,11 @@ Tracks implementation against the frozen 2026-08-20 audit pack. Do **not** rewri
 | NP-AUD-2026-029 | 12 | code | CDC watermark captured before apply |
 | NP-AUD-2026-042 | 12 | code | Workers Observability + unhandled logging |
 | NP-AUD-2026-045 | 12 | code | org high-value band before hardcoded 10k/25k |
+| NP-AUD-2026-054 | 13 | code | 429 Retry-After cap 2s / 2 retries; locked CloudEvents fixture |
+| NP-AUD-2026-046 | 13 | code | promise eval in integer cents |
+| NP-AUD-2026-048 | 13 | code | US/USD CompanyInfo gate at QBO connect |
+| NP-AUD-2026-018 | 13 | code | invite email via team Resend path + copyable link |
+| NP-AUD-2026-032 | 13 | code | default email templates do not ask to reply |
+| NP-AUD-2026-049 | 13 | code | team alerts ignore customer email_enabled |
+| NP-AUD-2026-051 | 13 | code | tile “Customers in collections” |
+| NP-AUD-2026-050 | 13 | code | heartbeat POST only; no dashboard revalidate |
