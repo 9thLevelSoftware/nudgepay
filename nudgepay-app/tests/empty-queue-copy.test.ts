@@ -1,0 +1,66 @@
+import { describe, it, expect } from "vitest";
+import {
+  emptyQueueCopy,
+  FIRST_RUN_QUEUE_TITLE,
+  FILTER_MISS_QUEUE_TITLE,
+} from "../app/lib/empty-queue-copy";
+
+describe("emptyQueueCopy", () => {
+  it("uses first-run copy when QuickBooks is disconnected", () => {
+    expect(emptyQueueCopy({ connected: false, view: "all-open", q: "" })).toEqual({
+      title: FIRST_RUN_QUEUE_TITLE,
+      clearSearch: false,
+    });
+  });
+
+  it("uses first-run copy for an empty all-open queue with no search", () => {
+    expect(emptyQueueCopy({ connected: true, view: "all-open", q: "" })).toEqual({
+      title: FIRST_RUN_QUEUE_TITLE,
+      clearSearch: false,
+    });
+  });
+
+  it("treats whitespace-only search as no search", () => {
+    expect(emptyQueueCopy({ connected: true, view: "all-open", q: "   " })).toEqual({
+      title: FIRST_RUN_QUEUE_TITLE,
+      clearSearch: false,
+    });
+  });
+
+  it("does not tell a first-run user to clear the search", () => {
+    const copy = emptyQueueCopy({ connected: false, view: "all-open", q: "" });
+    expect(copy.title).toBe("Connect QuickBooks to load overdue invoices.");
+    expect(copy.clearSearch).toBe(false);
+    expect(copy.title).not.toMatch(/clear the search/i);
+  });
+
+  it("uses filter-miss copy when search is nonempty", () => {
+    expect(emptyQueueCopy({ connected: true, view: "all-open", q: "acme" })).toEqual({
+      title: FILTER_MISS_QUEUE_TITLE,
+      clearSearch: true,
+    });
+  });
+
+  it("uses filter-miss copy when the view is not all-open", () => {
+    expect(emptyQueueCopy({ connected: true, view: "30-plus", q: "" })).toEqual({
+      title: FILTER_MISS_QUEUE_TITLE,
+      clearSearch: true,
+    });
+  });
+
+  it("keeps filter-miss copy for coming-due, waiting, and my-work", () => {
+    for (const view of ["coming-due", "waiting", "my-work", "high-value"]) {
+      expect(emptyQueueCopy({ connected: true, view, q: "" }), view).toEqual({
+        title: "No accounts match this view.",
+        clearSearch: true,
+      });
+    }
+  });
+
+  it("prefers first-run copy when disconnected even if a filter is on", () => {
+    expect(emptyQueueCopy({ connected: false, view: "30-plus", q: "acme" })).toEqual({
+      title: FIRST_RUN_QUEUE_TITLE,
+      clearSearch: false,
+    });
+  });
+});

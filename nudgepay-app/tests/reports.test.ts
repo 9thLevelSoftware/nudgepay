@@ -1,5 +1,8 @@
 import { expect, test } from "vitest";
-import { buildTeamReport, activeBrokenCaseIds } from "../app/lib/reports";
+import {
+  buildTeamReport, activeBrokenCaseIds, parseReportRange, teamReportToCsv,
+  type TeamReport,
+} from "../app/lib/reports";
 
 const ROSTER = [
   { userId: "u1", label: "alice" },
@@ -189,4 +192,57 @@ test("workload: groups by owner, excludes suppressed, surfaces unassigned + unkn
   const ghost = r.workload.find((w) => w.ownerId === "ghost")!;
   expect(ghost.label).toBe("Unknown");
   expect(ghost.overdueTotal).toBe(10);
+});
+
+// ── CSV export ───────────────────────────────────────────────────────────────
+
+test("parseReportRange: accepts 7/30/90 and defaults everything else to 30", () => {
+  expect(parseReportRange("7")).toBe(7);
+  expect(parseReportRange("30")).toBe(30);
+  expect(parseReportRange("90")).toBe(90);
+  expect(parseReportRange(null)).toBe(30);
+  expect(parseReportRange("14")).toBe(30);
+  expect(parseReportRange("abc")).toBe(30);
+});
+
+test("teamReportToCsv: header + per-rep rows; null keptRate is blank", () => {
+  const input = base();
+  input.contactLogs = [
+    { userId: "u1", caseId: "c1", createdAt: "2026-06-20T10:00:00Z" },
+  ];
+  input.promises = [
+    { createdBy: "u1", status: "kept", resolvedAt: "2026-06-20T00:00:00Z" },
+    { createdBy: "u1", status: "kept", resolvedAt: "2026-06-21T00:00:00Z" },
+  ];
+  const csv = teamReportToCsv(buildTeamReport(input));
+  expect(csv).toBe(
+    "label,contactsLogged,casesTouched,kept,partiallyKept,broken,resolved,keptRate\n" +
+    "alice,1,1,2,0,0,2,1\n" +
+    "bob,0,0,0,0,0,0,\n",
+  );
+});
+
+test("teamReportToCsv: quotes fields that contain commas, quotes, or newlines", () => {
+  const report: TeamReport = {
+    range: 30,
+    perRep: [
+      {
+        userId: "u1", label: 'Smith, "Ace"',
+        contactsLogged: 1, casesTouched: 1,
+        kept: 0, partiallyKept: 0, broken: 0, resolved: 0, keptRate: null,
+      },
+      {
+        userId: "u2", label: "line\nbreak",
+        contactsLogged: 0, casesTouched: 0,
+        kept: 1, partiallyKept: 0, broken: 0, resolved: 1, keptRate: 0.5,
+      },
+    ],
+    firstContact: { medianHours: null, avgHours: null, within24hPct: null, contacted: 0, uncontacted: 0 },
+    workload: [],
+  };
+  expect(teamReportToCsv(report)).toBe(
+    "label,contactsLogged,casesTouched,kept,partiallyKept,broken,resolved,keptRate\n" +
+    "\"Smith, \"\"Ace\"\"\",1,1,0,0,0,0,\n" +
+    "\"line\nbreak\",0,0,1,0,0,1,0.5\n",
+  );
 });

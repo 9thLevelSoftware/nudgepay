@@ -60,3 +60,9 @@ Tracks implementation against the frozen 2026-08-20 audit pack. Do **not** rewri
 | NP-AUD-2026-049 | 13 | code | team alerts ignore customer email_enabled |
 | NP-AUD-2026-051 | 13 | code | tile “Customers in collections” |
 | NP-AUD-2026-050 | 13 | code | heartbeat POST only; no dashboard revalidate |
+| NP-AUD-2026-020 | 14 | code | Settings password change (current + new) |
+| NP-AUD-2026-019 | 14 | code | one membership per user; unique `user_id` |
+| NP-AUD-2026-048 | 14 | code | `/reports.csv` per-rep download |
+| NP-AUD-2026-101 | 14 | code | Reports nav “Owner only” |
+| NP-AUD-2026-102 | 14 | code | avatar menu + confirm sign out |
+| NP-AUD-2026-105 | 14 | code | first-run vs filter-miss empty queue |

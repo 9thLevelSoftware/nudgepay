@@ -384,7 +384,7 @@ test("action: foreign-org caseId returns 400 missing-case (cross-org guard via t
   expect(res.data).toEqual({ ok: false, error: "missing-case" });
 });
 
-test("action: visible case from a non-active org returns 400 missing-case", async () => {
+test("action: case from another org returns 400 missing-case", async () => {
   const svc = serviceClient();
   const email = `cl-multi-${Math.random()}@example.com`;
   const user = await makeUserClient(email);
@@ -394,16 +394,9 @@ test("action: visible case from a non-active org returns 400 missing-case", asyn
     org_id: orgA!.id,
     user_id: user.userId,
     role: "owner",
-    created_at: "2026-01-01T00:00:00Z",
   });
 
   const { data: orgB } = await svc.from("organizations").insert({ name: `CL-mb ${Math.random()}` }).select("id").single();
-  await svc.from("memberships").insert({
-    org_id: orgB!.id,
-    user_id: user.userId,
-    role: "member",
-    created_at: "2026-01-02T00:00:00Z",
-  });
   const { data: custB } = await svc.from("customers")
     .insert({ org_id: orgB!.id, qbo_id: `cl-mb-c1-${Math.random()}`, name: "Visible Foreign Co" }).select("id").single();
   const { data: caseB } = await svc.from("collection_cases")

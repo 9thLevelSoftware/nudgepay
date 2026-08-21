@@ -9,6 +9,7 @@ import { STATUS_LABEL, formatUSD } from "../lib/format";
 import { exceptionLabel } from "../lib/exceptions";
 import { partitionEligibility, clampBatch } from "../lib/bulk";
 import { plural } from "../lib/labels";
+import { emptyQueueCopy } from "../lib/empty-queue-copy";
 import { BulkActionBar } from "./BulkActionBar";
 import { useQueueKeys, type QueueKey } from "../lib/use-queue-keys";
 
@@ -152,6 +153,8 @@ interface WorkQueueProps {
   orgPaymentLink: string;
   /** Org-configured max cases per bulk action (assign / SMS). */
   maxBatch: number;
+  /** QBO connection — empty-state copy branches on first-run vs filter-miss. */
+  connected: boolean;
 }
 
 // ---------------------------------------------------------------------------
@@ -405,6 +408,7 @@ export function WorkQueue({
   orgPhone,
   orgPaymentLink,
   maxBatch,
+  connected,
 }: WorkQueueProps) {
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [smsOpen, setSmsOpen] = useState(false);
@@ -495,6 +499,8 @@ export function WorkQueue({
   }, [items, selectedCaseId, view, sort, search, navigate, toggle]);
 
   useQueueKeys({ enabled: true, onAction: handleQueueKey });
+
+  const emptyCopy = emptyQueueCopy({ connected, view, q: search });
 
   return (
     <section className="flex flex-col min-h-0" aria-labelledby="work-queue-title">
@@ -607,11 +613,13 @@ export function WorkQueue({
             <div className="w-10 h-10 rounded-full bg-paper flex items-center justify-center">
               <Icon name="filter" size={20} className="text-muted" />
             </div>
-            <p className="font-sans text-text font-medium">No accounts match this view.</p>
-            <p className="font-sans text-sm text-muted max-w-xs">
-              <Link to={`?view=all-open&sort=${sort}`} className="text-copper hover:underline font-medium">Clear the search</Link>{" "}
-              or pick another view.
-            </p>
+            <p className="font-sans text-text font-medium">{emptyCopy.title}</p>
+            {emptyCopy.clearSearch ? (
+              <p className="font-sans text-sm text-muted max-w-xs">
+                <Link to={`?view=all-open&sort=${sort}`} className="text-copper hover:underline font-medium">Clear the search</Link>{" "}
+                or pick another view.
+              </p>
+            ) : null}
           </div>
         ) : (
           <>

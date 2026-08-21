@@ -23,3 +23,7 @@ test("password recovery and readiness routes are registered", () => {
     expect(routesTable, f).toContain(`"routes/${f}"`);
   }
 });
+
+test("reports.csv resource route is registered", () => {
+  expect(routesTable).toContain(`"routes/reports.csv.tsx"`);
+});

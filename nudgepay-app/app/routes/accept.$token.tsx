@@ -12,6 +12,7 @@ import { getEnv } from "../lib/env.server";
 import { createSupabaseServiceClient } from "../lib/supabase.server";
 import { requireUser } from "../lib/session.server";
 import { acceptInvite } from "../lib/orgs.server";
+import { humanInviteError } from "../lib/org-membership";
 import { PublicLayout } from "../components/PublicLayout";
 import { Button } from "../components/ui";
 import { pageTitle } from "../lib/meta";
@@ -55,7 +56,7 @@ export async function action({ request, params, context }: ActionFunctionArgs) {
   try {
     await acceptInvite(service, String(params.token), user.id, user.email ?? "");
   } catch (e) {
-    return data({ error: (e as Error).message }, { headers });
+    return data({ error: humanInviteError(e) }, { headers });
   }
   return redirect("/dashboard", { headers });
 }

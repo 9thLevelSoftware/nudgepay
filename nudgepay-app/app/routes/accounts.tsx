@@ -37,7 +37,7 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
   const env = getEnv(context as any);
   const {
     supabase, service, headers, isOwner, org,
-    orgName, initials, connected, syncLabel,
+    orgName, initials, userLabel, connected, syncLabel,
     syncIssues,
   } = await loadWorkspaceChrome(request, env);
 
@@ -184,6 +184,7 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
     {
       orgName,
       initials,
+      userLabel,
       syncLabel,
       connected,
       isOwner,
@@ -210,6 +211,7 @@ export default function Accounts() {
     <AppShell
       orgName={d.orgName}
       userInitials={d.initials}
+      userLabel={d.userLabel}
       syncLabel={d.syncLabel}
       connected={d.connected}
       isOwner={d.isOwner}

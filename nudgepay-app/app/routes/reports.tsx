@@ -1,16 +1,10 @@
 import { data, useLoaderData, Link, type LoaderFunctionArgs } from "react-router";
 import { getEnv } from "../lib/env.server";
 import { loadWorkspaceChrome } from "../lib/workspace.server";
-import { listOrgMembers } from "../lib/orgs.server";
-import { addCalendarDays } from "../lib/business-days";
-import { loadOrgConfig } from "../lib/org-config.server";
-import { todayInTz } from "../lib/tz";
 import { AppShell } from "../components/AppShell";
 import { SyncIssues } from "../components/SyncIssues";
-import {
-  buildTeamReport, REPORT_RANGES, activeBrokenCaseIds, type ReportRange,
-  type ReportContactLog, type ReportPromise, type ReportOpenedCase, type ReportWorkloadCase,
-} from "../lib/reports";
+import { REPORT_RANGES, parseReportRange } from "../lib/reports";
+import { loadTeamReport } from "../lib/reports.server";
 import { pageTitle } from "../lib/meta";
 import type { Route } from "./+types/reports";
 
@@ -23,109 +17,16 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
   const env = getEnv(context as any);
   const {
     supabase, service, headers, org,
-    orgName, initials, connected, syncLabel, syncIssues,
+    orgName, initials, userLabel, connected, syncLabel, syncIssues,
   } = await loadWorkspaceChrome(request, env, { requireQbo: false, requireOwner: true });
   // Owner-only surface gate is enforced inside the helper
   // (redirects to /dashboard?denied=reports for non-owners).
 
-  // Window
-  const url = new URL(request.url);
-  const rawRange = Number(url.searchParams.get("range"));
-  const range: ReportRange = (REPORT_RANGES as readonly number[]).includes(rawRange) ? (rawRange as ReportRange) : 30;
-  const orgConfig = await loadOrgConfig(supabase, org.org_id);
-  const today = todayInTz(orgConfig.companyProfile.timezone);
-  const windowStart = addCalendarDays(today, -range);
-
-  // Roster
-  const roster = (await listOrgMembers(service, org.org_id)).map((m) => ({ userId: m.userId, label: m.label }));
-
-  // Windowed contact logs (serve BOTH throughput and first-contact)
-  const { data: logRows } = await supabase
-    .from("contact_logs")
-    .select("user_id, case_id, created_at")
-    .eq("org_id", org.org_id)
-    .gte("created_at", windowStart);
-  const contactLogs: ReportContactLog[] = ((logRows as any[]) ?? []).map((r) => ({
-    userId: r.user_id, caseId: r.case_id ?? null, createdAt: r.created_at,
-  }));
-
-  // Windowed resolved promises
-  const { data: promRows } = await supabase
-    .from("promises")
-    .select("created_by, status, resolved_at")
-    .eq("org_id", org.org_id)
-    .in("status", ["kept", "partially_kept", "broken"])
-    .gte("resolved_at", windowStart);
-  const promises: ReportPromise[] = ((promRows as any[]) ?? []).map((r) => ({
-    createdBy: r.created_by ?? null, status: r.status, resolvedAt: r.resolved_at ?? null,
-  }));
-
-  // Cases opened in window (for first-contact)
-  const { data: openedRows } = await supabase
-    .from("collection_cases")
-    .select("id, opened_at")
-    .eq("org_id", org.org_id)
-    .gte("opened_at", windowStart);
-  const openedCases: ReportOpenedCase[] = ((openedRows as any[]) ?? []).map((r) => ({
-    caseId: r.id, openedAt: r.opened_at,
-  }));
-
-  // --- Workload snapshot (current open cases; lighter than the dashboard pipeline) ---
-  const { data: openCaseRows } = await supabase
-    .from("collection_cases")
-    .select("id, customer_id, status, exception_reason, next_action_at")
-    .eq("org_id", org.org_id)
-    .is("closed_at", null);
-  const openCases = ((openCaseRows as any[]) ?? []);
-  const customerIds = [...new Set(openCases.map((c) => c.customer_id).filter(Boolean))];
-
-  // Owner per customer
-  const ownerByCustomer = new Map<string, string | null>();
-  if (customerIds.length > 0) {
-    const { data: custRows } = await supabase
-      .from("customers").select("id, owner").eq("org_id", org.org_id).in("id", customerIds);
-    for (const r of (custRows as any[]) ?? []) ownerByCustomer.set(r.id, r.owner ?? null);
-  }
-
-  // Overdue total per customer
-  const overdueByCustomer = new Map<string, number>();
-  const { data: invRows } = await supabase
-    .from("invoices").select("customer_id, balance").eq("org_id", org.org_id)
-    .gt("balance", 0).lt("due_date", today);
-  for (const r of (invRows as any[]) ?? []) {
-    if (!r.customer_id) continue;
-    overdueByCustomer.set(r.customer_id, (overdueByCustomer.get(r.customer_id) ?? 0) + (Number(r.balance) || 0));
-  }
-
-  // Cases with a currently-active broken promise (mirrors Collections screen logic)
-  const openCaseIds = openCases.map((c) => c.id);
-  let brokenCaseIds = new Set<string>();
-  if (openCaseIds.length > 0) {
-    const { data: promForCases } = await supabase
-      .from("promises")
-      .select("case_id, status, created_at")
-      .eq("org_id", org.org_id)
-      .in("case_id", openCaseIds)
-      .neq("status", "cancelled");
-    brokenCaseIds = activeBrokenCaseIds(
-      ((promForCases as any[]) ?? []).map((r) => ({ caseId: r.case_id, status: r.status, createdAt: r.created_at })),
-    );
-  }
-
-  const workloadCases: ReportWorkloadCase[] = openCases.map((c) => ({
-    caseId: c.id,
-    ownerId: c.customer_id ? (ownerByCustomer.get(c.customer_id) ?? null) : null,
-    status: c.status,
-    exceptionReason: c.exception_reason ?? null,
-    nextActionAt: c.next_action_at ?? null,
-    overdueTotal: c.customer_id ? (overdueByCustomer.get(c.customer_id) ?? 0) : 0,
-    hasBrokenPromise: brokenCaseIds.has(c.id),
-  }));
-
-  const report = buildTeamReport({ range, roster, contactLogs, promises, openedCases, workloadCases, today });
+  const range = parseReportRange(new URL(request.url).searchParams.get("range"));
+  const report = await loadTeamReport({ supabase, service, orgId: org.org_id, range });
 
   return data(
-    { report, orgName, initials, connected, syncLabel, syncIssues },
+    { report, orgName, initials, userLabel, connected, syncLabel, syncIssues },
     { headers },
   );
 }
@@ -141,31 +42,39 @@ function fmtHours(x: number | null): string {
 }
 
 export default function Reports() {
-  const { report, orgName, initials, connected, syncLabel, syncIssues } = useLoaderData<typeof loader>();
+  const { report, orgName, initials, userLabel, connected, syncLabel, syncIssues } = useLoaderData<typeof loader>();
   const teamContacts = report.perRep.reduce((s, r) => s + r.contactsLogged, 0);
   const teamKept = report.perRep.reduce((s, r) => s + r.kept, 0);
   const teamResolved = report.perRep.reduce((s, r) => s + r.resolved, 0);
   const teamKeptRate = teamResolved === 0 ? null : teamKept / teamResolved;
 
   return (
-    <AppShell orgName={orgName} userInitials={initials} syncLabel={syncLabel} connected={connected} isOwner={true} activeNav="reports" syncIssues={<SyncIssues issues={syncIssues} returnTo="/reports" />}>
+    <AppShell orgName={orgName} userInitials={initials} userLabel={userLabel} syncLabel={syncLabel} connected={connected} isOwner={true} activeNav="reports" syncIssues={<SyncIssues issues={syncIssues} returnTo="/reports" />}>
       <div className="px-6 py-5 flex flex-col gap-6">
-        <div className="flex items-center justify-between">
+        <div className="flex items-center justify-between gap-3">
           <h1 className="font-display text-xl font-semibold text-text">Team performance</h1>
-          {/* Range toggle */}
-          <div className="flex items-center gap-1" role="group" aria-label="Time range">
-            {REPORT_RANGES.map((r) => (
-              <Link
-                key={r}
-                to={`/reports?range=${r}`}
-                aria-current={report.range === r ? "page" : undefined}
-                className={`rounded-md border px-3 py-1.5 text-sm font-sans focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-copper ${
-                  report.range === r ? "border-copper bg-copper/10 text-copper" : "border-border bg-panel text-muted hover:text-text"
-                }`}
-              >
-                {r}d
-              </Link>
-            ))}
+          <div className="flex items-center gap-2">
+            <a
+              href={`/reports.csv?range=${report.range}`}
+              download={`nudgepay-report-${report.range}d.csv`}
+              className="rounded-md border border-border px-3 py-1.5 text-xs font-medium text-text hover:border-copper focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-copper"
+            >
+              Download CSV
+            </a>
+            <div className="flex items-center gap-1" role="group" aria-label="Time range">
+              {REPORT_RANGES.map((r) => (
+                <Link
+                  key={r}
+                  to={`/reports?range=${r}`}
+                  aria-current={report.range === r ? "page" : undefined}
+                  className={`rounded-md border px-3 py-1.5 text-sm font-sans focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-copper ${
+                    report.range === r ? "border-copper bg-copper/10 text-copper" : "border-border bg-panel text-muted hover:text-text"
+                  }`}
+                >
+                  {r}d
+                </Link>
+              ))}
+            </div>
           </div>
         </div>
 

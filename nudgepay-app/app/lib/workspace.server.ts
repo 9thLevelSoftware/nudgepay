@@ -89,7 +89,7 @@ export async function loadWorkspaceChrome(
 
   return {
     supabase, service, headers, user, org, isOwner,
-    orgName, initials, connected, syncLabel, lastSyncAt,
+    orgName, initials, userLabel, connected, syncLabel, lastSyncAt,
     syncIssues: mapSyncIssues(syncErrorRes.data as {
       id: string; source: string; scope: string; message: string; occurred_at: string;
     }[] | null),

@@ -47,6 +47,20 @@ test("acceptInvite rejects when the user's email differs from the invite", async
   expect(mem).toBeNull();
 });
 
+test("createOrgForUser rejects a second org and does not insert it", async () => {
+  const svc = serviceClient();
+  const user = await makeUserClient("onboard-second@example.com");
+  const orgId = await createOrgForUser(svc, user.userId, "First Workspace");
+  const secondName = `Second Workspace ${user.userId}`;
+
+  await expect(createOrgForUser(svc, user.userId, secondName)).rejects.toThrow(/already in a workspace/i);
+
+  const { data: extra } = await svc.from("organizations").select("id").eq("name", secondName);
+  expect(extra ?? []).toHaveLength(0);
+  const { data: mems } = await svc.from("memberships").select("org_id").eq("user_id", user.userId);
+  expect(mems).toEqual([{ org_id: orgId }]);
+});
+
 test("acceptInvite rejects when either email is empty (no empty-string bypass)", async () => {
   const svc = serviceClient();
   const owner = await makeUserClient("owner4@example.com");
