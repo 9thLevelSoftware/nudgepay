@@ -115,6 +115,7 @@ describe("save_email", () => {
       email_enabled: "true",
       from_address: "billing@chancey.test",
       from_name: "Chancey Pay",
+      postal_address: "1 Main St, Miami FL",
     });
 
     expect(res.status).toBe(302);
@@ -163,10 +164,10 @@ describe("save_email", () => {
     expect(row).toBeNull();
   });
 
-  it("parseCommPrefsUpdate includes do_not_email", () => {
-    const r = parseCommPrefsUpdate(fd({ do_not_email: "true" }));
+  it("parseCommPrefsUpdate includes do_not_email only with sentinel", () => {
+    const r = parseCommPrefsUpdate(fd({ do_not_email_set: "1", do_not_email: "true" }));
     expect((r as any).do_not_email).toBe(true);
     const r2 = parseCommPrefsUpdate(fd({}));
-    expect((r2 as any).do_not_email).toBe(false);
+    expect((r2 as any).do_not_email).toBeUndefined();
   });
 });

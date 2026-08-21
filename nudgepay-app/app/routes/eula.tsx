@@ -19,7 +19,9 @@ export default function Eula() {
       <p className="text-sm text-text leading-relaxed mb-3">You will use NudgePay only for your own business and in compliance with
         applicable law. You are solely responsible for obtaining and maintaining
         valid consent (TCPA / A2P 10DLC) before sending SMS to your customers,
-        and for honoring opt-out requests.</p>
+        and for honoring SMS and email opt-out requests. Collection email is sent
+        through Resend; you must provide a valid postal address and honor
+        CAN-SPAM unsubscribe, including RFC 8058 one-click.</p>
 
       <h2 className="text-base font-semibold text-text mt-6 mb-2">3. Disclaimer</h2>
       <p className="text-sm text-text leading-relaxed mb-3">NudgePay is provided "as is" during private beta, without warranties of

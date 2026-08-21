@@ -40,12 +40,15 @@ test("recordInboundMessage matches by phone and threads to the latest outbound i
   expect(msg!.body).toBe("ok thanks");
 });
 
-test("recordInboundMessage STOP flips sms_consent off", async () => {
+test("recordInboundMessage STOP flips sms_consent off and do_not_text", async () => {
   const { customerId, inboundTo } = await seedCustomerWithOutbound("+13105550202", "SMout-202", true);
   const out = await recordInboundMessage(svc, { from: "+13105550202", to: inboundTo, body: "STOP", messageSid: "SMin2-202" });
   expect(out.optOut).toBe(true);
-  const { data: cust } = await svc.from("customers").select("sms_consent").eq("id", customerId).single();
+  expect(out.twiml).toContain("unsubscribed");
+  const { data: cust } = await svc.from("customers").select("sms_consent, do_not_text, sms_consent_source").eq("id", customerId).single();
   expect(cust!.sms_consent).toBe(false);
+  expect(cust!.do_not_text).toBe(true);
+  expect(cust!.sms_consent_source).toBe("inbound_stop");
 });
 
 test("recordInboundMessage START re-enables sms_consent", async () => {
@@ -55,11 +58,15 @@ test("recordInboundMessage START re-enables sms_consent", async () => {
   expect(cust!.sms_consent).toBe(true);
 });
 
-test("recordInboundMessage returns matched:false for an unknown number (stores nothing)", async () => {
-  const out = await recordInboundMessage(svc, { from: "+13105559999", to: "+15005550006", body: "hello", messageSid: "SMin4-9999" });
-  expect(out).toEqual({ matched: false, optOut: false });
+test("recordInboundMessage persists unmatched inbound including STOP (NP-AUD-2026-004)", async () => {
+  const out = await recordInboundMessage(svc, { from: "+13105559999", to: "+15005550006", body: "STOP", messageSid: "SMin4-9999" });
+  expect(out.matched).toBe(false);
+  expect(out.optOut).toBe(true);
   const { data } = await svc.from("text_messages").select("id").eq("twilio_message_sid", "SMin4-9999");
   expect(data!.length).toBe(0);
+  const { data: orphan } = await svc.from("inbound_orphans").select("keyword, body").eq("twilio_message_sid", "SMin4-9999").single();
+  expect(orphan!.keyword).toBe("stop");
+  expect(orphan!.body).toBe("STOP");
 });
 
 test("updateMessageStatus updates status and error_code by sid", async () => {

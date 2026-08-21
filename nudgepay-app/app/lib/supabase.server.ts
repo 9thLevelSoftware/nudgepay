@@ -4,7 +4,17 @@ import type { AppEnv } from "./env.server";
 
 export function createSupabaseUserClient(request: Request, env: AppEnv) {
   const headers = new Headers();
+  const https = (() => {
+    try { return new URL(request.url).protocol === "https:"; } catch { return false; }
+  })();
   const supabase = createServerClient(env.SUPABASE_URL, env.SUPABASE_ANON_KEY, {
+    cookieOptions: {
+      httpOnly: true,
+      secure: https,
+      sameSite: "lax",
+      path: "/",
+      maxAge: 60 * 60 * 24 * 14,
+    },
     cookies: {
       getAll() {
         // parseCookieHeader returns { name, value? }[] — filter to entries with

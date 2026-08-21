@@ -19,16 +19,29 @@ describe("email settings", () => {
     const r = parseEmailSettingsUpdate(fd({ email_enabled: "true", from_address: "billing@x.com", from_name: "Chancey", postal_address: "1 Main St" }));
     expect(r).toEqual({ ok: true, value: { email_enabled: true, from_address: "billing@x.com", from_name: "Chancey", postal_address: "1 Main St" } });
   });
-  it("postal_address is optional and trimmed", () => {
+  it("requires postal when email is enabled (NP-AUD-2026-033-POSTAL)", () => {
+    const r = parseEmailSettingsUpdate(fd({ email_enabled: "true", from_address: "billing@x.com", from_name: "" }));
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.error).toBe("postal");
+  });
+  it("trims postal when enabled", () => {
     const r = parseEmailSettingsUpdate(fd({ email_enabled: "true", from_address: "billing@x.com", from_name: "", postal_address: "  1 Main St  " }));
     expect(r.ok && r.value.postal_address).toBe("1 Main St");
   });
   it("rejects a malformed from address", () => {
-    const r = parseEmailSettingsUpdate(fd({ email_enabled: "true", from_address: "not-an-email", from_name: "" }));
+    const r = parseEmailSettingsUpdate(fd({ email_enabled: "true", from_address: "not-an-email", from_name: "", postal_address: "1 Main" }));
     expect(r.ok).toBe(false);
   });
   it("allows empty from address when disabled", () => {
     const r = parseEmailSettingsUpdate(fd({ email_enabled: "false", from_address: "", from_name: "" }));
     expect(r.ok).toBe(true);
+  });
+  it("rejects a From outside the operator allowlist", () => {
+    const r = parseEmailSettingsUpdate(
+      fd({ email_enabled: "true", from_address: "other@x.com", postal_address: "1 Main" }),
+      ["billing@x.com"],
+    );
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.error).toBe("from_allowlist");
   });
 });

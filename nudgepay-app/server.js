@@ -17,8 +17,36 @@ const app = express();
 // and @react-router/express builds that URL from `req.protocol`. Without trust proxy
 // req.protocol is "http" while the browser sends `Origin: https://…`, so requireSameOrigin
 // (app/lib/session.server.ts) rejects every POST/PUT/PATCH/DELETE with 403.
-app.set("trust proxy", true);
+// Bound to one hop so a client-supplied X-Forwarded-* chain cannot mint origin.
+app.set("trust proxy", 1);
 app.disable("x-powered-by");
+
+const publicBase = process.env.APP_PUBLIC_BASE_URL;
+if (publicBase) {
+	let allowedHost = "";
+	try { allowedHost = new URL(publicBase).hostname; } catch { allowedHost = ""; }
+	if (allowedHost) {
+		app.use((req, res, next) => {
+			if (req.hostname !== allowedHost) {
+				res.status(400).type("text/plain").send("invalid host");
+				return;
+			}
+			next();
+		});
+	}
+}
+
+app.use((_req, res, next) => {
+	res.setHeader("Content-Security-Policy", "frame-ancestors 'none'");
+	res.setHeader("X-Content-Type-Options", "nosniff");
+	res.setHeader("X-Frame-Options", "DENY");
+	res.setHeader("Referrer-Policy", "strict-origin-when-cross-origin");
+	res.setHeader("Permissions-Policy", "camera=(), microphone=(), geolocation=()");
+	if (publicBase && publicBase.startsWith("https:")) {
+		res.setHeader("Strict-Transport-Security", "max-age=31536000; includeSubDomains");
+	}
+	next();
+});
 
 // Deliberately NO express.json() / express.urlencoded().
 // The four /webhooks/* routes call `await request.text()` to verify HMAC signatures
@@ -51,7 +79,7 @@ app.use(
 			cloudflare: {
 				env: process.env,
 				ctx: {
-					waitUntil: (p) => void Promise.resolve(p).catch(console.error),
+					waitUntil,
 					passThroughOnException: () => {},
 				},
 			},
@@ -59,7 +87,33 @@ app.use(
 	}),
 );
 
+const pending = new Set();
+function waitUntil(p) {
+	const wrapped = Promise.resolve(p).catch((err) => {
+		console.error("[waitUntil]", err);
+	});
+	pending.add(wrapped);
+	wrapped.finally(() => pending.delete(wrapped));
+}
+
+async function drain(timeoutMs = 9_000) {
+	if (pending.size === 0) return;
+	const timeout = new Promise((resolve) => setTimeout(resolve, timeoutMs));
+	await Promise.race([Promise.allSettled([...pending]), timeout]);
+}
+
 const port = Number(process.env.PORT) || 3000;
-app.listen(port, () => {
+const server = app.listen(port, () => {
 	console.log(`[server] listening on :${port}`);
 });
+
+function shutdown(signal) {
+	console.log(`[server] ${signal}; draining background work`);
+	server.close(async () => {
+		await drain();
+		process.exit(0);
+	});
+	setTimeout(() => process.exit(1), 10_000).unref();
+}
+process.on("SIGTERM", () => shutdown("SIGTERM"));
+process.on("SIGINT", () => shutdown("SIGINT"));

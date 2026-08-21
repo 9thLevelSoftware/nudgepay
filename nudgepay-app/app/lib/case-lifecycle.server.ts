@@ -7,24 +7,30 @@ import { reconcileCases } from "./cases";
 export async function applyCaseReconciliation(
   client: SupabaseClient, orgId: string, today: string,
 ): Promise<{ opened: number; resolved: number }> {
-  const { data: overdue, error: oErr } = await client
+  const { data: overdue, error: oErr, count: overdueCount } = await client
     .from("invoices")
-    .select("customer_id")
+    .select("customer_id", { count: "exact" })
     .eq("org_id", orgId)
     .gt("balance", 0)
     .lt("due_date", today)
     .not("customer_id", "is", null);
   if (oErr) throw oErr;
+  if ((overdue?.length ?? 0) < (overdueCount ?? 0)) {
+    throw new Error("reconciliation truncated: overdue invoice page is incomplete");
+  }
   const overdueCustomerIds = new Set(
     (overdue ?? []).map((r) => r.customer_id as string).filter(Boolean),
   );
 
-  const { data: open, error: cErr } = await client
+  const { data: open, error: cErr, count: openCount } = await client
     .from("collection_cases")
-    .select("id, customer_id")
+    .select("id, customer_id", { count: "exact" })
     .eq("org_id", orgId)
     .is("closed_at", null);
   if (cErr) throw cErr;
+  if ((open?.length ?? 0) < (openCount ?? 0)) {
+    throw new Error("reconciliation truncated: open case page is incomplete");
+  }
   const openCases = (open ?? []).map((r) => ({ id: r.id as string, customerId: r.customer_id as string }));
 
   const ops = reconcileCases(overdueCustomerIds, openCases, today);

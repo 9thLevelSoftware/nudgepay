@@ -5,6 +5,9 @@ export default [
   route("signup", "routes/signup.tsx"),
   route("login", "routes/login.tsx"),
   route("logout", "routes/logout.tsx"),
+  route("forgot-password", "routes/forgot-password.tsx"),
+  route("auth/confirm", "routes/auth.confirm.tsx"),
+  route("reset-password", "routes/reset-password.tsx"),
   route("onboarding", "routes/onboarding.tsx"),
   route("invite", "routes/invite.tsx"),
   route("accept/:token", "routes/accept.$token.tsx"),
@@ -45,4 +48,5 @@ export default [
   route("api/notification-prefs", "routes/api.notification-prefs.tsx"),
   route("api/test-message", "routes/api.test-message.tsx"),
   route("healthz", "routes/healthz.tsx"),
+  route("readyz", "routes/readyz.tsx"),
 ] satisfies RouteConfig;

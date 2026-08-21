@@ -42,3 +42,10 @@ test("no starter template body contains the old hardcoded company name", () => {
     expect(t.body).not.toContain("Chancey");
   }
 });
+
+test("dunning starters include STOP language (NP-AUD-2026-121)", () => {
+  for (const t of DEFAULT_SMS_TEMPLATES) {
+    if (t.id === "payment-received") continue;
+    expect(t.body).toMatch(/Reply STOP to opt out/);
+  }
+});

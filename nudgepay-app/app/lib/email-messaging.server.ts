@@ -50,16 +50,18 @@ export async function sendInvoiceEmail(
 
   const token = await signUnsubscribeToken(deps.unsubscribeSecret, args.orgId, cust.id as string);
   const unsubUrl = `${deps.unsubscribeBaseUrl}/unsubscribe?token=${token}`;
-  // CAN-SPAM footer: physical postal address (when configured) + unsubscribe link.
   const postal = ((ec.postal_address as string | null) ?? "").trim();
-  const footerLines = ["—"];
-  if (postal) footerLines.push(postal);
-  footerLines.push(`To stop receiving these emails, unsubscribe: ${unsubUrl}`);
+  if (!postal) throw new Error("Postal address required");
+  const footerLines = ["—", postal, `To stop receiving these emails, unsubscribe: ${unsubUrl}`];
   const bodyWithFooter = `${args.body}\n\n${footerLines.join("\n")}`;
   const from = formatSender(ec.from_address as string, (ec.from_name as string | null) ?? "");
 
   const result = await sendEmail(deps.fetchFn, deps.email, {
     from, to: cust.email as string, subject: args.subject, text: bodyWithFooter,
+    headers: {
+      "List-Unsubscribe": `<${unsubUrl}>`,
+      "List-Unsubscribe-Post": "List-Unsubscribe=One-Click",
+    },
   });
 
   const { data: row, error: insErr } = await deps.service.from("email_messages").insert({

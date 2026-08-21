@@ -26,7 +26,7 @@ interface Props {
   email: string | null;
   phone: string | null;
   smsConsent: boolean;
-  commPrefs: { preferredChannel: string | null; doNotCall: boolean; doNotText: boolean };
+  commPrefs: { preferredChannel: string | null; doNotCall: boolean; doNotText: boolean; doNotEmail: boolean };
   notes: string | null;
   openBalance: number;
   openInvoiceCount: number;
@@ -120,6 +120,9 @@ export function AccountProfile(p: Props) {
         <Form method="post" action="/api/comm-prefs" className="flex flex-wrap items-end gap-3">
           <input type="hidden" name="returnTo" value={p.returnTo} />
           <input type="hidden" name="customerId" value={p.customerId} />
+          <input type="hidden" name="do_not_call_set" value="1" />
+          <input type="hidden" name="do_not_text_set" value="1" />
+          <input type="hidden" name="do_not_email_set" value="1" />
           <label className="text-sm text-muted">Preferred channel
             <select
               name="preferred_channel"
@@ -138,6 +141,14 @@ export function AccountProfile(p: Props) {
           <label className="flex items-center gap-1.5 text-sm">
             <input type="checkbox" name="do_not_text" value="true" defaultChecked={p.commPrefs.doNotText} /> Do not text
           </label>
+          <label className="flex items-center gap-1.5 text-sm">
+            <input type="checkbox" name="do_not_email" value="true" defaultChecked={p.commPrefs.doNotEmail} /> Do not email
+          </label>
+          {p.commPrefs.doNotEmail ? (
+            <label className="flex items-center gap-1.5 text-sm">
+              <input type="checkbox" name="confirm_resubscribe" value="true" /> Confirm re-enable email
+            </label>
+          ) : null}
           <button type="submit" disabled={formBusy("/api/comm-prefs")} className="h-9 px-3 rounded bg-ink text-surface text-sm font-medium disabled:opacity-60 disabled:cursor-not-allowed">{formBusy("/api/comm-prefs") ? "Saving…" : "Save preferences"}</button>
         </Form>
 

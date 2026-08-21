@@ -27,7 +27,9 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
 
 export async function action({ request, context }: ActionFunctionArgs) {
   const env = getEnv(context as any);
-  const { headers, user } = await requireUser(request, env);
+  const { supabase, headers, user } = await requireUser(request, env);
+  const existing = await resolveOrg(supabase, user.id);
+  if (existing) return redirect("/dashboard", { headers });
   const form = await request.formData();
   const raw = form.get("orgName");
   const name = typeof raw === "string" ? raw.trim() : "";

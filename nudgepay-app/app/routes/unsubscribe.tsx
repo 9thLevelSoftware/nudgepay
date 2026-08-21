@@ -20,8 +20,15 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
 
 export async function action({ request, context }: ActionFunctionArgs) {
   const emailEnv = getUnsubscribeEnv(context as any);
-  const form = await request.formData();
-  const token = typeof form.get("token") === "string" ? (form.get("token") as string) : "";
+  const url = new URL(request.url);
+  let form: FormData;
+  try {
+    form = await request.formData();
+  } catch {
+    form = new FormData();
+  }
+  const formToken = typeof form.get("token") === "string" ? (form.get("token") as string) : "";
+  const token = formToken || url.searchParams.get("token") || "";
   const parsed = await verifyUnsubscribeToken(emailEnv.UNSUBSCRIBE_SECRET, token);
   if (!parsed) return data({ valid: false, token: "", done: false });
 

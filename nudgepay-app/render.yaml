@@ -30,7 +30,9 @@ services:
   - type: web
     name: nudgepay-app
     runtime: node
-    plan: free
+    # Free instances sleep after idle and are not production callback capacity
+    # (NP-AUD-2026-D03). Use starter (or higher) for staging/failover webhooks.
+    plan: starter
     region: oregon
     rootDir: nudgepay-app
     branch: main

@@ -18,10 +18,16 @@ describe("mapResendEvent", () => {
     expect(mapResendEvent({ type: "email.complained", data: { email_id: "re_4" } }))
       .toMatchObject({ kind: "status", status: "complained", optOut: true });
   });
-  it("maps inbound", () => {
-    expect(mapResendEvent({ type: "inbound.email.received", data: {
-      from: "C <c@x.com>", to: "billing@us.com", subject: "Re: invoice", text: "ok", email_id: "in_1" } }))
-      .toMatchObject({ kind: "inbound", from: "C <c@x.com>", subject: "Re: invoice", body: "ok" });
+  it("maps inbound email.received (Resend receiving API)", () => {
+    expect(mapResendEvent({ type: "email.received", data: {
+      from: ["C <c@x.com>"], to: ["billing@us.com"], subject: "Re: invoice", text: "ok", email_id: "in_1" } }))
+      .toMatchObject({ kind: "inbound", from: "C <c@x.com>", to: "billing@us.com", subject: "Re: invoice", body: "ok" });
+  });
+  it("maps email.failed and email.suppressed", () => {
+    expect(mapResendEvent({ type: "email.failed", data: { email_id: "re_5" } }))
+      .toMatchObject({ kind: "status", status: "failed", optOut: false });
+    expect(mapResendEvent({ type: "email.suppressed", data: { email_id: "re_6" } }))
+      .toMatchObject({ kind: "status", status: "failed", optOut: true });
   });
   it("ignores opened/clicked/unknown", () => {
     expect(mapResendEvent({ type: "email.opened", data: {} }).kind).toBe("ignore");

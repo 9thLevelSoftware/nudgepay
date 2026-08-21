@@ -34,6 +34,7 @@ type CustomerRow = {
   preferred_channel: string | null;
   do_not_call: boolean | null;
   do_not_text: boolean | null;
+  do_not_email: boolean | null;
   notes: string | null;
 };
 
@@ -135,7 +136,7 @@ export async function loader({ request, params, context }: LoaderFunctionArgs) {
   const { data: custData } = await supabase
     .from("customers")
     .select(
-      "id, name, phone, email, owner, sms_consent, preferred_channel, do_not_call, do_not_text, notes",
+      "id, name, phone, email, owner, sms_consent, preferred_channel, do_not_call, do_not_text, do_not_email, notes",
     )
     .eq("org_id", org.org_id)
     .eq("id", customerId)

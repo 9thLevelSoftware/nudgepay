@@ -128,10 +128,10 @@ export async function loadCaseQueueSource(args: LoadCaseQueueArgs): Promise<Case
   // Stage 1 — everything that needs only orgId. PostgREST builders resolve
   // with { data, error } (never reject), so Promise.all won't short-circuit.
   const [
-    { data: invRows },
-    { data: caseRows },
+    invRes,
+    caseRes,
     roster,
-    { data: mcfg },
+    mcfgRes,
     templates,
   ] = await Promise.all([
     supabase
@@ -149,6 +149,13 @@ export async function loadCaseQueueSource(args: LoadCaseQueueArgs): Promise<Case
     supabase.from("messaging_config").select("sms_enabled").eq("org_id", orgId).maybeSingle(),
     loadTemplates(supabase, orgId).catch(() => resolveTemplates([])),
   ]);
+
+  if (invRes.error) throw invRes.error;
+  if (caseRes.error) throw caseRes.error;
+  if (mcfgRes.error) throw mcfgRes.error;
+  const invRows = invRes.data;
+  const caseRows = caseRes.data;
+  const mcfg = mcfgRes.data;
 
   // Map raw invoice rows → InvoiceInput, split overdue / coming-due.
   const rawInvoices = (invRows as unknown as InvoiceRow[]) ?? [];

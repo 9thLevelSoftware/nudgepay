@@ -1,6 +1,7 @@
 import {
   Form,
   Link,
+  data as routerData,
   redirect,
   useActionData,
   useNavigation,
@@ -9,6 +10,7 @@ import {
 } from "react-router";
 import { getEnv } from "../lib/env.server";
 import { createSupabaseUserClient } from "../lib/supabase.server";
+import { requireSameOrigin } from "../lib/csrf.server";
 import { signupOutcome, humanAuthError } from "../lib/auth-flow.server";
 import { safeReturnTo } from "../lib/return-to";
 import { PublicLayout } from "../components/PublicLayout";
@@ -19,6 +21,7 @@ import type { Route } from "./+types/signup";
 export const meta: Route.MetaFunction = () => pageTitle("Sign up");
 
 export async function action({ request, context }: ActionFunctionArgs) {
+  requireSameOrigin(request);
   const env = getEnv(context as any);
   const form = await request.formData();
   const rawEmail = form.get("email");
@@ -38,7 +41,7 @@ export async function action({ request, context }: ActionFunctionArgs) {
 
   const outcome = signupOutcome(Boolean(data.session), returnTo);
   if ("redirectTo" in outcome) return redirect(outcome.redirectTo, { headers });
-  return { confirmEmail: true as const, returnTo: outcome.returnTo };
+  return routerData({ confirmEmail: true as const, returnTo: outcome.returnTo }, { headers });
 }
 
 export default function Signup() {

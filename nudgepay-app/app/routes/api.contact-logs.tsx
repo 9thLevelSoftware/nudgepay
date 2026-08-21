@@ -5,6 +5,7 @@ import { parseContactLogForm } from "../lib/contact-log";
 import { safeReturnTo } from "../lib/return-to";
 import { createPromiseForLog } from "../lib/promise-create.server";
 import { applyNextStep } from "../lib/next-step.server";
+import { isContactBlocked, type ExceptionState } from "../lib/exceptions";
 
 export async function action({ request, context }: ActionFunctionArgs) {
   const env = getEnv(context as any);
@@ -23,11 +24,14 @@ export async function action({ request, context }: ActionFunctionArgs) {
   // RLS, so bind submitted object ids to the dashboard org explicitly.
   const { data: cse } = await supabase
     .from("collection_cases")
-    .select("id, customer_id")
+    .select("id, customer_id, exception_reason")
     .eq("org_id", org.org_id)
     .eq("id", f.caseId)
     .maybeSingle();
   if (!cse) return data({ ok: false as const, error: "missing-case" }, { status: 400, headers });
+  if (isContactBlocked((cse.exception_reason as ExceptionState | null) ?? null)) {
+    return data({ ok: false as const, error: "contact-blocked" }, { status: 403, headers });
+  }
   const customerId = cse.customer_id as string;
   if (f.customerId && f.customerId !== customerId) {
     return data({ ok: false as const, error: "missing-customer" }, { status: 400, headers });

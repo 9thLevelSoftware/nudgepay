@@ -45,9 +45,18 @@ export default function Privacy() {
         each organization's data so members of one organization cannot access
         another's.</p>
 
+      <h2 className="text-base font-semibold text-text mt-6 mb-2">4b. Messaging data (email)</h2>
+      <p className="text-sm text-text leading-relaxed mb-3">When you email a customer, we process the destination address, subject,
+        body, and delivery events through Resend. Inbound replies to a configured
+        receiving mailbox are recorded in your workspace. We honor unsubscribe
+        requests (CAN-SPAM / RFC 8058 one-click) and do not send collection email
+        after a customer opts out.</p>
+
       <h2 className="text-base font-semibold text-text mt-6 mb-2">7. Sub-processors</h2>
-      <p className="text-sm text-text leading-relaxed mb-3">We rely on Intuit (QuickBooks Online), Twilio (SMS delivery), Supabase
-        (database and authentication), and Cloudflare (application hosting).</p>
+      <p className="text-sm text-text leading-relaxed mb-3">We rely on Intuit (QuickBooks Online), Twilio (SMS delivery), Resend
+        (transactional email send and inbound receiving), Supabase
+        (database and authentication), and Cloudflare (application hosting). Render
+        may host a secondary Node runtime for staging.</p>
 
       <h2 className="text-base font-semibold text-text mt-6 mb-2">8. Data retention and deletion</h2>
       <p className="text-sm text-text leading-relaxed mb-3">Disconnecting QuickBooks revokes and deletes stored tokens. To request

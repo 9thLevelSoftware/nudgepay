@@ -1,12 +1,7 @@
 import { createClient, SupabaseClient } from "@supabase/supabase-js";
-import { readFileSync } from "node:fs";
+import { loadTestEnv } from "./load-env";
 
-const env = Object.fromEntries(
-  readFileSync(new URL("../.env.test", import.meta.url), "utf8")
-    .split("\n").filter(Boolean).map((l) => {
-      const i = l.indexOf("="); return [l.slice(0, i), l.slice(i + 1)];
-    })
-) as Record<string, string>;
+const env = loadTestEnv();
 
 export const TEST_ENV = env;
 

@@ -49,9 +49,11 @@ export function CommPrefsDrawer({
 
           <fieldset className="flex flex-col gap-2">
             <legend className="text-xs font-sans font-medium uppercase tracking-wider text-muted">Do not contact on</legend>
-            {/* Checkbox only (value "true"): an unchecked box submits nothing, so the action's
-                `form.get("do_not_*") === "true"` correctly resolves to false. Do NOT add a hidden
-                "false" sibling — same-named fields make get() ambiguous (returns the first value). */}
+            {/* Hidden *_set sentinels tell the parser this form owns the flag.
+                Unchecked boxes submit nothing, so get("do_not_*") === "true" is false. */}
+            <input type="hidden" name="do_not_call_set" value="1" />
+            <input type="hidden" name="do_not_text_set" value="1" />
+            <input type="hidden" name="do_not_email_set" value="1" />
             <label className="flex items-center gap-2 text-sm text-text">
               <input type="checkbox" name="do_not_call" value="true" defaultChecked={prefs.doNotCall} className="h-4 w-4 rounded border-border text-copper" />
               Do not call
@@ -64,6 +66,12 @@ export function CommPrefsDrawer({
               <input type="checkbox" name="do_not_email" value="true" defaultChecked={prefs.doNotEmail} className="h-4 w-4 rounded border-border text-copper" />
               Do not email <span className="text-[11px] text-muted">(blocks email sending)</span>
             </label>
+            {prefs.doNotEmail ? (
+              <label className="flex items-center gap-2 text-sm text-text">
+                <input type="checkbox" name="confirm_resubscribe" value="true" className="h-4 w-4 rounded border-border text-copper" />
+                Confirm re-enable email (customer asked to receive mail again)
+              </label>
+            ) : null}
           </fieldset>
 
           <div className="flex justify-end gap-2">

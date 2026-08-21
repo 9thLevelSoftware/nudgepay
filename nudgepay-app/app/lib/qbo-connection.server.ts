@@ -38,11 +38,18 @@ export async function getValidAccessToken(
   if (expiresAt > Date.now() + 60_000) {
     return { accessToken: await decryptSecret(data.access_token_enc as string, key), realmId };
   }
-  // Refresh: tokens rotate — persist the new refresh token.
   const refreshToken = await decryptSecret(data.refresh_token_enc as string, key);
-  const tokens = await refreshTokens(fetchFn, cfg, refreshToken);
-  await storeConnection(service, key, orgId, realmId, tokens);
-  return { accessToken: tokens.accessToken, realmId };
+  try {
+    const tokens = await refreshTokens(fetchFn, cfg, refreshToken);
+    await storeConnection(service, key, orgId, realmId, tokens);
+    return { accessToken: tokens.accessToken, realmId };
+  } catch (err) {
+    const { error: statusErr } = await service.from("qbo_connections")
+      .update({ status: "error" })
+      .eq("org_id", orgId);
+    if (statusErr) throw statusErr;
+    throw err;
+  }
 }
 
 export async function disconnectConnection(
