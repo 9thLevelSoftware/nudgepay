@@ -97,6 +97,7 @@ const SMS_BANNER: Record<string, { text: string; tone: string }> = {
   blocked:   { text: "Not sent — this case is marked do-not-contact / legal.",        tone: "text-hot" },
   disabled:  { text: "Not sent — text messaging is turned off for this workspace.",   tone: "text-hot" },
   quiet:     { text: "Not sent — outside quiet hours.",                              tone: "text-warm" },
+  limited:   { text: "Not sent — send limit reached. Try again later.",              tone: "text-hot" },
 };
 
 const EMAIL_BANNER: Record<string, { text: string; tone: string }> = {
@@ -105,6 +106,7 @@ const EMAIL_BANNER: Record<string, { text: string; tone: string }> = {
   optout:   { text: "Not sent — customer opted out of email.",                      tone: "text-hot" },
   blocked:  { text: "Not sent — this case is marked do-not-contact / legal.",       tone: "text-hot" },
   error:    { text: "Could not send the email.",                                    tone: "text-hot" },
+  limited:  { text: "Not sent — send limit reached. Try again later.",              tone: "text-hot" },
 };
 
 // Static promise-error code → copy. Literal strings for Tailwind v4.

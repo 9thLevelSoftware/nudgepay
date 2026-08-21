@@ -33,3 +33,16 @@ Tracks implementation against the frozen 2026-08-20 audit pack. Do **not** rewri
 | NP-AUD-2026-D02 | 8 | code | `/readyz` |
 | NP-AUD-2026-D04 | 8 | code | `server.js` waitUntil drain |
 | NP-AUD-2026-D03 | 8 | code | `render.yaml` plan starter |
+| NP-AUD-2026-017 / first-run | 10 | code | QBO optional; `FirstRunBanner`; Connect degrades |
+| NP-AUD-2026-023 | 10 | code | `SyncIssues` in AppShell |
+| NP-AUD-2026-036-INVITE-TOKEN | 5 | code | members cannot SELECT `invites.token` |
+| NP-AUD-2026-036-LEDGER-RLS | 5 | code | contact_logs/text_messages insert+select only |
+| NP-AUD-2026-038-ROSTER | 10 | code | `listOrgMembers` uses `getUserById` |
+| NP-AUD-2026-024 | 11 | code | outbound email counts as last-contact |
+| NP-AUD-2026-026 | 11 | code | deleted default templates stay gone |
+| NP-AUD-2026-025 | 11 | code | Focus skips live-presence cases |
+| NP-AUD-2026-053-CONTRAST | 11 | code | darker copper; Focus `on-ink` / `copper-bright` |
+| NP-AUD-2026-053-LABELS | 11 | code | accounts search, Focus SMS, late-fee labels |
+| NP-AUD-2026-035-SMS-RATE | 9 | code | per-org/customer caps + Twilio Idempotency-Key |
+| NP-AUD-2026-035-EMAIL-RATE | 9 | code | per-org/customer caps + Resend Idempotency-Key |
+| NP-AUD-2026-037 | 5 | code | `0037_validate_tenant_fks.sql` |

@@ -9,13 +9,15 @@
 	--color-panel: #e9e4db;
 	--color-surface: #fffdf9;
 	--color-paper: #fbf8f1;
-	--color-copper: #cf8136;
+	--color-copper: #a35a18;
+	--color-copper-bright: #e8a14a;
 	--color-cool: #2e7fb8;
-	--color-warm: #cf8136;
+	--color-warm: #a35a18;
 	--color-hot: #d23b2e;
 	--color-advisory: #b45309;
 	--color-text: #16202b;
 	--color-muted: #5b6474;
+	--color-on-ink: #c9d0da;
 	--color-border: #ddd6c9;
 
 	/* Radii → rounded-tile, rounded-card */

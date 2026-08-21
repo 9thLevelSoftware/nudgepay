@@ -105,7 +105,7 @@ export function SendTextMiniForm({
         <button
           type="button"
           onClick={onCancel}
-          className="text-xs text-muted hover:text-surface"
+          className="text-xs text-on-ink hover:text-surface"
         >
           Cancel <kbd className="ml-1 rounded border border-white/10 bg-white/5 px-1 py-0.5 font-mono text-[9px]">esc</kbd>
         </button>
@@ -125,7 +125,7 @@ export function SendTextMiniForm({
 
       {/* Any gate blocks the form — soft gates can't be resolved in Focus Mode */}
       {gated ? (
-        <p className="text-xs text-muted">
+        <p className="text-xs text-on-ink">
           Texting is not available for this customer. Press <kbd className="rounded border border-white/10 bg-white/5 px-1 py-0.5 font-mono text-[9px]">esc</kbd> to go back.
         </p>
       ) : (
@@ -146,7 +146,7 @@ export function SendTextMiniForm({
                   "rounded-lg border px-2.5 py-1 text-xs font-semibold transition-colors",
                   body === applyTemplate(t.body, vars)
                     ? "border-copper bg-copper/15 text-copper"
-                    : "border-white/10 bg-white/5 text-muted hover:text-surface",
+                    : "border-white/10 bg-white/5 text-on-ink hover:text-surface",
                 ].join(" ")}
               >
                 {t.label}
@@ -154,19 +154,20 @@ export function SendTextMiniForm({
             ))}
           </div>
 
-          {/* Textarea */}
+          <label className="block text-xs font-medium text-on-ink" htmlFor="focus-sms-body">Message</label>
           <textarea
+            id="focus-sms-body"
             ref={textareaRef}
             value={body}
             onChange={(e) => setBody(e.target.value)}
             placeholder="Type a message…"
             rows={3}
-            className="w-full rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm text-surface placeholder:text-muted/50 focus:outline-none focus:ring-1 focus:ring-copper resize-none"
+            className="mt-1 w-full rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm text-surface placeholder:text-on-ink/50 focus:outline-none focus:ring-1 focus:ring-copper-bright resize-none"
           />
 
           {/* Send */}
           <div className="mt-3 flex items-center justify-between">
-            <p className="text-[10px] text-muted/60">
+            <p className="text-[10px] text-on-ink/80">
               To: {item.phone ?? "—"}
             </p>
             <fetcher.Form method="post" action="/api/text/send">

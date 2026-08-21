@@ -45,7 +45,7 @@ export function FocusCard({
     <div className="mx-auto w-full max-w-2xl rounded-xl border border-white/10 bg-white/5 p-6 shadow-lg">
       {/* Header: position / heat / level badge */}
       <div className="flex items-center justify-between gap-3 mb-4">
-        <span className="font-mono text-xs text-muted">
+        <span className="font-mono text-xs text-on-ink">
           {index + 1} of {total}
         </span>
         <div className="flex items-center gap-2">
@@ -60,39 +60,39 @@ export function FocusCard({
       <h2 className="text-xl font-display font-bold text-surface leading-tight truncate">
         {item.customerName}
       </h2>
-      <p className="mt-1 font-mono text-lg text-copper font-semibold">
+      <p className="mt-1 font-mono text-lg text-copper-bright font-semibold">
         {formatUSD(item.totalOverdue)}
-        <span className="ml-2 text-xs text-muted font-normal">
+        <span className="ml-2 text-xs text-on-ink font-normal">
           {item.invoiceCount} {item.invoiceCount === 1 ? "invoice" : "invoices"}
         </span>
       </p>
 
       {/* Why now callout */}
       <div className="mt-4 rounded-lg border border-copper/20 bg-copper/5 px-4 py-3">
-        <p className="text-xs font-semibold uppercase tracking-wider text-copper mb-1">
+        <p className="text-xs font-semibold uppercase tracking-wider text-copper-bright mb-1">
           Why now
         </p>
         <p className="text-sm font-sans font-semibold text-surface leading-snug">
           {whyNow.headline}
         </p>
         {whyNow.reason && (
-          <p className="mt-1 text-xs text-muted leading-relaxed">{whyNow.reason}</p>
+          <p className="mt-1 text-xs text-on-ink leading-relaxed">{whyNow.reason}</p>
         )}
       </div>
 
       {/* Contact info */}
-      <div className="mt-4 grid grid-cols-2 gap-x-4 gap-y-1 text-xs text-muted">
+      <div className="mt-4 grid grid-cols-2 gap-x-4 gap-y-1 text-xs text-on-ink">
         <div>
-          <span className="text-muted/60">Phone</span>{" "}
+          <span className="text-on-ink/80">Phone</span>{" "}
           <span className="text-surface">{item.phone ?? "—"}</span>
         </div>
         <div>
-          <span className="text-muted/60">Email</span>{" "}
+          <span className="text-on-ink/80">Email</span>{" "}
           <span className="text-surface">{item.email ?? "—"}</span>
         </div>
         {item.lastContact && (
           <div className="col-span-2">
-            <span className="text-muted/60">Last contact</span>{" "}
+            <span className="text-on-ink/80">Last contact</span>{" "}
             <span className="text-surface">
               {item.lastContact.channel} · {formatDate(item.lastContact.date)}
             </span>
@@ -100,7 +100,7 @@ export function FocusCard({
         )}
         {item.owner && (
           <div className="col-span-2">
-            <span className="text-muted/60">Owner</span>{" "}
+            <span className="text-on-ink/80">Owner</span>{" "}
             <span className="text-surface">{item.owner}</span>
           </div>
         )}
@@ -109,13 +109,13 @@ export function FocusCard({
       {/* Invoices grid */}
       {shown.length > 0 && (
         <div className="mt-4">
-          <p className="text-[10px] uppercase tracking-wider text-muted/60 mb-1.5">Invoices</p>
+          <p className="text-[10px] uppercase tracking-wider text-on-ink/80 mb-1.5">Invoices</p>
           <div className="space-y-1">
             {shown.map((inv, i) => (
               <InvoiceRow key={inv.invoiceId} inv={inv} isOldest={i === 0} />
             ))}
             {extra > 0 && (
-              <p className="text-xs text-muted">+{extra} more</p>
+              <p className="text-xs text-on-ink">+{extra} more</p>
             )}
           </div>
         </div>
@@ -143,7 +143,7 @@ export function FocusCard({
           disabled={busy}
           onClick={() => onAction("snooze")}
         />
-        <div className="ml-auto text-xs text-muted/60">
+        <div className="ml-auto text-xs text-on-ink/80">
           <kbd className="rounded border border-white/10 bg-white/5 px-1.5 py-0.5 font-mono text-[10px]">
             space
           </kbd>{" "}
@@ -162,10 +162,10 @@ function InvoiceRow({ inv, isOldest }: { inv: CaseInvoice; isOldest: boolean }) 
       <span className="font-mono text-surface">
         #{inv.docNumber ?? "—"}
       </span>
-      <span className="text-muted">
+      <span className="text-on-ink">
         {formatUSD(inv.balance)}
       </span>
-      <span className="text-muted/60">
+      <span className="text-on-ink/80">
         due {formatDate(inv.dueDate)}
       </span>
       {isOldest && (
@@ -201,7 +201,7 @@ function ActionButton({
         disabled ? "opacity-40 cursor-not-allowed" : "cursor-pointer",
       ].join(" ")}
     >
-      <kbd className="rounded border border-white/10 bg-white/5 px-1 py-0.5 font-mono text-[10px] text-muted">
+      <kbd className="rounded border border-white/10 bg-white/5 px-1 py-0.5 font-mono text-[10px] text-on-ink">
         {kbd}
       </kbd>
       {label}

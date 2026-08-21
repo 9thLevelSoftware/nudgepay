@@ -36,6 +36,7 @@ export async function action({ request, context }: ActionFunctionArgs) {
     const reason = /disabled/i.test(msg) ? "disabled"
       : /blocked/i.test(msg) ? "blocked"
       : /opted out/i.test(msg) ? "optout"
+      : /rate cap/i.test(msg) ? "limited"
       : "error";
     return redirect(withEmail(returnTo, reason), { headers });
   }

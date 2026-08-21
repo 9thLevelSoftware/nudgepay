@@ -23,7 +23,7 @@ import { isWithinSendWindow, quietHoursWindowLabel } from "./quiet-hours";
 import { readPresence } from "./presence.server";
 import type { RecentContactInput } from "./collision";
 import { loadTemplates } from "./message-templates.server";
-import { resolveTemplates, type OrgTemplates } from "./message-templates";
+import type { OrgTemplates } from "./message-templates";
 
 // ---------------------------------------------------------------------------
 // Row shapes returned by the Supabase queries (internal)
@@ -147,7 +147,7 @@ export async function loadCaseQueueSource(args: LoadCaseQueueArgs): Promise<Case
       .is("closed_at", null),
     listOrgMembers(service, orgId).catch(() => [] as OrgMember[]),
     supabase.from("messaging_config").select("sms_enabled").eq("org_id", orgId).maybeSingle(),
-    loadTemplates(supabase, orgId).catch(() => resolveTemplates([])),
+    loadTemplates(supabase, orgId).catch(() => ({ sms: [], email: [] })),
   ]);
 
   if (invRes.error) throw invRes.error;
@@ -217,7 +217,7 @@ export async function loadCaseQueueSource(args: LoadCaseQueueArgs): Promise<Case
 
   // Stage 2 — everything keyed on caseIds. Skipped when there are no open cases.
   if (caseIds.length > 0) {
-    const [{ data: logRows }, { data: msgRows }, { data: promRows }, presenceResult] = await Promise.all([
+    const [{ data: logRows }, { data: msgRows }, { data: emailRows }, { data: promRows }, presenceResult] = await Promise.all([
       supabase
         .from("contact_logs")
         .select("case_id, method, created_at, user_id")
@@ -225,6 +225,11 @@ export async function loadCaseQueueSource(args: LoadCaseQueueArgs): Promise<Case
         .order("created_at", { ascending: false }),
       supabase
         .from("text_messages")
+        .select("case_id, created_at, sent_by_user_id")
+        .eq("org_id", orgId).in("case_id", caseIds).eq("direction", "outbound")
+        .order("created_at", { ascending: false }),
+      supabase
+        .from("email_messages")
         .select("case_id, created_at, sent_by_user_id")
         .eq("org_id", orgId).in("case_id", caseIds).eq("direction", "outbound")
         .order("created_at", { ascending: false }),
@@ -252,6 +257,12 @@ export async function loadCaseQueueSource(args: LoadCaseQueueArgs): Promise<Case
     for (const r of (msgRows as any[]) ?? []) {
       if (r.case_id) {
         lastContactsInput.push({ caseId: r.case_id, date: r.created_at, channel: "Text" });
+        pushRecent(r.case_id, r.sent_by_user_id ?? null, r.created_at);
+      }
+    }
+    for (const r of (emailRows as any[]) ?? []) {
+      if (r.case_id) {
+        lastContactsInput.push({ caseId: r.case_id, date: r.created_at, channel: "Email" });
         pushRecent(r.case_id, r.sent_by_user_id ?? null, r.created_at);
       }
     }

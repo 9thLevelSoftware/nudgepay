@@ -19,10 +19,9 @@ export type OrgTemplates = {
   email: MessageTemplateRow[];
 };
 
-// Resolve templates for a channel: merge DB rows with defaults so that editing
-// one template doesn't cause the others to disappear. DB rows win by slug;
-// missing defaults are appended. When no DB rows exist at all, pure defaults
-// are returned (covers orgs created between migration and deploy).
+// Resolve templates for a channel. When no DB rows exist, factory defaults
+// are returned (new orgs). Once an org has saved any row for the channel,
+// deleted default slugs stay gone — they are not resurrected on reload.
 function resolveChannel(
   dbRows: MessageTemplateRow[],
   defaults: readonly { id: string; label: string; body: string; subject?: string }[],
@@ -35,16 +34,9 @@ function resolveChannel(
       body: t.body, sort: i,
     }));
   }
-  // DB rows present — merge: keep all DB rows, append any default slugs missing from DB.
-  const dbSlugs = new Set(dbRows.map(r => r.slug));
-  const missing = defaults
-    .filter(t => !dbSlugs.has(t.id))
-    .map((t, i) => ({
-      id: t.id, channel, slug: t.id, label: t.label,
-      subject: "subject" in t ? (t.subject ?? null) : null,
-      body: t.body, sort: dbRows.length + i,
-    }));
-  return [...dbRows, ...missing].sort((a, b) => a.sort - b.sort);
+  // DB rows present — do not resurrect deleted default slugs. An empty
+  // channel still gets factory defaults (new orgs / never-saved).
+  return dbRows.slice().sort((a, b) => a.sort - b.sort);
 }
 
 export function resolveTemplates(

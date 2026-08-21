@@ -134,15 +134,28 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
 
   const { data: msgRows } = await supabase
     .from("text_messages")
-    .select("case_id, created_at")
+    .select("case_id, customer_id, created_at")
     .eq("org_id", org.org_id)
     .eq("direction", "outbound")
     .order("created_at", { ascending: false });
   for (const r of (msgRows as any[]) ?? []) {
-    if (!r.case_id) continue;
-    const cid = caseToCustomer.get(r.case_id as string);
-    if (!cid) continue; // unmapped case — skip
+    const cid = (r.customer_id as string | null)
+      ?? (r.case_id ? caseToCustomer.get(r.case_id as string) : undefined);
+    if (!cid) continue;
     lastContactsInput.push({ customerId: cid, date: r.created_at, channel: "Text" });
+  }
+
+  const { data: emailRows } = await supabase
+    .from("email_messages")
+    .select("case_id, customer_id, created_at")
+    .eq("org_id", org.org_id)
+    .eq("direction", "outbound")
+    .order("created_at", { ascending: false });
+  for (const r of (emailRows as any[]) ?? []) {
+    const cid = (r.customer_id as string | null)
+      ?? (r.case_id ? caseToCustomer.get(r.case_id as string) : undefined);
+    if (!cid) continue;
+    lastContactsInput.push({ customerId: cid, date: r.created_at, channel: "Email" });
   }
 
   // Owner labels

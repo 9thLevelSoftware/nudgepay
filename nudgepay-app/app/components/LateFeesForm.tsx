@@ -25,6 +25,7 @@ export function LateFeesForm({
         <input type="hidden" name="intent" value="save_late_fees" />
         <input type="hidden" name="returnTo" value={returnTo} />
         <label className="flex items-center gap-2 text-sm font-medium text-text">
+          Show late fees
           <select
             name="late_fee_enabled"
             defaultValue={lateFee.enabled ? "true" : "false"}

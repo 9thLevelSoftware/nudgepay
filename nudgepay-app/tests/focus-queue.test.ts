@@ -1,5 +1,5 @@
 import { expect, test } from "vitest";
-import { buildFocusQueue } from "../app/lib/focus-queue";
+import { buildFocusQueue, dropLivePresenceCases } from "../app/lib/focus-queue";
 import type { CaseItem } from "../app/lib/cases";
 
 // Minimal stub for CaseItem — only the fields buildFocusQueue inspects.
@@ -94,4 +94,33 @@ test("empty items → empty queue with all-open scope", () => {
   const { queue, scope } = buildFocusQueue([], TODAY, USER);
   expect(scope).toBe("all-open");
   expect(queue).toEqual([]);
+});
+
+test("dropLivePresenceCases holds cases another agent is viewing", () => {
+  const items = [
+    stub({ caseId: "c1", customerId: "cust-1" }),
+    stub({ caseId: "c2", customerId: "cust-2" }),
+  ];
+  const now = Date.parse("2026-08-20T12:00:00Z");
+  const { queue, held } = dropLivePresenceCases(
+    items,
+    [{ customer_id: "cust-1", user_id: "other", last_seen_at: "2026-08-20T11:59:30Z" }],
+    USER,
+    now,
+  );
+  expect(queue.map((c) => c.caseId)).toEqual(["c2"]);
+  expect(held).toEqual([{ caseId: "c1", customerId: "cust-1", viewerIds: ["other"] }]);
+});
+
+test("dropLivePresenceCases ignores self presence", () => {
+  const items = [stub({ caseId: "c1", customerId: "cust-1" })];
+  const now = Date.parse("2026-08-20T12:00:00Z");
+  const { queue, held } = dropLivePresenceCases(
+    items,
+    [{ customer_id: "cust-1", user_id: USER, last_seen_at: "2026-08-20T11:59:30Z" }],
+    USER,
+    now,
+  );
+  expect(queue.map((c) => c.caseId)).toEqual(["c1"]);
+  expect(held).toEqual([]);
 });

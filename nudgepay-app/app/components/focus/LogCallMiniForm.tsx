@@ -67,7 +67,7 @@ export function LogCallMiniForm({ item, onDone, onCancel }: LogCallMiniFormProps
         <button
           type="button"
           onClick={onCancel}
-          className="text-xs text-muted hover:text-surface"
+          className="text-xs text-on-ink hover:text-surface"
         >
           Cancel <kbd className="ml-1 rounded border border-white/10 bg-white/5 px-1 py-0.5 font-mono text-[9px]">esc</kbd>
         </button>
@@ -91,7 +91,7 @@ export function LogCallMiniForm({ item, onDone, onCancel }: LogCallMiniFormProps
                 "flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-semibold cursor-pointer transition-colors",
                 outcome === o.value
                   ? "border-copper bg-copper/15 text-copper"
-                  : "border-white/10 bg-white/5 text-muted hover:text-surface",
+                  : "border-white/10 bg-white/5 text-on-ink hover:text-surface",
               ].join(" ")}
             >
               <input
@@ -114,11 +114,11 @@ export function LogCallMiniForm({ item, onDone, onCancel }: LogCallMiniFormProps
           onChange={(e) => setNotes(e.target.value)}
           placeholder="Notes (optional)"
           rows={2}
-          className="w-full rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm text-surface placeholder:text-muted/50 focus:outline-none focus:ring-1 focus:ring-copper resize-none"
+          className="w-full rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm text-surface placeholder:text-on-ink/50 focus:outline-none focus:ring-1 focus:ring-copper-bright resize-none"
         />
 
         {/* Follow-up hint */}
-        <p className="mt-1.5 text-[10px] text-muted/60">
+        <p className="mt-1.5 text-[10px] text-on-ink/80">
           Follow-up auto-set to {formatDate(item.suggestedFollowUpAt)}
         </p>
 

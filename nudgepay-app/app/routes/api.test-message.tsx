@@ -9,6 +9,10 @@ import { parseTestSmsDestination } from "../lib/provider-status";
 import { sendTestSms, sendTestEmail } from "../lib/test-message.server";
 import type { TwilioSender } from "../lib/twilio-client.server";
 import { safeReturnTo } from "../lib/return-to";
+import { loadOrgConfig } from "../lib/org-config.server";
+import { isWithinSendWindow } from "../lib/quiet-hours";
+import { resolveChannelSettings } from "../lib/channel-settings";
+import { assertTestBudget } from "../lib/send-limits.server";
 
 function flag(returnTo: string, key: string, val: string): string {
   return `${returnTo}${returnTo.includes("?") ? "&" : "?"}${key}=${val}`;
@@ -43,7 +47,19 @@ export async function action({ request, context }: ActionFunctionArgs) {
     const twilio = getTwilioEnvOrNull(context as any);
     if (!twilio) return redirect(flag(returnTo, "test_sms", "env"), { headers });
 
+    const { data: msg } = await service.from("messaging_config")
+      .select("sms_enabled").eq("org_id", org.org_id).maybeSingle();
+    if (!resolveChannelSettings(msg as { sms_enabled?: boolean | null } | null).smsEnabled) {
+      return redirect(flag(returnTo, "test_sms", "disabled"), { headers });
+    }
+    const orgConfig = await loadOrgConfig(service, org.org_id);
+    const { startHour, endHour } = orgConfig.quietHours;
+    if (!isWithinSendWindow(new Date(), orgConfig.companyProfile.timezone, startHour, endHour)) {
+      return redirect(flag(returnTo, "test_sms", "quiet"), { headers });
+    }
+
     try {
+      await assertTestBudget(service, "text_messages", { orgId: org.org_id });
       await sendTestSms(
         {
           fetchFn: fetch,
@@ -51,10 +67,12 @@ export async function action({ request, context }: ActionFunctionArgs) {
           twilio: { accountSid: twilio.TWILIO_ACCOUNT_SID, authToken: twilio.TWILIO_AUTH_TOKEN },
           defaultSender: envSender(twilio),
         },
-        { orgId: org.org_id, to },
+        { orgId: org.org_id, to, userId: user.id },
       );
       return redirect(flag(returnTo, "test_sms", "sent"), { headers });
-    } catch {
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "";
+      if (/rate cap/i.test(msg)) return redirect(flag(returnTo, "test_sms", "limited"), { headers });
       return redirect(flag(returnTo, "test_sms", "error"), { headers });
     }
   }
@@ -70,13 +88,16 @@ export async function action({ request, context }: ActionFunctionArgs) {
     if (!emailEnv) return redirect(flag(returnTo, "test_email", "env"), { headers });
 
     try {
+      await assertTestBudget(service, "email_messages", { orgId: org.org_id });
       const result = await sendTestEmail(
         { fetchFn: fetch, service, email: { apiKey: emailEnv.RESEND_API_KEY } },
-        { orgId: org.org_id, to },
+        { orgId: org.org_id, to, userId: user.id },
       );
       if (!result.ok) return redirect(flag(returnTo, "test_email", result.error), { headers });
       return redirect(flag(returnTo, "test_email", "sent"), { headers });
-    } catch {
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "";
+      if (/rate cap/i.test(msg)) return redirect(flag(returnTo, "test_email", "limited"), { headers });
       return redirect(flag(returnTo, "test_email", "error"), { headers });
     }
   }

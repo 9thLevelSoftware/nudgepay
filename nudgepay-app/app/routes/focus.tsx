@@ -13,7 +13,7 @@ import { loadOrgConfig } from "../lib/org-config.server";
 import { DEFAULT_ORG_CONFIG } from "../lib/org-config";
 import { todayInTz } from "../lib/tz";
 import { buildCaseItems, type CaseItem } from "../lib/cases";
-import { buildFocusQueue, type FocusScope } from "../lib/focus-queue";
+import { buildFocusQueue, dropLivePresenceCases, type FocusScope } from "../lib/focus-queue";
 import {
   initFocusSession, focusSessionReducer, triageCount, isDone,
   type FocusSession, type FocusEvent,
@@ -55,7 +55,7 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
 
   const [src, { data: orgRow, error: orgErr }] = await Promise.all([
     loadCaseQueueSource({
-      supabase, service, orgId: org.org_id, today, includePresence: false, orgConfig: orgConfigForToday,
+      supabase, service, orgId: org.org_id, today, includePresence: true, orgConfig: orgConfigForToday,
     }),
     supabase.from("organizations").select("name").eq("id", org.org_id).single(),
   ]);
@@ -67,7 +67,15 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
     src.lastContactsInput, src.promisesInput, today, src.ownerLabels, src.orgConfig,
   );
 
-  const { queue, scope } = buildFocusQueue(allItems, today, user.id);
+  const built = buildFocusQueue(allItems, today, user.id);
+  const { queue, held } = dropLivePresenceCases(
+    built.queue, src.presenceRows, user.id, Date.now(),
+  );
+  const scope = built.scope;
+  const heldLabels = held.map((h) => ({
+    caseId: h.caseId,
+    viewers: h.viewerIds.map((id) => src.ownerLabels.get(id) ?? "a teammate"),
+  }));
 
   // Build timelines for every case in the queue (sliced to 5 recent entries).
   const caseIds = queue.map((c) => c.caseId);
@@ -135,6 +143,7 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
   return data({
     queue: queue as CaseItem[],
     scope,
+    heldLabels,
     timelines,
     smsEnabled: src.smsEnabled,
     smsQuietNow: src.smsQuietNow,
@@ -154,7 +163,7 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
 
 export default function FocusMode() {
   const {
-    queue, scope, timelines, smsEnabled, smsQuietNow, quietHoursLabel, today,
+    queue, scope, heldLabels, timelines, smsEnabled, smsQuietNow, quietHoursLabel, today,
     smsTemplates, orgCompany, orgPhone, orgPaymentLink,
   } = useLoaderData<typeof loader>();
 
@@ -282,7 +291,7 @@ export default function FocusMode() {
       <header className="flex items-center gap-4 border-b border-white/10 px-4 py-3">
         <Link
           to="/dashboard"
-          className="text-xs text-muted hover:text-surface flex items-center gap-1"
+          className="text-xs text-on-ink hover:text-surface flex items-center gap-1"
         >
           ← Exit
         </Link>
@@ -323,7 +332,7 @@ export default function FocusMode() {
           <div className="mx-auto max-w-md text-center mt-16">
             <div className="text-5xl mb-4">✓</div>
             <h2 className="text-xl font-display font-bold text-surface mb-2">Queue cleared</h2>
-            <p className="text-sm text-muted mb-1">
+            <p className="text-sm text-on-ink mb-1">
               {session.actions} {session.actions === 1 ? "action" : "actions"} taken across {triaged} {triaged === 1 ? "case" : "cases"}.
             </p>
             <div className="mt-6 flex items-center justify-center gap-3">
@@ -346,7 +355,11 @@ export default function FocusMode() {
           /* Empty queue */
           <div className="mx-auto max-w-md text-center mt-16">
             <h2 className="text-xl font-display font-bold text-surface mb-2">Nothing to triage</h2>
-            <p className="text-sm text-muted mb-4">All cases are handled or on hold.</p>
+            <p className="text-sm text-on-ink mb-4">
+              {heldLabels.length > 0
+                ? `A teammate is already working ${heldLabels.length === 1 ? "this account" : "these accounts"} (${heldLabels.flatMap((h) => h.viewers).join(", ")}).`
+                : "All cases are handled or on hold."}
+            </p>
             <Link
               to="/dashboard"
               className="rounded-lg bg-copper px-4 py-2 text-sm font-semibold text-surface hover:bg-copper/90"
