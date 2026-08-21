@@ -33,12 +33,13 @@ function agePoints(ageDays: number): number {
   if (ageDays >= 1) return 8;
   return 0;
 }
-// The 12-point tier follows the org's high-value threshold (the org's own
-// definition of "high value"); the 25k/10k/1k tiers and point weights stay
-// fixed constants — only that one boundary is configurable.
+// Org high-value is the 12-point band. Hardcoded 25k/10k steps only apply
+// when their floors sit strictly above that threshold, so a threshold ≥ $10k
+// still produces a distinct 12-point band instead of being shadowed. The $1k
+// floor and point weights stay fixed.
 function balancePoints(balance: number, highValueThreshold: number = HIGH_VALUE_THRESHOLD): number {
-  if (balance >= 25_000) return 25;
-  if (balance >= 10_000) return 18;
+  if (balance >= 25_000 && 25_000 > highValueThreshold) return 25;
+  if (balance >= 10_000 && 10_000 > highValueThreshold) return 18;
   if (balance >= highValueThreshold) return 12;
   if (balance >= 1_000) return 6;
   if (balance > 0) return 2;

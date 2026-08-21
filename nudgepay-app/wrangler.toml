@@ -24,6 +24,16 @@ custom_domain = true
 # time reaches each org's configured digest_hour_local — see digest-cron.server.ts).
 crons = ["*/30 * * * *", "0 * * * *"]
 
+# Workers Logs (no Sentry DSN). Dashboard: Workers & Pages → nudgepay-app → Observability.
+[observability]
+enabled = true
+head_sampling_rate = 1
+
+[observability.logs]
+enabled = true
+invocation_logs = true
+persist = true
+
 # --- Production environment ---------------------------------------------------
 # Deploy with: npx wrangler deploy --env production
 # Non-secret production vars (secrets are set separately via `wrangler secret put`).
@@ -38,6 +48,15 @@ crons = ["*/30 * * * *", "0 * * * *"]
 [[env.production.routes]]
 pattern = "nudgepay.9thlevelsoftware.com"
 custom_domain = true
+
+[env.production.observability]
+enabled = true
+head_sampling_rate = 1
+
+[env.production.observability.logs]
+enabled = true
+invocation_logs = true
+persist = true
 
 # Secrets required in production (set each: `npx wrangler secret put <NAME> --env production`):
 #   SUPABASE_ANON_KEY            Supabase anon/publishable key

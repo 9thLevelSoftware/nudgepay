@@ -4,13 +4,15 @@ import { createSupabaseServiceClient } from "../lib/supabase.server";
 import { getOptionalUser, requireUser, resolveOrg } from "../lib/session.server";
 import { disconnectConnection } from "../lib/qbo-connection.server";
 import { intuitDisconnectPlan } from "../lib/auth-flow.server";
+import { qboDisconnectDecision } from "../lib/qbo-disconnect";
 import { safeReturnTo } from "../lib/return-to";
 
 function qboCfg(qbo: QboEnv) {
   return { clientId: qbo.QBO_CLIENT_ID, clientSecret: qbo.QBO_CLIENT_SECRET, redirectUri: qbo.QBO_REDIRECT_URI };
 }
 
-// In-app "Disconnect" button: owner-gated POST.
+// In-app "Disconnect" button: owner-gated POST. Typed workspace name is
+// required; a mismatch redirects with qbo=confirm and does not revoke tokens.
 export async function action({ request, context }: ActionFunctionArgs) {
   const env = getEnv(context as any);
   const { supabase, headers, user } = await requireUser(request, env);
@@ -19,6 +21,18 @@ export async function action({ request, context }: ActionFunctionArgs) {
   const form = await request.formData();
   const returnTo = safeReturnTo(form.get("returnTo"));
   const sep = returnTo.includes("?") ? "&" : "?";
+
+  const { data: orgRow } = await supabase
+    .from("organizations")
+    .select("name")
+    .eq("id", org.org_id)
+    .maybeSingle();
+  const orgName = typeof orgRow?.name === "string" ? orgRow.name : "";
+  const decision = qboDisconnectDecision(form.get("confirm"), orgName);
+  if (!decision.disconnect) {
+    return redirect(`${returnTo}${sep}qbo=${decision.qbo}`, { headers });
+  }
+
   const qbo = getQboEnvOrNull(context as any);
   if (!qbo) return redirect(`${returnTo}${sep}qbo=unconfigured`, { headers });
   const service = createSupabaseServiceClient(env);

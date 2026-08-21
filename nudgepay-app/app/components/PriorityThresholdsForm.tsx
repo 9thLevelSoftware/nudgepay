@@ -2,9 +2,11 @@
 // Controls the "high value" balance boundary (12-point balance tier + the
 // high-value view/metric) and the score cutoffs that map a case's score to a
 // Critical/High/Medium/Low level. Server-side ordering matches migration
-// 0027's check constraint: critical > high > medium > 0.
+// 0027's check constraint: critical > high > medium > 0. Input min matches
+// HIGH_VALUE_THRESHOLD_MIN ($1,000) in org-settings.ts.
 
 import { Form, useNavigation, useSearchParams } from "react-router";
+import { HIGH_VALUE_THRESHOLD_MIN } from "../lib/org-settings";
 
 export function PriorityThresholdsForm({
   priority,
@@ -34,7 +36,7 @@ export function PriorityThresholdsForm({
         <label className="grid max-w-xs gap-1 text-sm font-medium text-text">
           High-value threshold ($)
           <input
-            type="number" name="high_value_threshold" min={0.01} step="0.01" defaultValue={priority.highValue}
+            type="number" name="high_value_threshold" min={HIGH_VALUE_THRESHOLD_MIN} step="0.01" defaultValue={priority.highValue}
             className="h-8 rounded-md border border-border bg-panel px-2 text-sm text-text tabular-nums focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-copper"
           />
         </label>
@@ -74,7 +76,7 @@ export function PriorityThresholdsForm({
             {busy ? "Saving…" : "Save"}
           </button>
           {sp.get("saved") === "1" && <span className="text-xs text-cool" role="status">Saved.</span>}
-          {error === "high_value_threshold" && <span className="text-xs text-hot" role="alert">High-value threshold must be greater than 0.</span>}
+          {error === "high_value_threshold" && <span className="text-xs text-hot" role="alert">High-value threshold must be at least $1,000.</span>}
           {error === "priority_thresholds" && <span className="text-xs text-hot" role="alert">Enter whole numbers for each threshold.</span>}
           {error === "priority_thresholds_order" && <span className="text-xs text-hot" role="alert">Thresholds must be ordered: critical &gt; high &gt; medium &gt; 0.</span>}
         </div>

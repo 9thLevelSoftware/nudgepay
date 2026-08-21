@@ -2,8 +2,9 @@
 
 Pre-launch verification for the QuickBooks Online integration.
 
-> **TODO(deploy):** Replace every `nudgepay.9thlevelsoftware.com` with the actual
-> Worker production URL before going live.
+> Production Worker origin: `https://nudgepay.9thlevelsoftware.com`.
+> Intuit app-card Privacy / EULA must use the Worker URLs below (legacy Netlify
+> host 301s `/privacy` and `/eula` to these).
 
 ## 1. Intuit App Card URLs
 

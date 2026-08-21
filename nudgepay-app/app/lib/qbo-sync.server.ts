@@ -284,12 +284,13 @@ export async function runCdcCatchup(
   const { data: conn } = await deps.service.from("qbo_connections")
     .select("last_cdc_time").eq("org_id", orgId).maybeSingle();
 
-  // Default to a 7-day window on first run; never request beyond CDC's 30-day
-  // lookback limit.
+  // Capture the CDC cursor *before* the Intuit call. Stamping a post-apply
+  // clock would skip entities that changed while we were processing.
+  const fetchedAt = new Date();
   const sinceMs = conn?.last_cdc_time
     ? new Date(conn.last_cdc_time as string).getTime()
-    : Date.now() - 7 * DAY_MS;
-  const minMs = Date.now() - 30 * DAY_MS;
+    : fetchedAt.getTime() - 7 * DAY_MS;
+  const minMs = fetchedAt.getTime() - 30 * DAY_MS;
   const changedSince = new Date(Math.max(sinceMs, minMs)).toISOString();
 
   const { invoices, customers, payments, creditMemos } = await qboCdc(deps.fetchFn, deps.api, accessToken, realmId, changedSince);
@@ -299,26 +300,28 @@ export async function runCdcCatchup(
 
   const custIds = invoices.map((i) => i?.CustomerRef?.value).filter(Boolean).map(String);
   const idMap = await customerIdMap(deps.service, orgId, custIds);
-  const now = new Date();
   const invoiceRows = invoices.map((inv) =>
-    mapQboInvoice(inv, orgId, idMap.get(String(inv?.CustomerRef?.value)) ?? null, now),
+    mapQboInvoice(inv, orgId, idMap.get(String(inv?.CustomerRef?.value)) ?? null, fetchedAt),
   );
   await upsertInvoices(deps.service, invoiceRows);
 
   const orgConfig = await loadOrgConfig(deps.service, orgId).catch(() => DEFAULT_ORG_CONFIG);
-  const reconcileToday = todayInTz(orgConfig.companyProfile.timezone, now);
+  const reconcileToday = todayInTz(orgConfig.companyProfile.timezone, fetchedAt);
   const paymentRaws = [
     ...payments.map((p) => ({ raw: p, type: "payment" as const })),
     ...creditMemos.map((c) => ({ raw: c, type: "credit_memo" as const })),
   ];
   try {
-    await applyPaymentsAndEvaluate(deps, orgId, accessToken, realmId, paymentRaws, reconcileToday, now);
+    await applyPaymentsAndEvaluate(deps, orgId, accessToken, realmId, paymentRaws, reconcileToday, fetchedAt);
   } catch (e) {
+    // Do not advance last_cdc_time after a partial apply — the next catch-up
+    // retries this window.
     console.error("[6b] payments/eval failed (cdc); cron will re-converge", e);
+    throw e;
   }
 
   const { error } = await deps.service.from("qbo_connections")
-    .update({ last_cdc_time: now.toISOString(), last_sync_at: now.toISOString() })
+    .update({ last_cdc_time: fetchedAt.toISOString(), last_sync_at: fetchedAt.toISOString() })
     .eq("org_id", orgId);
   if (error) throw error;
 

@@ -3,6 +3,7 @@
 export const QBO_FLASH: Record<string, { tone: "ok" | "warn" | "err"; text: string }> = {
   connected: { tone: "ok", text: "QuickBooks connected. Overdue invoices will appear after the first sync." },
   disconnected: { tone: "ok", text: "QuickBooks disconnected." },
+  confirm: { tone: "err", text: "Type the workspace name to confirm disconnecting QuickBooks." },
   error: { tone: "err", text: "Could not connect QuickBooks. Try again from Settings → Integrations." },
   forbidden: { tone: "err", text: "Only workspace owners can connect or disconnect QuickBooks." },
   unconfigured: { tone: "warn", text: "QuickBooks isn't configured on this server yet. An operator needs to set the QBO Worker secrets." },
