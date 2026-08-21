@@ -102,6 +102,7 @@ test("WorkQueue density Links sit outside the GET form and hide view+entity+dens
   expect(src).toContain('name="entity" value={entity}');
   expect(src).toContain('name="density" value={hrefDensity}');
   expect(src).not.toMatch(/<input type="hidden" name="sort"/);
+  expect(src).toContain("value={sortSelectValue}");
   expect(src).toContain("case: selectedCaseId, tab, invoice");
   const entityBeforeForm = src.indexOf("aria-label=\"Queue entity\"");
   const densityBeforeForm = src.indexOf("aria-label=\"Queue density\"");

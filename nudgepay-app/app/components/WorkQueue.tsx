@@ -568,6 +568,7 @@ function InvoiceQueueRow({
   checked,
   onToggle,
   disabled,
+  collision,
 }: {
   item: InvoiceQueueItem;
   selected: boolean;
@@ -580,6 +581,7 @@ function InvoiceQueueRow({
   checked: boolean;
   onToggle: (id: string) => void;
   disabled: boolean;
+  collision?: Collision;
 }) {
   const navigate = useNavigate();
   const chrome = { view, sort, q: search || undefined, entity, density: hrefDensity };
@@ -633,6 +635,7 @@ function InvoiceQueueRow({
           >
             {item.customerName}
           </Link>
+          <CollisionMarker collision={collision} />
         </span>
         <span role="cell" data-label="Balance" className="font-mono text-text tabular-nums text-right hidden md:block">
           {formatUSD(item.balance)}
@@ -842,6 +845,7 @@ export function WorkQueue({
   const { scrollerRef, scrollTop, viewportH } = useQueueScroller();
   const hrefDensity = densityFromUrl ? density : undefined;
   const invoiceMode = entity === "invoices" && view !== "coming-due";
+  const sortSelectValue = !invoiceMode && sort === "due-date" ? "most-overdue" : sort;
   const listCount = invoiceMode ? invoiceItems.length : items.length;
   const desk = visibleWindow({
     scrollTop,
@@ -1042,7 +1046,16 @@ export function WorkQueue({
             {ENTITY_MODES.map((id) => (
               <Link
                 key={id}
-                to={dashboardHref({ view, sort, q: search || undefined, entity: id, density: hrefDensity, case: selectedCaseId, tab, invoice })}
+                to={dashboardHref({
+                  view,
+                  sort: id === "customers" && sort === "due-date" ? "most-overdue" : sort,
+                  q: search || undefined,
+                  entity: id,
+                  density: hrefDensity,
+                  case: selectedCaseId,
+                  tab,
+                  invoice,
+                })}
                 aria-pressed={entity === id}
                 className={[
                   "px-2.5 h-8 inline-flex items-center rounded text-xs font-sans font-medium transition-colors",
@@ -1098,8 +1111,9 @@ export function WorkQueue({
             <Icon name="arrowDownUp" size={15} className="text-muted shrink-0" />
             <span className="sr-only">Sort work queue</span>
             <select
+              key={invoiceMode ? "invoices" : "customers"}
               name="sort"
-              defaultValue={!invoiceMode && sort === "due-date" ? "most-overdue" : sort}
+              value={sortSelectValue}
               onChange={(e) => e.currentTarget.form?.requestSubmit()}
               className="bg-transparent border-none outline-none font-sans text-sm text-text cursor-pointer"
             >
@@ -1298,6 +1312,7 @@ export function WorkQueue({
                       checked={selected.has(item.invoiceId)}
                       onToggle={toggle}
                       disabled={!selected.has(item.invoiceId) && capReached}
+                      collision={item.caseId ? collisions[item.caseId] : undefined}
                     />
                   ))
                   : items.slice(desk.start, desk.end).map((item) => (

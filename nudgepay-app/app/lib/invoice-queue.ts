@@ -26,12 +26,13 @@ export type InvoiceQueueItem = {
   lastContact: LastContact;
   peeks: ActivityPeek[];
   payer: PayerStats | null;
+  suppressed: boolean;
   searchText: string;
 };
 
 export function buildInvoiceQueue(args: {
   invoices: InvoiceInput[];
-  casesByCustomer: Map<string, { caseId: string; lastContact: LastContact; peeks: ActivityPeek[] }>;
+  casesByCustomer: Map<string, { caseId: string; lastContact: LastContact; peeks: ActivityPeek[]; suppressed?: boolean }>;
   customers: CustomerInput[];
   ownerLabels: Map<string, string>;
   payerByCustomer: Map<string, PayerStats>;
@@ -66,6 +67,7 @@ export function buildInvoiceQueue(args: {
       lastContact: cse?.lastContact ?? null,
       peeks: cse?.peeks ?? [],
       payer: inv.customer_id ? args.payerByCustomer.get(inv.customer_id) ?? null : null,
+      suppressed: cse?.suppressed ?? false,
       searchText: [name, inv.qbo_doc_number ?? "", cust?.phone ?? "", cust?.email ?? "", ownerLabel].join(" ").toLowerCase(),
     });
   }
@@ -101,12 +103,12 @@ export function applyInvoiceView(
 ): InvoiceQueueItem[] {
   const highValue = opts.highValue ?? HIGH_VALUE_THRESHOLD;
   if (view === "coming-due") return [];
-  if (view === "30-plus") return items.filter((i) => i.ageDays >= 30);
-  if (view === "high-value") return items.filter((i) => i.balance >= highValue);
-  if (view === "never-contacted") return items.filter((i) => i.lastContact === null);
+  if (view === "30-plus") return items.filter((i) => i.ageDays >= 30 && !i.suppressed);
+  if (view === "high-value") return items.filter((i) => i.balance >= highValue && !i.suppressed);
+  if (view === "never-contacted") return items.filter((i) => i.lastContact === null && !i.suppressed);
   if (view === "my-work") {
     return items.filter((i) => i.ownerId != null && i.ownerId === opts.currentUserId);
   }
-  if (view === "all-open") return items;
+  if (view === "all-open") return items.filter((i) => !i.suppressed);
   return items.filter((i) => i.caseId != null && opts.matchingCaseIds.has(i.caseId));
 }

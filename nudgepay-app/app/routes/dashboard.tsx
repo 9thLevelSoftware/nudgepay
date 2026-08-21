@@ -136,7 +136,9 @@ export function buildCaseData(
   const items = sortCaseItems(applyCaseView(searched, view, today, currentUserId, highValue), sort);
   const selected = caseId != null ? (searched.find((i) => i.caseId === caseId) ?? null) : null;
   const casesByCustomer = new Map(
-    allItems.map((i) => [i.customerId, { caseId: i.caseId, lastContact: i.lastContact, peeks: i.peeks }]),
+    allItems.map((i) => [i.customerId, {
+      caseId: i.caseId, lastContact: i.lastContact, peeks: i.peeks, suppressed: i.suppressed,
+    }]),
   );
   const builtInvoices = buildInvoiceQueue({
     invoices: [...invoices, ...comingDueInvoices],

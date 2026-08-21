@@ -97,6 +97,19 @@ test("applyInvoiceView uses invoice predicates and does not drop caseless from a
     .toEqual(["i1", "i2"]);
 });
 
+test("applyInvoiceView excludes on-hold cases from invoice-native views", () => {
+  const items = built().map((i) => i.customerId === "c1" ? { ...i, suppressed: true } : i);
+  const matchingCaseIds = new Set(["case-1"]);
+  expect(applyInvoiceView(items, "all-open", { matchingCaseIds, currentUserId: "u1" }).map((i) => i.invoiceId))
+    .toEqual(["i3", "i4"]);
+  expect(applyInvoiceView(items, "30-plus", { matchingCaseIds, currentUserId: "u1" }).map((i) => i.invoiceId))
+    .toEqual(["i3"]);
+  expect(applyInvoiceView(items, "high-value", { matchingCaseIds, currentUserId: "u1" }).map((i) => i.invoiceId))
+    .toEqual([]);
+  expect(applyInvoiceView(items, "on-hold", { matchingCaseIds, currentUserId: "u1" }).map((i) => i.invoiceId))
+    .toEqual(["i1", "i2"]);
+});
+
 test("case-queue Stage-1 select includes amount/invoice_date/status/paid_date", () => {
   const src = readFileSync(new URL("../app/lib/case-queue.server.ts", import.meta.url), "utf8");
   expect(src).toContain("amount, invoice_date, status, paid_date");
@@ -123,6 +136,10 @@ test("WorkQueue invoice rows keep table roles, entity toggle, and caseless j/k",
   expect(src).toContain("Invoices without an open case skipped.");
   expect(src).toContain("SORT_OPTIONS_INVOICES");
   expect(src).toContain('{ id: "due-date", label: "Due date" }');
+  expect(src).toContain("value={sortSelectValue}");
+  expect(src).toContain('id === "customers" && sort === "due-date" ? "most-overdue"');
+  expect(src).toContain("collision={item.caseId ? collisions[item.caseId] : undefined}");
+  expect(src).toContain("<CollisionMarker collision={collision} />");
   const entityAt = src.indexOf("aria-label=\"Queue entity\"");
   const formAt = src.indexOf('<Form method="get"');
   expect(entityAt).toBeGreaterThan(-1);

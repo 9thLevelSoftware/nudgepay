@@ -10,6 +10,8 @@ import { applyInvoiceView, buildInvoiceQueue, sortInvoiceItems } from "../lib/in
 import { queueItemsToCsv } from "../lib/queue-csv";
 import type { ViewId } from "../lib/worklist";
 import { parseEntityMode, parseSort } from "../lib/queue-chrome";
+import { loadReplySource, peekWindowStartIso } from "../lib/activity-peek.server";
+import { loadPayerSource } from "../lib/payer-behavior.server";
 
 export async function loader({ request, context }: LoaderFunctionArgs) {
   const env = getEnv(context as any);
@@ -26,10 +28,36 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
   const entity = parseEntityMode(url.searchParams.get("entity"));
   const q = (url.searchParams.get("q") ?? "").toLowerCase();
   const highValue = src.orgConfig.priority.highValue;
+  const customerIds = [...new Set([
+    ...src.cases.map((c) => c.customerId),
+    ...src.invoicesInput.map((i) => i.customer_id ?? ""),
+    ...src.comingDueInvoices.map((i) => i.customer_id ?? ""),
+  ].filter(Boolean))];
+  const brokenPromiseByCustomer = new Map<string, boolean>();
+  const caseById = new Map(src.cases.map((c) => [c.id, c]));
+  for (const p of src.promisesInput) {
+    if (p.status !== "broken") continue;
+    const cse = caseById.get(p.caseId);
+    if (cse) brokenPromiseByCustomer.set(cse.customerId, true);
+  }
+  const replySrc = await loadReplySource({
+    supabase,
+    orgId: org.org_id,
+    customerIds,
+    windowStartIso: peekWindowStartIso(today),
+  });
+  const payerByCustomer = await loadPayerSource({
+    supabase,
+    orgId: org.org_id,
+    customerIds,
+    today,
+    brokenPromiseByCustomer,
+    replyByCustomer: replySrc.replyByCustomer,
+  });
   const allItems = buildCaseItems(
     src.cases, src.invoicesInput, src.customersInput, src.lastContactsInput,
     src.promisesInput, today, src.ownerLabels, src.orgConfig,
-  );
+  ).map((i) => ({ ...i, payer: payerByCustomer.get(i.customerId) ?? null }));
   const searched = q === "" ? allItems : allItems.filter((i) => i.searchText.includes(q));
   const items = sortCaseItems(applyCaseView(searched, view, today, user.id, highValue), sort);
   const invoiceMode = entity === "invoices" && view !== "coming-due";
@@ -37,7 +65,7 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
   if (invoiceMode) {
     const casesByCustomer = new Map(
       allItems.map((i) => [i.customerId, {
-        caseId: i.caseId, lastContact: i.lastContact, peeks: i.peeks,
+        caseId: i.caseId, lastContact: i.lastContact, peeks: i.peeks, suppressed: i.suppressed,
       }]),
     );
     const built = buildInvoiceQueue({
@@ -45,7 +73,7 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
       casesByCustomer,
       customers: src.customersInput,
       ownerLabels: src.ownerLabels,
-      payerByCustomer: new Map(),
+      payerByCustomer,
       today,
     });
     const searchedInv = q === "" ? built : built.filter((i) => i.searchText.includes(q));

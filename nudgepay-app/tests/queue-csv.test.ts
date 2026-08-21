@@ -1,4 +1,5 @@
 import { expect, test } from "vitest";
+import { readFileSync } from "node:fs";
 import { queueItemsToCsv } from "../app/lib/queue-csv";
 
 test("queueItemsToCsv writes a header and one row per case", () => {
@@ -54,4 +55,12 @@ test("queueItemsToCsv appends invoice extra columns after the original set", () 
   expect(header.startsWith("customer,status,total_overdue")).toBe(true);
   expect(header.endsWith("entity,doc_number,payer_band,days_to_pay,reply_rate")).toBe(true);
   expect(csv).toContain("invoices,1001,good,21,");
+});
+
+test("queue.csv loader attaches payer stats instead of an empty map", () => {
+  const src = readFileSync(new URL("../app/routes/queue.csv.tsx", import.meta.url), "utf8");
+  expect(src).toContain("loadPayerSource");
+  expect(src).toContain("loadReplySource");
+  expect(src).toContain("payerByCustomer");
+  expect(src).not.toContain("payerByCustomer: new Map()");
 });
