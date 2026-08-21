@@ -1,7 +1,7 @@
 import { useLoaderData, redirect, data, Link, type LoaderFunctionArgs } from "react-router";
 import { useFlashCleanup } from "../lib/use-flash-cleanup";
 import { getEnv, getQboEnvOrNull } from "../lib/env.server";
-import { QBO_FLASH, SYNC_FLASH } from "../lib/flash-copy";
+import { QBO_FLASH, SYNC_FLASH, bulkSmsFailureSummary, parseBulkErrorNames } from "../lib/flash-copy";
 import { requireOrgUser } from "../lib/session.server";
 import { getConnectionStatus } from "../lib/qbo-connection.server";
 import { createSupabaseServiceClient } from "../lib/supabase.server";
@@ -259,6 +259,7 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
   const bulkSent = sp.get("sent");
   const bulkFailed = sp.get("failed");
   const bulkSkipped = sp.get("skipped");
+  const bulkErrors = sp.get("bulkErrors");
   const denied = sp.get("denied");
 
   let selectedTimeline: TimelineEntry[] = [];
@@ -443,6 +444,7 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
       bulkSent,
       bulkFailed,
       bulkSkipped,
+      bulkErrors,
       denied,
       roster,
       collisions,
@@ -507,6 +509,7 @@ export default function Dashboard() {
     bulkSent,
     bulkFailed,
     bulkSkipped,
+    bulkErrors,
     denied,
     roster,
     collisions,
@@ -528,6 +531,7 @@ export default function Dashboard() {
   } = useLoaderData<typeof loader>();
 
   useFlashCleanup();
+  const bulkFailureSummary = bulkSmsFailureSummary(Number(bulkFailed) || 0, parseBulkErrorNames(bulkErrors));
 
   const VIEW_LABEL: Record<string, string> = {
     "30-plus": "30+ days past due", "high-value": "High value",
@@ -580,7 +584,7 @@ export default function Dashboard() {
       ) : null}
       {bulkSms === "done" ? (
         <div className="px-6 py-2 bg-cool/10 border-b border-cool/30 text-sm font-sans font-medium text-cool" role="status">
-          Sent {bulkSent ?? "0"} · Failed {bulkFailed ?? "0"} · Skipped {bulkSkipped ?? "0"}.
+          Sent {bulkSent ?? "0"} · Failed {bulkFailed ?? "0"} · Skipped {bulkSkipped ?? "0"}.{bulkFailureSummary ? ` ${bulkFailureSummary}` : ""}
         </div>
       ) : null}
       {bulkSms === "disabled" ? (

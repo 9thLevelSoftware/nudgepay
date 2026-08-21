@@ -50,7 +50,7 @@ export async function action({ request, context }: ActionFunctionArgs) {
     const { error } = await supabase.from("messaging_config")
       .upsert({ org_id: org.org_id, sms_enabled }, { onConflict: "org_id" });
     if (error) return redirect(flag(returnTo, "error", "save"), { headers });
-    return redirect(flag(returnTo, "saved", "1"), { headers });
+    return redirect(flag(returnTo, "saved", "channels"), { headers });
   }
 
   if (intent === "save_sms_sender") {
@@ -76,7 +76,7 @@ export async function action({ request, context }: ActionFunctionArgs) {
     const { error } = await supabase.from("org_settings")
       .upsert({ org_id: org.org_id, ...parsed.patch }, { onConflict: "org_id" });
     if (error) return redirect(flag(returnTo, "error", "save"), { headers });
-    return redirect(flag(returnTo, "saved", "1"), { headers });
+    return redirect(flag(returnTo, "saved", "rules"), { headers });
   }
 
   if (intent === "add_holiday") {
@@ -86,7 +86,7 @@ export async function action({ request, context }: ActionFunctionArgs) {
     const { error } = await supabase.from("org_holidays")
       .upsert({ org_id: org.org_id, holiday_date: date, label }, { onConflict: "org_id,holiday_date" });
     if (error) return redirect(flag(returnTo, "error", "holiday"), { headers });
-    return redirect(flag(returnTo, "saved", "1"), { headers });
+    return redirect(flag(returnTo, "saved", "holiday"), { headers });
   }
 
   if (intent === "remove_holiday") {
@@ -95,7 +95,7 @@ export async function action({ request, context }: ActionFunctionArgs) {
     const { error } = await supabase.from("org_holidays").delete()
       .eq("org_id", org.org_id).eq("holiday_date", date);
     if (error) return redirect(flag(returnTo, "error", "delete"), { headers });
-    return redirect(flag(returnTo, "saved", "1"), { headers });
+    return redirect(flag(returnTo, "saved", "holiday"), { headers });
   }
 
   if (intent === "save_late_fees") {
@@ -104,7 +104,7 @@ export async function action({ request, context }: ActionFunctionArgs) {
     const { error } = await supabase.from("org_settings")
       .upsert({ org_id: org.org_id, ...parsed.patch }, { onConflict: "org_id" });
     if (error) return redirect(flag(returnTo, "error", "save"), { headers });
-    return redirect(flag(returnTo, "saved", "1"), { headers });
+    return redirect(flag(returnTo, "saved", "late_fees"), { headers });
   }
 
   if (intent === "save_priority_thresholds") {
@@ -113,7 +113,7 @@ export async function action({ request, context }: ActionFunctionArgs) {
     const { error } = await supabase.from("org_settings")
       .upsert({ org_id: org.org_id, ...parsed.patch }, { onConflict: "org_id" });
     if (error) return redirect(flag(returnTo, "error", "save"), { headers });
-    return redirect(flag(returnTo, "saved", "1"), { headers });
+    return redirect(flag(returnTo, "saved", "priority"), { headers });
   }
 
   if (intent === "save_workflow") {
@@ -122,7 +122,7 @@ export async function action({ request, context }: ActionFunctionArgs) {
     const { error } = await supabase.from("org_settings")
       .upsert({ org_id: org.org_id, ...parsed.patch }, { onConflict: "org_id" });
     if (error) return redirect(flag(returnTo, "error", "save"), { headers });
-    return redirect(flag(returnTo, "saved", "1"), { headers });
+    return redirect(flag(returnTo, "saved", "workflow"), { headers });
   }
 
   if (intent === "save_email") {
@@ -134,7 +134,7 @@ export async function action({ request, context }: ActionFunctionArgs) {
       .upsert({ org_id: org.org_id, ...parsed.value }, { onConflict: "org_id" });
     if (error) return redirect(flag(returnTo, "error", "save"), { headers });
     // Distinct success marker so the email panel's "Saved." banner does not light
-    // up after unrelated settings saves (save_channels/save_rules also use ?saved=1).
+    // up after unrelated settings saves.
     return redirect(flag(returnTo, "email_saved", "1"), { headers });
   }
 

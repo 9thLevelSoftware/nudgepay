@@ -2,8 +2,27 @@ import { sendInvoiceText, type MessagingDeps } from "./twilio-messaging.server";
 import { partitionEligibility, renderCaseBody, clampBatch, type TextableCase, type RenderableCase } from "./bulk";
 import { isContactBlocked, type ExceptionState } from "./exceptions";
 import type { OrgConfig } from "./org-config";
+import { smsSendReason } from "./sms-send-reason";
+import { smsFlashCopy } from "./flash-copy";
 
-export type BulkSmsResult = { sent: number; failed: number; skipped: number };
+export type BulkSmsFailure = { caseId: string; name: string; error: string };
+
+/** `failed` always equals `failures.length` (missing-invoice is recorded as a failure). */
+export type BulkSmsResult = { sent: number; failed: number; skipped: number; failures: BulkSmsFailure[] };
+
+function emptyResult(): BulkSmsResult {
+  return { sent: 0, failed: 0, skipped: 0, failures: [] };
+}
+
+function humanSafeSmsError(err: unknown): string {
+  let message = "";
+  if (err instanceof Error) message = err.message;
+  else if (err && typeof err === "object" && "message" in err) {
+    const m = (err as { message: unknown }).message;
+    if (typeof m === "string") message = m;
+  }
+  return smsFlashCopy(smsSendReason(message));
+}
 
 type CaseForSend = TextableCase & RenderableCase & { representativeInvoiceId: string | null };
 
@@ -23,7 +42,7 @@ export async function runBulkSms(
   args: { orgId: string; userId: string; caseIds: string[]; today: string; templateBody: string; orgConfig: OrgConfig },
 ): Promise<BulkSmsResult> {
   const ids = clampBatch(args.caseIds, args.orgConfig.workflow.smsBatchLimit);
-  if (ids.length === 0) return { sent: 0, failed: 0, skipped: 0 };
+  if (ids.length === 0) return emptyResult();
   const svc = deps.service;
 
   // Org token values (company name, phone, payment link) — loaded ONCE per
@@ -42,7 +61,7 @@ export async function runBulkSms(
   };
   const cases = ((caseRows as { id: string; customer_id: string; exception_reason: ExceptionState | null }[]) ?? []);
   const customerIds = [...new Set(cases.map((c) => c.customer_id).filter(Boolean))];
-  if (customerIds.length === 0) return { sent: 0, failed: 0, skipped: 0 };
+  if (customerIds.length === 0) return emptyResult();
 
   const { data: custRows, error: custErr } = await svc.from("customers")
     .select("id, name, phone, sms_consent, do_not_text").eq("org_id", args.orgId).in("id", customerIds);
@@ -82,10 +101,15 @@ export async function runBulkSms(
   }
 
   const { eligible, skipped } = partitionEligibility(built);
+  const failures: BulkSmsFailure[] = [];
   let sent = 0;
-  let failed = 0;
   for (const c of eligible) {
-    if (!c.representativeInvoiceId) { failed++; continue; }
+    // Missing overdue invoice is a per-case failure (not skipped), so
+    // failed === failures.length including this bucket.
+    if (!c.representativeInvoiceId) {
+      failures.push({ caseId: c.caseId, name: c.customerName, error: smsFlashCopy("error") });
+      continue;
+    }
     try {
       await sendInvoiceText(deps, {
         orgId: args.orgId,
@@ -94,9 +118,11 @@ export async function runBulkSms(
         body: renderCaseBody(args.templateBody, c, orgVars),
       });
       sent++;
-    } catch {
-      failed++; // partial failure is tallied, never fatal
+    } catch (err) {
+      // Partial failure is tallied, never fatal. Error copy is mapped through
+      // smsSendReason → smsFlashCopy so we never surface stacks or provider text.
+      failures.push({ caseId: c.caseId, name: c.customerName, error: humanSafeSmsError(err) });
     }
   }
-  return { sent, failed, skipped: skipped.length };
+  return { sent, failed: failures.length, skipped: skipped.length, failures };
 }

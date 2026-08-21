@@ -72,3 +72,24 @@ test("home meta includes Open Graph title and description", async () => {
   expect(tags).toContainEqual({ property: "og:title", content: "NudgePay" });
   expect(tags).toContainEqual({ property: "og:description", content: PAGE_DESCRIPTION });
 });
+
+const eulaSrc = readFileSync(fileURLToPath(new URL("../app/routes/eula.tsx", import.meta.url)), "utf8");
+const homeSrc = readFileSync(fileURLToPath(new URL("../app/routes/home.tsx", import.meta.url)), "utf8");
+
+test("eula source does not describe a private beta", () => {
+  expect(eulaSrc.toLowerCase()).not.toContain("private beta");
+  expect(eulaSrc.toLowerCase()).not.toContain("private-beta");
+  expect(eulaSrc).toMatch(/"as is"/);
+  expect(eulaSrc).toContain("Limitation of liability");
+});
+
+test("home still exports meta and keeps public signup, login, and legal links", async () => {
+  const mod = await import("../app/routes/home");
+  expect(typeof mod.meta).toBe("function");
+  expect(homeSrc).toContain("PAGE_DESCRIPTION");
+  expect(homeSrc).toContain('to="/signup"');
+  expect(homeSrc).toContain('to="/login"');
+  expect(homeSrc).toContain('to="/privacy"');
+  expect(homeSrc).toContain('to="/eula"');
+  expect(homeSrc).toMatch(/not a payment processor/i);
+});

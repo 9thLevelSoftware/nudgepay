@@ -39,7 +39,7 @@ export function SmsSettingsSection(d: SmsSettingsProps) {
       <div className="flex items-center justify-between">
         <h2 className="font-display text-base font-semibold text-text">Text messaging</h2>
         {d.isOwner ? (
-          <Form method="post" action="/api/org-settings">
+          <Form method="post" action="/api/org-settings" className="flex items-center gap-2">
             <input type="hidden" name="intent" value="save_channels" />
             <input type="hidden" name="returnTo" value={d.returnTo ?? "/settings"} />
             <label className="sr-only" htmlFor="sms-enabled">SMS enabled</label>
@@ -52,6 +52,7 @@ export function SmsSettingsSection(d: SmsSettingsProps) {
               <option value="true">On</option>
               <option value="false">Off</option>
             </select>
+            {sp.get("saved") === "channels" && <span className="text-xs text-cool" role="status">Saved.</span>}
           </Form>
         ) : (
           <span className={`text-xs font-medium ${d.smsEnabled ? "text-cool" : "text-muted"}`}>

@@ -48,7 +48,7 @@ async function postOrgSettings(cookie: string, fields: Record<string, string>): 
 // ---------------------------------------------------------------------------
 
 describe("save_workflow", () => {
-  it("valid save_workflow persists org_settings and redirects ?saved=1", async () => {
+  it("valid save_workflow persists org_settings and redirects ?saved=workflow", async () => {
     const svc = serviceClient();
     const { data: org } = await svc.from("organizations")
       .insert({ name: `SW-rt ${Math.random()}` }).select("id").single();
@@ -70,7 +70,7 @@ describe("save_workflow", () => {
 
     expect(res.status).toBe(302);
     const location = res.headers.get("Location") ?? "";
-    expect(location).toContain("saved=1");
+    expect(location).toContain("saved=workflow");
 
     const { data: row } = await svc.from("org_settings")
       .select("coming_due_days, due_soon_business_days, sms_batch_limit")

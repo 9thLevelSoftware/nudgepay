@@ -80,3 +80,9 @@ Tracks implementation against the frozen 2026-08-20 audit pack. Do **not** rewri
 | NP-AUD-2026-110 | 16 | code | detail stacks full-width below `md` |
 | NP-AUD-2026-114 | 16 | code | `formatDateTime` in org IANA zone |
 | NP-AUD-2026-118 | 16 | code | SMS bubble timestamps + scroll to last |
+| NP-AUD-2026-115 | 17 | code | distinct Collections `saved=` flash keys |
+| NP-AUD-2026-116 | 17 | code | dirty confirm before settings tab switch |
+| NP-AUD-2026-117 | 17 | code | template preview, insert chips, unknown `{tokens}` |
+| NP-AUD-2026-123 | 17 | code | bulk SMS per-case failures + name flash |
+| NP-AUD-2026-104-EULA | 17 | code | EULA drops “private beta” |
+| NP-AUD-2026-104-LANDING | 17 | code | landing names collections vs payment processor |

@@ -72,7 +72,7 @@ describe("add_holiday", () => {
     });
 
     expect(res.status).toBe(302);
-    expect(res.headers.get("Location") ?? "").toContain("saved=1");
+    expect(res.headers.get("Location") ?? "").toContain("saved=holiday");
 
     const { data: row } = await svc.from("org_holidays")
       .select("holiday_date, label").eq("org_id", orgId).eq("holiday_date", "2026-07-04").single();

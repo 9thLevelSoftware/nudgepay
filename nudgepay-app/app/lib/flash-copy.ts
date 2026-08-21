@@ -46,3 +46,39 @@ export function smsFlash(code: string | null | undefined): SmsFlash | null {
   if (!code) return null;
   return (SMS_FLASH as Record<string, SmsFlash>)[code] ?? SMS_FLASH.error;
 }
+
+// Bulk SMS result flash (?bulkSms=done&bulkErrors= on dashboard). Names only —
+// per-case error copy stays on BulkSmsResult.failures, not in the URL.
+
+/** Max customer names in ?bulkErrors= (URL size). */
+export const BULK_ERROR_NAME_CAP = 5;
+
+const BULK_ERROR_NAME_MAX_LEN = 40;
+
+function sanitizeBulkErrorName(name: string): string {
+  return name.replace(/,/g, " ").replace(/\s+/g, " ").trim().slice(0, BULK_ERROR_NAME_MAX_LEN);
+}
+
+/** Comma-separated names for ?bulkErrors=. Commas stripped so the query stays split-safe. */
+export function encodeBulkErrorNames(names: string[], cap = BULK_ERROR_NAME_CAP): string {
+  return names.map(sanitizeBulkErrorName).filter(Boolean).slice(0, cap).join(",");
+}
+
+export function parseBulkErrorNames(raw: string | null | undefined): string[] {
+  if (!raw) return [];
+  return raw.split(",").map((s) => s.trim()).filter(Boolean);
+}
+
+/**
+ * Flash remainder after the Sent/Failed/Skipped counts.
+ * Example: "3 failed: Acme, Beta, +1 more"
+ */
+export function bulkSmsFailureSummary(failed: number, names: string[]): string | null {
+  if (!Number.isFinite(failed) || failed <= 0) return null;
+  const shown = names.map((n) => n.trim()).filter(Boolean);
+  if (shown.length === 0) return `${failed} failed`;
+  const extra = Math.max(failed - shown.length, 0);
+  return extra > 0
+    ? `${failed} failed: ${shown.join(", ")}, +${extra} more`
+    : `${failed} failed: ${shown.join(", ")}`;
+}

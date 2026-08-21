@@ -12,7 +12,7 @@ import { QBO_FLASH, SYNC_FLASH } from "../lib/flash-copy";
 import { AppShell } from "../components/AppShell";
 import { FlashBanner } from "../components/FlashBanner";
 import { SyncIssues } from "../components/SyncIssues";
-import { SettingsTabs, resolveSettingsTab, settingsReturnTo } from "../components/SettingsTabs";
+import { SettingsTabs, SettingsDirtyProvider, resolveSettingsTab, settingsReturnTo } from "../components/SettingsTabs";
 import { CollectionsRulesForm } from "../components/CollectionsRulesForm";
 import { SmsSettingsSection } from "../components/SmsSettingsSection";
 import { EmailSettingsSection } from "../components/EmailSettingsSection";
@@ -237,6 +237,9 @@ export default function Settings() {
         <FlashBanner tone={SYNC_FLASH[d.syncFlash].tone} text={SYNC_FLASH[d.syncFlash].text} />
       ) : null}
       <div className="h-full overflow-auto bg-panel p-6">
+        <SettingsDirtyProvider
+          resetKey={`${tab}:${sp.get("saved") ?? ""}:${sp.get("email_saved") ?? ""}:${sp.get("sms_saved") ?? ""}`}
+        >
         <div className="mx-auto flex max-w-3xl flex-col gap-5">
           <h1 className="font-display text-xl font-semibold text-text">Settings</h1>
           <SettingsTabs />
@@ -612,6 +615,9 @@ export default function Settings() {
               isOwner={d.isOwner}
               returnTo={returnTo}
               orgId={d.orgId}
+              orgCompany={d.orgName}
+              orgPhone={d.companyProfile.phone ?? ""}
+              orgPaymentLink={d.companyProfile.paymentPortalUrl ?? ""}
             />
           )}
 
@@ -632,6 +638,7 @@ export default function Settings() {
             </>
           )}
         </div>
+        </SettingsDirtyProvider>
       </div>
     </AppShell>
   );
