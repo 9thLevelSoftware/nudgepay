@@ -1,5 +1,5 @@
 import { test, expect } from "vitest";
-import { isComingDue, buildComingDueGroups, comingDueMetric } from "../app/lib/coming-due";
+import { isComingDue, buildComingDueGroups, comingDueMetric, comingDueEmptyCopy } from "../app/lib/coming-due";
 import type { InvoiceInput, CustomerInput } from "../app/lib/worklist";
 
 const today = "2026-07-02";
@@ -126,4 +126,19 @@ test("metric is zero for no groups", () => {
   const m = comingDueMetric([]);
   expect(m.count).toBe(0);
   expect(m.amount).toBe(0);
+});
+
+// ---------------------------------------------------------------------------
+// comingDueEmptyCopy
+// ---------------------------------------------------------------------------
+
+test("comingDueEmptyCopy interpolates the org-configured window", () => {
+  expect(comingDueEmptyCopy(7)).toBe("No invoices coming due in the next 7 days.");
+  expect(comingDueEmptyCopy(14)).toBe("No invoices coming due in the next 14 days.");
+  expect(comingDueEmptyCopy(3)).toBe("No invoices coming due in the next 3 days.");
+  expect(comingDueEmptyCopy(1)).toBe("No invoices coming due in the next 1 days.");
+});
+
+test("comingDueEmptyCopy defaults to COMING_DUE_DAYS", () => {
+  expect(comingDueEmptyCopy()).toBe("No invoices coming due in the next 7 days.");
 });

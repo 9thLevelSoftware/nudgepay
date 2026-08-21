@@ -1,20 +1,39 @@
 import { expect, test } from "vitest";
-import { pageTitle } from "../app/lib/meta";
+import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
+import { PAGE_DESCRIPTION, pageTitle } from "../app/lib/meta";
 
-test("pageTitle with a section returns the qualified title", () => {
-  expect(pageTitle("Log in")).toEqual([{ title: "Log in · NudgePay" }]);
+const description = { name: "description", content: PAGE_DESCRIPTION };
+
+test("pageTitle with a section returns the qualified title and description", () => {
+  expect(pageTitle("Log in")).toEqual([{ title: "Log in · NudgePay" }, description]);
 });
 
-test("pageTitle with no section falls back to the bare brand", () => {
-  expect(pageTitle()).toEqual([{ title: "NudgePay" }]);
-  expect(pageTitle(undefined)).toEqual([{ title: "NudgePay" }]);
+test("pageTitle with no section falls back to the bare brand and description", () => {
+  expect(pageTitle()).toEqual([{ title: "NudgePay" }, description]);
+  expect(pageTitle(undefined)).toEqual([{ title: "NudgePay" }, description]);
 });
 
-test("pageTitle returns a single-entry meta descriptor array", () => {
+test("pageTitle includes a site description", () => {
   const result = pageTitle("Settings");
   expect(Array.isArray(result)).toBe(true);
-  expect(result).toHaveLength(1);
-  expect(result[0]).toHaveProperty("title");
+  expect(result).toHaveLength(2);
+  expect(result[0]).toEqual({ title: "Settings · NudgePay" });
+  expect(result[1]).toEqual(description);
+  expect(PAGE_DESCRIPTION).toBe("NudgePay is collections software for trades and small businesses.");
+});
+
+const robots = readFileSync(fileURLToPath(new URL("../public/robots.txt", import.meta.url)), "utf8");
+
+test("robots.txt allows public pages and disallows authenticated app paths", () => {
+  expect(robots).toMatch(/^User-agent: \*$/m);
+  expect(robots).toMatch(/^Allow: \/$/m);
+  for (const path of ["/privacy", "/eula", "/login", "/signup"]) {
+    expect(robots).toContain(`Allow: ${path}`);
+  }
+  for (const path of ["/dashboard", "/settings", "/accounts", "/focus", "/api/", "/webhooks/"]) {
+    expect(robots).toContain(`Disallow: ${path}`);
+  }
 });
 
 // Every user-facing route must export a `meta` function so the document title
@@ -46,3 +65,10 @@ for (const [name, load] of Object.entries(routeModules)) {
     expect(typeof mod.meta).toBe("function");
   });
 }
+
+test("home meta includes Open Graph title and description", async () => {
+  const mod = await import("../app/routes/home");
+  const tags = (mod.meta as () => Array<Record<string, string>>)();
+  expect(tags).toContainEqual({ property: "og:title", content: "NudgePay" });
+  expect(tags).toContainEqual({ property: "og:description", content: PAGE_DESCRIPTION });
+});

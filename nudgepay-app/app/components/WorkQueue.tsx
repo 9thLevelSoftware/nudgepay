@@ -10,8 +10,20 @@ import { exceptionLabel } from "../lib/exceptions";
 import { partitionEligibility, clampBatch } from "../lib/bulk";
 import { plural } from "../lib/labels";
 import { emptyQueueCopy } from "../lib/empty-queue-copy";
+import {
+  visibleWindow,
+  QUEUE_ROW_H,
+  QUEUE_CARD_H,
+  QUEUE_OVERSCAN,
+} from "../lib/virtual-window";
 import { BulkActionBar } from "./BulkActionBar";
 import { useQueueKeys, type QueueKey } from "../lib/use-queue-keys";
+import { BulkSmsDrawer } from "./BulkSmsDrawer";
+import { ThermalBand } from "./ThermalBand";
+import { Icon } from "./Icons";
+import { statusChipTone, type ChipTone } from "../lib/status-style";
+import type { ComingDueGroup } from "../lib/coming-due";
+import { ComingDueList } from "./ComingDueList";
 
 // Shared grid template — used by both the header row and queue rows so
 // column widths can't drift apart.
@@ -20,12 +32,6 @@ const QUEUE_GRID = [
   "lg:grid-cols-[auto_minmax(180px,2fr)_minmax(96px,0.7fr)_minmax(56px,0.5fr)_minmax(96px,0.7fr)_minmax(230px,2fr)]",
   "xl:grid-cols-[auto_minmax(180px,2fr)_minmax(96px,0.7fr)_minmax(56px,0.5fr)_minmax(96px,0.7fr)_minmax(230px,2fr)_minmax(104px,0.7fr)]",
 ].join(" ");
-import { BulkSmsDrawer } from "./BulkSmsDrawer";
-import { ThermalBand } from "./ThermalBand";
-import { Icon } from "./Icons";
-import { statusChipTone, type ChipTone } from "../lib/status-style";
-import type { ComingDueGroup } from "../lib/coming-due";
-import { ComingDueList } from "./ComingDueList";
 
 // ---------------------------------------------------------------------------
 // Static maps — Tailwind v4 scanner requires literal class strings; no template
@@ -147,6 +153,7 @@ interface WorkQueueProps {
   smsQuietNow: boolean;
   quietHoursLabel: string;
   comingDueGroups: ComingDueGroup[];
+  comingDueDays: number;
   smsTemplates: MessageTemplateRow[];
   orgCompany: string;
   orgPhone: string;
@@ -378,6 +385,48 @@ function MobileCard({
 }
 
 // ---------------------------------------------------------------------------
+// Scroll window — measure the overflow container; render a pad + slice.
+// ---------------------------------------------------------------------------
+
+const FALLBACK_VIEWPORT_H = 960;
+const MD_MIN = "(min-width: 768px)";
+
+function useQueueScroller() {
+  const scrollerRef = useRef<HTMLDivElement>(null);
+  const [scrollTop, setScrollTop] = useState(0);
+  const [viewportH, setViewportH] = useState(FALLBACK_VIEWPORT_H);
+
+  useEffect(() => {
+    const el = scrollerRef.current;
+    if (!el) return;
+    let frame = 0;
+    const readScroll = () => {
+      frame = 0;
+      setScrollTop(el.scrollTop);
+    };
+    const onScroll = () => {
+      if (frame) return;
+      frame = requestAnimationFrame(readScroll);
+    };
+    const onResize = () => {
+      setViewportH(el.clientHeight || FALLBACK_VIEWPORT_H);
+    };
+    onResize();
+    setScrollTop(el.scrollTop);
+    el.addEventListener("scroll", onScroll, { passive: true });
+    const ro = typeof ResizeObserver !== "undefined" ? new ResizeObserver(onResize) : null;
+    ro?.observe(el);
+    return () => {
+      el.removeEventListener("scroll", onScroll);
+      if (frame) cancelAnimationFrame(frame);
+      ro?.disconnect();
+    };
+  }, []);
+
+  return { scrollerRef, scrollTop, viewportH };
+}
+
+// ---------------------------------------------------------------------------
 // WorkQueue
 // ---------------------------------------------------------------------------
 
@@ -403,6 +452,7 @@ export function WorkQueue({
   smsQuietNow,
   quietHoursLabel,
   comingDueGroups,
+  comingDueDays,
   smsTemplates,
   orgCompany,
   orgPhone,
@@ -413,6 +463,21 @@ export function WorkQueue({
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [smsOpen, setSmsOpen] = useState(false);
   const nav = useNavigation();
+  const { scrollerRef, scrollTop, viewportH } = useQueueScroller();
+  const desk = visibleWindow({
+    scrollTop,
+    viewportH,
+    rowH: QUEUE_ROW_H,
+    count: items.length,
+    overscan: QUEUE_OVERSCAN,
+  });
+  const mobile = visibleWindow({
+    scrollTop,
+    viewportH,
+    rowH: QUEUE_CARD_H,
+    count: items.length,
+    overscan: QUEUE_OVERSCAN,
+  });
 
   // Selection is per-view: clear it whenever the filter/sort/search changes
   // (the queue re-renders with a different item set on navigation).
@@ -499,6 +564,23 @@ export function WorkQueue({
   }, [items, selectedCaseId, view, sort, search, navigate, toggle]);
 
   useQueueKeys({ enabled: true, onAction: handleQueueKey });
+
+  // Keep the selected row in the scrollport so j/k (and deep-links) still land
+  // on a mounted row after windowing.
+  useEffect(() => {
+    const el = scrollerRef.current;
+    if (!el || !selectedCaseId) return;
+    const idx = items.findIndex((i) => i.caseId === selectedCaseId);
+    if (idx < 0) return;
+    const desktop = typeof window !== "undefined" && window.matchMedia(MD_MIN).matches;
+    const rowH = desktop ? QUEUE_ROW_H : QUEUE_CARD_H;
+    const rowTop = idx * rowH;
+    const rowBottom = rowTop + rowH;
+    const viewTop = el.scrollTop;
+    const viewBottom = el.scrollTop + el.clientHeight;
+    if (rowTop < viewTop) el.scrollTop = rowTop;
+    else if (rowBottom > viewBottom) el.scrollTop = Math.max(0, rowBottom - el.clientHeight);
+  }, [selectedCaseId, items, scrollerRef]);
 
   const emptyCopy = emptyQueueCopy({ connected, view, q: search });
 
@@ -603,10 +685,40 @@ export function WorkQueue({
         })}
       </nav>
 
+      {/* Column header stays static above the scroller (not virtualized). Hidden < md. */}
+      {view !== "coming-due" && items.length > 0 ? (
+        <div className="hidden md:block shrink-0" aria-label="Work queue table">
+          <div
+            className="flex items-center px-4 py-2 border-b border-border bg-paper"
+            aria-hidden="false"
+          >
+            <label className="flex items-center pl-4 pr-1 cursor-pointer">
+              <span className="sr-only">Select all matching</span>
+              <input
+                ref={headerRef}
+                type="checkbox"
+                checked={allSelected}
+                onChange={toggleAll}
+                className="h-4 w-4 rounded border-border text-copper focus-visible:ring-2 focus-visible:ring-copper"
+              />
+            </label>
+            <div className={`flex-1 grid items-center gap-x-6 ${QUEUE_GRID}`}>
+              <span className="font-sans text-xs text-muted uppercase tracking-wide">Heat</span>
+              <span className="font-sans text-xs text-muted uppercase tracking-wide">Customer</span>
+              <span className="font-sans text-xs text-muted uppercase tracking-wide text-right">Total overdue</span>
+              <span className="font-sans text-xs text-muted uppercase tracking-wide">Oldest age</span>
+              <span className="font-sans text-xs text-muted uppercase tracking-wide hidden lg:block">Last contact</span>
+              <span className="font-sans text-xs text-muted uppercase tracking-wide hidden lg:block">Status</span>
+              <span className="font-sans text-xs text-muted uppercase tracking-wide hidden xl:block">Owner</span>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
       {/* Table / cards content */}
-      <div className="flex-1 overflow-auto bg-surface">
+      <div ref={scrollerRef} className="flex-1 overflow-auto bg-surface">
         {view === "coming-due" ? (
-          <ComingDueList groups={comingDueGroups} />
+          <ComingDueList groups={comingDueGroups} comingDueDays={comingDueDays} />
         ) : items.length === 0 ? (
           /* Empty state */
           <div className="flex flex-col items-center justify-center gap-3 py-16 px-6 text-center">
@@ -624,36 +736,14 @@ export function WorkQueue({
         ) : (
           <>
             {/* ── Desktop table (md+) ─────────────────────────────────── */}
-            <div className="hidden md:block" aria-label="Work queue table">
-              {/* Column header */}
+            <div className="hidden md:block">
+              {/* Rows — only the visible window (+ overscan) is mounted. */}
               <div
-                className="flex items-center px-4 py-2 border-b border-border bg-paper"
-                aria-hidden="false"
+                role="list"
+                aria-label="Work queue items"
+                style={{ paddingTop: desk.padTop, paddingBottom: desk.padBottom, overflowAnchor: "none" }}
               >
-                <label className="flex items-center pl-4 pr-1 cursor-pointer">
-                  <span className="sr-only">Select all matching</span>
-                  <input
-                    ref={headerRef}
-                    type="checkbox"
-                    checked={allSelected}
-                    onChange={toggleAll}
-                    className="h-4 w-4 rounded border-border text-copper focus-visible:ring-2 focus-visible:ring-copper"
-                  />
-                </label>
-                <div className={`flex-1 grid items-center gap-x-6 ${QUEUE_GRID}`}>
-                  <span className="font-sans text-xs text-muted uppercase tracking-wide">Heat</span>
-                  <span className="font-sans text-xs text-muted uppercase tracking-wide">Customer</span>
-                  <span className="font-sans text-xs text-muted uppercase tracking-wide text-right">Total overdue</span>
-                  <span className="font-sans text-xs text-muted uppercase tracking-wide">Oldest age</span>
-                  <span className="font-sans text-xs text-muted uppercase tracking-wide hidden lg:block">Last contact</span>
-                  <span className="font-sans text-xs text-muted uppercase tracking-wide hidden lg:block">Status</span>
-                  <span className="font-sans text-xs text-muted uppercase tracking-wide hidden xl:block">Owner</span>
-                </div>
-              </div>
-
-              {/* Rows */}
-              <div role="list" aria-label="Work queue items">
-                {items.map((item) => (
+                {items.slice(desk.start, desk.end).map((item) => (
                   <div key={item.caseId} role="listitem">
                     <QueueRow
                       item={item}
@@ -672,20 +762,26 @@ export function WorkQueue({
             </div>
 
             {/* ── Mobile cards (< md) ─────────────────────────────────── */}
-            <div className="md:hidden p-3" aria-label="Work queue items">
-              {items.map((item) => (
-                <MobileCard
-                  key={item.caseId}
-                  item={item}
-                  selected={selectedCaseId === item.caseId}
-                  view={view}
-                  sort={sort}
-                  search={search}
-                  checked={selected.has(item.caseId)}
-                  onToggle={toggle}
-                  disabled={!selected.has(item.caseId) && capReached}
-                  collision={collisions[item.caseId]}
-                />
+            <div
+              className="md:hidden p-3"
+              role="list"
+              aria-label="Work queue items"
+              style={{ paddingTop: 12 + mobile.padTop, paddingBottom: 12 + mobile.padBottom, overflowAnchor: "none" }}
+            >
+              {items.slice(mobile.start, mobile.end).map((item) => (
+                <div key={item.caseId} role="listitem">
+                  <MobileCard
+                    item={item}
+                    selected={selectedCaseId === item.caseId}
+                    view={view}
+                    sort={sort}
+                    search={search}
+                    checked={selected.has(item.caseId)}
+                    onToggle={toggle}
+                    disabled={!selected.has(item.caseId) && capReached}
+                    collision={collisions[item.caseId]}
+                  />
+                </div>
               ))}
             </div>
           </>

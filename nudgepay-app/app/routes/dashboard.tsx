@@ -452,6 +452,8 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
       orgPhone,
       orgPaymentLink,
       maxBatch: orgConfig.workflow.smsBatchLimit,
+      comingDueDays: orgConfig.workflow.comingDueDays,
+      today,
       ...dashboardData,
     },
     { headers },
@@ -511,6 +513,8 @@ export default function Dashboard() {
     viewCounts,
     selected,
     comingDueGroups,
+    comingDueDays,
+    today,
     repInvoiceId,
     smsTemplates,
     emailTemplates,
@@ -547,7 +551,7 @@ export default function Dashboard() {
       headerActions={
         <Link
           to="/focus"
-          className="hidden sm:flex items-center gap-1.5 px-2.5 py-1 rounded border border-copper/40 text-copper text-[11px] font-sans font-semibold hover:bg-copper/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-copper"
+          className="flex items-center gap-1.5 px-2.5 py-1 rounded border border-copper/40 text-copper text-[11px] font-sans font-semibold hover:bg-copper/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-copper"
         >
           Focus mode
         </Link>
@@ -625,6 +629,7 @@ export default function Dashboard() {
                 smsQuietNow={smsQuietNow}
                 quietHoursLabel={quietHoursLabel}
                 comingDueGroups={comingDueGroups}
+                comingDueDays={comingDueDays}
                 smsTemplates={smsTemplates}
                 orgCompany={orgCompany}
                 orgPhone={orgPhone}
@@ -665,6 +670,7 @@ export default function Dashboard() {
                   orgCompany={orgCompany}
                   orgPhone={orgPhone}
                   orgPaymentLink={orgPaymentLink}
+                  today={today}
                 />
               </div>
             ) : null}

@@ -1,4 +1,5 @@
 import { useLoaderData, data, type LoaderFunctionArgs } from "react-router";
+import { useFlashCleanup } from "../lib/use-flash-cleanup";
 import { getEnv } from "../lib/env.server";
 import { loadWorkspaceChrome } from "../lib/workspace.server";
 import { listOrgMembers } from "../lib/orgs.server";
@@ -45,6 +46,10 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
     ? (sp.get("sort") as PromiseSort)
     : "due-date";
   const promiseId = sp.get("promiseId");
+  const promiseError = sp.get("promiseError");
+  const returnQs = new URLSearchParams({ tab, sort });
+  if (promiseId) returnQs.set("promiseId", promiseId);
+  const returnTo = `/promises?${returnQs.toString()}`;
 
   // --- Org config for the due-soon business-day window + org-local "today" ---
   const orgConfig = await loadOrgConfig(supabase, org.org_id);
@@ -177,8 +182,8 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
     {
       orgName,
       initials, userLabel, syncLabel, connected, isOwner, syncIssues,
-      rows, metrics, counts, tab, sort,
-      selected, selectedInvoices, selectedNote,
+      rows, metrics, counts, tab, sort, returnTo,
+      selected, selectedInvoices, selectedNote, promiseError,
     },
     { headers },
   );
@@ -186,6 +191,7 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
 
 export default function Promises() {
   const d = useLoaderData<typeof loader>();
+  useFlashCleanup();
   return (
     <AppShell
       orgName={d.orgName}
@@ -211,6 +217,8 @@ export default function Promises() {
             promise={d.selected}
             invoices={d.selectedInvoices}
             note={d.selectedNote}
+            returnTo={d.returnTo}
+            promiseError={d.promiseError}
           />
         </div>
       </div>

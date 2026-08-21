@@ -14,7 +14,7 @@ import { smsGateFor } from "~/lib/sms-gate";
 import { whyNow } from "~/lib/next-best-action";
 import { nextActionLabel, emailFailureLabel, isHardBounce, plural } from "~/lib/labels";
 import type { MessageEntry, EmailMessageEntry, RosterMember } from "~/routes/dashboard";
-import type { TimelineEntry } from "~/lib/timeline";
+import { isTimelinePromiseBroken, type TimelineEntry } from "~/lib/timeline";
 import { canSendEmail, type CommPrefs } from "~/lib/comm-prefs";
 import { resolveCallAction } from "~/lib/channel-actions";
 import { statusChipTone, type ChipTone } from "~/lib/status-style";
@@ -85,10 +85,6 @@ const TL_NODE: Record<string, { bg: string; color: string }> = {
 const METHOD_ICON: Record<string, "phone" | "mail" | "message" | "note"> = {
   call: "phone", email: "mail", text: "message", note: "note",
 };
-function todayISO(): string {
-  return new Date().toISOString().slice(0, 10);
-}
-
 const SMS_BANNER: Record<string, { text: string; tone: string }> = {
   sent:      { text: "Text sent.",                                                    tone: "text-cool" },
   noconsent: { text: "Not sent — customer has not consented to SMS.",                 tone: "text-hot" },
@@ -574,6 +570,7 @@ export function DetailPanel({
   orgCompany,
   orgPhone,
   orgPaymentLink,
+  today,
 }: {
   selected: CaseItem | null;
   repInvoiceId: string | null;
@@ -602,6 +599,8 @@ export function DetailPanel({
   orgCompany: string;
   orgPhone: string;
   orgPaymentLink: string;
+  /** Org-local calendar day (YYYY-MM-DD) from todayInTz — never UTC. */
+  today: string;
 }) {
   // ── Hooks (must be unconditional, before any early return) ─────────────────
   // Presence: beat immediately on customer change, then every HEARTBEAT_INTERVAL_MS.
@@ -1067,9 +1066,7 @@ export function DetailPanel({
             </div>
           ) : (
             <ol className="flex flex-col">
-              {(() => {
-                const today = todayISO();
-                return timeline.map((e, index) => {
+              {timeline.map((e, index) => {
                   const isLast = index === timeline.length - 1;
                   if (e.kind === "sms") {
                     const node = TL_NODE[e.direction] ?? TL_NODE.outbound;
@@ -1096,7 +1093,7 @@ export function DetailPanel({
                       </li>
                     );
                   }
-                  const broken = e.promisedDate != null && e.promisedDate < today;
+                  const broken = isTimelinePromiseBroken(e.promisedDate, today);
                   const node = TL_NODE[e.method] ?? TL_NODE.note;
                   return (
                     <li key={e.id} className="flex gap-3 pb-4 last:pb-0">
@@ -1125,8 +1122,7 @@ export function DetailPanel({
                       </div>
                     </li>
                   );
-                });
-              })()}
+                })}
             </ol>
           )}
         </section>

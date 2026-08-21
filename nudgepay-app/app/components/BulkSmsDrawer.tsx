@@ -1,22 +1,11 @@
 import { useEffect, useState } from "react";
 import { Form, useNavigation } from "react-router";
 import type { MessageTemplateRow } from "../lib/message-templates";
-import { partitionEligibility, renderCaseBody, clampBatch, type SkipReason, type TextableCase, type RenderableCase } from "../lib/bulk";
+import { partitionEligibility, renderCaseBody, clampBatch, skippedSummary, type TextableCase, type RenderableCase } from "../lib/bulk";
 import { plural } from "../lib/labels";
 import { useDialog } from "../lib/use-dialog";
 
 export type DrawerCase = TextableCase & RenderableCase;
-
-function skippedSummary(skipped: { reason: SkipReason }[]): string {
-  const noPhone = skipped.filter((s) => s.reason === "no-phone").length;
-  const noConsent = skipped.filter((s) => s.reason === "no-consent").length;
-  const blocked = skipped.filter((s) => s.reason === "do-not-contact").length;
-  const parts: string[] = [];
-  if (noPhone) parts.push(`${noPhone} no phone`);
-  if (noConsent) parts.push(`${noConsent} no consent`);
-  if (blocked) parts.push(`${blocked} do-not-contact`);
-  return parts.join(", ");
-}
 
 export function BulkSmsDrawer({
   open,

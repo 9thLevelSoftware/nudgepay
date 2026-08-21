@@ -1,5 +1,5 @@
 import { expect, test } from "vitest";
-import { partitionEligibility, renderCaseBody, clampBatch, MAX_BATCH } from "../app/lib/bulk";
+import { partitionEligibility, renderCaseBody, clampBatch, skippedSummary, MAX_BATCH } from "../app/lib/bulk";
 
 test("partitionEligibility keeps consented cases that have a phone", () => {
   const { eligible, skipped } = partitionEligibility([
@@ -94,4 +94,21 @@ test("partitionEligibility keeps a consented, non-opted-out customer eligible", 
   ]);
   expect(eligible).toHaveLength(1);
   expect(skipped).toHaveLength(0);
+});
+
+test("skippedSummary includes every skip reason so counts sum to skipped.length", () => {
+  const { skipped } = partitionEligibility([
+    { caseId: "c1", customerName: "A", phone: null, smsConsent: true, doNotText: false },
+    { caseId: "c2", customerName: "B", phone: "+1", smsConsent: false, doNotText: false },
+    { caseId: "c3", customerName: "C", phone: "+1", smsConsent: true, doNotText: false, contactBlocked: true },
+    { caseId: "c4", customerName: "D", phone: "+1", smsConsent: true, doNotText: true },
+    { caseId: "c5", customerName: "E", phone: "+1", smsConsent: true, doNotText: true },
+  ]);
+  expect(skipped).toHaveLength(5);
+  expect(skippedSummary(skipped)).toBe("1 no phone, 1 no consent, 1 do-not-contact, 2 do-not-text");
+});
+
+test("skippedSummary omits zero buckets and is empty when nothing is skipped", () => {
+  expect(skippedSummary([{ caseId: "c1", name: "D", reason: "do-not-text" }])).toBe("1 do-not-text");
+  expect(skippedSummary([])).toBe("");
 });

@@ -1,18 +1,37 @@
 // app/components/PromiseQuickPanel.tsx
-import { Link } from "react-router";
+import { useEffect, useState } from "react";
+import { Link, useNavigation } from "react-router";
 import type { PromiseRow, PromiseLinkedInvoice } from "../lib/promise-ledger";
 import { formatUSD } from "../lib/format";
 import { formatDate } from "../lib/dates";
 import { PROMISE_STATUS_LABEL, PROMISE_STATUS_CHIP } from "./PromisesLedger";
 import { Icon } from "./Icons";
 
+const PROMISE_ERROR_TEXT: Record<string, string> = {
+  "missing-promise": "Could not find that promise.",
+  "cancel-failed": "Could not cancel the promise.",
+};
+
 interface Props {
   promise: PromiseRow | null;
   invoices: PromiseLinkedInvoice[];
   note: string | null;
+  returnTo: string;
+  promiseError?: string | null;
 }
 
-export function PromiseQuickPanel({ promise, invoices, note }: Props) {
+export function PromiseQuickPanel({ promise, invoices, note, returnTo, promiseError }: Props) {
+  const navigation = useNavigation();
+  const cancelBusy = navigation.state !== "idle" && navigation.formAction === "/api/promises/cancel";
+  const [confirmCancel, setConfirmCancel] = useState(false);
+
+  useEffect(() => { setConfirmCancel(false); }, [promise?.promiseId]);
+  useEffect(() => {
+    if (!confirmCancel) return;
+    const id = setTimeout(() => setConfirmCancel(false), 5000);
+    return () => clearTimeout(id);
+  }, [confirmCancel]);
+
   if (!promise) {
     return (
       <aside className="hidden lg:flex flex-col items-center justify-center bg-surface border border-border rounded-card p-8 text-center text-muted">
@@ -89,7 +108,45 @@ export function PromiseQuickPanel({ promise, invoices, note }: Props) {
         >
           View account
         </Link>
+        {promise.status === "pending" ? (
+          <form method="post" action="/api/promises/cancel" className="inline-flex items-center">
+            <input type="hidden" name="promiseId" value={promise.promiseId} />
+            <input type="hidden" name="returnTo" value={returnTo} />
+            {confirmCancel ? (
+              <span className="inline-flex items-center gap-2 text-sm">
+                <span className="text-muted">Cancel this promise?</span>
+                <button
+                  type="submit"
+                  disabled={cancelBusy}
+                  className="h-9 px-3 rounded border border-hot text-hot text-sm font-medium hover:bg-hot/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-copper disabled:opacity-60 disabled:cursor-not-allowed"
+                >
+                  {cancelBusy ? "Cancelling…" : "Confirm"}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setConfirmCancel(false)}
+                  className="h-9 px-3 rounded border border-border text-muted text-sm font-medium hover:text-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-copper"
+                >
+                  Keep
+                </button>
+              </span>
+            ) : (
+              <button
+                type="button"
+                onClick={() => setConfirmCancel(true)}
+                className="h-9 px-3 rounded border border-hot text-hot text-sm font-medium hover:bg-hot/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-copper"
+              >
+                Cancel promise
+              </button>
+            )}
+          </form>
+        ) : null}
       </div>
+      {promiseError ? (
+        <p className="px-4 pb-4 text-xs font-sans font-medium text-hot" role="alert">
+          {PROMISE_ERROR_TEXT[promiseError] ?? "Could not cancel the promise."}
+        </p>
+      ) : null}
     </aside>
   );
 }

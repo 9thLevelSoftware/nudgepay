@@ -1,6 +1,7 @@
 import { createRequestHandler } from "react-router";
 import { runScheduledCdc } from "../app/lib/qbo-cron.server";
 import { runScheduledDigest } from "../app/lib/digest-cron.server";
+import { runScheduledRetention } from "../app/lib/retention-cron.server";
 import { withSecurityHeaders } from "../app/lib/security-headers";
 import { withUnhandledLogging } from "../app/lib/worker-observability";
 
@@ -31,10 +32,12 @@ export default {
 		const envRecord = env as unknown as Record<string, string>;
 		const cron = controller.cron;
 		if (cron === "0 * * * *") {
-			// Hourly digest gate — each org fires once local time reaches its
-			// configured digest_hour_local (see digest-cron.server.ts).
+			// Hourly: digest gate (per-org local hour) + retention purge.
 			ctx.waitUntil(
 				withUnhandledLogging("scheduled", { cron }, () => runScheduledDigest(envRecord)),
+			);
+			ctx.waitUntil(
+				withUnhandledLogging("scheduled", { cron }, () => runScheduledRetention(envRecord)),
 			);
 		} else {
 			// Default: bounded CDC catch-up for all connected orgs.

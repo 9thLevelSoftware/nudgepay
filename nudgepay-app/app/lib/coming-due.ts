@@ -1,5 +1,6 @@
 // Pure "Coming Due" intelligence — invoices approaching their due date (within
-// 7 days, not yet overdue). Read-only awareness; no cases are opened for these.
+// the org-configured window, default COMING_DUE_DAYS, not yet overdue).
+// Read-only awareness; no cases are opened for these.
 // No I/O, no .server suffix.
 
 import { ageInDays, type InvoiceInput, type CustomerInput, type Metric } from "./worklist";
@@ -96,4 +97,9 @@ export function comingDueMetric(groups: ComingDueGroup[]): Metric {
     count: groups.length,
     amount: groups.reduce((s, g) => s + g.totalBalance, 0),
   };
+}
+
+/** Empty-state title for the Coming due view. Interpolates the org window. */
+export function comingDueEmptyCopy(comingDueDays: number = COMING_DUE_DAYS): string {
+  return `No invoices coming due in the next ${comingDueDays} days.`;
 }

@@ -45,6 +45,21 @@ export function partitionEligibility<T extends TextableCase>(cases: T[]): Eligib
   return { eligible, skipped };
 }
 
+// Human-readable skip buckets for the bulk-SMS drawer. Every SkipReason must
+// appear here so the parenthetical counts sum to skipped.length.
+export function skippedSummary(skipped: { reason: SkipReason }[]): string {
+  const noPhone = skipped.filter((s) => s.reason === "no-phone").length;
+  const noConsent = skipped.filter((s) => s.reason === "no-consent").length;
+  const blocked = skipped.filter((s) => s.reason === "do-not-contact").length;
+  const doNotText = skipped.filter((s) => s.reason === "do-not-text").length;
+  const parts: string[] = [];
+  if (noPhone) parts.push(`${noPhone} no phone`);
+  if (noConsent) parts.push(`${noConsent} no consent`);
+  if (blocked) parts.push(`${blocked} do-not-contact`);
+  if (doNotText) parts.push(`${doNotText} do-not-text`);
+  return parts.join(", ");
+}
+
 // Render one personalized body using case totals + the oldest overdue invoice
 // (invoices[0], caller-sorted oldest-first) as the representative. Unknown
 // {tokens} pass through (applyTemplate only replaces known keys).
