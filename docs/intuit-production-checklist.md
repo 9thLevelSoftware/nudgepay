@@ -2,17 +2,17 @@
 
 Pre-launch verification for the QuickBooks Online integration.
 
-> **TODO(deploy):** Replace every `WORKER_PROD_URL_PLACEHOLDER` with the actual
+> **TODO(deploy):** Replace every `nudgepay.9thlevelsoftware.com` with the actual
 > Worker production URL before going live.
 
 ## 1. Intuit App Card URLs
 
 | Field              | Value                                                | Where                          |
 |--------------------|------------------------------------------------------|--------------------------------|
-| Privacy Policy URL | `https://WORKER_PROD_URL_PLACEHOLDER/privacy`        | Intuit Developer → App → URLs  |
-| EULA URL           | `https://WORKER_PROD_URL_PLACEHOLDER/eula`            | Intuit Developer → App → URLs  |
-| Launch URL         | `https://WORKER_PROD_URL_PLACEHOLDER/dashboard`       | Intuit Developer → App → URLs  |
-| Disconnect URL     | `https://WORKER_PROD_URL_PLACEHOLDER/api/qbo/disconnect` | Intuit Developer → App → URLs  |
+| Privacy Policy URL | `https://nudgepay.9thlevelsoftware.com/privacy`        | Intuit Developer → App → URLs  |
+| EULA URL           | `https://nudgepay.9thlevelsoftware.com/eula`            | Intuit Developer → App → URLs  |
+| Launch URL         | `https://nudgepay.9thlevelsoftware.com/dashboard`       | Intuit Developer → App → URLs  |
+| Disconnect URL     | `https://nudgepay.9thlevelsoftware.com/api/qbo/disconnect` | Intuit Developer → App → URLs  |
 
 **Verified by:** Browsing each URL; 200 response with correct page content.
 
@@ -30,7 +30,7 @@ Verify: `curl -I https://nudgepay-ar.netlify.app/privacy` → 301 to Worker.
 |---------------------------|----------------------------------------------|---------------------------------------------------|
 | `QBO_CLIENT_ID`           | Intuit Developer → Production Keys           | `npx wrangler secret put QBO_CLIENT_ID --env production` |
 | `QBO_CLIENT_SECRET`       | Intuit Developer → Production Keys           | `npx wrangler secret put QBO_CLIENT_SECRET --env production` |
-| `QBO_REDIRECT_URI`        | Must exactly match: `https://WORKER_PROD_URL_PLACEHOLDER/auth/qbo/callback` | `npx wrangler secret put QBO_REDIRECT_URI --env production` |
+| `QBO_REDIRECT_URI`        | Must exactly match: `https://nudgepay.9thlevelsoftware.com/auth/qbo/callback` | `npx wrangler secret put QBO_REDIRECT_URI --env production` |
 | `QBO_ENCRYPTION_KEY`      | `openssl rand -base64 32`                    | `npx wrangler secret put QBO_ENCRYPTION_KEY --env production` |
 | `QBO_WEBHOOK_VERIFIER_TOKEN` | Intuit Developer → Webhooks page          | `npx wrangler secret put QBO_WEBHOOK_VERIFIER_TOKEN --env production` |
 
@@ -40,7 +40,7 @@ Verify: `curl -I https://nudgepay-ar.netlify.app/privacy` → 301 to Worker.
 
 | Setting          | Value                                                      |
 |------------------|------------------------------------------------------------|
-| Endpoint URL     | `https://WORKER_PROD_URL_PLACEHOLDER/webhooks/qbo`          |
+| Endpoint URL     | `https://nudgepay.9thlevelsoftware.com/webhooks/qbo`          |
 | Subscribed events| Invoice, Customer, Payment, CreditMemo                     |
 
 **Verified by:** Create a test invoice in QBO → appears in NudgePay within seconds.
