@@ -21,8 +21,11 @@ import {
   parseDensity,
   DENSITY_IDS,
   DENSITY_STORAGE_KEY,
+  ENTITY_MODES,
   type DensityId,
+  type EntityMode,
 } from "../lib/queue-chrome";
+import type { InvoiceQueueItem } from "../lib/invoice-queue";
 import {
   PAYER_BAND_HINT,
   PAYER_BAND_LABEL,
@@ -58,7 +61,30 @@ const QUEUE_GRID_CUST_RISK = [
   "xl:grid-cols-[auto_minmax(140px,1.4fr)_minmax(88px,0.7fr)_minmax(48px,0.4fr)_minmax(64px,0.5fr)_minmax(64px,0.5fr)_minmax(56px,0.4fr)_minmax(96px,0.7fr)_minmax(96px,0.6fr)]",
 ].join(" ");
 
-function queueGrid(density: DensityId): string {
+const QUEUE_GRID_INV_GENERAL = [
+  "grid-cols-[auto_minmax(88px,0.7fr)_minmax(160px,1.6fr)_minmax(88px,0.7fr)]",
+  "lg:grid-cols-[auto_minmax(88px,0.7fr)_minmax(160px,1.6fr)_minmax(88px,0.7fr)_minmax(88px,0.7fr)_minmax(48px,0.4fr)]",
+  "xl:grid-cols-[auto_minmax(88px,0.7fr)_minmax(160px,1.6fr)_minmax(88px,0.7fr)_minmax(88px,0.7fr)_minmax(48px,0.4fr)_minmax(96px,0.6fr)]",
+].join(" ");
+
+const QUEUE_GRID_INV_DETAILED = [
+  "grid-cols-[auto_minmax(80px,0.6fr)_minmax(140px,1.4fr)_minmax(80px,0.6fr)]",
+  "lg:grid-cols-[auto_minmax(80px,0.6fr)_minmax(140px,1.4fr)_minmax(80px,0.6fr)_minmax(80px,0.6fr)_minmax(48px,0.4fr)_minmax(200px,2fr)]",
+  "xl:grid-cols-[auto_minmax(80px,0.6fr)_minmax(140px,1.4fr)_minmax(80px,0.6fr)_minmax(80px,0.6fr)_minmax(48px,0.4fr)_minmax(200px,2fr)_minmax(96px,0.6fr)]",
+].join(" ");
+
+const QUEUE_GRID_INV_RISK = [
+  "grid-cols-[auto_minmax(80px,0.6fr)_minmax(140px,1.4fr)_minmax(80px,0.6fr)]",
+  "lg:grid-cols-[auto_minmax(80px,0.6fr)_minmax(140px,1.4fr)_minmax(80px,0.6fr)_minmax(48px,0.4fr)_minmax(64px,0.5fr)_minmax(64px,0.5fr)_minmax(56px,0.4fr)]",
+  "xl:grid-cols-[auto_minmax(80px,0.6fr)_minmax(140px,1.4fr)_minmax(80px,0.6fr)_minmax(48px,0.4fr)_minmax(64px,0.5fr)_minmax(64px,0.5fr)_minmax(56px,0.4fr)_minmax(96px,0.6fr)]",
+].join(" ");
+
+function queueGrid(density: DensityId, entity: EntityMode = "customers"): string {
+  if (entity === "invoices") {
+    if (density === "detailed") return QUEUE_GRID_INV_DETAILED;
+    if (density === "risk") return QUEUE_GRID_INV_RISK;
+    return QUEUE_GRID_INV_GENERAL;
+  }
   if (density === "detailed") return QUEUE_GRID_CUST_DETAILED;
   if (density === "risk") return QUEUE_GRID_CUST_RISK;
   return QUEUE_GRID;
@@ -68,6 +94,11 @@ const DENSITY_LABEL: Record<DensityId, string> = {
   general: "General",
   detailed: "Detailed",
   risk: "Risk",
+};
+
+const ENTITY_LABEL: Record<EntityMode, string> = {
+  customers: "Customers",
+  invoices: "Invoices",
 };
 
 const PAYER_CHIP: Record<PayerBand, string> = {
@@ -194,11 +225,15 @@ const SAVED_VIEWS: { id: ViewId; label: string }[] = [
   { id: "my-work",          label: "My work" },
 ];
 
-const SORT_OPTIONS: { id: SortId; label: string }[] = [
+const SORT_OPTIONS_CUSTOMERS: { id: SortId; label: string }[] = [
   { id: "recommended",    label: "Recommended" },
   { id: "most-overdue",   label: "Most overdue" },
   { id: "highest-balance", label: "Highest balance" },
   { id: "customer",       label: "Customer" },
+];
+const SORT_OPTIONS_INVOICES: { id: SortId; label: string }[] = [
+  ...SORT_OPTIONS_CUSTOMERS,
+  { id: "due-date", label: "Due date" },
 ];
 
 // ---------------------------------------------------------------------------
@@ -207,6 +242,8 @@ const SORT_OPTIONS: { id: SortId; label: string }[] = [
 
 interface WorkQueueProps {
   items: CaseItem[];
+  invoiceItems: InvoiceQueueItem[];
+  entity: EntityMode;
   view: ViewId;
   sort: SortId;
   search: string;
@@ -215,6 +252,7 @@ interface WorkQueueProps {
   tab?: "overview" | "activity" | "messages" | "email";
   invoice?: string | null;
   selectedCaseId: string | null;
+  selectedInvoiceId: string | null;
   totalCount: number;
   viewCounts: Record<ViewId, number>;
   roster: { userId: string; label: string }[];
@@ -247,6 +285,7 @@ function QueueRow({
   view,
   sort,
   search,
+  entity,
   density,
   hrefDensity,
   checked,
@@ -260,6 +299,7 @@ function QueueRow({
   view: ViewId;
   sort: SortId;
   search: string;
+  entity: EntityMode;
   density: DensityId;
   hrefDensity?: DensityId;
   checked: boolean;
@@ -269,7 +309,7 @@ function QueueRow({
   timeZone?: string | null;
 }) {
   const navigate = useNavigate();
-  const chrome = { view, sort, q: search || undefined, density: hrefDensity, case: item.caseId };
+  const chrome = { view, sort, q: search || undefined, entity, density: hrefDensity, case: item.caseId };
   const href = dashboardHref(chrome);
   const msgHref = dashboardHref({ ...chrome, tab: "messages" });
   const logParams = dashboardSearchParams(chrome);
@@ -302,7 +342,7 @@ function QueueRow({
       {/* role=presentation flattens this grid wrapper so cells are owned by the row. */}
       <div
         role="presentation"
-        className={`flex-1 grid items-center gap-x-6 gap-y-0 ${queueGrid(density)} px-4 py-2 text-sm`}
+        className={`flex-1 grid items-center gap-x-6 gap-y-0 ${queueGrid(density, entity)} px-4 py-2 text-sm`}
       >
         {/* Heat */}
         <span role="cell" data-label="Heat" className="hidden md:flex">
@@ -439,14 +479,14 @@ function QueueRow({
 // ---------------------------------------------------------------------------
 
 function MobileCard({
-  item, selected, view, sort, search, density, hrefDensity, checked, onToggle, disabled, collision, timeZone,
+  item, selected, view, sort, search, entity, density, hrefDensity, checked, onToggle, disabled, collision, timeZone,
 }: {
   item: CaseItem; selected: boolean; view: ViewId; sort: SortId; search: string;
-  density: DensityId; hrefDensity?: DensityId;
+  entity: EntityMode; density: DensityId; hrefDensity?: DensityId;
   checked: boolean; onToggle: (id: string) => void; disabled: boolean; collision?: Collision;
   timeZone?: string | null;
 }) {
-  const href = dashboardHref({ view, sort, q: search || undefined, density: hrefDensity, case: item.caseId });
+  const href = dashboardHref({ view, sort, q: search || undefined, entity, density: hrefDensity, case: item.caseId });
   const band: PayerBand = item.payer?.band ?? "unknown";
   return (
     <div className={["flex gap-2 items-start bg-surface border rounded-lg p-3 mb-2", selected ? "border-copper ring-2 ring-copper bg-copper/5" : "border-border"].join(" ")}>
@@ -493,6 +533,215 @@ function MobileCard({
           )}
           <CollisionMarker collision={collision} />
         </div>
+        {density === "detailed" && item.peeks[0] ? (
+          <p className="mt-1 text-xs text-muted truncate">{item.peeks[0].summary}</p>
+        ) : null}
+        {density === "risk" ? (
+          <p className="mt-1 text-xs text-muted truncate">
+            {PAYER_BAND_LABEL[band]} · {formatDtp(item.payer?.daysToPay)} · {formatReplyPct(item.payer?.replyRate)}
+          </p>
+        ) : null}
+      </Link>
+    </div>
+  );
+}
+
+function invoiceRowHref(
+  item: InvoiceQueueItem,
+  chrome: { view: ViewId; sort: SortId; q?: string; entity: EntityMode; density?: DensityId },
+): string {
+  if (item.caseId) {
+    return dashboardHref({ ...chrome, case: item.caseId, invoice: item.invoiceId });
+  }
+  return item.customerId ? `/accounts/${item.customerId}` : "#";
+}
+
+function InvoiceQueueRow({
+  item,
+  selected,
+  view,
+  sort,
+  search,
+  entity,
+  density,
+  hrefDensity,
+  checked,
+  onToggle,
+  disabled,
+  collision,
+}: {
+  item: InvoiceQueueItem;
+  selected: boolean;
+  view: ViewId;
+  sort: SortId;
+  search: string;
+  entity: EntityMode;
+  density: DensityId;
+  hrefDensity?: DensityId;
+  checked: boolean;
+  onToggle: (id: string) => void;
+  disabled: boolean;
+  collision?: Collision;
+}) {
+  const navigate = useNavigate();
+  const chrome = { view, sort, q: search || undefined, entity, density: hrefDensity };
+  const href = invoiceRowHref(item, chrome);
+  const cased = item.caseId != null;
+  const msgHref = cased ? dashboardHref({ ...chrome, case: item.caseId, invoice: item.invoiceId, tab: "messages" }) : href;
+  const logParams = dashboardSearchParams({ ...chrome, case: item.caseId, invoice: item.invoiceId });
+  logParams.set("log", "1");
+  logParams.set("method", "call");
+  const logHref = cased ? `?${logParams.toString()}` : href;
+  const band: PayerBand = item.payer?.band ?? "unknown";
+  const label = item.docNumber ? `${item.docNumber} · ${item.customerName}` : item.customerName;
+
+  return (
+    <div
+      role="row"
+      onClick={() => { if (href !== "#") navigate(href); }}
+      className={[
+        "group relative flex items-center border-b border-border cursor-pointer transition-colors duration-100 hover:bg-paper",
+        selected ? "bg-copper/5" : "",
+      ].join(" ")}
+    >
+      <span aria-hidden="true" className={`absolute left-0 inset-y-0 w-1 ${HEAT_BAR[item.heat.band] ?? "bg-muted"}`} />
+      {selected ? <span aria-hidden="true" className="absolute left-1 inset-y-0 w-0.5 bg-copper" /> : null}
+      <label role="cell" className="flex items-center pl-4 pr-1 cursor-pointer" onClick={(e) => e.stopPropagation()}>
+        <span className="sr-only">Select {label}</span>
+        <input
+          type="checkbox"
+          checked={checked}
+          onChange={() => onToggle(item.invoiceId)}
+          disabled={disabled}
+          className="h-4 w-4 rounded border-border text-copper focus-visible:ring-2 focus-visible:ring-copper"
+        />
+      </label>
+      <div
+        role="presentation"
+        className={`flex-1 grid items-center gap-x-6 gap-y-0 ${queueGrid(density, "invoices")} px-4 py-2 text-sm`}
+      >
+        <span role="cell" data-label="Heat" className="hidden md:flex">
+          <ThermalBand heat={item.heat} />
+        </span>
+        <span role="cell" data-label="Doc #" className="font-mono text-xs text-muted truncate">
+          {item.docNumber ?? "—"}
+        </span>
+        <span role="cell" data-label="Customer" className="min-w-0">
+          <Link
+            to={href}
+            aria-current={selected ? "true" : undefined}
+            onClick={(e) => e.stopPropagation()}
+            className="block font-sans text-text truncate focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-copper focus-visible:ring-inset rounded"
+          >
+            {item.customerName}
+          </Link>
+          <CollisionMarker collision={collision} />
+        </span>
+        <span role="cell" data-label="Balance" className="font-mono text-text tabular-nums text-right hidden md:block">
+          {formatUSD(item.balance)}
+        </span>
+        {density !== "risk" ? (
+          <span role="cell" data-label="Due" className="hidden lg:block font-mono text-xs text-muted tabular-nums">
+            {item.dueDate ? formatDate(item.dueDate) : "—"}
+          </span>
+        ) : null}
+        <span role="cell" data-label="Age" className="hidden lg:flex flex-col gap-1 min-w-[48px]">
+          <span className="font-mono text-sm text-muted tabular-nums whitespace-nowrap">
+            {item.ageDays > 0 ? `${item.ageDays}d` : "Due"}
+          </span>
+          {item.ageDays > 0 && (
+            <span className="h-[3px] w-full rounded-full bg-border/50 overflow-hidden">
+              <span
+                className={`block h-full rounded-full ${HEAT_BAR[item.heat.band] ?? "bg-muted"}`}
+                style={{ width: `${Math.min(100, (item.ageDays / 90) * 100)}%` }}
+              />
+            </span>
+          )}
+        </span>
+        {density === "detailed" ? (
+          <span role="cell" data-label="Peek" className="hidden lg:flex flex-col min-w-0 gap-0.5">
+            {item.peeks.slice(0, 2).map((p, i) => (
+              <span key={`${p.at}-${p.kind}-${i}`} className="block truncate text-xs text-muted">{p.summary}</span>
+            ))}
+          </span>
+        ) : null}
+        {density === "risk" ? (
+          <>
+            <span role="cell" data-label="Payer" className="hidden lg:flex">
+              <PayerChip band={band} />
+            </span>
+            <span role="cell" data-label="Days-to-pay" className="hidden lg:block font-mono text-xs text-muted tabular-nums">
+              {formatDtp(item.payer?.daysToPay)}
+            </span>
+            <span role="cell" data-label="Reply" className="hidden lg:block font-mono text-xs text-muted tabular-nums">
+              {formatReplyPct(item.payer?.replyRate)}
+            </span>
+          </>
+        ) : null}
+        <span role="cell" data-label="Owner" className="hidden xl:inline-flex items-center gap-1 rounded-full bg-panel border border-border px-2 py-0.5 text-xs text-muted font-sans whitespace-nowrap">
+          <Icon name="user" size={12} aria-hidden />
+          {item.owner}
+        </span>
+      </div>
+      <span role="cell" className="hidden md:flex items-center gap-1 pr-3 opacity-0 group-hover:opacity-100 focus-within:opacity-100 pointer-events-none group-hover:pointer-events-auto focus-within:pointer-events-auto transition-opacity">
+        {cased ? (
+          <>
+            <Link
+              to={msgHref}
+              aria-label={`Send text to ${item.customerName}`}
+              onClick={(e) => e.stopPropagation()}
+              className="flex items-center justify-center w-7 h-7 rounded border border-border bg-panel text-muted hover:text-copper hover:border-copper focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-copper transition-colors"
+            >
+              <Icon name="message" size={14} aria-hidden />
+            </Link>
+            <Link
+              to={logHref}
+              aria-label={`Log call for ${item.customerName}`}
+              onClick={(e) => e.stopPropagation()}
+              className="flex items-center justify-center w-7 h-7 rounded border border-border bg-panel text-muted hover:text-copper hover:border-copper focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-copper transition-colors"
+            >
+              <Icon name="phone" size={14} aria-hidden />
+            </Link>
+          </>
+        ) : null}
+      </span>
+    </div>
+  );
+}
+
+function InvoiceMobileCard({
+  item, selected, view, sort, search, entity, density, hrefDensity, checked, onToggle, disabled, collision,
+}: {
+  item: InvoiceQueueItem; selected: boolean; view: ViewId; sort: SortId; search: string;
+  entity: EntityMode; density: DensityId; hrefDensity?: DensityId;
+  checked: boolean; onToggle: (id: string) => void; disabled: boolean; collision?: Collision;
+}) {
+  const chrome = { view, sort, q: search || undefined, entity, density: hrefDensity };
+  const href = invoiceRowHref(item, chrome);
+  const band: PayerBand = item.payer?.band ?? "unknown";
+  const label = item.docNumber ? `${item.docNumber} · ${item.customerName}` : item.customerName;
+  return (
+    <div className={["flex gap-2 items-start bg-surface border rounded-lg p-3 mb-2", selected ? "border-copper ring-2 ring-copper bg-copper/5" : "border-border"].join(" ")}>
+      <label className="pt-1 cursor-pointer" onClick={(e) => e.stopPropagation()}>
+        <span className="sr-only">Select {label}</span>
+        <input type="checkbox" checked={checked} onChange={() => onToggle(item.invoiceId)} disabled={disabled} className="h-4 w-4 rounded border-border text-copper focus-visible:ring-2 focus-visible:ring-copper" />
+      </label>
+      <Link to={href} aria-label={`Open ${label}`} aria-current={selected ? "true" : undefined} className="flex-1 min-w-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-copper rounded">
+        <div className="flex items-start justify-between gap-3 mb-2">
+          <div className="flex items-center gap-2 min-w-0">
+            <ThermalBand heat={item.heat} />
+            <div className="min-w-0">
+              <p className="font-sans text-text font-medium truncate">{item.customerName}</p>
+              <p className="font-mono text-xs text-muted truncate">{item.docNumber ?? "—"}</p>
+            </div>
+          </div>
+          <span className="font-mono text-text tabular-nums text-right shrink-0 text-sm">{formatUSD(item.balance)}</span>
+        </div>
+        <div className="flex items-center gap-3 text-xs">
+          <span className="font-mono text-muted tabular-nums">{item.dueDate ? formatDate(item.dueDate) : "—"}</span>
+          <span className="font-mono text-muted tabular-nums">{item.ageDays > 0 ? `${item.ageDays}d` : "Due"}</span>
+        </div>
+        {collision ? <CollisionMarker collision={collision} /> : null}
         {density === "detailed" && item.peeks[0] ? (
           <p className="mt-1 text-xs text-muted truncate">{item.peeks[0].summary}</p>
         ) : null}
@@ -561,6 +810,8 @@ function useQueueScroller() {
  */
 export function WorkQueue({
   items,
+  invoiceItems,
+  entity,
   view,
   sort,
   search,
@@ -569,6 +820,7 @@ export function WorkQueue({
   tab,
   invoice,
   selectedCaseId,
+  selectedInvoiceId,
   totalCount,
   viewCounts,
   roster,
@@ -592,18 +844,21 @@ export function WorkQueue({
   const nav = useNavigation();
   const { scrollerRef, scrollTop, viewportH } = useQueueScroller();
   const hrefDensity = densityFromUrl ? density : undefined;
+  const invoiceMode = entity === "invoices" && view !== "coming-due";
+  const sortSelectValue = !invoiceMode && sort === "due-date" ? "most-overdue" : sort;
+  const listCount = invoiceMode ? invoiceItems.length : items.length;
   const desk = visibleWindow({
     scrollTop,
     viewportH,
     rowH: queueRowHeight(density, false),
-    count: items.length,
+    count: listCount,
     overscan: QUEUE_OVERSCAN,
   });
   const mobile = visibleWindow({
     scrollTop,
     viewportH,
     rowH: queueRowHeight(density, true),
-    count: items.length,
+    count: listCount,
     overscan: QUEUE_OVERSCAN,
   });
 
@@ -612,7 +867,7 @@ export function WorkQueue({
   useEffect(() => {
     setSelected(new Set());
     setSmsOpen(false);
-  }, [view, sort, search]);
+  }, [view, sort, search, entity]);
 
   // After a bulk action the loader revalidates without remounting (same filter
   // params), so items can change while `selected` keeps IDs that left the view.
@@ -621,12 +876,14 @@ export function WorkQueue({
   useEffect(() => {
     setSelected((prev) => {
       if (prev.size === 0) return prev;
-      const visible = new Set(items.map((i) => i.caseId));
+      const visible = new Set(
+        invoiceMode ? invoiceItems.map((i) => i.invoiceId) : items.map((i) => i.caseId),
+      );
       const next = new Set<string>();
       for (const id of prev) if (visible.has(id)) next.add(id);
       return next.size === prev.size ? prev : next; // subset-only: equal size ⇒ nothing pruned ⇒ no re-render
     });
-  }, [items]);
+  }, [items, invoiceItems, invoiceMode]);
 
   // A bulk assign/SMS submits via <Form> (a navigation). When that navigation
   // settles back to idle, the action has completed + the loader revalidated, so
@@ -655,7 +912,10 @@ export function WorkQueue({
       return next;
     });
 
-  const allVisibleIds = clampBatch(items.map((i) => i.caseId), maxBatch);
+  const allVisibleIds = clampBatch(
+    invoiceMode ? invoiceItems.map((i) => i.invoiceId) : items.map((i) => i.caseId),
+    maxBatch,
+  );
   const allSelected = allVisibleIds.length > 0 && allVisibleIds.every((id) => selected.has(id));
   const toggleAll = () =>
     setSelected((prev) => (allSelected ? new Set() : new Set(allVisibleIds)));
@@ -668,12 +928,40 @@ export function WorkQueue({
   }, [allSelected, allVisibleIds, selected]);
 
   const capReached = selected.size >= maxBatch;
-  const selectedCases = items.filter((i) => selected.has(i.caseId));
+  const selectedInvoiceRows = invoiceMode ? invoiceItems.filter((i) => selected.has(i.invoiceId)) : [];
+  const selectedCaseIds = invoiceMode
+    ? [...new Set(selectedInvoiceRows.map((i) => i.caseId).filter((id): id is string => id != null))]
+    : [...selected];
+  const caselessSelected = invoiceMode ? selectedInvoiceRows.filter((i) => i.caseId == null).length : 0;
+  const selectedCases = items.filter((i) => selectedCaseIds.includes(i.caseId));
   const eligibleCount = partitionEligibility(selectedCases).eligible.length;
 
   // j/k/x keyboard navigation
   const navigate = useNavigate();
   const handleQueueKey = useCallback((key: QueueKey) => {
+    if (invoiceMode) {
+      if (key === "x") {
+        if (selectedInvoiceId) toggle(selectedInvoiceId);
+        return;
+      }
+      const currentIdx = selectedInvoiceId
+        ? invoiceItems.findIndex((i) => i.invoiceId === selectedInvoiceId)
+        : -1;
+      const nextIdx = key === "j"
+        ? Math.min(currentIdx + 1, invoiceItems.length - 1)
+        : currentIdx - 1;
+      const target = invoiceItems[nextIdx];
+      if (!target) return;
+      if (target.caseId) {
+        navigate(dashboardHref({
+          view, sort, q: search || undefined, entity, density: hrefDensity,
+          case: target.caseId, invoice: target.invoiceId,
+        }));
+      } else if (target.customerId) {
+        navigate(`/accounts/${target.customerId}`);
+      }
+      return;
+    }
     if (key === "x") {
       if (selectedCaseId) toggle(selectedCaseId);
       return;
@@ -686,9 +974,9 @@ export function WorkQueue({
       : currentIdx - 1;                              // k: move up
     const target = items[nextIdx];
     if (target) {
-      navigate(dashboardHref({ view, sort, q: search || undefined, density: hrefDensity, case: target.caseId }));
+      navigate(dashboardHref({ view, sort, q: search || undefined, entity, density: hrefDensity, case: target.caseId }));
     }
-  }, [items, selectedCaseId, view, sort, search, hrefDensity, navigate, toggle]);
+  }, [invoiceMode, invoiceItems, items, selectedCaseId, selectedInvoiceId, view, sort, search, entity, hrefDensity, navigate, toggle]);
 
   useQueueKeys({ enabled: true, onAction: handleQueueKey });
 
@@ -701,7 +989,7 @@ export function WorkQueue({
     if (stored !== "general" && stored !== "detailed" && stored !== "risk") return;
     persistDensity(next);
     navigate(dashboardHref({
-      view, sort, q: search || undefined, density: next, case: selectedCaseId, tab, invoice,
+      view, sort, q: search || undefined, entity, density: next, case: selectedCaseId, tab, invoice,
     }), { replace: true });
   // First landing only — URL is source of truth after a density click.
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -711,8 +999,10 @@ export function WorkQueue({
   // on a mounted row after windowing.
   useEffect(() => {
     const el = scrollerRef.current;
-    if (!el || !selectedCaseId) return;
-    const idx = items.findIndex((i) => i.caseId === selectedCaseId);
+    if (!el) return;
+    const idx = invoiceMode
+      ? (selectedInvoiceId ? invoiceItems.findIndex((i) => i.invoiceId === selectedInvoiceId) : -1)
+      : (selectedCaseId ? items.findIndex((i) => i.caseId === selectedCaseId) : -1);
     if (idx < 0) return;
     const desktop = typeof window !== "undefined" && window.matchMedia(MD_MIN).matches;
     const rowH = queueRowHeight(density, !desktop);
@@ -722,7 +1012,7 @@ export function WorkQueue({
     const viewBottom = el.scrollTop + el.clientHeight;
     if (rowTop < viewTop) el.scrollTop = rowTop;
     else if (rowBottom > viewBottom) el.scrollTop = Math.max(0, rowBottom - el.clientHeight);
-  }, [selectedCaseId, items, scrollerRef, density]);
+  }, [selectedCaseId, selectedInvoiceId, items, invoiceItems, invoiceMode, scrollerRef, density]);
 
   const emptyCopy = emptyQueueCopy({ connected, view, q: search });
 
@@ -738,18 +1028,52 @@ export function WorkQueue({
             Work queue
           </h2>
           <p className="font-sans text-xs text-muted">
-            {items.length} matching · {totalCount} open
+            {invoiceMode
+              ? `${invoiceItems.length} matching invoices · ${totalCount} open cases`
+              : `${items.length} matching · ${totalCount} open`}
           </p>
           <p className="hidden md:block font-mono text-[10px] text-muted/60">
             <kbd className="px-0.5">j</kbd>/<kbd className="px-0.5">k</kbd> move · <kbd className="px-0.5">x</kbd> select
           </p>
         </div>
 
+        {view === "coming-due" ? (
+          <p className="font-sans text-xs text-muted max-w-xs">
+            Coming due is invoice-grouped. Switch to All open to use Customers vs Invoices.
+          </p>
+        ) : (
+          <div className="flex items-center rounded-md border border-border bg-panel p-0.5" aria-label="Queue entity">
+            {ENTITY_MODES.map((id) => (
+              <Link
+                key={id}
+                to={dashboardHref({
+                  view,
+                  sort: id === "customers" && sort === "due-date" ? "most-overdue" : sort,
+                  q: search || undefined,
+                  entity: id,
+                  density: hrefDensity,
+                  case: selectedCaseId,
+                  tab,
+                  invoice,
+                })}
+                aria-pressed={entity === id}
+                className={[
+                  "px-2.5 h-8 inline-flex items-center rounded text-xs font-sans font-medium transition-colors",
+                  "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-copper",
+                  entity === id ? "bg-ink text-surface" : "text-muted hover:text-text",
+                ].join(" ")}
+              >
+                {ENTITY_LABEL[id]}
+              </Link>
+            ))}
+          </div>
+        )}
+
         <div className="flex items-center rounded-md border border-border bg-panel p-0.5" aria-label="Queue density">
           {DENSITY_IDS.map((id) => (
             <Link
               key={id}
-              to={dashboardHref({ view, sort, q: search || undefined, density: id, case: selectedCaseId, tab, invoice })}
+              to={dashboardHref({ view, sort, q: search || undefined, entity, density: id, case: selectedCaseId, tab, invoice })}
               aria-pressed={density === id}
               onClick={() => persistDensity(id)}
               className={[
@@ -763,9 +1087,10 @@ export function WorkQueue({
           ))}
         </div>
 
-        {/* GET form; submit preserves view + density via hidden inputs (not sort). */}
+        {/* GET form; submit preserves view + entity + density via hidden inputs (not sort). */}
         <Form method="get" className="flex items-center gap-2 ml-auto">
           <input type="hidden" name="view" value={view} />
+          {entity !== "customers" ? <input type="hidden" name="entity" value={entity} /> : null}
           {hrefDensity ? <input type="hidden" name="density" value={hrefDensity} /> : null}
 
           {/* Search input */}
@@ -786,12 +1111,13 @@ export function WorkQueue({
             <Icon name="arrowDownUp" size={15} className="text-muted shrink-0" />
             <span className="sr-only">Sort work queue</span>
             <select
+              key={invoiceMode ? "invoices" : "customers"}
               name="sort"
-              defaultValue={sort}
+              value={sortSelectValue}
               onChange={(e) => e.currentTarget.form?.requestSubmit()}
               className="bg-transparent border-none outline-none font-sans text-sm text-text cursor-pointer"
             >
-              {SORT_OPTIONS.map((opt) => (
+              {(invoiceMode ? SORT_OPTIONS_INVOICES : SORT_OPTIONS_CUSTOMERS).map((opt) => (
                 <option key={opt.id} value={opt.id}>
                   {opt.label}
                 </option>
@@ -806,7 +1132,7 @@ export function WorkQueue({
             Apply
           </button>
           <a
-            href={`/queue.csv${dashboardHref({ view, sort, q: search || undefined, density: hrefDensity })}`}
+            href={`/queue.csv${dashboardHref({ view, sort, q: search || undefined, entity, density: hrefDensity })}`}
             className="rounded-md border border-border bg-panel px-3 h-9 inline-flex items-center text-xs font-sans text-muted hover:text-text hover:border-copper transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-copper"
           >
             Export CSV
@@ -824,7 +1150,7 @@ export function WorkQueue({
           return (
             <Link
               key={sv.id}
-              to={dashboardHref({ view: sv.id, sort, q: search || undefined, density: hrefDensity })}
+              to={dashboardHref({ view: sv.id, sort, q: search || undefined, entity, density: hrefDensity })}
               aria-current={isActive ? "page" : undefined}
               className={[
                 "flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-[12.5px] whitespace-nowrap transition-colors",
@@ -848,7 +1174,7 @@ export function WorkQueue({
       </nav>
 
       {/* Column header stays static above the scroller (not virtualized). Hidden < md. */}
-      {view !== "coming-due" && items.length > 0 ? (
+      {view !== "coming-due" && listCount > 0 ? (
         <div className="hidden md:block shrink-0">
           <div className="flex items-center px-4 py-2 border-b border-border bg-paper">
             <label className="flex items-center pl-4 pr-1 cursor-pointer">
@@ -861,28 +1187,54 @@ export function WorkQueue({
                 className="h-4 w-4 rounded border-border text-copper focus-visible:ring-2 focus-visible:ring-copper"
               />
             </label>
-            <div className={`flex-1 grid items-center gap-x-6 ${queueGrid(density)}`} aria-hidden="true">
-              <span className="font-sans text-xs text-muted uppercase tracking-wide">Heat</span>
-              <span className="font-sans text-xs text-muted uppercase tracking-wide">Customer</span>
-              <span className="font-sans text-xs text-muted uppercase tracking-wide text-right">Total overdue</span>
-              <span className="font-sans text-xs text-muted uppercase tracking-wide">Oldest age</span>
-              {density === "detailed" ? (
-                <span className="font-sans text-xs text-muted uppercase tracking-wide hidden lg:block">Peek</span>
-              ) : null}
-              {density === "risk" ? (
+            <div className={`flex-1 grid items-center gap-x-6 ${queueGrid(density, invoiceMode ? "invoices" : "customers")}`} aria-hidden="true">
+              {invoiceMode ? (
                 <>
-                  <span className="font-sans text-xs text-muted uppercase tracking-wide hidden lg:block">Payer</span>
-                  <span className="font-sans text-xs text-muted uppercase tracking-wide hidden lg:block">DTP</span>
-                  <span className="font-sans text-xs text-muted uppercase tracking-wide hidden lg:block">Reply</span>
+                  <span className="font-sans text-xs text-muted uppercase tracking-wide">Heat</span>
+                  <span className="font-sans text-xs text-muted uppercase tracking-wide">Doc #</span>
+                  <span className="font-sans text-xs text-muted uppercase tracking-wide">Customer</span>
+                  <span className="font-sans text-xs text-muted uppercase tracking-wide text-right">Balance</span>
+                  {density !== "risk" ? (
+                    <span className="font-sans text-xs text-muted uppercase tracking-wide hidden lg:block">Due</span>
+                  ) : null}
+                  <span className="font-sans text-xs text-muted uppercase tracking-wide hidden lg:block">Age</span>
+                  {density === "detailed" ? (
+                    <span className="font-sans text-xs text-muted uppercase tracking-wide hidden lg:block">Peek</span>
+                  ) : null}
+                  {density === "risk" ? (
+                    <>
+                      <span className="font-sans text-xs text-muted uppercase tracking-wide hidden lg:block">Payer</span>
+                      <span className="font-sans text-xs text-muted uppercase tracking-wide hidden lg:block">DTP</span>
+                      <span className="font-sans text-xs text-muted uppercase tracking-wide hidden lg:block">Reply</span>
+                    </>
+                  ) : null}
+                  <span className="font-sans text-xs text-muted uppercase tracking-wide hidden xl:block">Owner</span>
                 </>
-              ) : null}
-              {density !== "detailed" ? (
-                <span className={`font-sans text-xs text-muted uppercase tracking-wide ${density === "risk" ? "hidden xl:block" : "hidden lg:block"}`}>Last contact</span>
-              ) : null}
-              {density !== "risk" ? (
-                <span className="font-sans text-xs text-muted uppercase tracking-wide hidden lg:block">Status</span>
-              ) : null}
-              <span className="font-sans text-xs text-muted uppercase tracking-wide hidden xl:block">Owner</span>
+              ) : (
+                <>
+                  <span className="font-sans text-xs text-muted uppercase tracking-wide">Heat</span>
+                  <span className="font-sans text-xs text-muted uppercase tracking-wide">Customer</span>
+                  <span className="font-sans text-xs text-muted uppercase tracking-wide text-right">Total overdue</span>
+                  <span className="font-sans text-xs text-muted uppercase tracking-wide">Oldest age</span>
+                  {density === "detailed" ? (
+                    <span className="font-sans text-xs text-muted uppercase tracking-wide hidden lg:block">Peek</span>
+                  ) : null}
+                  {density === "risk" ? (
+                    <>
+                      <span className="font-sans text-xs text-muted uppercase tracking-wide hidden lg:block">Payer</span>
+                      <span className="font-sans text-xs text-muted uppercase tracking-wide hidden lg:block">DTP</span>
+                      <span className="font-sans text-xs text-muted uppercase tracking-wide hidden lg:block">Reply</span>
+                    </>
+                  ) : null}
+                  {density !== "detailed" ? (
+                    <span className={`font-sans text-xs text-muted uppercase tracking-wide ${density === "risk" ? "hidden xl:block" : "hidden lg:block"}`}>Last contact</span>
+                  ) : null}
+                  {density !== "risk" ? (
+                    <span className="font-sans text-xs text-muted uppercase tracking-wide hidden lg:block">Status</span>
+                  ) : null}
+                  <span className="font-sans text-xs text-muted uppercase tracking-wide hidden xl:block">Owner</span>
+                </>
+              )}
             </div>
           </div>
         </div>
@@ -892,7 +1244,7 @@ export function WorkQueue({
       <div ref={scrollerRef} className="flex-1 overflow-auto bg-surface">
         {view === "coming-due" ? (
           <ComingDueList groups={comingDueGroups} comingDueDays={comingDueDays} />
-        ) : items.length === 0 ? (
+        ) : listCount === 0 ? (
           /* Empty state */
           <div className="flex flex-col items-center justify-center gap-3 py-16 px-6 text-center">
             <div className="w-10 h-10 rounded-full bg-paper flex items-center justify-center">
@@ -901,7 +1253,7 @@ export function WorkQueue({
             <p className="font-sans text-text font-medium">{emptyCopy.title}</p>
             {emptyCopy.clearSearch ? (
               <p className="font-sans text-sm text-muted max-w-xs">
-                <Link to={dashboardHref({ view: "all-open", sort, density: hrefDensity })} className="text-copper hover:underline font-medium">Clear the search</Link>{" "}
+                <Link to={dashboardHref({ view: "all-open", sort, entity, density: hrefDensity })} className="text-copper hover:underline font-medium">Clear the search</Link>{" "}
                 or pick another view.
               </p>
             ) : null}
@@ -913,9 +1265,20 @@ export function WorkQueue({
               <div role="row" className="sr-only">
                 <span role="columnheader">Select</span>
                 <span role="columnheader">Heat</span>
+                {invoiceMode ? <span role="columnheader">Doc #</span> : null}
                 <span role="columnheader">Customer</span>
-                <span role="columnheader">Total overdue</span>
-                <span role="columnheader">Oldest age</span>
+                {invoiceMode ? (
+                  <>
+                    <span role="columnheader">Balance</span>
+                    {density !== "risk" ? <span role="columnheader">Due</span> : null}
+                    <span role="columnheader">Age</span>
+                  </>
+                ) : (
+                  <>
+                    <span role="columnheader">Total overdue</span>
+                    <span role="columnheader">Oldest age</span>
+                  </>
+                )}
                 {density === "detailed" ? <span role="columnheader">Peek</span> : null}
                 {density === "risk" ? (
                   <>
@@ -924,8 +1287,8 @@ export function WorkQueue({
                     <span role="columnheader">Reply</span>
                   </>
                 ) : null}
-                {density !== "detailed" ? <span role="columnheader">Last contact</span> : null}
-                {density !== "risk" ? <span role="columnheader">Status</span> : null}
+                {!invoiceMode && density !== "detailed" ? <span role="columnheader">Last contact</span> : null}
+                {!invoiceMode && density !== "risk" ? <span role="columnheader">Status</span> : null}
                 <span role="columnheader">Owner</span>
                 <span role="columnheader">Actions</span>
               </div>
@@ -934,23 +1297,42 @@ export function WorkQueue({
                 role="rowgroup"
                 style={{ paddingTop: desk.padTop, paddingBottom: desk.padBottom, overflowAnchor: "none" }}
               >
-                {items.slice(desk.start, desk.end).map((item) => (
-                  <QueueRow
-                    key={item.caseId}
-                    item={item}
-                    selected={selectedCaseId === item.caseId}
-                    view={view}
-                    sort={sort}
-                    search={search}
-                    density={density}
-                    hrefDensity={hrefDensity}
-                    checked={selected.has(item.caseId)}
-                    onToggle={toggle}
-                    disabled={!selected.has(item.caseId) && capReached}
-                    collision={collisions[item.caseId]}
-                    timeZone={timeZone}
-                  />
-                ))}
+                {invoiceMode
+                  ? invoiceItems.slice(desk.start, desk.end).map((item) => (
+                    <InvoiceQueueRow
+                      key={item.invoiceId}
+                      item={item}
+                      selected={selectedInvoiceId === item.invoiceId}
+                      view={view}
+                      sort={sort}
+                      search={search}
+                      entity={entity}
+                      density={density}
+                      hrefDensity={hrefDensity}
+                      checked={selected.has(item.invoiceId)}
+                      onToggle={toggle}
+                      disabled={!selected.has(item.invoiceId) && capReached}
+                      collision={item.caseId ? collisions[item.caseId] : undefined}
+                    />
+                  ))
+                  : items.slice(desk.start, desk.end).map((item) => (
+                    <QueueRow
+                      key={item.caseId}
+                      item={item}
+                      selected={selectedCaseId === item.caseId}
+                      view={view}
+                      sort={sort}
+                      search={search}
+                      entity={entity}
+                      density={density}
+                      hrefDensity={hrefDensity}
+                      checked={selected.has(item.caseId)}
+                      onToggle={toggle}
+                      disabled={!selected.has(item.caseId) && capReached}
+                      collision={collisions[item.caseId]}
+                      timeZone={timeZone}
+                    />
+                  ))}
               </div>
             </div>
 
@@ -961,24 +1343,44 @@ export function WorkQueue({
               aria-label="Work queue items"
               style={{ paddingTop: 12 + mobile.padTop, paddingBottom: 12 + mobile.padBottom, overflowAnchor: "none" }}
             >
-              {items.slice(mobile.start, mobile.end).map((item) => (
-                <div key={item.caseId} role="listitem">
-                  <MobileCard
-                    item={item}
-                    selected={selectedCaseId === item.caseId}
-                    view={view}
-                    sort={sort}
-                    search={search}
-                    density={density}
-                    hrefDensity={hrefDensity}
-                    checked={selected.has(item.caseId)}
-                    onToggle={toggle}
-                    disabled={!selected.has(item.caseId) && capReached}
-                    collision={collisions[item.caseId]}
-                    timeZone={timeZone}
-                  />
-                </div>
-              ))}
+              {invoiceMode
+                ? invoiceItems.slice(mobile.start, mobile.end).map((item) => (
+                  <div key={item.invoiceId} role="listitem">
+                    <InvoiceMobileCard
+                      item={item}
+                      selected={selectedInvoiceId === item.invoiceId}
+                      view={view}
+                      sort={sort}
+                      search={search}
+                      entity={entity}
+                      density={density}
+                      hrefDensity={hrefDensity}
+                      checked={selected.has(item.invoiceId)}
+                      onToggle={toggle}
+                      disabled={!selected.has(item.invoiceId) && capReached}
+                      collision={item.caseId ? collisions[item.caseId] : undefined}
+                    />
+                  </div>
+                ))
+                : items.slice(mobile.start, mobile.end).map((item) => (
+                  <div key={item.caseId} role="listitem">
+                    <MobileCard
+                      item={item}
+                      selected={selectedCaseId === item.caseId}
+                      view={view}
+                      sort={sort}
+                      search={search}
+                      entity={entity}
+                      density={density}
+                      hrefDensity={hrefDensity}
+                      checked={selected.has(item.caseId)}
+                      onToggle={toggle}
+                      disabled={!selected.has(item.caseId) && capReached}
+                      collision={collisions[item.caseId]}
+                      timeZone={timeZone}
+                    />
+                  </div>
+                ))}
             </div>
           </>
         )}
@@ -986,13 +1388,15 @@ export function WorkQueue({
 
       {selected.size > 0 ? (
         <BulkActionBar
-          selectedCaseIds={[...selected]}
+          selectedCaseIds={selectedCaseIds}
           eligibleCount={eligibleCount}
           roster={roster}
           returnTo={returnTo}
           onClear={() => setSelected(new Set())}
           onOpenSms={() => setSmsOpen(true)}
           maxBatch={maxBatch}
+          statusLabel={invoiceMode ? `${selected.size} invoices · ${selectedCaseIds.length} accounts` : undefined}
+          skipReason={caselessSelected > 0 ? "Invoices without an open case skipped." : undefined}
         />
       ) : null}
       <BulkSmsDrawer

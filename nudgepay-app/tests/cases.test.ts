@@ -44,9 +44,9 @@ const CUSTOMERS = [
   { id: "c2", name: "Globex", phone: null, email: null, owner: null },
 ];
 const INVOICES = [
-  { id: "i1", qbo_doc_number: "1001", customer_id: "c1", balance: 6000, due_date: "2026-03-01" }, // 113d
-  { id: "i2", qbo_doc_number: "1002", customer_id: "c1", balance: 300,  due_date: "2026-06-18" }, // 4d
-  { id: "i3", qbo_doc_number: "2001", customer_id: "c2", balance: 800,  due_date: "2026-05-01" }, // 52d
+  { id: "i1", qbo_doc_number: "1001", customer_id: "c1", balance: 6000, due_date: "2026-03-01", amount: 6000, invoice_date: "2026-02-01", status: "overdue", paid_date: null }, // 113d
+  { id: "i2", qbo_doc_number: "1002", customer_id: "c1", balance: 300,  due_date: "2026-06-18", amount: 300, invoice_date: "2026-05-01", status: "open", paid_date: null }, // 4d
+  { id: "i3", qbo_doc_number: "2001", customer_id: "c2", balance: 800,  due_date: "2026-05-01", amount: 800, invoice_date: "2026-04-01", status: "overdue", paid_date: null }, // 52d
 ];
 const LABELS = new Map([["u1", "diskin"]]);
 
@@ -149,6 +149,14 @@ test("buildCaseItems sets lastContact from the most-recent contact per case and 
 test("sortCaseItems recommended orders by priority rank then oldest age", () => {
   const items = buildCaseItems(CASES, INVOICES, CUSTOMERS, [], [], TODAY, LABELS, DEFAULT_ORG_CONFIG);
   expect(sortCaseItems(items, "recommended").map((c) => c.customerId)).toEqual(["c1", "c2"]);
+});
+
+test("sortCaseItems treats stale due-date as most-overdue", () => {
+  const items = buildCaseItems(CASES, INVOICES, CUSTOMERS, [], [], TODAY, LABELS, DEFAULT_ORG_CONFIG);
+  expect(sortCaseItems(items, "due-date").map((c) => c.customerId)).toEqual(
+    sortCaseItems(items, "most-overdue").map((c) => c.customerId),
+  );
+  expect(sortCaseItems(items, "due-date").map((c) => c.customerId)).toEqual(["c1", "c2"]);
 });
 
 test("buildCaseItems populates promise, brokenPromise, promiseStatus and case-keyed last contact", () => {

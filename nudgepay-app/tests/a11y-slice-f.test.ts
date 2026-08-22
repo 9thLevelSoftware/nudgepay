@@ -29,6 +29,9 @@ describe("TEMP-UX-015 queue table roles", () => {
     expect(src).toContain("QUEUE_GRID");
     expect(src).toContain("QUEUE_GRID_CUST_DETAILED");
     expect(src).toContain("QUEUE_GRID_CUST_RISK");
+    expect(src).toContain("QUEUE_GRID_INV_GENERAL");
+    expect(src).toContain("QUEUE_GRID_INV_DETAILED");
+    expect(src).toContain("QUEUE_GRID_INV_RISK");
     expect(src).toContain('data-label="Peek"');
     expect(src).toContain('data-label="Payer"');
     expect(src).not.toContain('role="tablist"');

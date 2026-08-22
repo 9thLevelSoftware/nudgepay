@@ -29,9 +29,9 @@ const CUSTOMERS: CustomerInput[] = [
   { id: "c3", name: "Initech", phone: null, email: null, owner: "u1", smsConsent: false }, // paid-up, no invoices
 ];
 const INVOICES: InvoiceInput[] = [
-  { id: "i1", qbo_doc_number: "1001", customer_id: "c1", balance: 6000, due_date: "2026-03-01" }, // overdue 113d
-  { id: "i2", qbo_doc_number: "1002", customer_id: "c1", balance: 300,  due_date: "2026-09-01" }, // open, not due
-  { id: "i3", qbo_doc_number: "2001", customer_id: "c2", balance: 800,  due_date: "2026-05-01" }, // overdue 52d
+  { id: "i1", qbo_doc_number: "1001", customer_id: "c1", balance: 6000, due_date: "2026-03-01", amount: 6000, invoice_date: "2026-02-01", status: "overdue", paid_date: null }, // overdue 113d
+  { id: "i2", qbo_doc_number: "1002", customer_id: "c1", balance: 300,  due_date: "2026-09-01", amount: 300, invoice_date: "2026-08-01", status: "open", paid_date: null }, // open, not due
+  { id: "i3", qbo_doc_number: "2001", customer_id: "c2", balance: 800,  due_date: "2026-05-01", amount: 800, invoice_date: "2026-04-01", status: "overdue", paid_date: null }, // overdue 52d
 ];
 const CASES: AccountCaseInput[] = [{ customerId: "c1", onHold: false }];
 const LCS: AccountLastContactInput[] = [
@@ -108,6 +108,7 @@ test("AccountsDirectory is General | Risk only and preserves density", () => {
   expect(route).toContain("loadPayerSource");
   expect(route).toContain("loadReplySource");
   expect(route).toContain("parseAccountsDensity");
+  expect(route).toContain("amount, invoice_date, status, paid_date");
 });
 
 test("AccountsMetrics labels the count as collections customers, not the QBO directory", () => {

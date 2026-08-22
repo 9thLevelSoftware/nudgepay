@@ -9,6 +9,11 @@ export type QueueCsvRow = {
   lastContactDate: string | null;
   lastContactChannel: string | null;
   owner: string;
+  entity?: string;
+  docNumber?: string | null;
+  payerBand?: string | null;
+  daysToPay?: number | null;
+  replyRate?: number | null;
 };
 
 function csvField(value: string): string {
@@ -19,7 +24,12 @@ function csvField(value: string): string {
 const COLUMNS = [
   "customer", "status", "total_overdue", "oldest_age_days",
   "invoice_count", "last_contact_date", "last_contact_channel", "owner",
+  "entity", "doc_number", "payer_band", "days_to_pay", "reply_rate",
 ] as const;
+
+function csvNum(value: number | null | undefined): string {
+  return value == null || !Number.isFinite(value) ? "" : String(value);
+}
 
 export function queueItemsToCsv(rows: QueueCsvRow[]): string {
   const lines = [COLUMNS.join(",")];
@@ -33,6 +43,11 @@ export function queueItemsToCsv(rows: QueueCsvRow[]): string {
       csvField(r.lastContactDate ?? ""),
       csvField(r.lastContactChannel ?? ""),
       csvField(r.owner),
+      csvField(r.entity ?? ""),
+      csvField(r.docNumber ?? ""),
+      csvField(r.payerBand ?? ""),
+      csvNum(r.daysToPay),
+      csvNum(r.replyRate),
     ].join(","));
   }
   return lines.join("\n") + "\n";

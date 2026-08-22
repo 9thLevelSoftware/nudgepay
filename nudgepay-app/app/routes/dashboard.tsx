@@ -10,7 +10,8 @@ import { loadPeekSource, loadReplySource, peekWindowStartIso } from "../lib/acti
 import type { ActivityPeek } from "../lib/activity-peek";
 import { loadPayerSource } from "../lib/payer-behavior.server";
 import type { PayerStats } from "../lib/payer-behavior";
-import { dashboardHref, parseDensity, parseSort } from "../lib/queue-chrome";
+import { dashboardHref, parseDensity, parseEntityMode, parseSort } from "../lib/queue-chrome";
+import { applyInvoiceView, buildInvoiceQueue, sortInvoiceItems, type InvoiceQueueItem } from "../lib/invoice-queue";
 import { loadArKpiSource } from "../lib/ar-kpis.server";
 import { buildArKpis, DASHBOARD_AR_RANGE_DAYS } from "../lib/ar-kpis";
 import { loadContactPromiseRates } from "../lib/contact-promise-rates.server";
@@ -76,6 +77,7 @@ type DashboardParams = {
 
 type DashboardData = {
   items: CaseItem[];
+  invoiceItems: InvoiceQueueItem[];
   metrics: Metrics;
   viewCounts: Record<ViewId, number>;
   selected: CaseItem | null;
@@ -133,7 +135,31 @@ export function buildCaseData(
   ) as Record<ViewId, number>;
   const items = sortCaseItems(applyCaseView(searched, view, today, currentUserId, highValue), sort);
   const selected = caseId != null ? (searched.find((i) => i.caseId === caseId) ?? null) : null;
-  return { items, metrics, viewCounts, selected, comingDueGroups: filteredComingDue };
+  const casesByCustomer = new Map(
+    allItems.map((i) => [i.customerId, {
+      caseId: i.caseId, lastContact: i.lastContact, peeks: i.peeks, suppressed: i.suppressed,
+    }]),
+  );
+  const builtInvoices = buildInvoiceQueue({
+    invoices: [...invoices, ...comingDueInvoices],
+    casesByCustomer,
+    customers,
+    ownerLabels,
+    payerByCustomer,
+    today,
+  });
+  const searchedInvoices = q.trim() === ""
+    ? builtInvoices
+    : builtInvoices.filter((i) => i.searchText.includes(q.toLowerCase()));
+  const invoiceItems = sortInvoiceItems(
+    applyInvoiceView(searchedInvoices, view, {
+      matchingCaseIds: new Set(items.map((i) => i.caseId)),
+      currentUserId,
+      highValue,
+    }),
+    sort,
+  );
+  return { items, invoiceItems, metrics, viewCounts, selected, comingDueGroups: filteredComingDue };
 }
 
 // ---------------------------------------------------------------------------
@@ -256,6 +282,7 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
   const densityRaw = sp.get("density");
   const densityFromUrl = densityRaw != null;
   const density = parseDensity(densityRaw);
+  const entity = parseEntityMode(sp.get("entity"));
 
   const view: ViewId = VALID_VIEWS.includes(rawView as ViewId) ? (rawView as ViewId) : "all-open";
   const sort: SortId = parseSort(sp.get("sort"));
@@ -327,7 +354,11 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
 
   const emailEnabled = resolveEmailSettings(ecfg as any).emailEnabled;
 
-  const customerIds = [...new Set(cases.map((c) => c.customerId).filter(Boolean))];
+  const customerIds = [...new Set([
+    ...cases.map((c) => c.customerId),
+    ...invoicesInput.map((i) => i.customer_id ?? ""),
+    ...comingDueInvoices.map((i) => i.customer_id ?? ""),
+  ].filter(Boolean))];
   const windowStartIso = peekWindowStartIso(today);
   const brokenPromiseByCustomer = new Map<string, boolean>();
   const caseById = new Map(cases.map((c) => [c.id, c]));
@@ -496,6 +527,7 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
       view,
       sort,
       q,
+      entity,
       density,
       densityFromUrl,
       case: caseId,
@@ -567,9 +599,11 @@ export default function Dashboard() {
     view,
     sort,
     q,
+    entity,
     density,
     densityFromUrl,
     invoice,
+    invoiceItems,
     tab,
     log,
     logMethod,
@@ -633,8 +667,9 @@ export default function Dashboard() {
     ? q ? `Filtered — matching "${q}"` : `Filtered — ${VIEW_LABEL[view ?? ""] ?? view}`
     : null;
   const hrefDensity = densityFromUrl ? density : undefined;
+  const hrefEntity = entity !== "customers" ? entity : undefined;
   const clearHref = isFiltered
-    ? dashboardHref({ view: "all-open", sort, density: hrefDensity })
+    ? dashboardHref({ view: "all-open", sort, entity: hrefEntity, density: hrefDensity })
     : undefined;
 
   return (
@@ -703,11 +738,11 @@ export default function Dashboard() {
           {/* KPI band */}
           <div className="px-6 py-3 border-b border-border bg-panel shrink-0 space-y-3">
             <ArKpiBand kpis={arKpis} isOwner={isOwner} />
-            <KpiBand metrics={metrics} view={view} sort={sort} search={q} density={hrefDensity} scopeLabel={scopeLabel} clearHref={clearHref} />
+            <KpiBand metrics={metrics} view={view} sort={sort} search={q} entity={hrefEntity} density={hrefDensity} scopeLabel={scopeLabel} clearHref={clearHref} />
           </div>
 
           {/* Triage strip — top-3 actionable cases */}
-          <TriageStrip items={items} view={view} sort={sort} search={q} density={hrefDensity} timeZone={timeZone} />
+          <TriageStrip items={items} view={view} sort={sort} search={q} entity={hrefEntity} density={hrefDensity} timeZone={timeZone} />
 
           {/* Workspace: queue full-width until a case is selected; md+ two-pane, <md detail fills */}
           <div className="flex flex-1 overflow-hidden">
@@ -715,6 +750,8 @@ export default function Dashboard() {
             <div className={queuePaneClass(isMobileCaseOpen(selected))}>
               <WorkQueue
                 items={items}
+                invoiceItems={invoiceItems}
+                entity={entity}
                 view={view}
                 sort={sort}
                 search={q}
@@ -723,10 +760,11 @@ export default function Dashboard() {
                 tab={tab}
                 invoice={invoice}
                 selectedCaseId={selected?.caseId ?? null}
+                selectedInvoiceId={invoice ?? null}
                 totalCount={viewCounts["all-open"]}
                 viewCounts={viewCounts}
                 roster={roster}
-                returnTo={`/dashboard${dashboardHref({ view, sort, q: q || undefined, density: hrefDensity })}`}
+                returnTo={`/dashboard${dashboardHref({ view, sort, q: q || undefined, entity: hrefEntity, density: hrefDensity })}`}
                 collisions={collisions}
                 smsEnabled={smsEnabled}
                 smsQuietNow={smsQuietNow}
@@ -768,6 +806,7 @@ export default function Dashboard() {
                   view={view}
                   sort={sort}
                   q={q}
+                  entity={hrefEntity}
                   density={hrefDensity}
                   collision={selected ? (collisions[selected.caseId] ?? null) : null}
                   smsTemplates={smsTemplates}
@@ -787,7 +826,7 @@ export default function Dashboard() {
               key={selected.caseId}
               selected={selected}
               repInvoiceId={repInvoiceId ?? null}
-              returnTo={`/dashboard${dashboardHref({ view, sort, q: q || undefined, density: hrefDensity, case: selected.caseId, tab })}`}
+              returnTo={`/dashboard${dashboardHref({ view, sort, q: q || undefined, entity: hrefEntity, density: hrefDensity, case: selected.caseId, tab })}`}
               logError={logError}
               collision={collisions[selected.caseId] ?? null}
               method={logMethod}
@@ -800,8 +839,8 @@ export default function Dashboard() {
               caseId={selected.caseId}
               repInvoiceId={repInvoiceId ?? null}
               prefs={selectedPrefs}
-              returnTo={`/dashboard${dashboardHref({ view, sort, q: q || undefined, density: hrefDensity, case: selected.caseId, tab })}`}
-              closeHref={dashboardHref({ view, sort, q: q || undefined, density: hrefDensity, case: selected.caseId, tab })}
+              returnTo={`/dashboard${dashboardHref({ view, sort, q: q || undefined, entity: hrefEntity, density: hrefDensity, case: selected.caseId, tab })}`}
+              closeHref={dashboardHref({ view, sort, q: q || undefined, entity: hrefEntity, density: hrefDensity, case: selected.caseId, tab })}
             />
           ) : null}
         </div>
