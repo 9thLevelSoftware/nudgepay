@@ -14,8 +14,15 @@ function fd(entries: Record<string, string>): FormData {
   return f;
 }
 
-function ctx() {
-  return { cloudflare: { env: TEST_ENV } } as any;
+function ctx(allowedFrom?: string) {
+  return {
+    cloudflare: {
+      env: {
+        ...TEST_ENV,
+        ...(allowedFrom !== undefined ? { RESEND_ALLOWED_FROM: allowedFrom } : {}),
+      },
+    },
+  } as any;
 }
 
 /**
@@ -52,6 +59,7 @@ async function signInSession(email: string): Promise<object> {
 async function postOrgSettings(
   cookie: string,
   fields: Record<string, string>,
+  allowedFrom?: string,
 ): Promise<Response> {
   const form = new FormData();
   for (const [k, v] of Object.entries(fields)) form.set(k, v);
@@ -61,7 +69,7 @@ async function postOrgSettings(
       headers: { Cookie: cookie, Origin: "http://localhost" },
       body: form,
     }),
-    context: ctx(),
+    context: ctx(allowedFrom),
     params: {},
   } as any) as Promise<Response>;
 }
@@ -79,10 +87,11 @@ describe("save_email", () => {
     const owner = await makeUserClient(`se-owner-${Math.random()}@example.com`);
     await svc.from("memberships").insert({ org_id: orgId, user_id: owner.userId, role: "owner" });
 
+    const fromAddress = `billing-se-rls-${Math.random()}@x.com`;
     // Mirror the route's save_email upsert (owner client = RLS path).
     const { error } = await owner.client.from("email_config")
       .upsert(
-        { org_id: orgId, email_enabled: true, from_address: "billing@x.com", from_name: "Chancey" },
+        { org_id: orgId, email_enabled: true, from_address: fromAddress, from_name: "Chancey" },
         { onConflict: "org_id" },
       );
     expect(error).toBeNull();
@@ -90,7 +99,7 @@ describe("save_email", () => {
     const { data: row } = await svc.from("email_config")
       .select("email_enabled, from_address, from_name").eq("org_id", orgId).single();
     expect(row!.email_enabled).toBe(true);
-    expect(row!.from_address).toBe("billing@x.com");
+    expect(row!.from_address).toBe(fromAddress);
     expect(row!.from_name).toBe("Chancey");
   });
 
@@ -108,15 +117,16 @@ describe("save_email", () => {
     // @supabase/ssr reads from the cookie).
     const session = await signInSession(email);
     const cookie = sessionCookie(session);
+    const fromAddress = `billing-se-${Math.random()}@chancey.test`;
 
     const res = await postOrgSettings(cookie, {
       intent: "save_email",
       returnTo: "/settings",
       email_enabled: "true",
-      from_address: "billing@chancey.test",
+      from_address: fromAddress,
       from_name: "Chancey Pay",
       postal_address: "1 Main St, Miami FL",
-    });
+    }, fromAddress);
 
     expect(res.status).toBe(302);
     const location = res.headers.get("Location") ?? "";
@@ -128,7 +138,7 @@ describe("save_email", () => {
       .eq("org_id", orgId)
       .single();
     expect(row!.email_enabled).toBe(true);
-    expect(row!.from_address).toBe("billing@chancey.test");
+    expect(row!.from_address).toBe(fromAddress);
     expect(row!.from_name).toBe("Chancey Pay");
   });
 

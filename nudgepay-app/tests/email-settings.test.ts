@@ -16,7 +16,10 @@ describe("email settings", () => {
       .toEqual({ emailEnabled: true, fromAddress: "a@x.com", fromName: "A", postalAddress: "1 Main St" });
   });
   it("accepts a valid from address", () => {
-    const r = parseEmailSettingsUpdate(fd({ email_enabled: "true", from_address: "billing@x.com", from_name: "Chancey", postal_address: "1 Main St" }));
+    const r = parseEmailSettingsUpdate(
+      fd({ email_enabled: "true", from_address: "billing@x.com", from_name: "Chancey", postal_address: "1 Main St" }),
+      ["billing@x.com"],
+    );
     expect(r).toEqual({ ok: true, value: { email_enabled: true, from_address: "billing@x.com", from_name: "Chancey", postal_address: "1 Main St" } });
   });
   it("requires postal when email is enabled (NP-AUD-2026-033-POSTAL)", () => {
@@ -25,7 +28,10 @@ describe("email settings", () => {
     if (!r.ok) expect(r.error).toBe("postal");
   });
   it("trims postal when enabled", () => {
-    const r = parseEmailSettingsUpdate(fd({ email_enabled: "true", from_address: "billing@x.com", from_name: "", postal_address: "  1 Main St  " }));
+    const r = parseEmailSettingsUpdate(
+      fd({ email_enabled: "true", from_address: "billing@x.com", from_name: "", postal_address: "  1 Main St  " }),
+      ["billing@x.com"],
+    );
     expect(r.ok && r.value.postal_address).toBe("1 Main St");
   });
   it("rejects a malformed from address", () => {
@@ -44,10 +50,17 @@ describe("email settings", () => {
     expect(r.ok).toBe(false);
     if (!r.ok) expect(r.error).toBe("from_allowlist");
   });
+  it("rejects enable when the From allowlist is empty", () => {
+    const r = parseEmailSettingsUpdate(
+      fd({ email_enabled: "true", from_address: "billing@x.com", postal_address: "1 Main" }),
+      [],
+    );
+    expect(r).toEqual({ ok: false, error: "from_allowlist" });
+  });
   it("emailConfigUpsertRow always stamps updated_at", () => {
     const parsed = parseEmailSettingsUpdate(fd({
       email_enabled: "true", from_address: "billing@x.com", from_name: "A", postal_address: "1 Main",
-    }));
+    }), ["billing@x.com"]);
     expect(parsed.ok).toBe(true);
     if (!parsed.ok) return;
     const row = emailConfigUpsertRow("org-1", parsed.value, "2026-08-21T00:00:00.000Z");

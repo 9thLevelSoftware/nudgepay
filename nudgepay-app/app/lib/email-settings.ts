@@ -1,6 +1,10 @@
 // Pure module — no I/O, no .server. Per-org email config derivation + form
 // parsing, mirroring channel-settings.ts. Absent row => disabled (email defaults
-// OFF). Address is format-validated; domain verification is an operator concern.
+// OFF). Address is format-validated.
+//
+// RESEND_ALLOWED_FROM is a comma-separated list of verified From addresses.
+// An empty allowlist rejects enable so tenants cannot pick a free-text From
+// on the shared Resend key.
 
 export type EmailSettings = { emailEnabled: boolean; fromAddress: string; fromName: string; postalAddress: string };
 
@@ -35,7 +39,7 @@ export function parseAllowedFromList(raw: string | null | undefined): string[] {
 }
 
 export function fromAddressAllowed(fromAddress: string, allowlist: string[]): boolean {
-  if (allowlist.length === 0) return true;
+  if (allowlist.length === 0) return false;
   return allowlist.includes(fromAddress.trim().toLowerCase());
 }
 
