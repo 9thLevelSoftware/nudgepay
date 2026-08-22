@@ -96,4 +96,11 @@ describe("dashboard wiring (NP-AUD-2026-110)", () => {
     expect(detail).toContain("chaseRecipientsFrom");
     expect(detail).not.toContain('id: "activity" as const');
   });
+
+  it("expands history via a React Router hash Link, not a raw fragment click", () => {
+    expect(detail).toContain('hash: "#history"');
+    expect(detail).toContain("location.search");
+    expect(detail).not.toMatch(/<a\s+href="#history"/);
+    expect(detail).toContain("previewWorkspaceInvoices");
+  });
 });

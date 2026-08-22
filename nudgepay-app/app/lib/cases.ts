@@ -312,6 +312,19 @@ export function mergeWorkspaceInvoices(
   return [...overdue, ...extra.filter((i) => !seen.has(i.invoiceId))];
 }
 
+/** First `limit` invoices, with `selectedInvoiceId` pinned in if it would otherwise be sliced off. */
+export function previewWorkspaceInvoices(
+  invoices: CaseInvoice[],
+  selectedInvoiceId: string | null | undefined,
+  limit: number,
+): CaseInvoice[] {
+  if (invoices.length <= limit) return invoices;
+  const head = invoices.slice(0, limit);
+  if (!selectedInvoiceId || head.some((i) => i.invoiceId === selectedInvoiceId)) return head;
+  const selected = invoices.find((i) => i.invoiceId === selectedInvoiceId);
+  return selected ? [...head, selected] : head;
+}
+
 export function computeCaseMetrics(items: CaseItem[], today: string, highValue: number = HIGH_VALUE_THRESHOLD): Metrics {
   const active = items.filter((i) => !i.suppressed);
   const bucket = (source: CaseItem[], pred: (i: CaseItem) => boolean): Metric => {

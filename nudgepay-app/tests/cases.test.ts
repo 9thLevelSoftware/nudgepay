@@ -2,7 +2,7 @@ import { expect, test } from "vitest";
 import {
   reconcileCases,
   buildCaseItems, applyCaseView, sortCaseItems, computeCaseMetrics,
-  mergeWorkspaceInvoices,
+  mergeWorkspaceInvoices, previewWorkspaceInvoices,
   type CaseRow, type CaseInvoice,
   type CasePromiseInput, type CaseLastContactInput,
 } from "../app/lib/cases";
@@ -483,6 +483,18 @@ test("mergeWorkspaceInvoices unions overdue with coming-due for the same custome
   expect(merged[1].ageDays).toBeLessThanOrEqual(0);
   expect(merged[1].heat.band).toBe("cool");
   expect(merged[1].heat.days).toBe(0);
+});
+
+test("previewWorkspaceInvoices pins a selected row that would be sliced off", () => {
+  const rows: CaseInvoice[] = [1, 2, 3, 4, 5, 6].map((n) => ({
+    invoiceId: `i${n}`, docNumber: String(n), balance: n, dueDate: "2026-06-01",
+    ageDays: 21, heat: { band: "cool", label: "COOL", days: 21 }, lateFee: 0,
+  }));
+  expect(previewWorkspaceInvoices(rows, null, 5).map((i) => i.invoiceId)).toEqual(["i1", "i2", "i3", "i4", "i5"]);
+  expect(previewWorkspaceInvoices(rows, "i2", 5).map((i) => i.invoiceId)).toEqual(["i1", "i2", "i3", "i4", "i5"]);
+  expect(previewWorkspaceInvoices(rows, "i6", 5).map((i) => i.invoiceId)).toEqual(["i1", "i2", "i3", "i4", "i5", "i6"]);
+  expect(previewWorkspaceInvoices(rows, "missing", 5)).toHaveLength(5);
+  expect(previewWorkspaceInvoices(rows.slice(0, 3), "i1", 5)).toHaveLength(3);
 });
 
 test("mergeWorkspaceInvoices keeps overdue order and skips other customers", () => {

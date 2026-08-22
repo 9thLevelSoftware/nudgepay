@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { Link, useLocation, useNavigate, useNavigation, useSearchParams } from "react-router";
 import { HEARTBEAT_INTERVAL_MS, type Collision } from "~/lib/collision";
-import { type CaseInvoice, type CaseItem } from "~/lib/cases";
+import { previewWorkspaceInvoices, type CaseInvoice, type CaseItem } from "~/lib/cases";
 import { chaseRecipientsFrom } from "~/lib/chase-recipients";
 import type { ViewId, SortId } from "~/lib/worklist";
 import { dashboardHref, dashboardSearchParams, type DensityId, type EntityMode } from "~/lib/queue-chrome";
@@ -720,7 +720,9 @@ export function DetailPanel({
     smsEnabled,
     hasInvoice: invoices.length > 0,
   });
-  const visibleInvoices = showAllInvoices ? invoices : invoices.slice(0, INVOICE_PREVIEW);
+  const visibleInvoices = showAllInvoices
+    ? invoices
+    : previewWorkspaceInvoices(invoices, invoice, INVOICE_PREVIEW);
   const visibleTimeline = historyExpanded ? timeline : timeline.slice(0, HISTORY_PREVIEW);
 
   return (
@@ -1073,7 +1075,7 @@ export function DetailPanel({
                 })}
               </ul>
             )}
-            {invoices.length > INVOICE_PREVIEW && !showAllInvoices ? (
+            {visibleInvoices.length < invoices.length ? (
               <button
                 type="button"
                 onClick={() => setShowAllInvoices(true)}
@@ -1096,12 +1098,12 @@ export function DetailPanel({
               <TimelineList entries={visibleTimeline} today={today} timeZone={timeZone} />
             )}
             {timeline.length > HISTORY_PREVIEW && !historyExpanded ? (
-              <a
-                href="#history"
+              <Link
+                to={{ pathname: location.pathname, search: location.search, hash: "#history" }}
                 className="mt-2 inline-block text-xs font-sans font-medium text-copper hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-copper rounded"
               >
                 Show all {timeline.length}
-              </a>
+              </Link>
             ) : null}
           </div>
 
