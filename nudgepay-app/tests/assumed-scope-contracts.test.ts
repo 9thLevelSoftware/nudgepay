@@ -74,8 +74,8 @@ test("npm metadata is not the RR starter (NP-AUD-2026-132-STARTER)", () => {
   expect(pkg.cloudflare.label).toBe("NudgePay");
 });
 
-test("Agents.md lists migrations through 0041 (NP-AUD-2026-132-AGENTS)", () => {
-  const agents = readFileSync(fileURLToPath(new URL("../../Agents.md", import.meta.url)), "utf8");
+test("AGENTS.md lists migrations through 0041 (NP-AUD-2026-132-AGENTS)", () => {
+  const agents = readFileSync(fileURLToPath(new URL("../../AGENTS.md", import.meta.url)), "utf8");
   expect(agents).toMatch(/0001\.\.0041|0001–0041/);
 });
 
