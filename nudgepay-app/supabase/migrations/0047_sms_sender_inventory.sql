@@ -1,6 +1,4 @@
--- Operator-provisioned per-org SMS sender inventory. Tenant messaging_config
--- sender columns are not trusted for outbound or inbound; this table is.
--- FK is organizations (not orgs) to match 0001/0035/0038.
+-- Per-org SMS sender inventory: outbound From/SID and inbound To routing.
 
 create table sms_sender_inventory (
   org_id uuid primary key references organizations(id) on delete cascade,

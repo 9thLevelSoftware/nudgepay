@@ -55,8 +55,6 @@ export async function resolveSender(
   defaultSender: TwilioSender,
   opts?: { requireInventory?: boolean },
 ): Promise<TwilioSender> {
-  // Operator-provisioned inventory is the only trusted per-org sender.
-  // messaging_config.sender / messaging_service_sid stay ignored (spoofable).
   const { data, error } = await service
     .from("sms_sender_inventory")
     .select("messaging_service_sid, from_number")
@@ -180,9 +178,7 @@ async function resolveInboundOrgId(service: SupabaseClient, args: { from: string
   const toNorm = normalizePhone(args.to);
   if (toNorm.length < 10) return null;
 
-  // Inventory To (last-10) is authoritative when exactly one active row matches.
-  // Ambiguous To (2+) is unmatched. Zero hits fall through to outbound history.
-  // messaging_config.sender is never trusted here.
+  // 1 inventory To hit → that org; 0 → outbound history; 2+ → unmatched.
   const { data: inventoryHits, error: invErr } = await service
     .from("sms_sender_inventory")
     .select("org_id")
