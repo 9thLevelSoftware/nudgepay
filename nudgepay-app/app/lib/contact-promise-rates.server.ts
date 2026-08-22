@@ -7,7 +7,7 @@ import { chunkIds, orderPage, pageAll, pageAllChunked, PAGE_ALL_MAX_ROWS } from 
 
 type LogRow = { case_id: string | null; method: string | null };
 type MsgRow = { case_id: string | null };
-type PromiseRow = { id: string };
+type PromiseRow = { case_id: string | null };
 
 const CONTACT_METHODS = ["call", "text", "email"] as const;
 
@@ -74,7 +74,7 @@ export async function loadContactPromiseRates(args: {
         orderPage(
           supabase
             .from("promises")
-            .select("id", { count: "exact" })
+            .select("case_id", { count: "exact" })
             .eq("org_id", orgId)
             .gte("created_at", windowStartIso)
             .neq("status", "cancelled"),
@@ -94,9 +94,14 @@ export async function loadContactPromiseRates(args: {
   for (const r of texts.rows) add(r.case_id);
   for (const r of emails.rows) add(r.case_id);
 
+  const promiseCases = new Set<string>();
+  for (const r of promises.rows) {
+    if (r.case_id) promiseCases.add(r.case_id);
+  }
+
   return {
     contactedOpenCaseIds: [...contacted],
-    promisesCreated: promises.rows.length,
+    promisesCreated: promiseCases.size,
     truncated: logs.truncated || texts.truncated || emails.truncated || promises.truncated,
   };
 }

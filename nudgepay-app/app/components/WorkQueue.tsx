@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Form, Link, useNavigate, useNavigation } from "react-router";
+import { Form, Link, useLocation, useNavigate, useNavigation } from "react-router";
 import type { ViewId, SortId } from "../lib/worklist";
 import type { CaseItem } from "../lib/cases";
 import type { Collision } from "../lib/collision";
@@ -19,13 +19,14 @@ import {
   dashboardHref,
   dashboardSearchParams,
   parseDensity,
+  withDensityParam,
   DENSITY_IDS,
   DENSITY_STORAGE_KEY,
   ENTITY_MODES,
   type DensityId,
   type EntityMode,
 } from "../lib/queue-chrome";
-import type { InvoiceQueueItem } from "../lib/invoice-queue";
+import { clampInvoiceBatch, type InvoiceQueueItem } from "../lib/invoice-queue";
 import {
   PAYER_BAND_HINT,
   PAYER_BAND_LABEL,
@@ -907,15 +908,26 @@ export function WorkQueue({
   const toggle = (id: string) =>
     setSelected((prev) => {
       const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else if (next.size < maxBatch) next.add(id);
+      if (next.has(id)) {
+        next.delete(id);
+        return next;
+      }
+      if (!invoiceMode) {
+        if (next.size < maxBatch) next.add(id);
+        return next;
+      }
+      const row = invoiceItems.find((i) => i.invoiceId === id);
+      const existing = new Set(
+        invoiceItems.filter((i) => next.has(i.invoiceId) && i.caseId).map((i) => i.caseId as string),
+      );
+      if (row?.caseId && !existing.has(row.caseId) && existing.size >= maxBatch) return prev;
+      next.add(id);
       return next;
     });
 
-  const allVisibleIds = clampBatch(
-    invoiceMode ? invoiceItems.map((i) => i.invoiceId) : items.map((i) => i.caseId),
-    maxBatch,
-  );
+  const allVisibleIds = invoiceMode
+    ? clampInvoiceBatch(invoiceItems, maxBatch)
+    : clampBatch(items.map((i) => i.caseId), maxBatch);
   const allSelected = allVisibleIds.length > 0 && allVisibleIds.every((id) => selected.has(id));
   const toggleAll = () =>
     setSelected((prev) => (allSelected ? new Set() : new Set(allVisibleIds)));
@@ -927,17 +939,20 @@ export function WorkQueue({
     }
   }, [allSelected, allVisibleIds, selected]);
 
-  const capReached = selected.size >= maxBatch;
   const selectedInvoiceRows = invoiceMode ? invoiceItems.filter((i) => selected.has(i.invoiceId)) : [];
   const selectedCaseIds = invoiceMode
     ? [...new Set(selectedInvoiceRows.map((i) => i.caseId).filter((id): id is string => id != null))]
     : [...selected];
+  const capReached = invoiceMode
+    ? selectedCaseIds.length >= maxBatch
+    : selected.size >= maxBatch;
   const caselessSelected = invoiceMode ? selectedInvoiceRows.filter((i) => i.caseId == null).length : 0;
   const selectedCases = items.filter((i) => selectedCaseIds.includes(i.caseId));
   const eligibleCount = partitionEligibility(selectedCases).eligible.length;
 
   // j/k/x keyboard navigation
   const navigate = useNavigate();
+  const location = useLocation();
   const handleQueueKey = useCallback((key: QueueKey) => {
     if (invoiceMode) {
       if (key === "x") {
@@ -988,9 +1003,7 @@ export function WorkQueue({
     const next = parseDensity(stored);
     if (stored !== "general" && stored !== "detailed" && stored !== "risk") return;
     persistDensity(next);
-    navigate(dashboardHref({
-      view, sort, q: search || undefined, entity, density: next, case: selectedCaseId, tab, invoice,
-    }), { replace: true });
+    navigate(withDensityParam(location.search, next), { replace: true });
   // First landing only — URL is source of truth after a density click.
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -1311,7 +1324,7 @@ export function WorkQueue({
                       hrefDensity={hrefDensity}
                       checked={selected.has(item.invoiceId)}
                       onToggle={toggle}
-                      disabled={!selected.has(item.invoiceId) && capReached}
+                      disabled={!selected.has(item.invoiceId) && capReached && (!item.caseId || !selectedCaseIds.includes(item.caseId))}
                       collision={item.caseId ? collisions[item.caseId] : undefined}
                     />
                   ))
@@ -1357,7 +1370,7 @@ export function WorkQueue({
                       hrefDensity={hrefDensity}
                       checked={selected.has(item.invoiceId)}
                       onToggle={toggle}
-                      disabled={!selected.has(item.invoiceId) && capReached}
+                      disabled={!selected.has(item.invoiceId) && capReached && (!item.caseId || !selectedCaseIds.includes(item.caseId))}
                       collision={item.caseId ? collisions[item.caseId] : undefined}
                     />
                   </div>

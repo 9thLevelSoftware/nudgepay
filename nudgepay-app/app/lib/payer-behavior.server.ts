@@ -2,7 +2,7 @@
 // (customer-scoped) — never from the case-scoped peek query.
 
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { chunkIds, pageAllChunked, PAGE_ALL_MAX_ROWS } from "./page-all";
+import { chunkIds, orderPage, pageAll, pageAllChunked, PAGE_ALL_MAX_ROWS } from "./page-all";
 import {
   buildPayerStats,
   daysToPay,
@@ -16,6 +16,32 @@ type PaidInvoiceRow = {
   paid_date: string | null;
 };
 
+export async function loadBrokenPromiseCustomers(args: {
+  supabase: SupabaseClient;
+  orgId: string;
+  caseToCustomer: Map<string, string>;
+}): Promise<Map<string, boolean>> {
+  const { supabase, orgId, caseToCustomer } = args;
+  const out = new Map<string, boolean>();
+  if (caseToCustomer.size === 0) return out;
+  const broken = await pageAll<{ case_id: string | null }>(
+    (from, to) =>
+      orderPage(
+        supabase
+          .from("promises")
+          .select("case_id, created_at", { count: "exact" })
+          .eq("org_id", orgId)
+          .eq("status", "broken"),
+      ).range(from, to),
+    { maxRows: PAGE_ALL_MAX_ROWS },
+  );
+  for (const r of broken.rows) {
+    const cid = r.case_id ? caseToCustomer.get(r.case_id) : undefined;
+    if (cid) out.set(cid, true);
+  }
+  return out;
+}
+
 export async function loadPayerSource(args: {
   supabase: SupabaseClient;
   orgId: string;
@@ -23,9 +49,11 @@ export async function loadPayerSource(args: {
   today: string;
   brokenPromiseByCustomer: Map<string, boolean>;
   replyByCustomer?: Map<string, { inbound: number; outbound: number }>;
+  replyTruncated?: boolean;
 }): Promise<Map<string, PayerStats>> {
   const { supabase, orgId, today, brokenPromiseByCustomer } = args;
   const replyByCustomer = args.replyByCustomer ?? new Map();
+  const replyTruncated = args.replyTruncated === true;
   const customerIds = args.customerIds.filter(Boolean);
   if (customerIds.length === 0) return new Map();
 
@@ -65,14 +93,17 @@ export async function loadPayerSource(args: {
   }
 
   const out = new Map<string, PayerStats>();
+  const paidTruncated = paid.truncated;
   for (const customerId of customerIds) {
     const invoices = invoicesByCustomer.get(customerId) ?? [];
-    const dtp = daysToPay(invoices);
-    const reply = replyByCustomer.get(customerId) ?? { inbound: 0, outbound: 0 };
-    const rate = replyRate(reply.outbound, reply.inbound);
+    const dtp = paidTruncated ? null : daysToPay(invoices);
+    const reply = replyTruncated
+      ? { inbound: 0, outbound: 0 }
+      : (replyByCustomer.get(customerId) ?? { inbound: 0, outbound: 0 });
+    const rate = replyTruncated ? null : replyRate(reply.outbound, reply.inbound);
     out.set(customerId, buildPayerStats({
       daysToPay: dtp,
-      paidSample: invoices.filter((i) => i.invoiceDate && i.paidDate).length,
+      paidSample: paidTruncated ? 0 : invoices.filter((i) => i.invoiceDate && i.paidDate).length,
       replyRate: rate,
       outbound: reply.outbound,
       inbound: reply.inbound,

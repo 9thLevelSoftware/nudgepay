@@ -7,7 +7,7 @@ import {
   PAYER_BAND_HINT,
   PAYER_BAND_LABEL,
 } from "../app/lib/payer-behavior";
-import { loadPayerSource } from "../app/lib/payer-behavior.server";
+import { loadBrokenPromiseCustomers, loadPayerSource } from "../app/lib/payer-behavior.server";
 import { buildCaseData } from "../app/routes/dashboard";
 import type { CaseRow } from "../app/lib/cases";
 import { DEFAULT_ORG_CONFIG } from "../app/lib/org-config";
@@ -137,10 +137,12 @@ function makeClient(tables: Record<string, TableRows>) {
         },
         then(resolve: (v: unknown) => unknown, reject?: (e: unknown) => unknown) {
           const idSet = new Set(state.ids);
-          const filtered = src.rows.filter((r) => {
-            const key = r.customer_id;
-            return typeof key === "string" && idSet.has(key);
-          });
+          const filtered = state.ids.length === 0
+            ? src.rows
+            : src.rows.filter((r) => {
+              const key = r.customer_id;
+              return typeof key === "string" && idSet.has(key);
+            });
           calls.push({
             table,
             select: state.select,
@@ -212,7 +214,7 @@ test("loadPayerSource pages paid invoices, keeps 12, and uses replyByCustomer", 
   expect(c2.band).toBe("risk");
 });
 
-test("loadPayerSource still returns missing customers with null DTP when truncated", async () => {
+test("loadPayerSource degrades DTP for every customer when the paid page is truncated", async () => {
   const { client } = makeClient({
     invoices: {
       rows: [{ customer_id: "cust-1", invoice_date: "2026-01-01", paid_date: "2026-03-01" }],
@@ -227,5 +229,43 @@ test("loadPayerSource still returns missing customers with null DTP when truncat
     brokenPromiseByCustomer: new Map(),
   });
   expect(result.get("cust-missing")?.daysToPay).toBeNull();
-  expect(result.get("cust-1")?.daysToPay).not.toBeNull();
+  expect(result.get("cust-1")?.daysToPay).toBeNull();
+  expect(result.get("cust-1")?.paidSample).toBe(0);
+});
+
+test("loadPayerSource degrades reply rate when reply source is truncated", async () => {
+  const { client } = makeClient({
+    invoices: { rows: [] },
+  });
+  const result = await loadPayerSource({
+    supabase: client,
+    orgId: "org-1",
+    customerIds: ["cust-1"],
+    today: "2026-06-22",
+    brokenPromiseByCustomer: new Map(),
+    replyByCustomer: new Map([["cust-1", { inbound: 2, outbound: 4 }]]),
+    replyTruncated: true,
+  });
+  expect(result.get("cust-1")?.replyRate).toBeNull();
+  expect(result.get("cust-1")?.outbound).toBe(0);
+});
+
+test("loadBrokenPromiseCustomers maps broken case ids onto customers", async () => {
+  const { client, calls } = makeClient({
+    promises: {
+      rows: [
+        { case_id: "case-1", created_at: "t1", id: "p1" },
+        { case_id: "missing", created_at: "t2", id: "p2" },
+      ],
+    },
+  });
+  const result = await loadBrokenPromiseCustomers({
+    supabase: client,
+    orgId: "org-1",
+    caseToCustomer: new Map([["case-1", "cust-1"]]),
+  });
+  expect(result.get("cust-1")).toBe(true);
+  expect(result.size).toBe(1);
+  expect(calls[0]?.table).toBe("promises");
+  expect(calls[0]?.select).toBe("case_id, created_at");
 });

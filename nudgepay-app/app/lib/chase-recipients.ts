@@ -19,6 +19,7 @@ export function chaseRecipientsFrom(input: {
   contactBlocked: boolean;
   exceptionReason: import("./contact-log").ExceptionReason | null;
   smsEnabled: boolean;
+  emailEnabled: boolean;
   hasInvoice: boolean;
 }): ChaseRecipient[] {
   const out: ChaseRecipient[] = [];
@@ -40,14 +41,20 @@ export function chaseRecipientsFrom(input: {
     });
   }
   if (input.email) {
-    const blocked = input.contactBlocked || !canSendEmail(input.commPrefs);
+    const reasonDisabled = !input.emailEnabled
+      ? "Email is turned off for this workspace"
+      : input.contactBlocked
+        ? "Case is marked do-not-contact / legal"
+        : !input.hasInvoice
+          ? "No invoice to reference"
+          : !canSendEmail(input.commPrefs)
+            ? "Customer opted out of email"
+            : null;
     out.push({
       channel: "email",
       address: input.email,
-      enabled: !blocked,
-      reasonDisabled: input.contactBlocked
-        ? "Case is marked do-not-contact / legal"
-        : blocked ? "Customer opted out of email" : null,
+      enabled: reasonDisabled == null,
+      reasonDisabled,
     });
   }
   const call = resolveCallAction(input.commPrefs, input.phone, input.contactBlocked);

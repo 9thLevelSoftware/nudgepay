@@ -51,6 +51,51 @@ export function hourInTz(tz: string, now: Date = new Date()): number {
   return hour === 24 ? 0 : hour;
 }
 
+const OFFSET_FORMATTERS = new Map<string, Intl.DateTimeFormat>();
+
+function offsetFormatter(tz: string): Intl.DateTimeFormat {
+  let fmt = OFFSET_FORMATTERS.get(tz);
+  if (!fmt) {
+    fmt = new Intl.DateTimeFormat("en-US", {
+      timeZone: tz,
+      hourCycle: "h23",
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+      second: "2-digit",
+    });
+    OFFSET_FORMATTERS.set(tz, fmt);
+  }
+  return fmt;
+}
+
+/** Milliseconds to add to a UTC instant to get the same wall-clock in `tz`. */
+function tzOffsetMs(at: Date, tz: string): number {
+  const parts = offsetFormatter(tz).formatToParts(at);
+  const n = (type: Intl.DateTimeFormatPartTypes) => {
+    const v = parts.find((p) => p.type === type)?.value;
+    return v ? Number(v) : 0;
+  };
+  const asUtc = Date.UTC(n("year"), n("month") - 1, n("day"), n("hour"), n("minute"), n("second"));
+  return asUtc - at.getTime();
+}
+
+/**
+ * UTC ISO of local midnight for a YYYY-MM-DD calendar day in `tz`.
+ * America/New_York 2026-06-22 (EDT, UTC−4) → 2026-06-22T04:00:00.000Z
+ */
+export function localMidnightUtcIso(date: string, tz: string): string {
+  const [y, m, d] = date.split("-").map(Number);
+  let utc = Date.UTC(y, m - 1, d, 0, 0, 0);
+  const offset1 = tzOffsetMs(new Date(utc), tz);
+  utc -= offset1;
+  const offset2 = tzOffsetMs(new Date(utc), tz);
+  if (offset1 !== offset2) utc = Date.UTC(y, m - 1, d, 0, 0, 0) - offset2;
+  return new Date(utc).toISOString();
+}
+
 /**
  * Digest send gate: fires once the org-local hour reaches digestHourLocal,
  * and at most once per org-local calendar day.

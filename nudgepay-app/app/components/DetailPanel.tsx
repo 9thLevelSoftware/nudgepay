@@ -173,7 +173,7 @@ function MessagesTab({
   const vars: TemplateVars = {
     customer: selected.customerName,
     invoice:  repInvoice?.docNumber ?? selected.customerName,
-    balance:  formatUSD(selected.totalOverdue),
+    balance:  formatUSD(repInvoice?.balance ?? selected.totalOverdue),
     dueDate:  formatDate(repInvoice?.dueDate ?? null),
     company: orgCompany,
     phone: orgPhone,
@@ -388,7 +388,7 @@ function EmailTab({
   const vars: TemplateVars = {
     customer: selected.customerName,
     invoice:  repInvoice?.docNumber ?? selected.customerName,
-    balance:  formatUSD(selected.totalOverdue),
+    balance:  formatUSD(repInvoice?.balance ?? selected.totalOverdue),
     dueDate:  formatDate(repInvoice?.dueDate ?? null),
     company: orgCompany,
     phone: orgPhone,
@@ -666,6 +666,13 @@ export function DetailPanel({
   const formBusy = (action: string) => navigation.state !== "idle" && navigation.formAction === action;
   const [confirmCancelPromise, setConfirmCancelPromise] = useState(false);
   const [showAllInvoices, setShowAllInvoices] = useState(false);
+  const [hashHistory, setHashHistory] = useState(false);
+  useEffect(() => {
+    const sync = () => setHashHistory(window.location.hash === "#history");
+    sync();
+    window.addEventListener("hashchange", sync);
+    return () => window.removeEventListener("hashchange", sync);
+  }, [location.hash]);
 
   // Reset confirm / invoice-preview state when case changes
   useEffect(() => {
@@ -709,7 +716,7 @@ export function DetailPanel({
 
   const callAction = resolveCallAction(prefs, selected.phone, selected.contactBlocked);
   const callLogHref = panelHref(view, sort, q, density, { ...hrefBase, tab, log: "1", method: "call" });
-  const historyExpanded = location.hash === "#history" || activeTab === "activity";
+  const historyExpanded = hashHistory || location.hash === "#history" || activeTab === "activity";
   const chase = chaseRecipientsFrom({
     phone: phone ?? selected.phone,
     email: customerEmail ?? selected.email,
@@ -718,6 +725,7 @@ export function DetailPanel({
     contactBlocked: selected.contactBlocked,
     exceptionReason: selected.exceptionReason,
     smsEnabled,
+    emailEnabled: emailEnabled ?? false,
     hasInvoice: invoices.length > 0,
   });
   const visibleInvoices = showAllInvoices

@@ -67,6 +67,15 @@ export function dashboardHref(p: DashboardChrome): string {
   return `?${dashboardSearchParams(p).toString()}`;
 }
 
+/** Copy the current query string and set density so flash params (qbo, sync, …) survive hydrate. */
+export function withDensityParam(search: string, density: DensityId): string {
+  const raw = search.startsWith("?") ? search.slice(1) : search;
+  const sp = new URLSearchParams(raw);
+  sp.set("density", density);
+  const qs = sp.toString();
+  return qs ? `?${qs}` : "?";
+}
+
 export function accountsSearchParams(p: {
   filter: AccountFilter;
   sort: AccountSort;

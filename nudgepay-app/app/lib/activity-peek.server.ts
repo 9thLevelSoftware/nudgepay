@@ -2,7 +2,9 @@
 // (customer-scoped, no bodies) reads. Do not widen Stage-2 last-contact.
 
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { addCalendarDays } from "./business-days";
 import { chunkIds, orderPage, pageAllChunked, PAGE_ALL_MAX_ROWS } from "./page-all";
+import { localMidnightUtcIso } from "./tz";
 import {
   collapsePeeks,
   summarizePeek,
@@ -39,10 +41,9 @@ type ReplyRow = {
   direction: string | null;
 };
 
-export function peekWindowStartIso(today: string, days = PEEK_WINDOW_DAYS): string {
-  const start = new Date(`${today}T00:00:00.000Z`);
-  start.setUTCDate(start.getUTCDate() - days);
-  return start.toISOString();
+export function peekWindowStartIso(today: string, days = PEEK_WINDOW_DAYS, tz?: string): string {
+  const startDate = addCalendarDays(today, -days);
+  return tz ? localMidnightUtcIso(startDate, tz) : `${startDate}T00:00:00.000Z`;
 }
 
 export async function loadPeekSource(args: {

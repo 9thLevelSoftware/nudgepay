@@ -78,6 +78,8 @@ test("buildCaseData counts the waiting view", () => {
   const data = buildCaseData(cases, invoices, customers, [], [],
     { view: "waiting", sort: "recommended", q: "", caseId: null }, "2026-07-10", new Map(), null, DEFAULT_ORG_CONFIG);
   expect(data.viewCounts.waiting).toBe(1);
+  expect(data.invoiceViewCounts.waiting).toBe(1);
+  expect(data.invoiceViewCounts["all-open"]).toBe(2);
   expect(data.items.map((i) => i.caseId)).toEqual(["w1"]);
 });
 

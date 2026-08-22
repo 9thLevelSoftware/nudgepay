@@ -7,8 +7,8 @@ import { getConnectionStatus } from "../lib/qbo-connection.server";
 import { createSupabaseServiceClient } from "../lib/supabase.server";
 import { loadCaseQueueSource } from "../lib/case-queue.server";
 import { loadPeekSource, loadReplySource, peekWindowStartIso } from "../lib/activity-peek.server";
-import type { ActivityPeek } from "../lib/activity-peek";
-import { loadPayerSource } from "../lib/payer-behavior.server";
+import { PEEK_WINDOW_DAYS, type ActivityPeek } from "../lib/activity-peek";
+import { loadBrokenPromiseCustomers, loadPayerSource } from "../lib/payer-behavior.server";
 import type { PayerStats } from "../lib/payer-behavior";
 import { dashboardHref, parseDensity, parseEntityMode, parseSort } from "../lib/queue-chrome";
 import { applyInvoiceView, buildInvoiceQueue, sortInvoiceItems, type InvoiceQueueItem } from "../lib/invoice-queue";
@@ -18,7 +18,7 @@ import { loadContactPromiseRates } from "../lib/contact-promise-rates.server";
 import { addCalendarDays } from "../lib/business-days";
 import { isCaseSuppressed } from "../lib/exceptions";
 import { loadOrgConfig } from "../lib/org-config.server";
-import { todayInTz } from "../lib/tz";
+import { localMidnightUtcIso, todayInTz } from "../lib/tz";
 import type { OrgMember } from "../lib/orgs.server";
 // worklist.ts is pure (no I/O, no node:*, no secrets) so it is safe in both the
 // client bundle and the server — buildCaseData is exported from this route
@@ -81,6 +81,7 @@ type DashboardData = {
   invoiceItems: InvoiceQueueItem[];
   metrics: Metrics;
   viewCounts: Record<ViewId, number>;
+  invoiceViewCounts: Record<ViewId, number>;
   selected: CaseItem | null;
   comingDueGroups: ComingDueGroup[];
 };
@@ -128,13 +129,16 @@ export function buildCaseData(
       );
   metrics.comingDue = comingDueMetric(filteredComingDue);
 
+  const caseViewById = Object.fromEntries(
+    ALL_VIEWS.map((v) => [
+      v,
+      v === "coming-due" ? [] : applyCaseView(searched, v, today, currentUserId, highValue),
+    ]),
+  ) as Record<ViewId, CaseItem[]>;
   const viewCounts = Object.fromEntries(
-    ALL_VIEWS.map((v) => {
-      if (v === "coming-due") return [v, filteredComingDue.length];
-      return [v, applyCaseView(searched, v, today, currentUserId, highValue).length];
-    }),
+    ALL_VIEWS.map((v) => [v, v === "coming-due" ? filteredComingDue.length : caseViewById[v].length]),
   ) as Record<ViewId, number>;
-  const items = sortCaseItems(applyCaseView(searched, view, today, currentUserId, highValue), sort);
+  const items = sortCaseItems(caseViewById[view], sort);
   const selected = caseId != null ? (searched.find((i) => i.caseId === caseId) ?? null) : null;
   const casesByCustomer = new Map(
     allItems.map((i) => [i.customerId, {
@@ -160,7 +164,17 @@ export function buildCaseData(
     }),
     sort,
   );
-  return { items, invoiceItems, metrics, viewCounts, selected, comingDueGroups: filteredComingDue };
+  const invoiceViewCounts = Object.fromEntries(
+    ALL_VIEWS.map((v) => {
+      if (v === "coming-due") return [v, filteredComingDue.length];
+      return [v, applyInvoiceView(searchedInvoices, v, {
+        matchingCaseIds: new Set(caseViewById[v].map((i) => i.caseId)),
+        currentUserId,
+        highValue,
+      }).length];
+    }),
+  ) as Record<ViewId, number>;
+  return { items, invoiceItems, metrics, viewCounts, invoiceViewCounts, selected, comingDueGroups: filteredComingDue };
 }
 
 // ---------------------------------------------------------------------------
@@ -368,14 +382,9 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
     ...invoicesInput.map((i) => i.customer_id ?? ""),
     ...comingDueInvoices.map((i) => i.customer_id ?? ""),
   ].filter(Boolean))];
-  const windowStartIso = peekWindowStartIso(today);
-  const brokenPromiseByCustomer = new Map<string, boolean>();
-  const caseById = new Map(cases.map((c) => [c.id, c]));
-  for (const p of promisesInput) {
-    if (p.status !== "broken") continue;
-    const cse = caseById.get(p.caseId);
-    if (cse) brokenPromiseByCustomer.set(cse.customerId, true);
-  }
+  const tz = orgConfig.companyProfile.timezone;
+  const windowStartIso = peekWindowStartIso(today, PEEK_WINDOW_DAYS, tz);
+  const caseToCustomer = new Map(cases.map((c) => [c.id, c.customerId]));
   const openCaseIds = cases
     .filter((c) => !isCaseSuppressed({
       status: c.status,
@@ -384,7 +393,9 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
       today,
     }))
     .map((c) => c.id);
-  const contactWindowStartIso = `${addCalendarDays(today, -DASHBOARD_AR_RANGE_DAYS)}T00:00:00.000Z`;
+  const contactWindowStartIso = localMidnightUtcIso(
+    addCalendarDays(today, -DASHBOARD_AR_RANGE_DAYS), tz,
+  );
 
   const peekP = loadPeekSource({
     supabase,
@@ -392,18 +403,22 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
     caseIds: cases.map((c) => c.id),
     windowStartIso,
   });
-  const payerP = loadReplySource({
-    supabase,
-    orgId: org.org_id,
-    customerIds,
-    windowStartIso,
-  }).then((replySrc) => loadPayerSource({
+  const payerP = Promise.all([
+    loadReplySource({
+      supabase,
+      orgId: org.org_id,
+      customerIds,
+      windowStartIso,
+    }),
+    loadBrokenPromiseCustomers({ supabase, orgId: org.org_id, caseToCustomer }),
+  ]).then(([replySrc, brokenPromiseByCustomer]) => loadPayerSource({
     supabase,
     orgId: org.org_id,
     customerIds,
     today,
     brokenPromiseByCustomer,
     replyByCustomer: replySrc.replyByCustomer,
+    replyTruncated: replySrc.truncated,
   }));
   const ratesP = loadContactPromiseRates({
     supabase,
@@ -650,6 +665,7 @@ export default function Dashboard() {
     items,
     metrics,
     viewCounts,
+    invoiceViewCounts,
     selected,
     comingDueGroups,
     comingDueDays,
@@ -775,8 +791,8 @@ export default function Dashboard() {
                 invoice={invoice}
                 selectedCaseId={selected?.caseId ?? null}
                 selectedInvoiceId={invoice ?? null}
-                totalCount={viewCounts["all-open"]}
-                viewCounts={viewCounts}
+                totalCount={(entity === "invoices" && view !== "coming-due" ? invoiceViewCounts : viewCounts)["all-open"]}
+                viewCounts={entity === "invoices" && view !== "coming-due" ? invoiceViewCounts : viewCounts}
                 roster={roster}
                 returnTo={`/dashboard${dashboardHref({ view, sort, q: q || undefined, entity: hrefEntity, density: hrefDensity })}`}
                 collisions={collisions}
@@ -842,6 +858,7 @@ export default function Dashboard() {
               key={selected.caseId}
               selected={selected}
               repInvoiceId={repInvoiceId ?? null}
+              invoices={workspaceInvoices}
               returnTo={`/dashboard${dashboardHref({ view, sort, q: q || undefined, entity: hrefEntity, density: hrefDensity, case: selected.caseId, tab, invoice: invoice ?? undefined })}`}
               logError={logError}
               collision={collisions[selected.caseId] ?? null}

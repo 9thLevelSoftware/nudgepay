@@ -33,6 +33,7 @@ export default [
   route("api/priority-override", "routes/api.priority-override.tsx"),
   route("api/sync-errors/dismiss", "routes/api.sync-errors.dismiss.tsx"),
   route("api/presence/heartbeat", "routes/api.presence.heartbeat.tsx"),
+  route("api/collision", "routes/api.collision.tsx"),
   route("api/promises/cancel", "routes/api.promises.cancel.tsx"),
   route("api/qbo/connect", "routes/api.qbo.connect.tsx"),
   route("api/qbo/disconnect", "routes/api.qbo.disconnect.tsx"),

@@ -305,6 +305,7 @@ test("reports.server loads AR KPIs with the selected range, not Stage-2 last-con
   expect(server).toContain("orderPage");
   expect(server).toContain('count: "exact"');
   expect(server).toContain("rates.truncated || openCases.truncated");
+  expect(server).toContain("localMidnightUtcIso");
   expect(server).not.toContain("lastContactsInput");
   expect(server).not.toContain("CasePromiseInput");
   expect(server).not.toContain("DASHBOARD_AR_RANGE_DAYS");

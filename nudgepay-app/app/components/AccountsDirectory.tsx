@@ -1,6 +1,6 @@
 // app/components/AccountsDirectory.tsx
 import { useEffect } from "react";
-import { Form, Link, useNavigate } from "react-router";
+import { Form, Link, useLocation, useNavigate } from "react-router";
 import type { AccountRow, AccountStanding, AccountFilter, AccountSort } from "../lib/accounts";
 import { formatUSD } from "../lib/format";
 import { formatInstant } from "../lib/dates";
@@ -8,6 +8,7 @@ import {
   ACCOUNTS_DENSITY_IDS,
   DENSITY_STORAGE_KEY,
   accountsHref,
+  withDensityParam,
   type DensityId,
 } from "../lib/queue-chrome";
 import {
@@ -92,6 +93,7 @@ export function AccountsDirectory({
   rows, filter, sort, search, density, densityFromUrl, counts, selectedId, timeZone,
 }: Props) {
   const navigate = useNavigate();
+  const location = useLocation();
   const hrefDensity = densityFromUrl ? density : undefined;
   const risk = density === "risk";
   const grid = risk ? ACCOUNTS_GRID_RISK : ACCOUNTS_GRID_GENERAL;
@@ -102,12 +104,12 @@ export function AccountsDirectory({
     let stored: string | null = null;
     try { stored = localStorage.getItem(DENSITY_STORAGE_KEY); } catch { return; }
     if (stored === "detailed") {
-      navigate(accountsHref({ ...chrome, density: "general", customerId: selectedId }), { replace: true });
+      navigate(withDensityParam(location.search, "general"), { replace: true });
       return;
     }
     if (stored !== "general" && stored !== "risk") return;
     persistDensity(stored);
-    navigate(accountsHref({ ...chrome, density: stored, customerId: selectedId }), { replace: true });
+    navigate(withDensityParam(location.search, stored), { replace: true });
     // Hydrate once on mount so a later General click cannot bounce back to LS.
     // eslint-disable-next-line react-hooks/exhaustive-deps -- first landing only
   }, []);

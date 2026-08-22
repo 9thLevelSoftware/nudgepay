@@ -6,6 +6,7 @@ import { useEffect, useRef, useState } from "react";
 import { useFetcher } from "react-router";
 import type { CaseItem } from "../../lib/cases";
 import type { Collision } from "../../lib/collision";
+import { useCollisionRecheck } from "../../lib/use-collision-recheck";
 import { smsGateFor } from "../../lib/sms-gate";
 import { applyTemplate, type TemplateVars } from "../../lib/sms-templates";
 import type { MessageTemplateRow } from "../../lib/message-templates";
@@ -47,7 +48,7 @@ export function SendTextMiniForm({
   const vars: TemplateVars = {
     customer: item.customerName,
     invoice: firstInvoice?.docNumber ?? item.customerName,
-    balance: formatUSD(item.totalOverdue),
+    balance: formatUSD(firstInvoice?.balance ?? item.totalOverdue),
     dueDate: formatDate(firstInvoice?.dueDate ?? null),
     company: orgCompany,
     phone: orgPhone,
@@ -55,8 +56,9 @@ export function SendTextMiniForm({
   };
 
   const [body, setBody] = useState("");
-  const [confirmSend, setConfirmSend] = useState(false);
-  const needsConfirm = !!collision && collision.level !== "none";
+  const { collision: liveCollision, showConfirm, checking, guardSubmit } = useCollisionRecheck(
+    item.caseId, collision,
+  );
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fetcher = useFetcher();
 
@@ -64,10 +66,6 @@ export function SendTextMiniForm({
   useEffect(() => {
     textareaRef.current?.focus();
   }, []);
-
-  useEffect(() => {
-    setConfirmSend(false);
-  }, [item.caseId]);
 
   // Track which fetcher response we've already handled — prevents re-fire
   // if callbacks change identity on parent re-render before unmount.
@@ -174,11 +172,11 @@ export function SendTextMiniForm({
           />
 
           {/* Send */}
-          {confirmSend ? (
+          {showConfirm ? (
             <p className="mt-2 text-xs font-sans text-advisory" role="alert">
-              {collision?.level === "live"
-                ? `${collision.byUser} is viewing this customer now. Send anyway?`
-                : `${collision?.byUser} contacted this customer recently. Send anyway?`}
+              {liveCollision?.level === "live"
+                ? `${liveCollision.byUser} is viewing this customer now. Send anyway?`
+                : `${liveCollision?.byUser} contacted this customer recently. Send anyway?`}
             </p>
           ) : null}
           <div className="mt-3 flex items-center justify-between">
@@ -188,19 +186,14 @@ export function SendTextMiniForm({
             <fetcher.Form
               method="post"
               action="/api/text/send"
-              onSubmit={(e) => {
-                if (needsConfirm && !confirmSend) {
-                  e.preventDefault();
-                  setConfirmSend(true);
-                }
-              }}
+              onSubmit={guardSubmit}
             >
               <input type="hidden" name="invoiceId" value={firstInvoice?.invoiceId ?? ""} />
               <input type="hidden" name="body" value={body} />
               <input type="hidden" name="respond" value="json" />
               <button
                 type="submit"
-                disabled={sending || !body.trim()}
+                disabled={sending || checking || !body.trim()}
                 className="rounded-lg bg-copper px-4 py-1.5 text-sm font-semibold text-surface hover:bg-copper/90 disabled:opacity-40 disabled:cursor-not-allowed"
               >
                 {sending ? "Sending…" : "Send text"}

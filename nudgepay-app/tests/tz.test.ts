@@ -1,5 +1,5 @@
 import { test, expect } from "vitest";
-import { todayInTz, hourInTz, shouldSendDigestNow } from "../app/lib/tz";
+import { todayInTz, hourInTz, shouldSendDigestNow, localMidnightUtcIso } from "../app/lib/tz";
 
 // ---------------------------------------------------------------------------
 // todayInTz — UTC-midnight rollover
@@ -98,4 +98,21 @@ test("does not fire twice on the same org-local day", () => {
 test("catches up the day after a missed send", () => {
   const now = new Date("2026-01-16T13:00:00Z"); // 08:00 EST, next day
   expect(shouldSendDigestNow(NY, 8, "2026-01-15", now)).toBe(true);
+});
+
+test("localMidnightUtcIso converts org-local midnight to UTC", () => {
+  expect(localMidnightUtcIso("2026-06-22", "UTC")).toBe("2026-06-22T00:00:00.000Z");
+  // EDT (UTC−4)
+  expect(localMidnightUtcIso("2026-06-22", "America/New_York")).toBe("2026-06-22T04:00:00.000Z");
+  // EST (UTC−5)
+  expect(localMidnightUtcIso("2026-01-15", "America/New_York")).toBe("2026-01-15T05:00:00.000Z");
+  // JST (UTC+9): local midnight is the previous UTC evening
+  expect(localMidnightUtcIso("2026-06-22", "Asia/Tokyo")).toBe("2026-06-21T15:00:00.000Z");
+});
+
+test("localMidnightUtcIso uses the offset that exists at midnight across DST", () => {
+  // 2026-03-08 spring-forward: 02:00 local never occurs; midnight is still EST (UTC−5).
+  expect(localMidnightUtcIso("2026-03-08", "America/New_York")).toBe("2026-03-08T05:00:00.000Z");
+  // 2026-11-01 fall-back: midnight is still EDT (UTC−4) before the 1am repeat.
+  expect(localMidnightUtcIso("2026-11-01", "America/New_York")).toBe("2026-11-01T04:00:00.000Z");
 });

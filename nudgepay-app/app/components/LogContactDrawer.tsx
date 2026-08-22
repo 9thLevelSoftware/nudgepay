@@ -1,6 +1,6 @@
 import { useRef, useState } from "react";
 import { Link, useFetcher, useNavigate } from "react-router";
-import type { CaseItem } from "../lib/cases";
+import type { CaseInvoice, CaseItem } from "../lib/cases";
 import type { Collision } from "../lib/collision";
 import { CONTACT_METHODS, CONTACT_OUTCOMES } from "../lib/contact-log";
 import { PRIMARY_EXCEPTION_STATES, requiresReviewDate, isContactBlocked, type ExceptionState } from "../lib/exceptions";
@@ -28,10 +28,11 @@ const ERROR_MESSAGE: Record<string, string> = {
 };
 
 export function LogContactDrawer({
-  selected, repInvoiceId, returnTo, logError, collision, method,
+  selected, repInvoiceId, invoices, returnTo, logError, collision, method,
 }: {
   selected: CaseItem;
   repInvoiceId: string | null;
+  invoices?: CaseInvoice[];
   returnTo: string;
   logError: string | null;
   collision: Collision | null;
@@ -79,8 +80,9 @@ export function LogContactDrawer({
           {plural(selected.invoiceCount, "open invoice")}
         </p>
         {(() => {
+          const list = invoices ?? selected.invoices;
           const inv = repInvoiceId
-            ? selected.invoices.find((i) => i.invoiceId === repInvoiceId)
+            ? list.find((i) => i.invoiceId === repInvoiceId)
             : null;
           return inv ? (
             <p className="px-5 pt-1 text-xs font-mono text-muted">

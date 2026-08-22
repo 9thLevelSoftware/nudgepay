@@ -97,9 +97,15 @@ export function buildArKpis(input: {
   const creditSales = input.salesLookback
     .filter((r) => r.invoiceDate >= windowStart && r.invoiceDate <= input.today)
     .reduce((s, r) => s + r.amount, 0);
+  const inWindow = (p: ArPayment) =>
+    p.txnDate != null && p.txnDate >= windowStart && p.txnDate <= input.today;
   const collections = input.payments
-    .filter((p) => p.type === "payment" && p.txnDate != null
-      && p.txnDate >= windowStart && p.txnDate <= input.today)
+    .filter((p) => p.type === "payment" && inWindow(p))
+    .reduce((s, p) => s + p.amount, 0);
+  // Credit memos reduce ending AR the same way cash does; add them back so
+  // beginning AR is not understated. `collected` stays payments only.
+  const creditMemos = input.payments
+    .filter((p) => p.type === "credit_memo" && inWindow(p))
     .reduce((s, p) => s + p.amount, 0);
 
   // Countback walks newest first; future TxnDate rows would yield a negative DSO.
@@ -113,7 +119,7 @@ export function buildArKpis(input: {
   const dso = countbackDso(salesByDate, endingTotalAr, input.today);
   const bestPossibleDso = countbackDso(salesByDate, endingCurrentAr, input.today);
 
-  const beginningAr = Math.max(0, endingTotalAr - creditSales + collections);
+  const beginningAr = Math.max(0, endingTotalAr - creditSales + collections + creditMemos);
   const numerator = beginningAr + creditSales - endingTotalAr;
   const denominator = beginningAr + creditSales - endingCurrentAr;
   const cei = denominator <= 0 ? null : 100 * numerator / denominator;

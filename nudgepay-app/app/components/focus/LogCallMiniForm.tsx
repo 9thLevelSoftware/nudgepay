@@ -8,6 +8,7 @@ import { useFetcher } from "react-router";
 import type { CaseItem } from "../../lib/cases";
 import type { Collision } from "../../lib/collision";
 import { formatDate } from "../../lib/dates";
+import { useCollisionRecheck } from "../../lib/use-collision-recheck";
 import type { action } from "../../routes/api.contact-logs";
 
 const OUTCOMES: { label: string; value: string }[] = [
@@ -27,8 +28,9 @@ export function LogCallMiniForm({ item, collision, onDone, onCancel }: LogCallMi
   const fetcher = useFetcher<typeof action>();
   const [outcome, setOutcome] = useState(OUTCOMES[0].value);
   const [notes, setNotes] = useState("");
-  const [confirmSave, setConfirmSave] = useState(false);
-  const needsConfirm = !!collision && collision.level !== "none";
+  const { collision: liveCollision, showConfirm, checking, guardSubmit } = useCollisionRecheck(
+    item.caseId, collision,
+  );
   const formRef = useRef<HTMLFormElement>(null);
 
   // Track which fetcher response we've already handled — prevents re-fire
@@ -48,10 +50,6 @@ export function LogCallMiniForm({ item, collision, onDone, onCancel }: LogCallMi
       onDone();
     }
   }, [fetcher.data, onDone]);
-
-  useEffect(() => {
-    setConfirmSave(false);
-  }, [item.caseId]);
 
   // Close on Escape
   useEffect(() => {
@@ -85,12 +83,7 @@ export function LogCallMiniForm({ item, collision, onDone, onCancel }: LogCallMi
         ref={formRef}
         method="post"
         action="/api/contact-logs"
-        onSubmit={(e) => {
-          if (needsConfirm && !confirmSave) {
-            e.preventDefault();
-            setConfirmSave(true);
-          }
-        }}
+        onSubmit={guardSubmit}
       >
         {/* Hidden fields */}
         <input type="hidden" name="caseId" value={item.caseId} />
@@ -145,11 +138,11 @@ export function LogCallMiniForm({ item, collision, onDone, onCancel }: LogCallMi
           <p className="mt-2 text-xs text-hot">{error}</p>
         )}
 
-        {confirmSave ? (
+        {showConfirm ? (
           <p className="mt-2 text-xs font-sans text-advisory" role="alert">
-            {collision?.level === "live"
-              ? `${collision.byUser} is viewing this customer now. Log anyway?`
-              : `${collision?.byUser} contacted this customer recently. Log anyway?`}
+            {liveCollision?.level === "live"
+              ? `${liveCollision.byUser} is viewing this customer now. Log anyway?`
+              : `${liveCollision?.byUser} contacted this customer recently. Log anyway?`}
           </p>
         ) : null}
 
@@ -157,10 +150,10 @@ export function LogCallMiniForm({ item, collision, onDone, onCancel }: LogCallMi
         <div className="mt-3 flex justify-end">
           <button
             type="submit"
-            disabled={saving}
+            disabled={saving || checking}
             className="rounded-lg bg-copper px-4 py-1.5 text-sm font-semibold text-surface hover:bg-copper/90 disabled:opacity-40 disabled:cursor-not-allowed"
           >
-            {saving ? "Saving…" : "Log call"}
+            {saving || checking ? "Saving…" : "Log call"}
           </button>
         </div>
       </fetcher.Form>

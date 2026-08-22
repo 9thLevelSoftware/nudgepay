@@ -11,6 +11,7 @@ const BASE = {
   contactBlocked: false,
   exceptionReason: null,
   smsEnabled: true,
+  emailEnabled: true,
   hasInvoice: true,
 };
 
@@ -45,6 +46,17 @@ test("sms disabled reason comes from smsGateFor", () => {
   const sms = rows.find((r) => r.channel === "sms")!;
   expect(sms.enabled).toBe(false);
   expect(sms.reasonDisabled).toContain("consent");
+});
+
+test("email Ready requires workspace email plus an invoice", () => {
+  const off = chaseRecipientsFrom({ ...BASE, emailEnabled: false }).find((r) => r.channel === "email")!;
+  expect(off.enabled).toBe(false);
+  expect(off.reasonDisabled).toContain("turned off");
+  const noInv = chaseRecipientsFrom({ ...BASE, hasInvoice: false }).find((r) => r.channel === "email")!;
+  expect(noInv.enabled).toBe(false);
+  expect(noInv.reasonDisabled).toContain("invoice");
+  const ready = chaseRecipientsFrom(BASE).find((r) => r.channel === "email")!;
+  expect(ready.enabled).toBe(true);
 });
 
 test("email blocked by contact-block vs opt-out", () => {

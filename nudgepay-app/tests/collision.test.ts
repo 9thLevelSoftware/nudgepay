@@ -114,21 +114,31 @@ test("Focus send/log require confirm on live or recent collision (dashboard pari
   expect(focus).toContain("collision={collisions[currentItem.caseId] ?? null}");
 
   expect(send).toContain("collision: Collision | null");
-  expect(send).toContain("const needsConfirm = !!collision && collision.level !== \"none\"");
-  expect(send).toMatch(/if \(needsConfirm && !confirmSend\)/);
+  expect(send).toContain("useCollisionRecheck");
+  expect(send).toContain("guardSubmit");
   expect(send).toContain("is viewing this customer now. Send anyway?");
   expect(send).toContain("contacted this customer recently. Send anyway?");
   expect(send).toContain('role="alert"');
 
   expect(log).toContain("collision: Collision | null");
-  expect(log).toContain("const needsConfirm = !!collision && collision.level !== \"none\"");
-  expect(log).toMatch(/if \(needsConfirm && !confirmSave\)/);
+  expect(log).toContain("useCollisionRecheck");
+  expect(log).toContain("guardSubmit");
   expect(log).toContain("is viewing this customer now. Log anyway?");
   expect(log).toContain("contacted this customer recently. Log anyway?");
   expect(log).toContain('role="alert"');
 
   expect(detail).toContain("is viewing this customer now. Send anyway?");
   expect(drawer).toContain("is viewing this customer now. Log anyway?");
+});
+
+test("Focus rechecks collision via /api/collision before send/log", () => {
+  const hook = readFileSync(new URL("../app/lib/use-collision-recheck.ts", import.meta.url), "utf8");
+  const api = readFileSync(new URL("../app/routes/api.collision.tsx", import.meta.url), "utf8");
+  const routes = readFileSync(new URL("../app/routes.ts", import.meta.url), "utf8");
+  expect(hook).toContain('fetch(`/api/collision?caseId=${encodeURIComponent(caseId)}`)');
+  expect(api).toContain("collisionState");
+  expect(api).toContain("readPresence");
+  expect(routes).toContain('"routes/api.collision.tsx"');
 });
 
 test("recent-contact within RECENT_WINDOW_MIN is a collision that needs confirm", () => {
