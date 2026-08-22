@@ -3,6 +3,7 @@ import { getEnv, getEmailEnv } from "../lib/env.server";
 import { createSupabaseServiceClient } from "../lib/supabase.server";
 import { verifyResendSignature } from "../lib/resend-webhook.server";
 import { mapResendEvent } from "../lib/email-events";
+import { fetchReceivingEmail } from "../lib/email-client.server";
 import { updateEmailStatus, recordInboundEmail } from "../lib/email-messaging.server";
 
 export async function action({ request, context }: ActionFunctionArgs) {
@@ -27,7 +28,17 @@ export async function action({ request, context }: ActionFunctionArgs) {
     if (mapped.kind === "status") {
       await updateEmailStatus(service, mapped);
     } else if (mapped.kind === "inbound") {
-      await recordInboundEmail(service, mapped);
+      // Receiving webhooks omit body; always fetch when the inbound id is present.
+      let body = mapped.body;
+      if (mapped.providerMessageId) {
+        const fetched = await fetchReceivingEmail(
+          fetch,
+          { apiKey: emailEnv.RESEND_API_KEY },
+          mapped.providerMessageId,
+        );
+        if (fetched) body = fetched.text || fetched.html || mapped.body;
+      }
+      await recordInboundEmail(service, { ...mapped, body });
     }
   } catch (err) {
     console.error("Resend webhook processing failed", err);

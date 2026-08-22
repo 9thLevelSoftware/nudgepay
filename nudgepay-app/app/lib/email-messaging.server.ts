@@ -139,34 +139,42 @@ export async function recordInboundEmail(
       .maybeSingle();
     if (dupErr) throw dupErr;
     if (dup) return { matched: true };
+
+    const { data: orphanDup, error: orphanErr } = await service
+      .from("inbound_orphans")
+      .select("id")
+      .eq("provider_message_id", args.providerMessageId)
+      .maybeSingle();
+    if (orphanErr) throw orphanErr;
+    if (orphanDup) return { matched: false };
   }
 
-  // Resolve the org that owns the recipient (args.to) address. This is the
-  // org's configured outbound from_address and identifies the tenant uniquely.
-  // Compare normalized strings in process instead of passing user-controlled
-  // input to an ILIKE pattern operator; zero or multiple matches are ambiguous.
+  // Indexed eq — never ILIKE user-controlled input. 0 or 2 hits are unmatched.
   const { data: configs, error: configErr } = await service
     .from("email_config")
     .select("org_id, from_address")
-    .not("from_address", "is", null);
+    .eq("from_address_norm", toNorm)
+    .eq("email_enabled", true)
+    .limit(2);
   if (configErr) throw configErr;
-  const matchingConfigs = (configs ?? []).filter(
-    (cfg) => normalizeEmail(cfg.from_address as string) === toNorm,
-  );
-  if (matchingConfigs.length !== 1) return { matched: false };
-  const orgId = matchingConfigs[0].org_id as string;
+  if ((configs ?? []).length !== 1) {
+    await persistEmailOrphan(service, args);
+    return { matched: false };
+  }
+  const orgId = configs![0].org_id as string;
 
-  // Scope the sender lookup to the resolved org only — never query across tenants.
-  const { data: candidates, error: candErr } = await service
+  const { data: matches, error: candErr } = await service
     .from("customers")
-    .select("id, org_id, email")
+    .select("id, org_id")
     .eq("org_id", orgId)
-    .not("email", "is", null);
+    .eq("email_norm", fromNorm)
+    .limit(2);
   if (candErr) throw candErr;
-  const match = (candidates ?? []).find(
-    (c) => normalizeEmail(c.email as string) === fromNorm,
-  );
-  if (!match) return { matched: false };
+  if ((matches ?? []).length !== 1) {
+    await persistEmailOrphan(service, args);
+    return { matched: false };
+  }
+  const match = matches![0];
 
   // Thread to the customer's most recent outbound invoice, if any.
   const { data: lastOut, error: lastOutErr } = await service
@@ -204,4 +212,29 @@ export async function recordInboundEmail(
   }
 
   return { matched: true };
+}
+
+async function persistEmailOrphan(
+  service: SupabaseClient,
+  args: { from: string; to: string; subject: string; body: string; providerMessageId: string },
+): Promise<void> {
+  const { error } = await service.from("inbound_orphans").insert({
+    channel: "email",
+    from_address: args.from,
+    to_address: args.to,
+    subject: args.subject,
+    body: args.body,
+    provider_message_id: args.providerMessageId || null,
+    from_number: null,
+    to_number: null,
+  });
+  if (error && (error as { code?: string }).code !== "23505") throw error;
+  if (!error) {
+    console.error({
+      event: "inbound_orphan_email",
+      from: args.from,
+      to: args.to,
+      sid: args.providerMessageId,
+    });
+  }
 }
