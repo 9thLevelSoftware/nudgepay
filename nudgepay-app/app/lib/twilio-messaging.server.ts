@@ -27,6 +27,8 @@ export type MessagingDeps = {
   quietHoursWindow?: QuietHoursWindow;
   /** Injectable "now" for the quiet-hours check — defaults to `new Date()`. Test-only override. */
   now?: Date;
+  /** When true, send fails closed unless the org has an active inventory row. */
+  requireInventory?: boolean;
 };
 
 async function loadQuietHoursWindow(service: SupabaseClient, orgId: string): Promise<QuietHoursWindow> {
@@ -48,14 +50,25 @@ export function normalizePhone(s: string | null | undefined): string {
 }
 
 export async function resolveSender(
-  _service: SupabaseClient, _orgId: string, defaultSender: TwilioSender,
+  service: SupabaseClient,
+  orgId: string,
+  defaultSender: TwilioSender,
+  opts?: { requireInventory?: boolean },
 ): Promise<TwilioSender> {
-  // Tenant-managed sender overrides are intentionally ignored. In a shared
-  // Twilio-account deployment, accepting caller-supplied From numbers or
-  // Messaging Service SIDs would let one workspace impersonate another sender
-  // owned by the global Twilio account. Until senders are validated against a
-  // server-side, org-bound inventory, all outbound SMS uses the operator-owned
-  // default sender from the Worker environment.
+  // Operator-provisioned inventory is the only trusted per-org sender.
+  // messaging_config.sender / messaging_service_sid stay ignored (spoofable).
+  const { data, error } = await service
+    .from("sms_sender_inventory")
+    .select("messaging_service_sid, from_number")
+    .eq("org_id", orgId)
+    .eq("status", "active")
+    .maybeSingle();
+  if (error) throw error;
+  const sid = typeof data?.messaging_service_sid === "string" ? data.messaging_service_sid.trim() : "";
+  if (sid) return { messagingServiceSid: sid };
+  const from = typeof data?.from_number === "string" ? data.from_number.trim() : "";
+  if (from) return { from };
+  if (opts?.requireInventory) throw new Error("SMS sender not provisioned");
   return defaultSender;
 }
 
@@ -134,7 +147,9 @@ export async function sendInvoiceText(
   }
   if (cust.do_not_text) throw new Error("Customer has opted out of SMS");
 
-  const sender = await resolveSender(deps.service, args.orgId, deps.defaultSender);
+  const sender = await resolveSender(deps.service, args.orgId, deps.defaultSender, {
+    requireInventory: deps.requireInventory,
+  });
   const caseId = activeCase.id;
   const body = ensureStopLanguage(args.body);
   await assertSmsBudget(deps.service, { orgId: args.orgId, customerId: cust.id as string, now });
@@ -165,13 +180,20 @@ async function resolveInboundOrgId(service: SupabaseClient, args: { from: string
   const toNorm = normalizePhone(args.to);
   if (toNorm.length < 10) return null;
 
-  // Inbound routing must stay aligned with resolveSender. messaging_config.sender
-  // is tenant-managed legacy state and is not trusted for outbound sends, so it
-  // cannot be authoritative for inbound replies either. Route by the outbound
-  // ledger instead: match the replying customer phone to a prior outbound text,
-  // and require any stored from_number to match Twilio's inbound To number.
-  // Messaging Service sends store from_number as null, so they are accepted only
-  // when the outbound history resolves to one org unambiguously.
+  // Inventory To (last-10) is authoritative when exactly one active row matches.
+  // Ambiguous To (2+) is unmatched. Zero hits fall through to outbound history.
+  // messaging_config.sender is never trusted here.
+  const { data: inventoryHits, error: invErr } = await service
+    .from("sms_sender_inventory")
+    .select("org_id")
+    .eq("status", "active")
+    .eq("from_number_last10", toNorm)
+    .limit(2);
+  if (invErr) throw invErr;
+  const invOrgs = [...new Set((inventoryHits ?? []).map((row) => row.org_id as string))];
+  if (invOrgs.length === 1) return invOrgs[0];
+  if (invOrgs.length > 1) return null;
+
   const fromNorm = normalizePhone(args.from);
   if (fromNorm.length < 10) return null;
   const { data: outbound, error: outboundErr } = await service.from("text_messages")

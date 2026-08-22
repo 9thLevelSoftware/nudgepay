@@ -7,6 +7,9 @@ export type SmsSettingsProps = {
   sender: string;           // per-org from-number override (form default)
   messagingServiceSid: string; // per-org MG SID override (form default)
   configured: boolean;      // has at least one sender column set
+  inventoryFrom?: string;
+  inventoryMessagingServiceSid?: string;
+  inventoryStatus?: string;
   // Provider status
   twilioConfigured: boolean;
   lastSentAt: string | null;
@@ -18,6 +21,11 @@ export type SmsSettingsProps = {
   // Return path for form submissions (preserves active tab)
   returnTo?: string;
 };
+
+function inventoryStatusLabel(status: string | undefined): string {
+  if (!status) return " (Assigned)";
+  return status === "active" ? " (Active)" : ` (${status})`;
+}
 
 export function SmsSettingsSection(d: SmsSettingsProps) {
   const navigation = useNavigation();
@@ -69,7 +77,7 @@ export function SmsSettingsSection(d: SmsSettingsProps) {
       <div className="mt-4 flex flex-col gap-2 rounded-md border border-border bg-panel/40 p-3">
         <h3 className="text-sm font-medium text-text">Sender configuration</h3>
         <p className="text-xs text-muted">
-          SMS sender identity is operator-managed for tenant isolation. Outbound texts use the NudgePay default sender unless an approved sender inventory is configured by the service team.
+          SMS sender identity is operator-managed for tenant isolation. Outbound texts use a provisioned workspace sender when one is assigned; otherwise the NudgePay default sender.
         </p>
         {errorCode === "sms_sender_locked" && (
           <p className="text-xs text-hot" role="alert">Sender changes must be approved by NudgePay support.</p>
@@ -77,11 +85,19 @@ export function SmsSettingsSection(d: SmsSettingsProps) {
         <dl className="grid gap-1 text-xs">
           <div className="flex gap-2">
             <dt className="text-muted w-36">Workspace sender</dt>
-            <dd className="text-text tabular-nums">{d.sender ? `${d.sender} (Inactive)` : "Default sender"}</dd>
+            <dd className="text-text tabular-nums">
+              {d.inventoryFrom
+                ? `${d.inventoryFrom}${inventoryStatusLabel(d.inventoryStatus)}`
+                : d.sender ? `${d.sender} (Inactive)` : "Default sender"}
+            </dd>
           </div>
           <div className="flex gap-2">
             <dt className="text-muted w-36">Messaging Service</dt>
-            <dd className="text-text font-mono">{d.messagingServiceSid ? `${d.messagingServiceSid} (Inactive)` : "Default service"}</dd>
+            <dd className="text-text font-mono">
+              {d.inventoryMessagingServiceSid
+                ? `${d.inventoryMessagingServiceSid}${inventoryStatusLabel(d.inventoryStatus)}`
+                : d.messagingServiceSid ? `${d.messagingServiceSid} (Inactive)` : "Default service"}
+            </dd>
           </div>
         </dl>
       </div>

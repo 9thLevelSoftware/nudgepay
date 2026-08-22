@@ -310,6 +310,55 @@ test("recordInboundMessage STOP resolves org from unique messaging service outbo
   expect(custAfter!.sms_consent).toBe(false);
 });
 
+test("recordInboundMessage routes by inventory from_number_last10 and skips outbound history", async () => {
+  const phone = "+13105550220";
+  const inventoryFrom = "+15005552220";
+  const historyFrom = "+15005552229";
+
+  const { data: orgA } = await svc.from("organizations").insert({ name: "Inventory Org A" }).select("id").single();
+  const orgAId = orgA!.id as string;
+  const { data: orgB } = await svc.from("organizations").insert({ name: "History Org B" }).select("id").single();
+  const orgBId = orgB!.id as string;
+
+  const { error: invErr } = await svc.from("sms_sender_inventory").insert({
+    org_id: orgAId,
+    from_number: inventoryFrom,
+    status: "active",
+  });
+  expect(invErr).toBeNull();
+
+  const { data: custA } = await svc.from("customers")
+    .insert({ org_id: orgAId, qbo_id: "c-inv-a", name: "Acme A", phone, sms_consent: true }).select("id").single();
+  const { data: custB } = await svc.from("customers")
+    .insert({ org_id: orgBId, qbo_id: "c-hist-b", name: "Acme B", phone, sms_consent: true }).select("id").single();
+
+  await svc.from("text_messages").insert({
+    org_id: orgBId,
+    customer_id: custB!.id,
+    direction: "outbound",
+    twilio_message_sid: "SMout-220-hist",
+    from_number: historyFrom,
+    to_number: phone,
+    body: "ping",
+  });
+
+  const out = await recordInboundMessage(svc, {
+    from: phone,
+    to: inventoryFrom,
+    body: "hello",
+    messageSid: "SMin-220-inventory",
+  });
+  expect(out.matched).toBe(true);
+  expect(out.optOut).toBe(false);
+
+  const { data: rows } = await svc.from("text_messages")
+    .select("org_id, customer_id")
+    .eq("twilio_message_sid", "SMin-220-inventory");
+  expect(rows).toHaveLength(1);
+  expect(rows![0].org_id).toBe(orgAId);
+  expect(rows![0].customer_id).toBe(custA!.id);
+});
+
 test("recordInboundMessage treats replayed MessageSid as idempotent", async () => {
   const { inboundTo } = await seedCustomerWithOutbound("+13105550209", "SMout-209", true);
   const args = { from: "+13105550209", to: inboundTo, body: "hello", messageSid: "SMin-209-idempotent" };
