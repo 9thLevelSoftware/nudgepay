@@ -261,11 +261,8 @@ export async function syncOverdueInvoices(
 
   // Reuse the org-local `today` computed above (same calendar day as the
   // overdue-invoice query) rather than recomputing from a fresh UTC Date.
-  try {
-    await applyPaymentsAndEvaluate(deps, orgId, accessToken, realmId, [], today, now);
-  } catch (e) {
-    console.error("[6b] payments/eval failed; cron will re-converge", e);
-  }
+  // Recon failure must not stamp last_sync_at — CDC retries the window.
+  await applyPaymentsAndEvaluate(deps, orgId, accessToken, realmId, [], today, now);
 
   const { error } = await deps.service.from("qbo_connections")
     .update({ last_sync_at: now.toISOString() }).eq("org_id", orgId);
@@ -333,11 +330,7 @@ export async function applyInvoiceWebhook(
   }
   await upsertInvoices(deps.service, [mapQboInvoice(inv, orgId, customerId, now, syncToday)], syncToday);
 
-  try {
-    await applyPaymentsAndEvaluate(deps, orgId, accessToken, realmId, [], syncToday, now);
-  } catch (e) {
-    console.error("[6b] payments/eval failed; cron will re-converge", e);
-  }
+  await applyPaymentsAndEvaluate(deps, orgId, accessToken, realmId, [], syncToday, now);
 }
 
 // --- CDC catch-up -----------------------------------------------------------

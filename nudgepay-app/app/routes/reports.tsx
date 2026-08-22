@@ -186,12 +186,12 @@ export default function Reports() {
                 {report.perRep.map((r) => (
                   <tr key={r.userId} className="border-t border-border text-text">
                     <td className="px-3 py-2">{r.label}</td>
-                    <td className="px-3 py-2 text-right">{r.contactsLogged}</td>
-                    <td className="px-3 py-2 text-right">{r.casesTouched}</td>
-                    <td className="px-3 py-2 text-right">{r.kept}</td>
-                    <td className="px-3 py-2 text-right">{r.partiallyKept}</td>
-                    <td className="px-3 py-2 text-right">{r.broken}</td>
-                    <td className="px-3 py-2 text-right">{fmtPct(r.keptRate)}</td>
+                    <td className="px-3 py-2 text-right">{report.truncated ? "—" : r.contactsLogged}</td>
+                    <td className="px-3 py-2 text-right">{report.truncated ? "—" : r.casesTouched}</td>
+                    <td className="px-3 py-2 text-right">{report.truncated ? "—" : r.kept}</td>
+                    <td className="px-3 py-2 text-right">{report.truncated ? "—" : r.partiallyKept}</td>
+                    <td className="px-3 py-2 text-right">{report.truncated ? "—" : r.broken}</td>
+                    <td className="px-3 py-2 text-right">{report.truncated ? "—" : fmtPct(r.keptRate)}</td>
                   </tr>
                 ))}
               </tbody>
@@ -216,9 +216,9 @@ export default function Reports() {
                 {report.workload.map((w) => (
                   <tr key={w.ownerId ?? "unassigned"} className="border-t border-border text-text">
                     <td className="px-3 py-2">{w.label}</td>
-                    <td className="px-3 py-2 text-right">{w.openCases}</td>
-                    <td className="px-3 py-2 text-right">{fmtUSD(w.overdueTotal)}</td>
-                    <td className="px-3 py-2 text-right">{w.brokenPromises}</td>
+                    <td className="px-3 py-2 text-right">{report.truncated ? "—" : w.openCases}</td>
+                    <td className="px-3 py-2 text-right">{report.truncated ? "—" : fmtUSD(w.overdueTotal)}</td>
+                    <td className="px-3 py-2 text-right">{report.truncated ? "—" : w.brokenPromises}</td>
                   </tr>
                 ))}
               </tbody>

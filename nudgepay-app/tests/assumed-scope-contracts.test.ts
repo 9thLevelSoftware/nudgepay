@@ -126,6 +126,8 @@ test("listed loaders check error on every { data: destructure including Promise.
     "../app/routes/accounts.tsx",
     "../app/lib/reports.server.ts",
     "../app/lib/case-queue.server.ts",
+    "../app/routes/dashboard.tsx",
+    "../app/routes/focus.tsx",
   ];
   for (const rel of files) {
     const hits = dataDestructuresWithoutError(read(rel));
@@ -148,6 +150,22 @@ test("CDC catch-up rethrows recon so last_cdc_time is not stamped", () => {
   const cdc = src.slice(src.indexOf("export async function runCdcCatchup"));
   expect(cdc.indexOf("throw e")).toBeGreaterThan(-1);
   expect(cdc.indexOf("throw e")).toBeLessThan(cdc.indexOf("last_cdc_time: fetchedAt"));
+});
+
+test("syncOverdueInvoices and applyInvoiceWebhook do not swallow recon", () => {
+  const src = read("../app/lib/qbo-sync.server.ts");
+  const overdue = src.slice(
+    src.indexOf("export async function syncOverdueInvoices"),
+    src.indexOf("export async function applyCustomerWebhook"),
+  );
+  expect(overdue).toContain("applyPaymentsAndEvaluate");
+  expect(overdue).not.toContain("cron will re-converge");
+  const inv = src.slice(
+    src.indexOf("export async function applyInvoiceWebhook"),
+    src.indexOf("// --- CDC catch-up"),
+  );
+  expect(inv).toContain("applyPaymentsAndEvaluate");
+  expect(inv).not.toContain("cron will re-converge");
 });
 
 test("sync pages Intuit queries and does not advance truncated CDC (NP-AUD-2026-028)", () => {

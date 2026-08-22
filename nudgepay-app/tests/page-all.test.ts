@@ -209,3 +209,10 @@ test("Stage 1 of loadCaseQueueSource uses pageAll on non-embedded queries", () =
   expect(queue).toContain("pageAllChunked");
   expect(queue).toContain("lastContactTruncated");
 });
+
+test("focus pages timeline lists and uses Partial history not TruncationBanner", () => {
+  const focus = readFileSync(new URL("../app/routes/focus.tsx", import.meta.url), "utf8");
+  expect(focus).toContain("pageAllChunked");
+  expect(focus).toContain("Partial history");
+  expect(focus).not.toContain("TruncationBanner");
+});

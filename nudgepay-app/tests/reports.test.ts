@@ -317,6 +317,7 @@ test("reports page renders ArKpiBand for the selected range and stays owner-only
   expect(page).toContain("loadTeamReport");
   expect(page).toContain("<ArKpiBand");
   expect(page).toContain("sheet=ar");
+  expect(page).toContain('report.truncated ? "—"');
   expect(page).not.toContain("lastContactsInput");
   expect(page).not.toContain("CasePromiseInput");
   expect(page).not.toContain("DASHBOARD_AR_RANGE_DAYS");
@@ -353,6 +354,9 @@ test("reports.csv sheet=ar uses arKpisToCsv; default team skips AR queries", () 
   expect(arBranch).not.toContain("loadTeamReport");
   expect(teamBranch).toContain("loadTeamReport");
   expect(teamBranch).not.toContain("loadReportArKpis");
+  expect(csvRoute).toContain("status: 409");
+  expect(csvRoute).toContain("report.truncated");
+  expect(csvRoute).toContain('coverage === "partial"');
 });
 
 // ── loadReportArKpis open-case paging ────────────────────────────────────────
