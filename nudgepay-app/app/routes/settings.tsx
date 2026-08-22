@@ -521,11 +521,17 @@ export default function Settings() {
                 {sp.get("saved") === "member" ? (
                   <p className="mt-2 text-xs text-cool" role="status">Member updated.</p>
                 ) : null}
+                {sp.get("saved") === "invite_revoked" ? (
+                  <p className="mt-2 text-xs text-cool" role="status">Invite revoked.</p>
+                ) : null}
                 {memberError === "forbidden" ? (
                   <p className="mt-2 text-xs text-hot" role="alert">Only owners can manage members.</p>
                 ) : null}
                 {memberError === "invite" ? (
                   <p className="mt-2 text-xs text-hot" role="alert">Could not create that invite. Check the email and try again.</p>
+                ) : null}
+                {memberError === "revoke" ? (
+                  <p className="mt-2 text-xs text-hot" role="alert">Could not revoke that invite.</p>
                 ) : null}
                 {memberError === "member" ? (
                   <p className="mt-2 text-xs text-hot" role="alert">Could not change membership. The last owner cannot be removed or demoted.</p>
