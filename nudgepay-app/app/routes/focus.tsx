@@ -13,6 +13,7 @@ import { loadOrgConfig } from "../lib/org-config.server";
 import { DEFAULT_ORG_CONFIG } from "../lib/org-config";
 import { todayInTz } from "../lib/tz";
 import { buildCaseItems, type CaseItem } from "../lib/cases";
+import { collisionState, type Collision } from "../lib/collision";
 import { buildFocusQueue, dropLivePresenceCases, type FocusScope } from "../lib/focus-queue";
 import {
   initFocusSession, focusSessionReducer, triageCount, isDone,
@@ -69,14 +70,34 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
   );
 
   const built = buildFocusQueue(allItems, today, user.id);
+  const nowMs = Date.now();
   const { queue, held } = dropLivePresenceCases(
-    built.queue, src.presenceRows, user.id, Date.now(),
+    built.queue, src.presenceRows, user.id, nowMs,
   );
   const scope = built.scope;
   const heldLabels = held.map((h) => ({
     caseId: h.caseId,
     viewers: h.viewerIds.map((id) => src.ownerLabels.get(id) ?? "a teammate"),
   }));
+
+  // Dashboard-parity collision per remaining case. Live viewers are already
+  // dropped; recent-contact (RECENT_WINDOW_MIN) stays in the deck and must confirm.
+  const presenceByCustomer = new Map<string, { userId: string; lastSeenAt: string }[]>();
+  for (const r of src.presenceRows) {
+    const list = presenceByCustomer.get(r.customer_id) ?? [];
+    list.push({ userId: r.user_id, lastSeenAt: r.last_seen_at });
+    presenceByCustomer.set(r.customer_id, list);
+  }
+  const collisions: Record<string, Collision> = {};
+  for (const item of queue) {
+    collisions[item.caseId] = collisionState({
+      contacts: src.recentByCase.get(item.caseId) ?? [],
+      heartbeats: presenceByCustomer.get(item.customerId) ?? [],
+      currentUserId: user.id,
+      nowMs,
+      label: (id) => src.ownerLabels.get(id) ?? "A teammate",
+    });
+  }
 
   // Build timelines for every case in the queue (sliced to 5 recent entries).
   const caseIds = queue.map((c) => c.caseId);
@@ -145,6 +166,7 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
     queue: queue as CaseItem[],
     scope,
     heldLabels,
+    collisions,
     timelines,
     smsEnabled: src.smsEnabled,
     smsQuietNow: src.smsQuietNow,
@@ -165,7 +187,7 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
 
 export default function FocusMode() {
   const {
-    queue, scope, heldLabels, timelines, smsEnabled, smsQuietNow, quietHoursLabel, today,
+    queue, scope, heldLabels, collisions, timelines, smsEnabled, smsQuietNow, quietHoursLabel, today,
     smsTemplates, orgCompany, orgPhone, orgPaymentLink, timeZone,
   } = useLoaderData<typeof loader>();
 
@@ -395,6 +417,7 @@ export default function FocusMode() {
               {openForm === "call" && (
                 <LogCallMiniForm
                   item={currentItem}
+                  collision={collisions[currentItem.caseId] ?? null}
                   onDone={() => dispatch({ type: "resolve", result: "logged" })}
                   onCancel={() => setOpenForm(null)}
                 />
@@ -402,6 +425,7 @@ export default function FocusMode() {
               {openForm === "text" && (
                 <SendTextMiniForm
                   item={currentItem}
+                  collision={collisions[currentItem.caseId] ?? null}
                   smsEnabled={smsEnabled}
                   smsQuietNow={smsQuietNow}
                   quietHoursLabel={quietHoursLabel}

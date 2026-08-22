@@ -257,6 +257,18 @@ export function AppShell({
                 </li>
               );
             })}
+            {/* Mobile-only Focus. Not a sixth activeNav — header chip stays on dashboard. */}
+            <li className="relative w-full md:hidden">
+              <Link
+                to="/focus"
+                className="flex flex-col items-center justify-center w-full py-3 gap-1 text-surface/70 hover:text-surface focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-copper focus-visible:ring-inset"
+                aria-label="Focus mode"
+                onClick={() => setNavOpen(false)}
+              >
+                <Icon name="circle" size={18} />
+                <span className="text-[9px] font-sans font-medium uppercase tracking-wide leading-none">Focus</span>
+              </Link>
+            </li>
           </ul>
         </nav>
 
