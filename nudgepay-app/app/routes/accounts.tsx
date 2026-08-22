@@ -22,12 +22,13 @@ import type { CustomerInput, InvoiceInput } from "../lib/worklist";
 import { PEEK_WINDOW_DAYS } from "../lib/activity-peek";
 import { loadReplySource, peekWindowStartIso } from "../lib/activity-peek.server";
 import { loadBrokenPromiseCustomers, loadPayerSource } from "../lib/payer-behavior.server";
-import { parseAccountsDensity } from "../lib/queue-chrome";
+import { parseAccountsDensity, accountsHref } from "../lib/queue-chrome";
 import { AppShell } from "../components/AppShell";
 import { SyncIssues } from "../components/SyncIssues";
 import { AccountsMetrics } from "../components/AccountsMetrics";
 import { AccountsDirectory } from "../components/AccountsDirectory";
 import { AccountQuickPanel } from "../components/AccountQuickPanel";
+import { DrawerShell } from "../components/DrawerShell";
 import { pageTitle } from "../lib/meta";
 import type { Route } from "./+types/accounts";
 
@@ -267,8 +268,22 @@ export default function Accounts() {
             selectedId={d.selected?.customerId ?? null}
             timeZone={d.timeZone}
           />
-          <AccountQuickPanel account={d.selected} />
+          <div className="hidden lg:block">
+            <AccountQuickPanel account={d.selected} />
+          </div>
         </div>
+        {/* Below lg the selection opens as a drawer — no dead-end at the page bottom */}
+        {d.selected ? (
+          <div className="lg:hidden">
+            <DrawerShell
+              label={`Account — ${d.selected.name}`}
+              closeHref={accountsHref({ filter: d.filter, sort: d.sort, q: d.q || undefined, density: d.densityFromUrl ? d.density : undefined })}
+              maxWidth="max-w-[420px]"
+            >
+              <AccountQuickPanel account={d.selected} />
+            </DrawerShell>
+          </div>
+        ) : null}
       </div>
     </AppShell>
   );

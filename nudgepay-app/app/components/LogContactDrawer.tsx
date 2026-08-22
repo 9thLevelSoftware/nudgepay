@@ -1,5 +1,5 @@
 import { useRef, useState } from "react";
-import { Link, useFetcher, useNavigate } from "react-router";
+import { Link, useFetcher } from "react-router";
 import type { CaseInvoice, CaseItem } from "../lib/cases";
 import type { Collision } from "../lib/collision";
 import { CONTACT_METHODS, CONTACT_OUTCOMES } from "../lib/contact-log";
@@ -7,7 +7,7 @@ import { PRIMARY_EXCEPTION_STATES, requiresReviewDate, isContactBlocked, type Ex
 import { EXCEPTION_REASON_LABEL, formatUSD } from "../lib/format";
 import { NEXT_ACTION_LABEL as NEXT_STEP_LABEL, plural } from "../lib/labels";
 import { OUTCOME_LABELS } from "../lib/timeline";
-import { useDialog } from "../lib/use-dialog";
+import { DrawerShell } from "./DrawerShell";
 import type { action } from "../routes/api.contact-logs";
 
 const METHOD_LABEL: Record<string, string> = {
@@ -45,11 +45,6 @@ export function LogContactDrawer({
   const [confirmSave, setConfirmSave] = useState(false);
   const needsConfirm = !!collision && collision.level !== "none";
   const firstFieldRef = useRef<HTMLSelectElement>(null);
-  const navigate = useNavigate();
-  const { panelRef } = useDialog({
-    onClose: () => navigate(returnTo),
-    initialFocusRef: firstFieldRef as React.RefObject<HTMLElement | null>,
-  });
   const fetcher = useFetcher<typeof action>();
   const saving = fetcher.state !== "idle";
   const activeError = (fetcher.data && !fetcher.data.ok) ? fetcher.data.error : logError;
@@ -57,12 +52,13 @@ export function LogContactDrawer({
   const showPromise = nextStep === "promise";
 
   return (
-    <div className="fixed inset-0 z-40 flex justify-end" role="dialog" aria-modal="true" aria-label="Log a contact">
-      {/* Scrim — clicking it (a Link) closes the drawer */}
-      <Link to={returnTo} aria-hidden="true" tabIndex={-1} className="absolute inset-0 bg-ink/40 motion-safe:transition-opacity" />
-
-      {/* Panel */}
-      <div ref={panelRef} className="relative w-full max-w-md bg-surface border-l border-border h-full overflow-y-auto shadow-xl">
+    <DrawerShell
+      label="Log a contact"
+      closeHref={returnTo}
+      padded={false}
+      className="shadow-xl"
+      initialFocusRef={firstFieldRef as React.RefObject<HTMLElement | null>}
+    >
         <div className="flex items-center justify-between px-5 py-4 border-b border-border">
           <h2 className="font-display text-lg font-semibold text-text">Log a contact</h2>
           <Link
@@ -73,6 +69,7 @@ export function LogContactDrawer({
             <span aria-hidden="true" className="text-lg leading-none">×</span>
           </Link>
         </div>
+
 
         <p className="px-5 pt-3 text-sm text-muted font-sans">
           {selected.customerName}
@@ -237,7 +234,7 @@ export function LogContactDrawer({
                     className="rounded-md border border-border bg-surface px-3 py-2 text-sm font-sans text-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-copper" />
                 </label>
               ) : (
-                <p className="text-xs font-sans text-advisory">
+                <p className="text-xs font-sans text-warm">
                   Parks this case indefinitely{isContactBlocked(exceptionReason) ? " and blocks outbound messages" : ""}.
                 </p>
               )}
@@ -245,7 +242,7 @@ export function LogContactDrawer({
           )}
 
           {confirmSave ? (
-            <p className="text-xs font-sans text-advisory" role="alert">
+            <p className="text-xs font-sans text-warm" role="alert">
               {collision?.level === "live"
                 ? `${collision.byUser} is viewing this customer now. Log anyway?`
                 : `${collision?.byUser} contacted this customer recently. Log anyway?`}
@@ -268,7 +265,6 @@ export function LogContactDrawer({
             </button>
           </div>
         </fetcher.Form>
-      </div>
-    </div>
+    </DrawerShell>
   );
 }

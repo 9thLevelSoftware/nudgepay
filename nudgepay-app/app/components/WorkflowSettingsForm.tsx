@@ -37,21 +37,21 @@ export function WorkflowSettingsForm({
             Coming-due window (days)
             <input
               type="number" name="coming_due_days" min={1} max={60} defaultValue={workflow.comingDueDays}
-              className="h-8 rounded-md border border-border bg-panel px-2 text-sm text-text tabular-nums focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-copper"
+              className="h-9 rounded-md border border-border bg-panel px-3 text-sm text-text tabular-nums focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-copper"
             />
           </label>
           <label className="grid gap-1 text-sm font-medium text-text">
             Due-soon window (business days)
             <input
               type="number" name="due_soon_business_days" min={1} max={30} defaultValue={workflow.dueSoonBusinessDays}
-              className="h-8 rounded-md border border-border bg-panel px-2 text-sm text-text tabular-nums focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-copper"
+              className="h-9 rounded-md border border-border bg-panel px-3 text-sm text-text tabular-nums focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-copper"
             />
           </label>
           <label className="grid gap-1 text-sm font-medium text-text">
             Bulk-action batch limit
             <input
               type="number" name="sms_batch_limit" min={1} max={200} defaultValue={workflow.smsBatchLimit}
-              className="h-8 rounded-md border border-border bg-panel px-2 text-sm text-text tabular-nums focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-copper"
+              className="h-9 rounded-md border border-border bg-panel px-3 text-sm text-text tabular-nums focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-copper"
             />
           </label>
         </div>

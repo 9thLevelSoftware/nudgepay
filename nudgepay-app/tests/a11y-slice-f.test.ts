@@ -93,7 +93,8 @@ describe("TEMP-UX-013 WebhookUrlField label", () => {
 
 describe("TEMP-UX-020 CommPrefsDrawer scrim", () => {
   it("hides the scrim from AT without labeling it Close", () => {
-    const src = read("../app/components/CommPrefsDrawer.tsx");
+    // CommPrefsDrawer delegates the scrim to the shared DrawerShell.
+    const src = read("../app/components/DrawerShell.tsx");
     expect(src).toMatch(/aria-hidden="true"\s+tabIndex=\{-1\}/);
     expect(src).not.toMatch(/aria-hidden="true"[^>]*aria-label="Close"/);
   });

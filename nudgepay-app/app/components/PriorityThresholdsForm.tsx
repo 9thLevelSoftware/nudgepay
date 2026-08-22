@@ -37,7 +37,7 @@ export function PriorityThresholdsForm({
           High-value threshold ($)
           <input
             type="number" name="high_value_threshold" min={HIGH_VALUE_THRESHOLD_MIN} step="0.01" defaultValue={priority.highValue}
-            className="h-8 rounded-md border border-border bg-panel px-2 text-sm text-text tabular-nums focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-copper"
+            className="h-9 rounded-md border border-border bg-panel px-3 text-sm text-text tabular-nums focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-copper"
           />
         </label>
 
@@ -46,21 +46,21 @@ export function PriorityThresholdsForm({
             Critical ≥
             <input
               type="number" name="priority_critical_min" min={1} defaultValue={priority.criticalMin}
-              className="h-8 rounded-md border border-border bg-panel px-2 text-sm text-text tabular-nums focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-copper"
+              className="h-9 rounded-md border border-border bg-panel px-3 text-sm text-text tabular-nums focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-copper"
             />
           </label>
           <label className="grid gap-1 text-sm font-medium text-text">
             High ≥
             <input
               type="number" name="priority_high_min" min={1} defaultValue={priority.highMin}
-              className="h-8 rounded-md border border-border bg-panel px-2 text-sm text-text tabular-nums focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-copper"
+              className="h-9 rounded-md border border-border bg-panel px-3 text-sm text-text tabular-nums focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-copper"
             />
           </label>
           <label className="grid gap-1 text-sm font-medium text-text">
             Medium ≥
             <input
               type="number" name="priority_medium_min" min={1} defaultValue={priority.mediumMin}
-              className="h-8 rounded-md border border-border bg-panel px-2 text-sm text-text tabular-nums focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-copper"
+              className="h-9 rounded-md border border-border bg-panel px-3 text-sm text-text tabular-nums focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-copper"
             />
           </label>
         </div>

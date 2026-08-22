@@ -262,7 +262,7 @@ export default function Settings() {
                   </label>
                   <button
                     type="submit" disabled={profileBusy("profile")}
-                    className="h-9 rounded-md bg-copper px-4 text-sm font-medium text-white hover:bg-copper/90 disabled:opacity-60 disabled:cursor-not-allowed"
+                    className="h-9 rounded-md bg-copper px-4 text-sm font-medium text-ink hover:bg-copper/90 disabled:opacity-60 disabled:cursor-not-allowed"
                   >
                     {profileBusy("profile") ? "Saving…" : "Save"}
                   </button>
@@ -300,7 +300,7 @@ export default function Settings() {
                   </label>
                   <button
                     type="submit" disabled={profileBusy("password")}
-                    className="h-9 w-fit rounded-md bg-copper px-4 text-sm font-medium text-white hover:bg-copper/90 disabled:opacity-60 disabled:cursor-not-allowed"
+                    className="h-9 w-fit rounded-md bg-copper px-4 text-sm font-medium text-ink hover:bg-copper/90 disabled:opacity-60 disabled:cursor-not-allowed"
                   >
                     {profileBusy("password") ? "Updating…" : "Update password"}
                   </button>
@@ -336,7 +336,7 @@ export default function Settings() {
                   </label>
                   <button
                     type="submit" disabled={profileBusy("email")}
-                    className="h-9 w-fit rounded-md bg-copper px-4 text-sm font-medium text-white hover:bg-copper/90 disabled:opacity-60 disabled:cursor-not-allowed"
+                    className="h-9 w-fit rounded-md bg-copper px-4 text-sm font-medium text-ink hover:bg-copper/90 disabled:opacity-60 disabled:cursor-not-allowed"
                   >
                     {profileBusy("email") ? "Sending…" : "Change email"}
                   </button>
@@ -450,7 +450,7 @@ export default function Settings() {
                     <button
                       type="submit"
                       disabled={formBusy("/api/members")}
-                      className="h-9 rounded-md bg-copper px-4 text-sm font-medium text-white hover:bg-copper/90 disabled:opacity-60 disabled:cursor-not-allowed"
+                      className="h-9 rounded-md bg-copper px-4 text-sm font-medium text-ink hover:bg-copper/90 disabled:opacity-60 disabled:cursor-not-allowed"
                     >
                       {formBusy("/api/members") ? "Creating…" : "Create invite link"}
                     </button>

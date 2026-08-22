@@ -15,7 +15,7 @@ function dueLabel(daysUntilDue: number): string {
 
 function dueTone(daysUntilDue: number): string {
   if (daysUntilDue === 0) return "text-hot";
-  if (daysUntilDue <= 2) return "text-amber-600";
+  if (daysUntilDue <= 2) return "text-warm";
   return "text-muted";
 }
 
@@ -30,7 +30,7 @@ export function ComingDueList({
     return (
       <div className="flex flex-col items-center justify-center gap-3 py-16 px-6 text-center">
         <div className="w-10 h-10 rounded-full bg-paper flex items-center justify-center">
-          <Icon name="check" size={20} className="text-emerald-600" />
+          <Icon name="check" size={20} className="text-cool" />
         </div>
         <p className="font-sans text-text font-medium">{comingDueEmptyCopy(comingDueDays)}</p>
         <p className="font-sans text-sm text-muted max-w-xs">
@@ -43,7 +43,7 @@ export function ComingDueList({
   return (
     <div className="divide-y divide-border">
       {/* Awareness banner */}
-      <div className="px-4 py-2.5 bg-sky-50 border-b border-sky-100 text-xs text-sky-800 font-sans">
+      <div className="px-4 py-2.5 bg-cool/10 border-b border-cool/20 text-xs text-cool font-sans">
         <Icon name="alert" size={14} className="inline-block mr-1.5 align-[-2px]" />
         Awareness only — these accounts are not in the collections queue.
       </div>

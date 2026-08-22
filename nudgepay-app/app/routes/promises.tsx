@@ -23,6 +23,7 @@ import { SyncIssues } from "../components/SyncIssues";
 import { PromisesMetrics } from "../components/PromisesMetrics";
 import { PromisesLedger } from "../components/PromisesLedger";
 import { PromiseQuickPanel } from "../components/PromiseQuickPanel";
+import { DrawerShell } from "../components/DrawerShell";
 import { pageTitle } from "../lib/meta";
 import type { Route } from "./+types/promises";
 
@@ -47,8 +48,10 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
     : "due-date";
   const promiseId = sp.get("promiseId");
   const promiseError = sp.get("promiseError");
+  const q = (sp.get("q") ?? "").trim();
   const returnQs = new URLSearchParams({ tab, sort });
   if (promiseId) returnQs.set("promiseId", promiseId);
+  if (q) returnQs.set("q", q);
   const returnTo = `/promises?${returnQs.toString()}`;
 
   // --- Org config for the due-soon business-day window + org-local "today" ---
@@ -138,11 +141,17 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
     liveLinkedBalanceByPromiseId,
     openCaseIds,
   });
+  // Search narrows the whole ledger (counts + rows), matching the Accounts
+  // directory's behaviour. Case-insensitive substring on the customer name.
+  const needle = q.toLowerCase();
+  const searched = needle
+    ? allRows.filter((r) => r.customerName.toLowerCase().includes(needle))
+    : allRows;
   const metrics = computePromiseMetrics(allRows, today, config);
   const counts = Object.fromEntries(
-    PROMISE_TABS.map((t) => [t, applyPromiseTab(allRows, t, today, config).length]),
+    PROMISE_TABS.map((t) => [t, applyPromiseTab(searched, t, today, config).length]),
   ) as Record<PromiseTab, number>;
-  const rows = sortPromiseRows(applyPromiseTab(allRows, tab, today, config), sort);
+  const rows = sortPromiseRows(applyPromiseTab(searched, tab, today, config), sort);
 
   // --- Selected promise: linked invoices + originating note ---
   const selected = promiseId ? (allRows.find((r) => r.promiseId === promiseId) ?? null) : null;
@@ -182,7 +191,7 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
     {
       orgName,
       initials, userLabel, syncLabel, connected, isOwner, syncIssues,
-      rows, metrics, counts, tab, sort, returnTo,
+      rows, metrics, counts, tab, sort, q, returnTo,
       selected, selectedInvoices, selectedNote, promiseError,
     },
     { headers },
@@ -210,17 +219,38 @@ export default function Promises() {
             rows={d.rows}
             tab={d.tab}
             sort={d.sort}
+            search={d.q}
             counts={d.counts}
             selectedId={d.selected?.promiseId ?? null}
           />
-          <PromiseQuickPanel
-            promise={d.selected}
-            invoices={d.selectedInvoices}
-            note={d.selectedNote}
-            returnTo={d.returnTo}
-            promiseError={d.promiseError}
-          />
+          <div className="hidden lg:block">
+            <PromiseQuickPanel
+              promise={d.selected}
+              invoices={d.selectedInvoices}
+              note={d.selectedNote}
+              returnTo={d.returnTo}
+              promiseError={d.promiseError}
+            />
+          </div>
         </div>
+        {/* Below lg the selection opens as a drawer — no dead-end at the page bottom */}
+        {d.selected ? (
+          <div className="lg:hidden">
+            <DrawerShell
+              label={`Promise — ${d.selected.customerName}`}
+              closeHref={d.returnTo.replace(/[?&]promiseId=[^&]*/, "").replace(/\?$/, "")}
+              maxWidth="max-w-[420px]"
+            >
+              <PromiseQuickPanel
+                promise={d.selected}
+                invoices={d.selectedInvoices}
+                note={d.selectedNote}
+                returnTo={d.returnTo}
+                promiseError={d.promiseError}
+              />
+            </DrawerShell>
+          </div>
+        ) : null}
       </div>
     </AppShell>
   );

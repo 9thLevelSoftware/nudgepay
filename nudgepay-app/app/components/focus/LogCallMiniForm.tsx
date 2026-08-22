@@ -139,7 +139,7 @@ export function LogCallMiniForm({ item, collision, onDone, onCancel }: LogCallMi
         )}
 
         {showConfirm ? (
-          <p className="mt-2 text-xs font-sans text-advisory" role="alert">
+          <p className="mt-2 text-xs font-sans text-warm" role="alert">
             {liveCollision?.level === "live"
               ? `${liveCollision.byUser} is viewing this customer now. Log anyway?`
               : `${liveCollision?.byUser} contacted this customer recently. Log anyway?`}

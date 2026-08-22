@@ -69,18 +69,23 @@ export async function loadContactPromiseRates(args: {
             ).range(from, to),
           { maxRows: PAGE_ALL_MAX_ROWS },
         ),
-    pageAll<PromiseRow>(
-      (from, to) =>
-        orderPage(
-          supabase
-            .from("promises")
-            .select("case_id", { count: "exact" })
-            .eq("org_id", orgId)
-            .gte("created_at", windowStartIso)
-            .neq("status", "cancelled"),
-        ).range(from, to),
-      { maxRows: PAGE_ALL_MAX_ROWS },
-    ),
+    chunks.length === 0
+      ? Promise.resolve({ rows: [] as PromiseRow[], truncated: false })
+      : pageAllChunked<PromiseRow>(
+          chunks,
+          (ids, from, to) =>
+            orderPage(
+              supabase
+                .from("promises")
+                .select("case_id", { count: "exact" })
+                .eq("org_id", orgId)
+                .in("case_id", ids)
+                .gte("created_at", windowStartIso)
+                .lte("created_at", new Date().toISOString())
+                .neq("status", "cancelled"),
+            ).range(from, to),
+          { maxRows: PAGE_ALL_MAX_ROWS },
+        ),
   ]);
 
   const openSet = new Set(openCaseIds);
@@ -96,7 +101,9 @@ export async function loadContactPromiseRates(args: {
 
   const promiseCases = new Set<string>();
   for (const r of promises.rows) {
-    if (r.case_id) promiseCases.add(r.case_id);
+    // A promise only contributes when its case is both open and contacted in
+    // this window. This keeps the numerator a subset of the denominator.
+    if (r.case_id && contacted.has(r.case_id)) promiseCases.add(r.case_id);
   }
 
   return {

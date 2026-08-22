@@ -65,7 +65,7 @@ export function EmailSettingsSection(d: EmailSettingsProps) {
               name="from_address"
               defaultValue={d.fromAddress}
               placeholder="billing@yourdomain.com"
-              className="h-8 rounded-md border border-border bg-panel px-2 text-sm text-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-copper"
+              className="h-9 rounded-md border border-border bg-panel px-3 text-sm text-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-copper"
             />
             <p className="text-xs text-muted">Must be on a domain you've verified with Resend (SPF/DKIM)</p>
             {errorCode === "email" && (
@@ -79,7 +79,7 @@ export function EmailSettingsSection(d: EmailSettingsProps) {
               name="from_name"
               defaultValue={d.fromName}
               placeholder="Your business name"
-              className="h-8 rounded-md border border-border bg-panel px-2 text-sm text-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-copper"
+              className="h-9 rounded-md border border-border bg-panel px-3 text-sm text-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-copper"
             />
           </div>
           <div className="flex flex-col gap-1">

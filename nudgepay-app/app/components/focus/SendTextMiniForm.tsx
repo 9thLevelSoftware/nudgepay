@@ -173,7 +173,7 @@ export function SendTextMiniForm({
 
           {/* Send */}
           {showConfirm ? (
-            <p className="mt-2 text-xs font-sans text-advisory" role="alert">
+            <p className="mt-2 text-xs font-sans text-warm" role="alert">
               {liveCollision?.level === "live"
                 ? `${liveCollision.byUser} is viewing this customer now. Send anyway?`
                 : `${liveCollision?.byUser} contacted this customer recently. Send anyway?`}

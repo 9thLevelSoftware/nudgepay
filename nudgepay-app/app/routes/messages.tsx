@@ -1,5 +1,6 @@
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import { useLoaderData, useFetcher, useRevalidator, data, type LoaderFunctionArgs } from "react-router";
+import { useToast } from "../components/Toasts";
 import { useFlashCleanup } from "../lib/use-flash-cleanup";
 import { getEnv } from "../lib/env.server";
 import { loadWorkspaceChrome } from "../lib/workspace.server";
@@ -27,6 +28,7 @@ import { SyncIssues } from "../components/SyncIssues";
 import { MessagesMetrics } from "../components/MessagesMetrics";
 import { MessagesInbox } from "../components/MessagesInbox";
 import { MessageThreadPanel } from "../components/MessageThreadPanel";
+import { DrawerShell } from "../components/DrawerShell";
 import { pageTitle } from "../lib/meta";
 import type { Route } from "./+types/messages";
 
@@ -182,6 +184,13 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
   const query = q.trim().toLowerCase();
   const searched = query === "" ? allRows : allRows.filter((r) => r.searchText.includes(query));
 
+  // Newest inbound activity across channels — the client polls for changes to
+  // this fingerprint and toasts when a new customer reply arrives.
+  const lastInboundAt = messagesInput.reduce<string | null>((acc, m) => {
+    if (m.direction !== "inbound" || !m.createdAt) return acc;
+    return acc == null || m.createdAt > acc ? m.createdAt : acc;
+  }, null);
+
   const channelFiltered = applyChannelFilter(searched, channel);
   const metrics = computeMessageMetrics(channelFiltered);
   const counts = Object.fromEntries(
@@ -262,7 +271,7 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
       orgName,
       initials, userLabel, syncLabel, connected, isOwner, syncIssues,
       rows, metrics, counts, tab, sort, q,
-      channel, channelCounts, emailEnabled,
+      channel, channelCounts, emailEnabled, lastInboundAt,
       selected, selectedMessages, selectedEmailMessages,
       selectedConsent, selectedPhone, selectedEmail,
       selectedVars, sms, smsEnabled, smsQuietNow, quietHoursLabel,
@@ -279,12 +288,41 @@ export default function Messages() {
   useFlashCleanup();
   const revalidator = useRevalidator();
   const readFetcher = useFetcher();
+  const toast = useToast();
+  const lastInboundRef = useRef<string | null>(null);
+
+  // Live-refresh: skip while the tab is hidden, while a navigation is in
+  // flight, or while the user is composing in any field (revalidation would
+  // churn the composer). Refresh immediately on tab refocus.
   useEffect(() => {
-    const id = window.setInterval(() => {
-      if (revalidator.state === "idle") revalidator.revalidate();
-    }, 20_000);
-    return () => window.clearInterval(id);
+    const tick = () => {
+      if (document.visibilityState !== "visible") return;
+      if (revalidator.state !== "idle") return;
+      const active = document.activeElement as HTMLElement | null;
+      if (active && ["TEXTAREA", "INPUT", "SELECT"].includes(active.tagName)) return;
+      revalidator.revalidate();
+    };
+    const id = window.setInterval(tick, 20_000);
+    const onVisible = () => { if (document.visibilityState === "visible") tick(); };
+    document.addEventListener("visibilitychange", onVisible);
+    return () => {
+      window.clearInterval(id);
+      document.removeEventListener("visibilitychange", onVisible);
+    };
   }, [revalidator]);
+
+  // Toast when a new inbound customer reply lands (fingerprint from loader).
+  useEffect(() => {
+    const current = d.lastInboundAt ?? null;
+    if (lastInboundRef.current === null) {
+      lastInboundRef.current = current;
+      return;
+    }
+    if (current && current > lastInboundRef.current) {
+      lastInboundRef.current = current;
+      toast("New inbound message", "info");
+    }
+  }, [d.lastInboundAt, toast]);
   useEffect(() => {
     if (!d.selected) return;
     const fd = new FormData();
@@ -307,40 +345,65 @@ export default function Messages() {
     >
       <div className="p-4 sm:p-6 space-y-4 sm:space-y-6">
         <MessagesMetrics metrics={d.metrics} />
-        <div className="grid gap-4 lg:grid-cols-[1fr_380px]">
-          <MessagesInbox
-            rows={d.rows}
-            tab={d.tab}
-            sort={d.sort}
-            search={d.q}
-            counts={d.counts}
-            selectedId={d.selected?.customerId ?? null}
-            selectedChannel={d.selected?.channel ?? null}
-            channel={d.channel}
-            channelCounts={d.channelCounts}
-            timeZone={d.timeZone}
-          />
-          <MessageThreadPanel
-            thread={d.selected}
-            messages={d.selectedMessages}
-            emailMessages={d.selectedEmailMessages}
-            consent={d.selectedConsent}
-            phone={d.selectedPhone}
-            vars={d.selectedVars}
-            sms={d.sms}
-            smsEnabled={d.smsEnabled}
-            smsQuietNow={d.smsQuietNow}
-            quietHoursLabel={d.quietHoursLabel}
-            emailEnabled={d.emailEnabled}
-            selectedEmail={d.selectedEmail}
-            tab={d.tab}
-            sort={d.sort}
-            q={d.q}
-            smsTemplates={d.smsTemplates}
-            emailTemplates={d.emailTemplates}
-            timeZone={d.timeZone}
-          />
-        </div>
+        {(() => {
+          const threadPanel = (
+            <MessageThreadPanel
+              thread={d.selected}
+              messages={d.selectedMessages}
+              emailMessages={d.selectedEmailMessages}
+              consent={d.selectedConsent}
+              phone={d.selectedPhone}
+              vars={d.selectedVars}
+              sms={d.sms}
+              smsEnabled={d.smsEnabled}
+              smsQuietNow={d.smsQuietNow}
+              quietHoursLabel={d.quietHoursLabel}
+              emailEnabled={d.emailEnabled}
+              selectedEmail={d.selectedEmail}
+              tab={d.tab}
+              sort={d.sort}
+              q={d.q}
+              smsTemplates={d.smsTemplates}
+              emailTemplates={d.emailTemplates}
+              timeZone={d.timeZone}
+            />
+          );
+          const closeParams = new URLSearchParams({ tab: d.tab, sort: d.sort, channel: d.channel });
+          if (d.q) closeParams.set("q", d.q);
+          return (
+            <>
+              <div className="grid gap-4 lg:grid-cols-[1fr_380px]">
+                <MessagesInbox
+                  rows={d.rows}
+                  tab={d.tab}
+                  sort={d.sort}
+                  search={d.q}
+                  counts={d.counts}
+                  selectedId={d.selected?.customerId ?? null}
+                  selectedChannel={d.selected?.channel ?? null}
+                  channel={d.channel}
+                  channelCounts={d.channelCounts}
+                  timeZone={d.timeZone}
+                />
+                <div className="hidden lg:block">
+                  {threadPanel}
+                </div>
+              </div>
+              {/* Below lg the thread opens as a drawer — no dead-end at the page bottom */}
+              {d.selected ? (
+                <div className="lg:hidden">
+                  <DrawerShell
+                    label={`Thread — ${d.selected.customerName}`}
+                    closeHref={`?${closeParams.toString()}`}
+                    maxWidth="max-w-[420px]"
+                  >
+                    {threadPanel}
+                  </DrawerShell>
+                </div>
+              ) : null}
+            </>
+          );
+        })()}
       </div>
     </AppShell>
   );

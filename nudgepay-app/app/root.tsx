@@ -12,6 +12,7 @@ import type { Route } from "./+types/root";
 import "./app.css";
 import { PublicLayout } from "./components/PublicLayout";
 import { pageTitle } from "./lib/meta";
+import { THEME_BOOTSTRAP_SCRIPT } from "./components/ThemeToggle";
 
 const primaryLinkClass =
 	"rounded-md bg-copper px-4 py-2 text-sm font-semibold text-ink transition-colors hover:bg-copper/90 " +
@@ -41,8 +42,10 @@ export function Layout({ children }: { children: React.ReactNode }) {
 			<head>
 				<meta charSet="utf-8" />
 				<meta name="viewport" content="width=device-width, initial-scale=1" />
+				<meta name="color-scheme" content="light dark" />
 				<Meta />
 				<Links />
+				<script dangerouslySetInnerHTML={{ __html: THEME_BOOTSTRAP_SCRIPT }} />
 			</head>
 			<body>
 				{children}

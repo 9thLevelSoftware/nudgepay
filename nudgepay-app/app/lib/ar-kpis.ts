@@ -19,6 +19,8 @@ export type ArKpis = {
   promiseRate: number | null;
   collected: number;
   coverage: ArKpiCoverage;
+  /** Current open-AR distribution, available to report visualizations. */
+  agingBuckets?: ArAgingBucket[];
   inputs: {
     endingTotalAr: number;
     endingCurrentAr: number;
@@ -28,6 +30,12 @@ export type ArKpis = {
     contactedOpenCases: number;
     promisesCreated: number;
   };
+};
+
+export type ArAgingBucket = {
+  label: string;
+  amount: number;
+  count: number;
 };
 
 export type ArInvoice = {
@@ -43,6 +51,24 @@ export type ArPayment = {
   txnDate: string | null;
   type: "payment" | "credit_memo";
 };
+
+/** Group open invoices by due-date age without changing any KPI math. */
+export function buildArAgingBuckets(open: ArInvoice[], today: string): ArAgingBucket[] {
+  const buckets: ArAgingBucket[] = [
+    { label: "Current", amount: 0, count: 0 },
+    { label: "1–30 days", amount: 0, count: 0 },
+    { label: "31–60 days", amount: 0, count: 0 },
+    { label: "61–90 days", amount: 0, count: 0 },
+    { label: "91+ days", amount: 0, count: 0 },
+  ];
+  for (const invoice of open) {
+    const age = invoice.dueDate == null ? -1 : ageInDays(invoice.dueDate, today);
+    const index = age <= 0 ? 0 : age <= 30 ? 1 : age <= 60 ? 2 : age <= 90 ? 3 : 4;
+    buckets[index].amount += invoice.balance;
+    buckets[index].count += 1;
+  }
+  return buckets;
+}
 
 export type ArSalesRow = { invoiceDate: string; amount: number };
 

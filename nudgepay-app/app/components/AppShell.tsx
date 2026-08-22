@@ -1,6 +1,9 @@
 import { useEffect, useRef, useState } from "react";
 import { Form, Link, useNavigation } from "react-router";
 import { Icon } from "./Icons";
+import { ToastProvider } from "./Toasts";
+import { CommandPalette } from "./CommandPalette";
+import { ThemeToggle } from "./ThemeToggle";
 
 interface AppShellProps {
   orgName: string;
@@ -83,6 +86,7 @@ export function AppShell({
   };
 
   return (
+    <ToastProvider>
     <div className="relative flex flex-col h-screen overflow-hidden font-sans">
       <a
         href="#main-content"
@@ -144,7 +148,7 @@ export function AppShell({
               className={`w-1.5 h-1.5 rounded-full shrink-0 ${connected ? "bg-copper" : "bg-muted"}`}
               aria-hidden="true"
             />
-            <span className="text-[11px] font-sans text-surface/60 leading-none">
+            <span className="text-[11px] font-sans text-surface/60 leading-none" aria-live="polite">
               {syncLabel}
             </span>
           </Link>
@@ -214,7 +218,7 @@ export function AppShell({
                     >
                       <span className="absolute left-0 inset-y-0 w-0.5 bg-copper rounded-r" aria-hidden="true" />
                       <Icon name={item.icon} size={18} className="text-copper-bright" />
-                      <span className="text-[9px] font-sans font-medium uppercase tracking-wide text-copper-bright leading-none">
+                      <span className="text-[10px] font-sans font-medium uppercase tracking-wide text-copper-bright leading-none">
                         {item.label}
                       </span>
                     </Link>
@@ -233,7 +237,7 @@ export function AppShell({
                       onClick={() => setNavOpen(false)}
                     >
                       <Icon name={item.icon} size={18} />
-                      <span className="text-[9px] font-sans font-medium uppercase tracking-wide leading-none">{item.label}</span>
+                      <span className="text-[10px] font-sans font-medium uppercase tracking-wide leading-none">{item.label}</span>
                     </Link>
                   </li>
                 );
@@ -252,7 +256,7 @@ export function AppShell({
                     onClick={(e) => e.preventDefault()}
                   >
                     <Icon name={item.icon} size={18} />
-                    <span className="text-[9px] font-sans font-medium uppercase tracking-wide leading-none">{item.label}</span>
+                    <span className="text-[10px] font-sans font-medium uppercase tracking-wide leading-none">{item.label}</span>
                   </a>
                 </li>
               );
@@ -266,7 +270,7 @@ export function AppShell({
                 onClick={() => setNavOpen(false)}
               >
                 <Icon name="circle" size={18} />
-                <span className="text-[9px] font-sans font-medium uppercase tracking-wide leading-none">Focus</span>
+                <span className="text-[10px] font-sans font-medium uppercase tracking-wide leading-none">Focus</span>
               </Link>
             </li>
           </ul>
@@ -282,6 +286,8 @@ export function AppShell({
         </main>
       </div>
     </div>
+    <CommandPalette />
+    </ToastProvider>
   );
 }
 
@@ -350,14 +356,15 @@ function UserMenu({ userInitials, userLabel }: { userInitials: string; userLabel
             </span>
             <span className="min-w-0 truncate text-[13px] font-sans font-medium text-surface">{displayName}</span>
           </div>
-          <Link
-            to="/settings"
-            className={menuItemClass}
-            onClick={() => setOpen(false)}
-          >
-            Settings
-          </Link>
-          {confirmSignOut ? (
+           <Link
+             to="/settings"
+             className={menuItemClass}
+             onClick={() => setOpen(false)}
+           >
+             Settings
+           </Link>
+           <ThemeToggle />
+           {confirmSignOut ? (
             <Form method="post" action="/logout">
               <button ref={confirmRef} type="submit" className={`${menuItemClass} text-hot hover:text-hot`}>
                 Confirm sign out

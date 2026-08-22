@@ -33,6 +33,23 @@ test("skip advances index but does not increment actions", () => {
   expect(s.results).toEqual({ a: "skipped" });
   expect(s.actions).toBe(0);
   expect(triageCount(s)).toBe(1);
+  expect(s.lastAction).toMatchObject({ caseId: "a", index: 0, result: "skipped" });
+});
+
+test("undo reverses the immediate skip and restores the current case", () => {
+  let s = initFocusSession(["a", "b"]);
+  s = focusSessionReducer(s, { type: "skip" });
+  s = focusSessionReducer(s, { type: "undo" });
+  expect(s.index).toBe(0);
+  expect(s.results).toEqual({});
+  expect(s.lastAction).toBeNull();
+});
+
+test("undo cannot reverse a skip after another action", () => {
+  let s = initFocusSession(["a", "b"]);
+  s = focusSessionReducer(s, { type: "skip" });
+  s = focusSessionReducer(s, { type: "resolve", result: "logged" });
+  expect(focusSessionReducer(s, { type: "undo" })).toBe(s);
 });
 
 test("done when all cases triaged", () => {

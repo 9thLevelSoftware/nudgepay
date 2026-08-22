@@ -41,6 +41,20 @@ test("throughput: counts contacts and distinct cases per rep; zero-activity rep 
   expect(bob.casesTouched).toBe(0);
 });
 
+test("team report includes a complete daily trend series", () => {
+  const input = base();
+  input.contactLogs = [
+    { userId: "u1", caseId: "c1", createdAt: "2026-06-20T10:00:00Z" },
+  ];
+  input.promises = [
+    { createdBy: "u1", status: "kept", resolvedAt: "2026-06-21T10:00:00Z" },
+  ];
+  const report = buildTeamReport(input);
+  expect(report.trends?.points).toHaveLength(30);
+  expect(report.trends?.points.find((point) => point.date === "2026-06-20")).toMatchObject({ contacts: 1 });
+  expect(report.trends?.points.find((point) => point.date === "2026-06-21")).toMatchObject({ resolved: 1, kept: 1 });
+});
+
 test("kept-rate: strict (partial excluded), excludes non-outcome statuses, null when none resolved", () => {
   const input = base();
   input.promises = [

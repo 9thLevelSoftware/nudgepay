@@ -1,10 +1,10 @@
 // Keyboard shortcut hook for Focus Mode: 1 (log call), 2 (send text),
-// 3 (snooze), space (skip). Disabled when a mini-form is open (digits need
+// 3 (snooze), space (skip), u (undo skip). Disabled when a mini-form is open (digits need
 // to type into note fields) or when focus is in an input/textarea/select.
 
 import { useEffect } from "react";
 
-export type FocusKey = "1" | "2" | "3" | "space";
+export type FocusKey = "1" | "2" | "3" | "space" | "u";
 
 export function useFocusKeys(opts: {
   enabled: boolean;
@@ -29,7 +29,7 @@ export function useFocusKeys(opts: {
       else if (e.key === " ") {
         e.preventDefault(); // prevent page scroll
         onAction("space");
-      }
+      } else if (e.key === "u") onAction("u");
     };
 
     window.addEventListener("keydown", handler);

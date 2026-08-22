@@ -6,6 +6,8 @@ import { SyncIssues } from "../components/SyncIssues";
 import { REPORT_RANGES, parseReportRange } from "../lib/reports";
 import { loadTeamReport, loadReportArKpis } from "../lib/reports.server";
 import { ArKpiBand } from "../components/ArKpiBand";
+import { AgingBarChart, ChartCard, TrendLineChart } from "../components/SvgCharts";
+import { ContentShell } from "../components/ContentShell";
 import { pageTitle } from "../lib/meta";
 import type { Route } from "./+types/reports";
 
@@ -51,10 +53,19 @@ export default function Reports() {
   const teamKept = report.perRep.reduce((s, r) => s + r.kept, 0);
   const teamResolved = report.perRep.reduce((s, r) => s + r.resolved, 0);
   const teamKeptRate = teamResolved === 0 ? null : teamKept / teamResolved;
+  const trendPoints = report.trends?.points ?? [];
+  const contactTrend = trendPoints.map((point) => ({
+    label: point.date.slice(5),
+    value: point.contacts,
+  }));
+  const promiseTrend = trendPoints.map((point) => ({
+    label: point.date.slice(5),
+    value: point.resolved === 0 ? null : (point.kept / point.resolved) * 100,
+  }));
 
   return (
     <AppShell orgName={orgName} userInitials={initials} userLabel={userLabel} syncLabel={syncLabel} connected={connected} isOwner={true} activeNav="reports" syncIssues={<SyncIssues issues={syncIssues} returnTo="/reports" />}>
-      <div className="px-6 py-5 flex flex-col gap-6">
+      <ContentShell type="workspace" className="flex flex-col gap-6">
         <div className="flex items-center justify-between gap-3">
           <h1 className="font-display text-xl font-semibold text-text">Team performance</h1>
           <div className="flex items-center gap-2">
@@ -110,6 +121,46 @@ export default function Reports() {
             <p className="text-xs text-muted">{teamKept} kept / {teamResolved} resolved</p>
           </div>
         </div>
+
+        {/* Visual summary: money exposure first, then team activity/outcomes. */}
+        <div className="grid gap-4 lg:grid-cols-2">
+          <ChartCard
+            title="A/R aging"
+            description={`Open receivables by due-date age · ${fmtUSD(arKpis.inputs.endingTotalAr)} total`}
+          >
+            <AgingBarChart buckets={arKpis.agingBuckets ?? []} />
+          </ChartCard>
+          <ChartCard
+            title="Contact volume"
+            description={`Contacts logged per day over the last ${report.range} days`}
+          >
+            {contactTrend.length > 0 ? (
+              <TrendLineChart
+                points={contactTrend}
+                label="Daily contact volume"
+                tone="cool"
+                formatValue={(value) => `${value} contact${value === 1 ? "" : "s"}`}
+              />
+            ) : (
+              <p className="py-12 text-center text-sm text-muted">No contact activity in this range.</p>
+            )}
+          </ChartCard>
+        </div>
+        <ChartCard
+          title="Promise kept-rate trend"
+          description="Daily kept rate for promises resolved in the selected period."
+        >
+          {promiseTrend.some((point) => point.value != null) ? (
+            <TrendLineChart
+              points={promiseTrend}
+              label="Daily promise kept-rate trend"
+              tone="copper"
+              formatValue={(value) => `${Math.round(value)}% kept`}
+            />
+          ) : (
+            <p className="py-12 text-center text-sm text-muted">No resolved promises in this range.</p>
+          )}
+        </ChartCard>
 
         {/* Per-rep table */}
         <section className="flex flex-col gap-2">
@@ -170,7 +221,7 @@ export default function Reports() {
             </table>
           </div>
         </section>
-      </div>
+      </ContentShell>
     </AppShell>
   );
 }

@@ -3,6 +3,7 @@ import { expect, test } from "vitest";
 import { ageInDays } from "../app/lib/worklist";
 import {
   arKpisToCsv,
+  buildArAgingBuckets,
   buildArKpis,
   countbackDso,
   salesByDateFrom,
@@ -14,6 +15,18 @@ import { loadArKpiSource } from "../app/lib/ar-kpis.server";
 import { loadContactPromiseRates } from "../app/lib/contact-promise-rates.server";
 
 const TODAY = "2026-08-21";
+
+test("buildArAgingBuckets groups open balances by due-date age", () => {
+  const buckets = buildArAgingBuckets([
+    { amount: 100, balance: 100, invoiceDate: null, dueDate: null, customerId: "c1" },
+    { amount: 200, balance: 200, invoiceDate: null, dueDate: "2026-08-20", customerId: "c2" },
+    { amount: 300, balance: 300, invoiceDate: null, dueDate: "2026-07-21", customerId: "c3" },
+    { amount: 400, balance: 400, invoiceDate: null, dueDate: "2026-06-21", customerId: "c4" },
+    { amount: 500, balance: 500, invoiceDate: null, dueDate: "2026-05-01", customerId: "c5" },
+  ], TODAY);
+  expect(buckets.map((bucket) => bucket.amount)).toEqual([100, 200, 300, 400, 500]);
+  expect(buckets.map((bucket) => bucket.count)).toEqual([1, 1, 1, 1, 1]);
+});
 
 function kpis(overrides: Partial<Parameters<typeof buildArKpis>[0]> = {}) {
   return buildArKpis({
@@ -426,6 +439,7 @@ test("loadContactPromiseRates counts customer contacts, outbound messages, and c
         { org_id: "org-1", case_id: "c1", status: "pending", created_at: "2026-08-10T10:00:00Z" },
         { org_id: "org-1", case_id: "c1", status: "cancelled", created_at: "2026-08-10T10:00:00Z" },
         { org_id: "org-1", case_id: "c2", status: "kept", created_at: "2026-08-10T10:00:00Z" },
+        { org_id: "org-1", case_id: "c9", status: "pending", created_at: "2026-08-10T10:00:00Z" },
         { org_id: "org-1", case_id: "c1", status: "pending", created_at: "2026-08-11T10:00:00Z" },
       ],
     },
@@ -437,7 +451,7 @@ test("loadContactPromiseRates counts customer contacts, outbound messages, and c
     openCaseIds: ["c1", "c2", "c3"],
   });
   expect(result.contactedOpenCaseIds.sort()).toEqual(["c1", "c2", "c3"]);
-  expect(result.promisesCreated).toBe(2); // distinct case_id, cancelled excluded by query
+  expect(result.promisesCreated).toBe(2); // c1/c2 contacted; c9 is outside the open/contacted cohort
   expect(result.truncated).toBe(false);
   expect(calls.filter((c) => c.table === "contact_logs")[0]?.filters.some((f) => f.method === "in" && f.args[0] === "method")).toBe(true);
   expect(calls.filter((c) => c.table === "text_messages")[0]?.filters.some((f) => f.method === "eq" && f.args[0] === "direction" && f.args[1] === "outbound")).toBe(true);
@@ -445,7 +459,7 @@ test("loadContactPromiseRates counts customer contacts, outbound messages, and c
   expect(calls.every((c) => JSON.stringify(c.orders) === JSON.stringify(STABLE_PAGE_ORDER))).toBe(true);
 });
 
-test("loadContactPromiseRates skips contact queries when there are no open cases", async () => {
+test("loadContactPromiseRates skips all rate queries when there are no open cases", async () => {
   const { client, calls } = makeClient({
     promises: { rows: [{ org_id: "org-1", case_id: "c9", status: "pending", created_at: "2026-08-10T10:00:00Z" }] },
   });
@@ -456,9 +470,9 @@ test("loadContactPromiseRates skips contact queries when there are no open cases
     openCaseIds: [],
   });
   expect(result.contactedOpenCaseIds).toEqual([]);
-  expect(result.promisesCreated).toBe(1);
+  expect(result.promisesCreated).toBe(0);
   expect(result.truncated).toBe(false);
-  expect(calls.map((c) => c.table)).toEqual(["promises"]);
+  expect(calls.map((c) => c.table)).toEqual([]);
 });
 
 test("loadContactPromiseRates flags truncation and does not throw", async () => {

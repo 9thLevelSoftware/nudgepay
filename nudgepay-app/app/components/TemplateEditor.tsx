@@ -5,6 +5,9 @@
 
 import { useEffect, useRef, useState } from "react";
 import { Form, useNavigation, useSearchParams } from "react-router";
+import { ConfirmProvider } from "./Confirm";
+import { useTwoStep } from "./TwoStepConfirm";
+import { labelClass } from "./ui";
 import type { MessageTemplateRow } from "../lib/message-templates";
 import {
   TEMPLATE_TOKEN_KEYS,
@@ -44,15 +47,7 @@ function interpolate(channel: Channel, text: string, vars: TemplateVars): string
   return channel === "email" ? applyEmailTemplate(text, vars) : applyTemplate(text, vars);
 }
 
-export function TemplateEditor({
-  smsTemplates,
-  emailTemplates,
-  isOwner,
-  returnTo,
-  orgCompany = "",
-  orgPhone = "",
-  orgPaymentLink = "",
-}: {
+interface TemplateEditorProps {
   smsTemplates: MessageTemplateRow[];
   emailTemplates: MessageTemplateRow[];
   isOwner: boolean;
@@ -61,7 +56,25 @@ export function TemplateEditor({
   orgCompany?: string;
   orgPhone?: string;
   orgPaymentLink?: string;
-}) {
+}
+
+export function TemplateEditor(props: TemplateEditorProps) {
+  return (
+    <ConfirmProvider>
+      <TemplateEditorInner {...props} />
+    </ConfirmProvider>
+  );
+}
+
+function TemplateEditorInner({
+  smsTemplates,
+  emailTemplates,
+  isOwner,
+  returnTo,
+  orgCompany = "",
+  orgPhone = "",
+  orgPaymentLink = "",
+}: TemplateEditorProps) {
   const [channel, setChannel] = useState<Channel>("sms");
   const [editingId, setEditingId] = useState<string | null>(null);
   const [addingOpen, setAddingOpen] = useState(false);
@@ -165,25 +178,13 @@ export function TemplateEditor({
                       >
                         Edit
                       </button>
-                      <Form
-                        method="post"
-                        action="/api/org-settings"
-                        onSubmit={(e) => {
-                          if (!window.confirm(`Delete "${t.label}"?`)) e.preventDefault();
-                        }}
-                      >
-                        <input type="hidden" name="intent" value="delete_template" />
-                        <input type="hidden" name="returnTo" value={returnTo} />
-                        <input type="hidden" name="channel" value={channel} />
-                        <input type="hidden" name="slug" value={t.slug} />
-                        <button
-                          type="submit"
-                          disabled={busy("delete_template")}
-                          className="text-xs font-medium text-hot hover:underline disabled:opacity-60 disabled:cursor-not-allowed"
-                        >
-                          {busy("delete_template") ? "Deleting…" : "Delete"}
-                        </button>
-                      </Form>
+                      <DeleteTemplateButton
+                        label={t.label}
+                        slug={t.slug}
+                        channel={channel}
+                        returnTo={returnTo}
+                        busy={busy("delete_template")}
+                      />
                     </div>
                   )}
                 </div>
@@ -318,20 +319,20 @@ function TemplateForm({
       <input type="hidden" name="channel" value={channel} />
       {initial ? <input type="hidden" name="slug" value={initial.slug} /> : null}
       {initial ? <input type="hidden" name="sort" value={initial.sort} /> : null}
-      <label className="flex flex-col gap-1 text-xs font-medium text-text">
+      <label className={labelClass}>
         Label
         <input
           name="label" type="text" required maxLength={80} defaultValue={initial?.label ?? ""}
-          className="h-8 rounded-md border border-border bg-panel px-2 text-sm text-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-copper"
+          className="h-9 rounded-md border border-border bg-panel px-3 text-sm text-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-copper"
         />
       </label>
       {channel === "email" ? (
-        <label className="flex flex-col gap-1 text-xs font-medium text-text">
+        <label className={labelClass}>
           Subject
           <input
             name="subject" type="text" maxLength={200} value={subject}
             onChange={(e) => setSubject(e.target.value)}
-            className="h-8 rounded-md border border-border bg-panel px-2 text-sm text-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-copper"
+            className="h-9 rounded-md border border-border bg-panel px-3 text-sm text-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-copper"
           />
         </label>
       ) : null}
@@ -348,7 +349,7 @@ function TemplateForm({
           </button>
         ))}
       </div>
-      <label className="flex flex-col gap-1 text-xs font-medium text-text">
+      <label className={labelClass}>
         Message
         <textarea
           ref={textareaRef}
@@ -376,6 +377,60 @@ function TemplateForm({
           Cancel
         </button>
       </div>
+    </Form>
+  );
+}
+
+function DeleteTemplateButton({
+  label,
+  slug,
+  channel,
+  returnTo,
+  busy,
+}: {
+  label: string;
+  slug: string;
+  channel: Channel;
+  returnTo: string;
+  busy: boolean;
+}) {
+  const { confirming, arm, disarm } = useTwoStep(5000);
+  return (
+    <Form method="post" action="/api/org-settings" className="inline-flex items-center gap-2">
+      <input type="hidden" name="intent" value="delete_template" />
+      <input type="hidden" name="returnTo" value={returnTo} />
+      <input type="hidden" name="channel" value={channel} />
+      <input type="hidden" name="slug" value={slug} />
+      {confirming ? (
+        <>
+          <span className="text-xs text-hot" role="alert">
+            Delete {label}?
+          </span>
+          <button
+            type="submit"
+            disabled={busy}
+            className="text-xs font-semibold text-hot hover:underline disabled:opacity-60 disabled:cursor-not-allowed"
+          >
+            {busy ? "Deleting…" : "Confirm delete"}
+          </button>
+          <button
+            type="button"
+            onClick={disarm}
+            className="text-xs font-medium text-muted hover:text-text"
+          >
+            Cancel
+          </button>
+        </>
+      ) : (
+        <button
+          type="button"
+          onClick={arm}
+          disabled={busy}
+          className="text-xs font-medium text-hot hover:underline disabled:opacity-60 disabled:cursor-not-allowed"
+        >
+          Delete
+        </button>
+      )}
     </Form>
   );
 }

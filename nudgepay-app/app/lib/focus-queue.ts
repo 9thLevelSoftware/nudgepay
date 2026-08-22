@@ -2,6 +2,7 @@
 
 import { applyCaseView, sortCaseItems, type CaseItem } from "./cases";
 import type { ViewId, SortId } from "./worklist";
+import { levelToRank } from "./priority";
 import { liveViewers } from "./collision";
 
 export type FocusScope = "my-work" | "all-open";
@@ -9,9 +10,10 @@ export type FocusScope = "my-work" | "all-open";
 /**
  * Build the focus-mode queue from the full set of case items.
  *
- * 1. Try the "my-work" view (owner === currentUserId), excluding suppressed
- *    cases (my-work doesn't filter them — unlike all-open — so we add the
- *    filter explicitly here).
+ * 1. Try the "my-work" view (owner === currentUserId), plus unassigned
+ *    Critical/High cases so urgent work cannot disappear from Focus.
+ *    Suppressed cases are excluded (my-work doesn't filter them — unlike
+ *    all-open — so we add the filter explicitly here).
  * 2. If that yields zero cases, fall back to "all-open" (which already
  *    excludes suppressed).
  * 3. Sort by "recommended" (priority rank → score → priorAttempts → age → balance).
@@ -24,7 +26,16 @@ export function buildFocusQueue(
   const mine = applyCaseView(items, "my-work" as ViewId, today, currentUserId)
     .filter((i) => !i.suppressed && i.status !== "waiting" && i.status !== "on_hold");
   if (mine.length > 0) {
-    return { queue: sortCaseItems(mine, "recommended" as SortId), scope: "my-work" };
+    const urgentUnassigned = applyCaseView(items, "all-open" as ViewId, today, currentUserId)
+      .filter((i) =>
+        i.ownerId === null
+        && levelToRank(i.effectiveLevel) <= levelToRank("High")
+        && i.status !== "waiting"
+        && i.status !== "on_hold",
+      );
+    const merged = new Map(mine.map((item) => [item.caseId, item]));
+    for (const item of urgentUnassigned) merged.set(item.caseId, item);
+    return { queue: sortCaseItems([...merged.values()], "recommended" as SortId), scope: "my-work" };
   }
   const all = applyCaseView(items, "all-open" as ViewId, today, currentUserId)
     .filter((i) => i.status !== "waiting" && i.status !== "on_hold");

@@ -35,8 +35,8 @@ describe("dashboard pane class contract (NP-AUD-2026-110)", () => {
     const cls = detailPaneClass();
     expect(cls).toContain("flex-1");
     expect(cls).toContain("md:w-[28rem]");
-    expect(cls).toContain("lg:w-[36rem]");
-    expect(cls).toContain("xl:w-[48rem]");
+    expect(cls).toContain("lg:w-[30rem]");
+    expect(cls).toContain("xl:w-[28rem]");
     expect(cls).toContain("md:flex-none");
     expect(cls).toContain("min-w-0");
     expect(cls).not.toContain("md:w-96");

@@ -3,7 +3,8 @@
 // Dirty tab Links confirm before navigating so unsaved edits are not discarded.
 
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
-import { Link, useSearchParams } from "react-router";
+import { useNavigate, useSearchParams } from "react-router";
+import { ConfirmProvider, useConfirm } from "./Confirm";
 
 export const SETTINGS_TABS = [
   { id: "workspace",    label: "Workspace" },
@@ -91,23 +92,43 @@ export function SettingsDirtyProvider({
 }
 
 export function SettingsTabs() {
+  return (
+    <ConfirmProvider>
+      <SettingsTabsNav />
+    </ConfirmProvider>
+  );
+}
+
+function SettingsTabsNav() {
   const [sp] = useSearchParams();
   const active = resolveSettingsTab(sp.get("tab"));
   const { dirty } = useSettingsDirty();
+  const confirm = useConfirm();
+  const navigate = useNavigate();
 
   return (
     <nav className="flex gap-1 border-b border-border" aria-label="Settings sections">
       {SETTINGS_TABS.map((t) => {
         const isCurrent = t.id === active;
+        const to = t.id === "workspace" ? "/settings" : `?tab=${t.id}`;
         return (
-          <Link
+          <button
             key={t.id}
-            to={t.id === "workspace" ? "/settings" : `?tab=${t.id}`}
+            type="button"
             aria-current={isCurrent ? "page" : undefined}
-            onClick={(e) => {
-              if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
-              if (!shouldBlockTabChange(dirty, isCurrent)) return;
-              if (!window.confirm(SETTINGS_UNSAVED_MESSAGE)) e.preventDefault();
+            onClick={async () => {
+              if (isCurrent) return;
+              if (shouldBlockTabChange(dirty, isCurrent)) {
+                const ok = await confirm({
+                  title: "Unsaved changes",
+                  message: SETTINGS_UNSAVED_MESSAGE,
+                  confirmLabel: "Discard changes",
+                  cancelLabel: "Stay",
+                  tone: "destructive",
+                });
+                if (!ok) return;
+              }
+              navigate(to);
             }}
             className={[
               "px-3 py-2 text-sm font-medium transition-colors -mb-px border-b-2",
@@ -118,7 +139,7 @@ export function SettingsTabs() {
             ].join(" ")}
           >
             {t.label}
-          </Link>
+          </button>
         );
       })}
     </nav>

@@ -8,7 +8,7 @@ import { loadOrgConfig } from "./org-config.server";
 import { localMidnightUtcIso, todayInTz } from "./tz";
 import { isCaseSuppressed } from "./exceptions";
 import type { ExceptionReason } from "./contact-log";
-import { buildArKpis, type ArKpis } from "./ar-kpis";
+import { buildArAgingBuckets, buildArKpis, type ArKpis } from "./ar-kpis";
 import { loadArKpiSource } from "./ar-kpis.server";
 import { loadContactPromiseRates } from "./contact-promise-rates.server";
 import { orderPage, pageAll, PAGE_ALL_MAX_ROWS } from "./page-all";
@@ -160,7 +160,7 @@ export async function loadReportArKpis(args: {
     supabase, orgId, windowStartIso, openCaseIds,
   });
 
-  return buildArKpis({
+  const kpis = buildArKpis({
     open: arSrc.open,
     salesLookback: arSrc.salesLookback,
     payments: arSrc.payments,
@@ -171,4 +171,5 @@ export async function loadReportArKpis(args: {
     promisesCreatedInWindow: rates.promisesCreated,
     truncated: { ...arSrc.truncated, contact: rates.truncated || openCases.truncated },
   });
+  return { ...kpis, agingBuckets: buildArAgingBuckets(arSrc.open, today) };
 }

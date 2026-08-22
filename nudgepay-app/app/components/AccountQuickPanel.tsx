@@ -29,15 +29,39 @@ export function AccountQuickPanel({ account }: { account: AccountRow | null }) {
       </div>
       <dl className="p-4 space-y-2 text-sm">
         <div className="flex justify-between"><dt className="text-muted">Owner</dt><dd className="text-text">{account.owner}</dd></div>
-        <div className="flex justify-between"><dt className="text-muted">Phone</dt><dd className="text-text">{account.phone ?? "—"}</dd></div>
-        <div className="flex justify-between"><dt className="text-muted">Email</dt><dd className="text-text truncate max-w-[60%]">{account.email ?? "—"}</dd></div>
+        <div className="flex justify-between items-center gap-2">
+          <dt className="text-muted">Phone</dt>
+          <dd className="text-text">
+            {account.phone ? (
+              <a href={`tel:${account.phone}`} className="hover:text-copper focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-copper rounded">
+                {account.phone}
+              </a>
+            ) : "—"}
+          </dd>
+        </div>
+        <div className="flex justify-between items-center gap-2">
+          <dt className="text-muted">Email</dt>
+          <dd className="text-text truncate max-w-[60%]">
+            {account.email ? (
+              <a href={`mailto:${account.email}`} className="hover:text-copper focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-copper rounded" title={account.email}>
+                {account.email}
+              </a>
+            ) : "—"}
+          </dd>
+        </div>
       </dl>
-      <div className="p-4 border-t border-border">
+      <div className="flex flex-col gap-2 p-4 border-t border-border">
         <Link
           to={`/accounts/${account.customerId}`}
-          className="inline-flex items-center gap-1.5 h-9 px-3 rounded bg-copper text-ink text-sm font-medium hover:bg-copper/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-copper"
+          className="inline-flex items-center gap-1.5 h-9 px-3 rounded bg-copper text-ink text-sm font-medium hover:bg-copper/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-copper self-start"
         >
           Open full profile <Icon name="chevronRight" size={16} />
+        </Link>
+        <Link
+          to={`/dashboard?q=${encodeURIComponent(account.name)}`}
+          className="inline-flex items-center gap-1.5 text-xs font-medium text-copper hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-copper rounded"
+        >
+          Open in Collections
         </Link>
       </div>
     </aside>
