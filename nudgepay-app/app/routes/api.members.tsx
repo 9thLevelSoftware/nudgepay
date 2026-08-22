@@ -80,6 +80,16 @@ export async function action({ request, context }: ActionFunctionArgs) {
     return redirect(flag(returnTo, "saved", "member"), { headers });
   }
 
+  if (intent === "revoke") {
+    if (org.role !== "owner") return redirect(flag(returnTo, "error", "forbidden"), { headers });
+    const inviteId = String(form.get("inviteId") ?? "");
+    if (!inviteId) return redirect(flag(returnTo, "error", "invite"), { headers });
+    const { error } = await service.from("invites")
+      .delete().eq("org_id", org.org_id).eq("id", inviteId).is("accepted_at", null);
+    if (error) return redirect(flag(returnTo, "error", "invite"), { headers });
+    return redirect(flag(returnTo, "saved", "member"), { headers });
+  }
+
   if (intent === "leave") {
     const { error } = await service.from("memberships")
       .delete().eq("org_id", org.org_id).eq("user_id", user.id);

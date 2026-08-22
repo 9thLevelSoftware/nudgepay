@@ -23,6 +23,7 @@ import { QuietHoursForm } from "../components/QuietHoursForm";
 import { NotificationPrefsForm } from "../components/NotificationPrefsForm";
 import { CompanyProfileForm } from "../components/CompanyProfileForm";
 import { TemplateEditor } from "../components/TemplateEditor";
+import { useTwoStep } from "../components/TwoStepConfirm";
 import { resolveChannelSettings, resolveSmsSenderSettings } from "../lib/channel-settings";
 import { resolveEmailSettings } from "../lib/email-settings";
 import { deriveWebhookUrls } from "../lib/provider-status";
@@ -168,6 +169,55 @@ function relTime(iso: string | null): string {
   if (min < 60) return `${min}m ago`;
   const hr = Math.floor(min / 60);
   return hr < 24 ? `${hr}h ago` : `${Math.floor(hr / 24)}d ago`;
+}
+
+function RevokeInviteButton({
+  inviteId,
+  returnTo,
+  busy,
+}: {
+  inviteId: string;
+  returnTo: string;
+  busy: boolean;
+}) {
+  const { confirming, arm, disarm } = useTwoStep(5000);
+  return (
+    <Form method="post" action="/api/members" className="inline-flex items-center gap-2">
+      <input type="hidden" name="intent" value="revoke" />
+      <input type="hidden" name="inviteId" value={inviteId} />
+      <input type="hidden" name="returnTo" value={returnTo} />
+      {confirming ? (
+        <>
+          <span className="text-xs text-hot" role="alert">
+            Revoke this invite?
+          </span>
+          <button
+            type="submit"
+            disabled={busy}
+            className="text-xs font-semibold text-hot hover:underline disabled:opacity-60 disabled:cursor-not-allowed"
+          >
+            {busy ? "Revoking…" : "Confirm revoke"}
+          </button>
+          <button
+            type="button"
+            onClick={disarm}
+            className="text-xs font-medium text-muted hover:text-text"
+          >
+            Cancel
+          </button>
+        </>
+      ) : (
+        <button
+          type="button"
+          onClick={arm}
+          disabled={busy}
+          className="text-xs font-medium text-hot hover:underline disabled:opacity-60 disabled:cursor-not-allowed"
+        >
+          Revoke
+        </button>
+      )}
+    </Form>
+  );
 }
 
 function InviteLinkStatus({ link, sent }: { link: string; sent: boolean }) {
@@ -425,9 +475,18 @@ export default function Settings() {
                     <h3 className="text-xs font-semibold uppercase tracking-wide text-muted">Pending invites</h3>
                     <ul className="mt-1 flex flex-col gap-1" role="list">
                       {d.pendingInvites.map((inv) => (
-                        <li key={inv.id} className="text-xs text-muted">
-                          {inv.email}
-                          {inv.expiresAt ? ` · expires ${inv.expiresAt.slice(0, 10)}` : ""}
+                        <li key={inv.id} className="flex flex-wrap items-center gap-2 text-xs text-muted">
+                          <span>
+                            {inv.email}
+                            {inv.expiresAt ? ` · expires ${inv.expiresAt.slice(0, 10)}` : ""}
+                          </span>
+                          {d.isOwner ? (
+                            <RevokeInviteButton
+                              inviteId={inv.id}
+                              returnTo={returnTo}
+                              busy={formBusy("/api/members")}
+                            />
+                          ) : null}
                         </li>
                       ))}
                     </ul>
