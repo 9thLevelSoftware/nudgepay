@@ -71,20 +71,24 @@ export default function Reports() {
         <div className="flex items-center justify-between gap-3">
           <h1 className="font-display text-xl font-semibold text-text">Team performance</h1>
           <div className="flex items-center gap-2">
-            <a
-              href={`/reports.csv?range=${report.range}`}
-              download={`nudgepay-report-${report.range}d.csv`}
-              className="rounded-md border border-border px-3 py-1.5 text-xs font-medium text-text hover:border-copper focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-copper"
-            >
-              Download CSV
-            </a>
-            <a
-              href={`/reports.csv?range=${report.range}&sheet=ar`}
-              download={`nudgepay-ar-${report.range}d.csv`}
-              className="rounded-md border border-border px-3 py-1.5 text-xs font-medium text-text hover:border-copper focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-copper"
-            >
-              Download receivables CSV
-            </a>
+            {!report.truncated ? (
+              <a
+                href={`/reports.csv?range=${report.range}`}
+                download={`nudgepay-report-${report.range}d.csv`}
+                className="rounded-md border border-border px-3 py-1.5 text-xs font-medium text-text hover:border-copper focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-copper"
+              >
+                Download CSV
+              </a>
+            ) : null}
+            {arKpis.coverage !== "partial" ? (
+              <a
+                href={`/reports.csv?range=${report.range}&sheet=ar`}
+                download={`nudgepay-ar-${report.range}d.csv`}
+                className="rounded-md border border-border px-3 py-1.5 text-xs font-medium text-text hover:border-copper focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-copper"
+              >
+                Download receivables CSV
+              </a>
+            ) : null}
             <div className="flex items-center gap-1" role="group" aria-label="Time range">
               {REPORT_RANGES.map((r) => (
                 <Link

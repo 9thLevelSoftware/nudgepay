@@ -318,6 +318,8 @@ test("reports page renders ArKpiBand for the selected range and stays owner-only
   expect(page).toContain("<ArKpiBand");
   expect(page).toContain("sheet=ar");
   expect(page).toContain('report.truncated ? "—"');
+  expect(page).toContain("!report.truncated");
+  expect(page).toContain('arKpis.coverage !== "partial"');
   expect(page).not.toContain("lastContactsInput");
   expect(page).not.toContain("CasePromiseInput");
   expect(page).not.toContain("DASHBOARD_AR_RANGE_DAYS");
