@@ -9,10 +9,19 @@ import type { ExceptionReason } from "./contact-log";
 export const REPORT_RANGES = [7, 30, 90] as const;
 export type ReportRange = (typeof REPORT_RANGES)[number];
 
+export const REPORT_SHEETS = ["team", "ar"] as const;
+export type ReportSheet = (typeof REPORT_SHEETS)[number];
+
 export function parseReportRange(raw: string | null | undefined): ReportRange {
   const n = Number(raw);
   return (REPORT_RANGES as readonly number[]).includes(n) ? (n as ReportRange) : 30;
 }
+
+export function parseReportSheet(raw: string | null | undefined): ReportSheet {
+  return raw === "ar" ? "ar" : "team";
+}
+
+export { arKpisToCsv } from "./ar-kpis";
 
 export type ReportRosterMember = { userId: string; label: string };
 export type ReportContactLog = { userId: string; caseId: string | null; createdAt: string };

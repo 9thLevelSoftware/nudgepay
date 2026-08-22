@@ -6,11 +6,24 @@ import { listOrgMembers } from "./orgs.server";
 import { addCalendarDays } from "./business-days";
 import { loadOrgConfig } from "./org-config.server";
 import { todayInTz } from "./tz";
+import { isCaseSuppressed } from "./exceptions";
+import type { ExceptionReason } from "./contact-log";
+import { buildArKpis, type ArKpis } from "./ar-kpis";
+import { loadArKpiSource } from "./ar-kpis.server";
+import { loadContactPromiseRates } from "./contact-promise-rates.server";
+import { orderPage, pageAll, PAGE_ALL_MAX_ROWS } from "./page-all";
 import {
   activeBrokenCaseIds, buildTeamReport, type ReportRange,
   type ReportContactLog, type ReportPromise, type ReportOpenedCase, type ReportWorkloadCase,
   type TeamReport,
 } from "./reports";
+
+type OpenCaseRow = {
+  id: string;
+  status: string;
+  exception_reason: ExceptionReason | null;
+  next_action_at: string | null;
+};
 
 export async function loadTeamReport(args: {
   supabase: SupabaseClient;
@@ -103,4 +116,57 @@ export async function loadTeamReport(args: {
   }));
 
   return buildTeamReport({ range, roster, contactLogs, promises, openedCases, workloadCases, today });
+}
+
+// Selected 7/30/90 window — not Stage-2 last-contact / case-promise inputs,
+// which are uncapped and not range-scoped.
+export async function loadReportArKpis(args: {
+  supabase: SupabaseClient;
+  orgId: string;
+  range: ReportRange;
+}): Promise<ArKpis> {
+  const { supabase, orgId, range } = args;
+  const orgConfig = await loadOrgConfig(supabase, orgId);
+  const today = todayInTz(orgConfig.companyProfile.timezone);
+  const windowStartIso = `${addCalendarDays(today, -range)}T00:00:00.000Z`;
+
+  const [arSrc, openCases] = await Promise.all([
+    loadArKpiSource({ supabase, orgId, today, rangeDays: range }),
+    pageAll<OpenCaseRow>(
+      (from, to) =>
+        orderPage(
+          supabase
+            .from("collection_cases")
+            .select("id, status, exception_reason, next_action_at", { count: "exact" })
+            .eq("org_id", orgId)
+            .is("closed_at", null),
+        ).range(from, to),
+      { maxRows: PAGE_ALL_MAX_ROWS },
+    ),
+  ]);
+
+  const openCaseIds = openCases.rows
+    .filter((c) => !isCaseSuppressed({
+      status: c.status,
+      exceptionReason: c.exception_reason ?? null,
+      nextActionAt: c.next_action_at ?? null,
+      today,
+    }))
+    .map((c) => c.id);
+
+  const rates = await loadContactPromiseRates({
+    supabase, orgId, windowStartIso, openCaseIds,
+  });
+
+  return buildArKpis({
+    open: arSrc.open,
+    salesLookback: arSrc.salesLookback,
+    payments: arSrc.payments,
+    today,
+    rangeDays: range,
+    openCaseIds,
+    contactedCaseIdsInWindow: rates.contactedOpenCaseIds,
+    promisesCreatedInWindow: rates.promisesCreated,
+    truncated: { ...arSrc.truncated, contact: rates.truncated || openCases.truncated },
+  });
 }

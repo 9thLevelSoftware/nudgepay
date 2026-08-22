@@ -4,7 +4,8 @@ import { loadWorkspaceChrome } from "../lib/workspace.server";
 import { AppShell } from "../components/AppShell";
 import { SyncIssues } from "../components/SyncIssues";
 import { REPORT_RANGES, parseReportRange } from "../lib/reports";
-import { loadTeamReport } from "../lib/reports.server";
+import { loadTeamReport, loadReportArKpis } from "../lib/reports.server";
+import { ArKpiBand } from "../components/ArKpiBand";
 import { pageTitle } from "../lib/meta";
 import type { Route } from "./+types/reports";
 
@@ -23,10 +24,13 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
   // (redirects to /dashboard?denied=reports for non-owners).
 
   const range = parseReportRange(new URL(request.url).searchParams.get("range"));
-  const report = await loadTeamReport({ supabase, service, orgId: org.org_id, range });
+  const [report, arKpis] = await Promise.all([
+    loadTeamReport({ supabase, service, orgId: org.org_id, range }),
+    loadReportArKpis({ supabase, orgId: org.org_id, range }),
+  ]);
 
   return data(
-    { report, orgName, initials, userLabel, connected, syncLabel, syncIssues },
+    { report, arKpis, orgName, initials, userLabel, connected, syncLabel, syncIssues },
     { headers },
   );
 }
@@ -42,7 +46,7 @@ function fmtHours(x: number | null): string {
 }
 
 export default function Reports() {
-  const { report, orgName, initials, userLabel, connected, syncLabel, syncIssues } = useLoaderData<typeof loader>();
+  const { report, arKpis, orgName, initials, userLabel, connected, syncLabel, syncIssues } = useLoaderData<typeof loader>();
   const teamContacts = report.perRep.reduce((s, r) => s + r.contactsLogged, 0);
   const teamKept = report.perRep.reduce((s, r) => s + r.kept, 0);
   const teamResolved = report.perRep.reduce((s, r) => s + r.resolved, 0);
@@ -61,6 +65,13 @@ export default function Reports() {
             >
               Download CSV
             </a>
+            <a
+              href={`/reports.csv?range=${report.range}&sheet=ar`}
+              download={`nudgepay-ar-${report.range}d.csv`}
+              className="rounded-md border border-border px-3 py-1.5 text-xs font-medium text-text hover:border-copper focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-copper"
+            >
+              Download receivables CSV
+            </a>
             <div className="flex items-center gap-1" role="group" aria-label="Time range">
               {REPORT_RANGES.map((r) => (
                 <Link
@@ -77,6 +88,10 @@ export default function Reports() {
             </div>
           </div>
         </div>
+
+        <section>
+          <ArKpiBand kpis={arKpis} isOwner={false} />
+        </section>
 
         {/* Summary strip */}
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
