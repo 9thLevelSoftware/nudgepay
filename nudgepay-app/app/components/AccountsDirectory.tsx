@@ -1,13 +1,18 @@
 // app/components/AccountsDirectory.tsx
 import { useEffect } from "react";
-import { Form, Link, useNavigate } from "react-router";
+import { Form, Link, useLocation, useNavigate } from "react-router";
 import type { AccountRow, AccountStanding, AccountFilter, AccountSort } from "../lib/accounts";
 import { formatUSD } from "../lib/format";
 import { formatInstant } from "../lib/dates";
+import { Icon } from "./Icons";
+import { visibleWindow } from "../lib/virtual-window";
+import { useScrollWindow } from "../lib/use-scroll-window";
+import { useSearchShortcut } from "../lib/use-search-shortcut";
 import {
   ACCOUNTS_DENSITY_IDS,
   DENSITY_STORAGE_KEY,
   accountsHref,
+  withDensityParam,
   type DensityId,
 } from "../lib/queue-chrome";
 import {
@@ -52,6 +57,13 @@ const PAYER_CHIP: Record<PayerBand, string> = {
 const ACCOUNTS_GRID_GENERAL = "grid-cols-[2fr_1fr_1fr_1fr_1fr]";
 const ACCOUNTS_GRID_RISK = "grid-cols-[2fr_1fr_1fr_1fr_minmax(72px,0.8fr)_minmax(64px,0.6fr)_minmax(56px,0.5fr)]";
 
+// Virtualization: desktop rows are forced to a uniform height so the fixed-height
+// window math holds over thousands of customers. Below the threshold the whole
+// list renders normally.
+const ACCT_ROW_H = 48;        // px — md:h-12 exactly
+const ACCT_OVERSCAN = 6;
+const ACCT_VIRTUALIZE_MIN = 60;
+
 function persistDensity(id: DensityId) {
   try { localStorage.setItem(DENSITY_STORAGE_KEY, id); } catch { /* private mode */ }
 }
@@ -92,8 +104,10 @@ export function AccountsDirectory({
   rows, filter, sort, search, density, densityFromUrl, counts, selectedId, timeZone,
 }: Props) {
   const navigate = useNavigate();
+  const location = useLocation();
   const hrefDensity = densityFromUrl ? density : undefined;
   const risk = density === "risk";
+  const searchRef = useSearchShortcut();
   const grid = risk ? ACCOUNTS_GRID_RISK : ACCOUNTS_GRID_GENERAL;
   const chrome = { filter, sort, q: search || undefined, density: hrefDensity };
 
@@ -102,18 +116,75 @@ export function AccountsDirectory({
     let stored: string | null = null;
     try { stored = localStorage.getItem(DENSITY_STORAGE_KEY); } catch { return; }
     if (stored === "detailed") {
-      navigate(accountsHref({ ...chrome, density: "general", customerId: selectedId }), { replace: true });
+      navigate(withDensityParam(location.search, "general"), { replace: true });
       return;
     }
     if (stored !== "general" && stored !== "risk") return;
     persistDensity(stored);
-    navigate(accountsHref({ ...chrome, density: stored, customerId: selectedId }), { replace: true });
+    navigate(withDensityParam(location.search, stored), { replace: true });
     // Hydrate once on mount so a later General click cannot bounce back to LS.
     // eslint-disable-next-line react-hooks/exhaustive-deps -- first landing only
   }, []);
 
   const link = (customerId: string) => accountsHref({ ...chrome, customerId });
   const tabHref = (id: AccountFilter) => accountsHref({ ...chrome, filter: id });
+
+  // Desktop-only virtualization over the columns grid (mobile stacks render fully).
+  const { scrollerRef, scrollTop, viewportH } = useScrollWindow();
+  const windowed = rows.length >= ACCT_VIRTUALIZE_MIN;
+  const win = visibleWindow({
+    scrollTop,
+    viewportH,
+    rowH: ACCT_ROW_H,
+    count: rows.length,
+    overscan: ACCT_OVERSCAN,
+  });
+  const deskRows = windowed ? rows.slice(win.start, win.end) : rows;
+
+  const renderRow = (r: AccountRow) => {
+    const selected = r.customerId === selectedId;
+    const band: PayerBand = r.payer?.band ?? "unknown";
+    return (
+      <li key={r.customerId} className={selected ? "bg-copper/10" : ""}>
+        <Link
+          to={link(r.customerId)}
+          className={[
+            "relative grid grid-cols-1 gap-1 md:gap-3 px-4 py-3 items-center hover:bg-paper focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-copper focus-visible:ring-inset",
+            "md:h-12 md:py-0",
+            selected ? "ring-1 ring-inset ring-copper/30" : "",
+            risk
+              ? "md:grid-cols-[2fr_1fr_1fr_1fr_minmax(72px,0.8fr)_minmax(64px,0.6fr)_minmax(56px,0.5fr)]"
+              : "md:grid-cols-[2fr_1fr_1fr_1fr_1fr]",
+          ].join(" ")}
+          aria-current={selected ? "true" : undefined}
+        >
+          {selected ? <span className="absolute left-0 inset-y-0 w-0.5 bg-copper" aria-hidden="true" /> : null}
+          <span className="font-medium text-text truncate">{r.name}</span>
+          <span><span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${STANDING_CHIP[r.standing]}`}>{STANDING_LABEL[r.standing]}</span></span>
+          {risk ? (
+            <>
+              <span className="text-sm text-text tabular-nums">{formatUSD(r.openBalance)}</span>
+              <span className="text-sm text-muted tabular-nums">{r.oldestOverdueDays > 0 ? `${r.oldestOverdueDays}d` : "—"}</span>
+              <span
+                className={`inline-flex items-center rounded px-1.5 py-0.5 text-[10px] font-sans font-semibold w-fit ${PAYER_CHIP[band]}`}
+                title={PAYER_BAND_HINT}
+              >
+                {PAYER_BAND_LABEL[band]}
+              </span>
+              <span className="text-sm text-muted tabular-nums">{formatDtp(r.payer?.daysToPay)}</span>
+              <span className="text-sm text-muted tabular-nums">{formatReplyPct(r.payer?.replyRate)}</span>
+            </>
+          ) : (
+            <>
+              <span className="text-sm text-muted truncate">{r.owner}</span>
+              <span className="text-sm text-text text-right tabular-nums">{formatUSD(r.openBalance)}</span>
+              <span className="text-sm text-muted truncate">{r.lastContact ? `${r.lastContact.channel} · ${formatInstant(r.lastContact.date, timeZone)}` : "—"}</span>
+            </>
+          )}
+        </Link>
+      </li>
+    );
+  };
 
   return (
     <section className="flex flex-col bg-surface border border-border rounded-card overflow-hidden">
@@ -145,12 +216,16 @@ export function AccountsDirectory({
           <input type="hidden" name="filter" value={filter} />
           <input type="hidden" name="sort" value={sort} />
           {hrefDensity ? <input type="hidden" name="density" value={hrefDensity} /> : null}
-          <label className="sr-only" htmlFor="acct-search">Search accounts</label>
-          <input
-            id="acct-search" type="search" name="q" defaultValue={search} placeholder="Search name, phone, email…"
-            className="h-8 w-48 px-2 rounded border border-border bg-surface text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-copper"
-          />
-          <button type="submit" className="h-8 px-3 rounded bg-ink text-surface text-xs font-medium">Search</button>
+          <label className="flex items-center gap-1.5 rounded-md border border-border bg-panel px-2.5 h-9 text-sm text-text focus-within:ring-2 focus-within:ring-copper focus-within:border-transparent transition-shadow cursor-pointer">
+            <Icon name="search" size={14} className="text-muted shrink-0" />
+            <span className="sr-only">Search accounts</span>
+            <input
+              ref={searchRef}
+              id="acct-search" type="search" name="q" defaultValue={search} placeholder="Search name, phone, email…"
+              className="w-44 bg-transparent text-sm placeholder:text-muted focus-visible:outline-none"
+            />
+          </label>
+          <button type="submit" className="h-9 px-3 rounded bg-ink text-surface text-xs font-medium">Search</button>
         </Form>
         <Form method="get" className="flex items-center gap-2">
           <input type="hidden" name="filter" value={filter} />
@@ -201,54 +276,27 @@ export function AccountsDirectory({
         )}
       </div>
 
-      {/* Rows */}
+      {/* Rows — self-scrolling region; desktop rows virtualize over 60+ entries.
+          The column header above stays put while the list scrolls. */}
       {rows.length === 0 ? (
         <p className="px-4 py-10 text-center text-sm text-muted">No accounts match this filter.</p>
       ) : (
-        <ul role="list" className="divide-y divide-border">
-          {rows.map((r) => {
-            const selected = r.customerId === selectedId;
-            const band: PayerBand = r.payer?.band ?? "unknown";
-            return (
-              <li key={r.customerId} className={selected ? "bg-copper/5" : ""}>
-                <Link
-                  to={link(r.customerId)}
-                  className={[
-                    "relative grid grid-cols-1 gap-1 md:gap-3 px-4 py-3 items-center hover:bg-paper focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-copper focus-visible:ring-inset",
-                    risk
-                      ? "md:grid-cols-[2fr_1fr_1fr_1fr_minmax(72px,0.8fr)_minmax(64px,0.6fr)_minmax(56px,0.5fr)]"
-                      : "md:grid-cols-[2fr_1fr_1fr_1fr_1fr]",
-                  ].join(" ")}
-                  aria-current={selected ? "true" : undefined}
-                >
-                  {selected ? <span className="absolute left-0 inset-y-0 w-0.5 bg-copper" aria-hidden="true" /> : null}
-                  <span className="font-medium text-text truncate">{r.name}</span>
-                  <span><span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${STANDING_CHIP[r.standing]}`}>{STANDING_LABEL[r.standing]}</span></span>
-                  {risk ? (
-                    <>
-                      <span className="text-sm text-text tabular-nums">{formatUSD(r.openBalance)}</span>
-                      <span className="text-sm text-muted tabular-nums">{r.oldestOverdueDays > 0 ? `${r.oldestOverdueDays}d` : "—"}</span>
-                      <span
-                        className={`inline-flex items-center rounded px-1.5 py-0.5 text-[10px] font-sans font-semibold w-fit ${PAYER_CHIP[band]}`}
-                        title={PAYER_BAND_HINT}
-                      >
-                        {PAYER_BAND_LABEL[band]}
-                      </span>
-                      <span className="text-sm text-muted tabular-nums">{formatDtp(r.payer?.daysToPay)}</span>
-                      <span className="text-sm text-muted tabular-nums">{formatReplyPct(r.payer?.replyRate)}</span>
-                    </>
-                  ) : (
-                    <>
-                      <span className="text-sm text-muted truncate">{r.owner}</span>
-                      <span className="text-sm text-text text-right tabular-nums">{formatUSD(r.openBalance)}</span>
-                      <span className="text-sm text-muted">{r.lastContact ? `${r.lastContact.channel} · ${formatInstant(r.lastContact.date, timeZone)}` : "—"}</span>
-                    </>
-                  )}
-                </Link>
-              </li>
-            );
-          })}
-        </ul>
+        <div
+          ref={scrollerRef}
+          className={windowed ? "max-h-[72dvh] overflow-auto" : undefined}
+        >
+           <ul
+             className="hidden md:block divide-y divide-border"
+             role="list"
+             style={windowed ? { paddingTop: win.padTop, paddingBottom: win.padBottom, overflowAnchor: "none" } : undefined}
+           >
+             {deskRows.map(renderRow)}
+           </ul>
+          {/* Mobile (stacked) renders fully — heights vary, so no fixed-height window */}
+          <ul role="list" className="divide-y divide-border md:hidden">
+            {rows.map(renderRow)}
+          </ul>
+        </div>
       )}
     </section>
   );

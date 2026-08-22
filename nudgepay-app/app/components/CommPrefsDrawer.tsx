@@ -1,6 +1,6 @@
-import { Link, useNavigate, useNavigation } from "react-router";
+import { Link, useNavigation } from "react-router";
 import type { CommPrefs, Channel } from "~/lib/comm-prefs";
-import { useDialog } from "~/lib/use-dialog";
+import { DrawerShell } from "./DrawerShell";
 
 const CHANNEL_OPTIONS: { value: "" | Channel; label: string }[] = [
   { value: "", label: "No preference" },
@@ -18,16 +18,11 @@ export function CommPrefsDrawer({
   returnTo: string;
   closeHref: string;
 }) {
-  const navigate = useNavigate();
-  const { panelRef } = useDialog({ onClose: () => navigate(closeHref) });
   const navigation = useNavigation();
   const formBusy = navigation.state !== "idle" && navigation.formAction === "/api/comm-prefs";
 
   return (
-    <div className="fixed inset-0 z-40 flex justify-end bg-ink/40" role="dialog" aria-modal="true" aria-label="Communication preferences">
-      {/* Overlay click closes (Link to the case without ?prefs) */}
-      <Link to={closeHref} aria-hidden="true" tabIndex={-1} className="absolute inset-0" />
-      <div ref={panelRef} className="relative z-50 flex h-full w-full max-w-md flex-col gap-4 overflow-y-auto border-l border-border bg-surface p-5 shadow-panel">
+    <DrawerShell label="Communication preferences" closeHref={closeHref}>
         <div className="flex items-center justify-between">
           <h2 className="font-sans text-sm font-semibold text-text">Communication preferences</h2>
           <Link to={closeHref} className="text-xs text-muted hover:text-text">Close</Link>
@@ -81,7 +76,6 @@ export function CommPrefsDrawer({
             </button>
           </div>
         </form>
-      </div>
-    </div>
+    </DrawerShell>
   );
 }

@@ -39,31 +39,57 @@ async function ensureOwner() {
 }
 
 async function main() {
-  // Clean any prior demo org so this is idempotent.
-  const { data: priorOrgs } = await svc.from("organizations")
-    .select("id").eq("name", "Chancey Heating & Cooling");
-  for (const o of priorOrgs ?? []) {
-    const { error: delErr } = await svc.from("organizations").delete().eq("id", o.id); // cascades
-    if (delErr) throw delErr;
-  }
-
   const ownerId = await ensureOwner();
 
-  const { data: org, error: orgErr } = await svc.from("organizations")
-    .insert({ name: "Chancey Heating & Cooling" }).select("id").single();
-  if (orgErr) throw orgErr;
-  const orgId = org.id;
+  // seed.sql already creates Chancey + an owner membership. Deleting the org
+  // trips memberships_prevent_last_owner — reuse the org and wipe work items.
+  let orgId;
+  const { data: existingOrg, error: existingErr } = await svc.from("organizations")
+    .select("id").eq("name", "Chancey Heating & Cooling").maybeSingle();
+  if (existingErr) throw existingErr;
+  if (existingOrg) {
+    orgId = existingOrg.id;
+    const wipe = async (table) => {
+      const { error } = await svc.from(table).delete().eq("org_id", orgId);
+      if (error) throw error;
+    };
+    for (const table of [
+      "text_messages", "email_messages", "contact_logs", "promise_invoices",
+      "promises", "collection_cases", "invoices", "customers",
+    ]) {
+      await wipe(table);
+    }
+  } else {
+    const { data: org, error: orgErr } = await svc.from("organizations")
+      .insert({ name: "Chancey Heating & Cooling" }).select("id").single();
+    if (orgErr) throw orgErr;
+    orgId = org.id;
+  }
 
-  const { error: memErr } = await svc.from("memberships").insert({ org_id: orgId, user_id: ownerId, role: "owner" });
-  if (memErr) throw memErr;
+  const { data: mem } = await svc.from("memberships")
+    .select("user_id").eq("org_id", orgId).eq("user_id", ownerId).maybeSingle();
+  if (!mem) {
+    const { error: memErr } = await svc.from("memberships")
+      .insert({ org_id: orgId, user_id: ownerId, role: "owner" });
+    if (memErr) throw memErr;
+  }
 
   // Display-only "connected" QBO row (null encrypted tokens — no live calls).
   // The dashboard gates the worklist on status === "connected".
-  const { error: qboErr } = await svc.from("qbo_connections").insert({
-    org_id: orgId, realm_id: "demo-realm-123", status: "connected",
-    last_sync_at: new Date().toISOString(),
-  });
-  if (qboErr) throw qboErr;
+  const { data: qbo } = await svc.from("qbo_connections")
+    .select("org_id").eq("org_id", orgId).maybeSingle();
+  if (!qbo) {
+    const { error: qboErr } = await svc.from("qbo_connections").insert({
+      org_id: orgId, realm_id: "demo-realm-123", status: "connected",
+      last_sync_at: new Date().toISOString(),
+    });
+    if (qboErr) throw qboErr;
+  } else {
+    const { error: qboUp } = await svc.from("qbo_connections").update({
+      status: "connected", last_sync_at: new Date().toISOString(),
+    }).eq("org_id", orgId);
+    if (qboUp) throw qboUp;
+  }
 
   const customerRows = [
     { name: "Riverside Apartments LLC", phone: "+13105550111", sms_consent: true,  email: "ap@riverside.example" },
@@ -84,11 +110,12 @@ async function main() {
     { c: "Northgate Property Mgmt",  doc: "1058", amount: 2740.00, balance: 2740.00, due: 22 },
     { c: "Summit Restaurant Group",  doc: "1063", amount:  675.00, balance:  675.00, due: 15 },
     { c: "Summit Restaurant Group",  doc: "1071", amount: 3110.00, balance: 3110.00, due: 9  },
+    { c: "Riverside Apartments LLC", doc: "1088", amount:  890.00, balance:  890.00, due: -6 },
   ].map((r, i) => ({
     org_id: orgId, qbo_id: `demo-inv-${i + 1}`, qbo_doc_number: r.doc,
     customer_id: byName[r.c].id, amount: r.amount, balance: r.balance,
-    due_date: daysAgo(r.due), invoice_date: daysAgo(r.due + 30),
-    status: "overdue", qbo_sync_at: new Date().toISOString(),
+    due_date: daysAgo(r.due), invoice_date: daysAgo(Math.max(r.due, 0) + 30),
+    status: r.due < 0 ? "open" : "overdue", qbo_sync_at: new Date().toISOString(),
   }));
   const { data: invoices, error: invErr } = await svc.from("invoices")
     .insert(invoiceRows).select("id, qbo_doc_number, customer_id");

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Form, Link, useNavigate, useNavigation } from "react-router";
+import { Form, Link, useLocation, useNavigate, useNavigation } from "react-router";
 import type { ViewId, SortId } from "../lib/worklist";
 import type { CaseItem } from "../lib/cases";
 import type { Collision } from "../lib/collision";
@@ -15,17 +15,19 @@ import {
   queueRowHeight,
   QUEUE_OVERSCAN,
 } from "../lib/virtual-window";
+import { useSearchShortcut } from "../lib/use-search-shortcut";
 import {
   dashboardHref,
   dashboardSearchParams,
   parseDensity,
+  withDensityParam,
   DENSITY_IDS,
   DENSITY_STORAGE_KEY,
   ENTITY_MODES,
   type DensityId,
   type EntityMode,
 } from "../lib/queue-chrome";
-import type { InvoiceQueueItem } from "../lib/invoice-queue";
+import { clampInvoiceBatch, type InvoiceQueueItem } from "../lib/invoice-queue";
 import {
   PAYER_BAND_HINT,
   PAYER_BAND_LABEL,
@@ -36,6 +38,7 @@ import { useQueueKeys, type QueueKey } from "../lib/use-queue-keys";
 import { BulkSmsDrawer } from "./BulkSmsDrawer";
 import { ThermalBand } from "./ThermalBand";
 import { Icon } from "./Icons";
+import { Skeleton } from "./ui";
 import { statusChipTone, type ChipTone } from "../lib/status-style";
 import type { ComingDueGroup } from "../lib/coming-due";
 import { ComingDueList } from "./ComingDueList";
@@ -45,38 +48,38 @@ import { ComingDueList } from "./ComingDueList";
 const QUEUE_GRID_CUST_GENERAL = [
   "grid-cols-[auto_minmax(180px,2fr)_minmax(96px,0.9fr)_minmax(56px,0.5fr)]",
   "lg:grid-cols-[auto_minmax(180px,2fr)_minmax(96px,0.7fr)_minmax(56px,0.5fr)_minmax(96px,0.7fr)_minmax(230px,2fr)]",
-  "xl:grid-cols-[auto_minmax(180px,2fr)_minmax(96px,0.7fr)_minmax(56px,0.5fr)_minmax(96px,0.7fr)_minmax(230px,2fr)_minmax(104px,0.7fr)]",
+  "xl:grid-cols-[auto_minmax(150px,1.5fr)_minmax(96px,0.7fr)_minmax(72px,0.4fr)_minmax(84px,0.6fr)_minmax(120px,1.1fr)_minmax(104px,0.6fr)]",
 ].join(" ");
 const QUEUE_GRID = QUEUE_GRID_CUST_GENERAL;
 
 const QUEUE_GRID_CUST_DETAILED = [
   "grid-cols-[auto_minmax(160px,1.6fr)_minmax(88px,0.7fr)_minmax(56px,0.4fr)]",
   "lg:grid-cols-[auto_minmax(160px,1.6fr)_minmax(88px,0.7fr)_minmax(56px,0.4fr)_minmax(220px,2fr)_minmax(200px,1.5fr)]",
-  "xl:grid-cols-[auto_minmax(160px,1.6fr)_minmax(88px,0.7fr)_minmax(56px,0.4fr)_minmax(220px,2fr)_minmax(200px,1.5fr)_minmax(96px,0.6fr)]",
+  "xl:grid-cols-[auto_minmax(140px,1.4fr)_minmax(80px,0.7fr)_minmax(64px,0.4fr)_minmax(130px,1.2fr)_minmax(130px,1.1fr)_minmax(104px,0.6fr)]",
 ].join(" ");
 
 const QUEUE_GRID_CUST_RISK = [
   "grid-cols-[auto_minmax(140px,1.4fr)_minmax(88px,0.7fr)_minmax(48px,0.4fr)]",
   "lg:grid-cols-[auto_minmax(140px,1.4fr)_minmax(88px,0.7fr)_minmax(48px,0.4fr)_minmax(64px,0.5fr)_minmax(64px,0.5fr)_minmax(56px,0.4fr)]",
-  "xl:grid-cols-[auto_minmax(140px,1.4fr)_minmax(88px,0.7fr)_minmax(48px,0.4fr)_minmax(64px,0.5fr)_minmax(64px,0.5fr)_minmax(56px,0.4fr)_minmax(96px,0.7fr)_minmax(96px,0.6fr)]",
+  "xl:grid-cols-[auto_minmax(130px,1.3fr)_minmax(80px,0.7fr)_minmax(64px,0.4fr)_minmax(56px,0.5fr)_minmax(56px,0.5fr)_minmax(48px,0.4fr)_minmax(88px,0.7fr)_minmax(104px,0.6fr)]",
 ].join(" ");
 
 const QUEUE_GRID_INV_GENERAL = [
   "grid-cols-[auto_minmax(88px,0.7fr)_minmax(160px,1.6fr)_minmax(88px,0.7fr)]",
   "lg:grid-cols-[auto_minmax(88px,0.7fr)_minmax(160px,1.6fr)_minmax(88px,0.7fr)_minmax(88px,0.7fr)_minmax(48px,0.4fr)]",
-  "xl:grid-cols-[auto_minmax(88px,0.7fr)_minmax(160px,1.6fr)_minmax(88px,0.7fr)_minmax(88px,0.7fr)_minmax(48px,0.4fr)_minmax(96px,0.6fr)]",
+  "xl:grid-cols-[auto_minmax(80px,0.7fr)_minmax(140px,1.4fr)_minmax(80px,0.7fr)_minmax(80px,0.7fr)_minmax(44px,0.4fr)_minmax(104px,0.6fr)]",
 ].join(" ");
 
 const QUEUE_GRID_INV_DETAILED = [
   "grid-cols-[auto_minmax(80px,0.6fr)_minmax(140px,1.4fr)_minmax(80px,0.6fr)]",
   "lg:grid-cols-[auto_minmax(80px,0.6fr)_minmax(140px,1.4fr)_minmax(80px,0.6fr)_minmax(80px,0.6fr)_minmax(48px,0.4fr)_minmax(200px,2fr)]",
-  "xl:grid-cols-[auto_minmax(80px,0.6fr)_minmax(140px,1.4fr)_minmax(80px,0.6fr)_minmax(80px,0.6fr)_minmax(48px,0.4fr)_minmax(200px,2fr)_minmax(96px,0.6fr)]",
+  "xl:grid-cols-[auto_minmax(72px,0.6fr)_minmax(120px,1.2fr)_minmax(72px,0.6fr)_minmax(72px,0.6fr)_minmax(44px,0.4fr)_minmax(140px,1.4fr)_minmax(104px,0.6fr)]",
 ].join(" ");
 
 const QUEUE_GRID_INV_RISK = [
   "grid-cols-[auto_minmax(80px,0.6fr)_minmax(140px,1.4fr)_minmax(80px,0.6fr)]",
   "lg:grid-cols-[auto_minmax(80px,0.6fr)_minmax(140px,1.4fr)_minmax(80px,0.6fr)_minmax(48px,0.4fr)_minmax(64px,0.5fr)_minmax(64px,0.5fr)_minmax(56px,0.4fr)]",
-  "xl:grid-cols-[auto_minmax(80px,0.6fr)_minmax(140px,1.4fr)_minmax(80px,0.6fr)_minmax(48px,0.4fr)_minmax(64px,0.5fr)_minmax(64px,0.5fr)_minmax(56px,0.4fr)_minmax(96px,0.6fr)]",
+  "xl:grid-cols-[auto_minmax(72px,0.6fr)_minmax(120px,1.2fr)_minmax(72px,0.6fr)_minmax(64px,0.4fr)_minmax(56px,0.5fr)_minmax(56px,0.5fr)_minmax(48px,0.4fr)_minmax(104px,0.6fr)]",
 ].join(" ");
 
 function queueGrid(density: DensityId, entity: EntityMode = "customers"): string {
@@ -175,7 +178,7 @@ function CommPrefBadges({ prefs }: { prefs: { preferredChannel: string | null; d
     badges.push({ key: "pref", label: PREF_CHANNEL_LABEL[prefs.preferredChannel], cls: "bg-cool/15 text-cool" });
   }
   if (prefs.doNotText) badges.push({ key: "nt", label: "No text", cls: "bg-hot/15 text-hot" });   // enforced
-  if (prefs.doNotCall) badges.push({ key: "nc", label: "No call", cls: "bg-advisory/15 text-advisory" }); // advisory
+  if (prefs.doNotCall) badges.push({ key: "nc", label: "No call", cls: "bg-warm/15 text-warm" }); // warm
   if (badges.length === 0) return null;
   return (
     <span className="flex flex-wrap items-center gap-1">
@@ -198,11 +201,11 @@ function CollisionMarker({ collision }: { collision?: Collision }) {
       : `Contacted by ${collision.byUser ?? "a teammate"} recently`;
   return (
     <span
-      className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[10px] font-sans font-medium text-advisory bg-advisory/10 border border-advisory/30"
+      className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[10px] font-sans font-medium text-warm bg-warm/10 border border-warm/30"
       title={text}
       aria-label={text}
     >
-      <span aria-hidden="true">⚠</span>
+      <Icon name="alert" size={11} aria-hidden="true" />
       {collision.level === "live" ? "Viewing" : "Recent"}
     </span>
   );
@@ -324,7 +327,7 @@ function QueueRow({
       onClick={() => navigate(href)}
       className={[
         "group relative flex items-center border-b border-border cursor-pointer transition-colors duration-100 hover:bg-paper",
-        selected ? "bg-copper/5" : "",
+        selected ? "bg-copper/10 ring-1 ring-inset ring-copper/30" : "",
       ].join(" ")}
     >
       <span aria-hidden="true" className={`absolute left-0 inset-y-0 w-1 ${HEAT_BAR[item.heat.band] ?? "bg-muted"}`} />
@@ -362,7 +365,7 @@ function QueueRow({
           <span className="flex items-center gap-1.5">
             <span className="font-mono text-xs text-muted">{plural(item.invoiceCount, "invoice")}</span>
             <span className={`inline-flex items-center gap-0.5 rounded px-1.5 py-0.5 text-[10px] font-sans font-semibold ${LEVEL_BADGE[item.effectiveLevel] ?? "text-muted"}`}>
-              {item.override ? <span aria-hidden>📌</span> : null}
+              {item.override ? <Icon name="pin" size={11} aria-hidden="true" /> : null}
               {item.effectiveLevel}
             </span>
           </span>
@@ -488,6 +491,12 @@ function MobileCard({
 }) {
   const href = dashboardHref({ view, sort, q: search || undefined, entity, density: hrefDensity, case: item.caseId });
   const band: PayerBand = item.payer?.band ?? "unknown";
+  // Mobile quick actions — hover-only desktop actions have no touch path, so
+  // the card exposes compact message/log shortcuts directly.
+  const cardMsgHref = dashboardHref({ view, sort, q: search || undefined, entity, density: hrefDensity, case: item.caseId, tab: "messages" });
+  const cardLogParams = dashboardSearchParams({ view, sort, q: search || undefined, entity, density: hrefDensity, case: item.caseId });
+  cardLogParams.set("log", "1");
+  const cardLogHref = `?${cardLogParams.toString()}`;
   return (
     <div className={["flex gap-2 items-start bg-surface border rounded-lg p-3 mb-2", selected ? "border-copper ring-2 ring-copper bg-copper/5" : "border-border"].join(" ")}>
       <label className="pt-1 cursor-pointer" onClick={(e) => e.stopPropagation()}>
@@ -503,7 +512,7 @@ function MobileCard({
               <p className="flex items-center gap-1.5">
                 <span className="font-mono text-xs text-muted">{plural(item.invoiceCount, "invoice")}</span>
                 <span className={`inline-flex items-center gap-0.5 rounded px-1.5 py-0.5 text-[10px] font-sans font-semibold ${LEVEL_BADGE[item.effectiveLevel] ?? "text-muted"}`}>
-                  {item.override ? <span aria-hidden>📌</span> : null}
+                  {item.override ? <Icon name="pin" size={11} aria-hidden="true" /> : null}
                   {item.effectiveLevel}
                 </span>
               </p>
@@ -517,7 +526,7 @@ function MobileCard({
           <span className="font-sans font-medium text-text">
             {STATUS_LABEL[item.status] ?? item.status}
             {item.status === "on_hold" && item.exceptionReason ? (
-              <span className="ml-1.5 inline-flex items-center rounded-sm bg-advisory/15 px-1.5 py-0.5 text-[11px] font-medium text-advisory">
+              <span className="ml-1.5 inline-flex items-center rounded-sm bg-warm/15 px-1.5 py-0.5 text-[11px] font-medium text-warm">
                 {exceptionLabel(item.exceptionReason)}
               </span>
             ) : null}
@@ -542,6 +551,23 @@ function MobileCard({
           </p>
         ) : null}
       </Link>
+      {/* Mobile quick actions (touch) — desktop uses hover-revealed icons */}
+      <div className="flex items-center gap-2 pl-1" onClick={(e) => e.stopPropagation()}>
+        <Link
+          to={cardMsgHref}
+          aria-label={`Message ${item.customerName}`}
+          className="flex h-7 w-7 items-center justify-center rounded border border-border bg-panel text-muted hover:border-copper hover:text-copper focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-copper"
+        >
+          <Icon name="message" size={14} />
+        </Link>
+        <Link
+          to={cardLogHref}
+          aria-label={`Log contact for ${item.customerName}`}
+          className="flex h-7 w-7 items-center justify-center rounded border border-border bg-panel text-muted hover:border-copper hover:text-copper focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-copper"
+        >
+          <Icon name="phone" size={14} />
+        </Link>
+      </div>
     </div>
   );
 }
@@ -601,7 +627,7 @@ function InvoiceQueueRow({
       onClick={() => { if (href !== "#") navigate(href); }}
       className={[
         "group relative flex items-center border-b border-border cursor-pointer transition-colors duration-100 hover:bg-paper",
-        selected ? "bg-copper/5" : "",
+        selected ? "bg-copper/10 ring-1 ring-inset ring-copper/30" : "",
       ].join(" ")}
     >
       <span aria-hidden="true" className={`absolute left-0 inset-y-0 w-1 ${HEAT_BAR[item.heat.band] ?? "bg-muted"}`} />
@@ -842,6 +868,11 @@ export function WorkQueue({
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [smsOpen, setSmsOpen] = useState(false);
   const nav = useNavigation();
+  const searchRef = useSearchShortcut(selectedCaseId == null && selectedInvoiceId == null);
+  // True only while a queue param change (view/sort/search/density) re-runs the
+  // loader via GET navigation — bulk forms POST, so they don't trip this. We
+  // overlay skeleton rows instead of letting the stale list sit visibly.
+  const queueLoading = nav.state === "loading" && nav.formMethod !== "POST";
   const { scrollerRef, scrollTop, viewportH } = useQueueScroller();
   const hrefDensity = densityFromUrl ? density : undefined;
   const invoiceMode = entity === "invoices" && view !== "coming-due";
@@ -907,15 +938,26 @@ export function WorkQueue({
   const toggle = (id: string) =>
     setSelected((prev) => {
       const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else if (next.size < maxBatch) next.add(id);
+      if (next.has(id)) {
+        next.delete(id);
+        return next;
+      }
+      if (!invoiceMode) {
+        if (next.size < maxBatch) next.add(id);
+        return next;
+      }
+      const row = invoiceItems.find((i) => i.invoiceId === id);
+      const existing = new Set(
+        invoiceItems.filter((i) => next.has(i.invoiceId) && i.caseId).map((i) => i.caseId as string),
+      );
+      if (row?.caseId && !existing.has(row.caseId) && existing.size >= maxBatch) return prev;
+      next.add(id);
       return next;
     });
 
-  const allVisibleIds = clampBatch(
-    invoiceMode ? invoiceItems.map((i) => i.invoiceId) : items.map((i) => i.caseId),
-    maxBatch,
-  );
+  const allVisibleIds = invoiceMode
+    ? clampInvoiceBatch(invoiceItems, maxBatch)
+    : clampBatch(items.map((i) => i.caseId), maxBatch);
   const allSelected = allVisibleIds.length > 0 && allVisibleIds.every((id) => selected.has(id));
   const toggleAll = () =>
     setSelected((prev) => (allSelected ? new Set() : new Set(allVisibleIds)));
@@ -927,17 +969,20 @@ export function WorkQueue({
     }
   }, [allSelected, allVisibleIds, selected]);
 
-  const capReached = selected.size >= maxBatch;
   const selectedInvoiceRows = invoiceMode ? invoiceItems.filter((i) => selected.has(i.invoiceId)) : [];
   const selectedCaseIds = invoiceMode
     ? [...new Set(selectedInvoiceRows.map((i) => i.caseId).filter((id): id is string => id != null))]
     : [...selected];
+  const capReached = invoiceMode
+    ? selectedCaseIds.length >= maxBatch
+    : selected.size >= maxBatch;
   const caselessSelected = invoiceMode ? selectedInvoiceRows.filter((i) => i.caseId == null).length : 0;
   const selectedCases = items.filter((i) => selectedCaseIds.includes(i.caseId));
   const eligibleCount = partitionEligibility(selectedCases).eligible.length;
 
   // j/k/x keyboard navigation
   const navigate = useNavigate();
+  const location = useLocation();
   const handleQueueKey = useCallback((key: QueueKey) => {
     if (invoiceMode) {
       if (key === "x") {
@@ -988,9 +1033,7 @@ export function WorkQueue({
     const next = parseDensity(stored);
     if (stored !== "general" && stored !== "detailed" && stored !== "risk") return;
     persistDensity(next);
-    navigate(dashboardHref({
-      view, sort, q: search || undefined, entity, density: next, case: selectedCaseId, tab, invoice,
-    }), { replace: true });
+    navigate(withDensityParam(location.search, next), { replace: true });
   // First landing only — URL is source of truth after a density click.
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -1019,8 +1062,8 @@ export function WorkQueue({
   return (
     <section className="flex flex-col min-h-0" aria-labelledby="work-queue-title">
       {/* Header + toolbar (single band) */}
-      <div className="flex flex-wrap items-center gap-3 px-6 py-3 border-b border-border bg-paper">
-        <div className="min-w-0">
+      <div className="flex min-w-0 flex-wrap items-center gap-3 px-6 py-3 border-b border-border bg-paper">
+        <div className="min-w-0 shrink-0">
           <h2
             id="work-queue-title"
             className="font-display text-lg font-semibold text-text leading-tight"
@@ -1029,7 +1072,7 @@ export function WorkQueue({
           </h2>
           <p className="font-sans text-xs text-muted">
             {invoiceMode
-              ? `${invoiceItems.length} matching invoices · ${totalCount} open cases`
+              ? `${invoiceItems.length} matching invoices · ${totalCount} open invoices`
               : `${items.length} matching · ${totalCount} open`}
           </p>
           <p className="hidden md:block font-mono text-[10px] text-muted/60">
@@ -1042,7 +1085,7 @@ export function WorkQueue({
             Coming due is invoice-grouped. Switch to All open to use Customers vs Invoices.
           </p>
         ) : (
-          <div className="flex items-center rounded-md border border-border bg-panel p-0.5" aria-label="Queue entity">
+          <div className="flex shrink-0 items-center rounded-md border border-border bg-panel p-0.5" aria-label="Queue entity">
             {ENTITY_MODES.map((id) => (
               <Link
                 key={id}
@@ -1069,7 +1112,7 @@ export function WorkQueue({
           </div>
         )}
 
-        <div className="flex items-center rounded-md border border-border bg-panel p-0.5" aria-label="Queue density">
+        <div className="flex shrink-0 items-center rounded-md border border-border bg-panel p-0.5" aria-label="Queue density">
           {DENSITY_IDS.map((id) => (
             <Link
               key={id}
@@ -1088,16 +1131,17 @@ export function WorkQueue({
         </div>
 
         {/* GET form; submit preserves view + entity + density via hidden inputs (not sort). */}
-        <Form method="get" className="flex items-center gap-2 ml-auto">
+        <Form method="get" className="flex min-w-0 flex-[1_1_420px] flex-wrap items-center justify-end gap-2">
           <input type="hidden" name="view" value={view} />
           {entity !== "customers" ? <input type="hidden" name="entity" value={entity} /> : null}
           {hrefDensity ? <input type="hidden" name="density" value={hrefDensity} /> : null}
 
           {/* Search input */}
-          <label className="flex items-center gap-1.5 w-56 rounded-md border border-border bg-panel px-2.5 h-9 text-sm text-text focus-within:ring-2 focus-within:ring-copper focus-within:border-transparent transition-shadow">
+          <label className="flex min-w-[12rem] flex-[1_1_14rem] items-center gap-1.5 rounded-md border border-border bg-panel px-2.5 h-9 text-sm text-text focus-within:ring-2 focus-within:ring-copper focus-within:border-transparent transition-shadow">
             <Icon name="search" size={15} className="text-muted shrink-0" />
             <span className="sr-only">Search queue</span>
             <input
+              ref={searchRef}
               name="q"
               type="search"
               defaultValue={search}
@@ -1107,7 +1151,7 @@ export function WorkQueue({
           </label>
 
           {/* Sort select */}
-          <label className="flex items-center gap-1.5 rounded-md border border-border bg-panel px-2.5 h-9 text-sm text-text focus-within:ring-2 focus-within:ring-copper focus-within:border-transparent transition-shadow cursor-pointer">
+          <label className="flex min-w-0 max-w-full items-center gap-1.5 rounded-md border border-border bg-panel px-2.5 h-9 text-sm text-text focus-within:ring-2 focus-within:ring-copper focus-within:border-transparent transition-shadow cursor-pointer">
             <Icon name="arrowDownUp" size={15} className="text-muted shrink-0" />
             <span className="sr-only">Sort work queue</span>
             <select
@@ -1115,7 +1159,7 @@ export function WorkQueue({
               name="sort"
               value={sortSelectValue}
               onChange={(e) => e.currentTarget.form?.requestSubmit()}
-              className="bg-transparent border-none outline-none font-sans text-sm text-text cursor-pointer"
+              className="min-w-0 max-w-full bg-transparent border-none outline-none font-sans text-sm text-text cursor-pointer"
             >
               {(invoiceMode ? SORT_OPTIONS_INVOICES : SORT_OPTIONS_CUSTOMERS).map((opt) => (
                 <option key={opt.id} value={opt.id}>
@@ -1140,11 +1184,12 @@ export function WorkQueue({
         </Form>
       </div>
 
-      {/* Saved-view tabs */}
-      <nav
-        aria-label="Saved queue views"
-        className="flex gap-1 overflow-x-auto border-b border-border bg-paper px-3.5 py-2 scrollbar-none"
-      >
+      {/* Saved-view tabs — scroll-fade on the right hints that more views exist */}
+      <div className="relative border-b border-border bg-paper">
+        <nav
+          aria-label="Saved queue views"
+          className="flex gap-1 overflow-x-auto px-3.5 py-2 scrollbar-none"
+        >
         {SAVED_VIEWS.map((sv) => {
           const isActive = view === sv.id;
           return (
@@ -1171,7 +1216,13 @@ export function WorkQueue({
             </Link>
           );
         })}
-      </nav>
+        </nav>
+        {/* Right-edge scroll-fade — signals more saved views beyond the visible area */}
+        <div
+          aria-hidden="true"
+          className="pointer-events-none absolute inset-y-0 right-0 w-10 bg-gradient-to-l from-paper to-transparent"
+        />
+      </div>
 
       {/* Column header stays static above the scroller (not virtualized). Hidden < md. */}
       {view !== "coming-due" && listCount > 0 ? (
@@ -1241,7 +1292,21 @@ export function WorkQueue({
       ) : null}
 
       {/* Table / cards content */}
-      <div ref={scrollerRef} className="flex-1 overflow-auto bg-surface">
+      <div ref={scrollerRef} className="relative flex-1 overflow-auto bg-surface">
+        {/* Skeleton overlay while a queue filter/sort/search GET re-runs the loader */}
+        {queueLoading && view !== "coming-due" && listCount > 0 ? (
+          <div aria-hidden="true" className="pointer-events-none absolute inset-0 z-10 bg-surface/60 animate-[fade-in_150ms_ease-in]">
+            {Array.from({ length: 5 }).map((_, i) => (
+              <div key={i} className="flex items-center gap-4 border-b border-border px-8 py-3">
+                <Skeleton className="h-4 w-4 rounded" />
+                <Skeleton className="h-3.5 w-40" />
+                <Skeleton className="ml-auto h-3.5 w-20" />
+                <Skeleton className="h-3.5 w-14 hidden md:block" />
+                <Skeleton className="h-3.5 w-24 hidden lg:block" />
+              </div>
+            ))}
+          </div>
+        ) : null}
         {view === "coming-due" ? (
           <ComingDueList groups={comingDueGroups} comingDueDays={comingDueDays} />
         ) : listCount === 0 ? (
@@ -1311,7 +1376,7 @@ export function WorkQueue({
                       hrefDensity={hrefDensity}
                       checked={selected.has(item.invoiceId)}
                       onToggle={toggle}
-                      disabled={!selected.has(item.invoiceId) && capReached}
+                       disabled={!selected.has(item.invoiceId) && capReached && item.caseId != null && !selectedCaseIds.includes(item.caseId)}
                       collision={item.caseId ? collisions[item.caseId] : undefined}
                     />
                   ))
@@ -1357,7 +1422,7 @@ export function WorkQueue({
                       hrefDensity={hrefDensity}
                       checked={selected.has(item.invoiceId)}
                       onToggle={toggle}
-                      disabled={!selected.has(item.invoiceId) && capReached}
+                       disabled={!selected.has(item.invoiceId) && capReached && item.caseId != null && !selectedCaseIds.includes(item.caseId)}
                       collision={item.caseId ? collisions[item.caseId] : undefined}
                     />
                   </div>

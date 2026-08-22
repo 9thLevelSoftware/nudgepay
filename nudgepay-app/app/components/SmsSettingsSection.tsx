@@ -47,7 +47,7 @@ export function SmsSettingsSection(d: SmsSettingsProps) {
               id="sms-enabled" name="sms_enabled" defaultValue={d.smsEnabled ? "true" : "false"}
               onChange={(e) => e.currentTarget.form?.requestSubmit()}
               disabled={intentBusy("save_channels")}
-              className="h-8 rounded-md border border-border bg-panel px-2 text-sm text-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-copper disabled:opacity-60 disabled:cursor-not-allowed"
+              className="h-9 rounded-md border border-border bg-panel px-3 text-sm text-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-copper disabled:opacity-60 disabled:cursor-not-allowed"
             >
               <option value="true">On</option>
               <option value="false">Off</option>
@@ -97,7 +97,7 @@ export function SmsSettingsSection(d: SmsSettingsProps) {
               Phone number
               <input
                 type="tel" name="to" required placeholder="+15551234567"
-                className="h-8 rounded-md border border-border bg-panel px-2 text-sm text-text tabular-nums focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-copper"
+                className="h-9 rounded-md border border-border bg-panel px-3 text-sm text-text tabular-nums focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-copper"
               />
             </label>
             <button type="submit" disabled={testBusy} className="h-8 shrink-0 rounded-md border border-border px-3 text-xs font-medium text-text hover:border-copper disabled:opacity-60 disabled:cursor-not-allowed">

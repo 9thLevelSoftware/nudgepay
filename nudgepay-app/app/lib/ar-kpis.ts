@@ -19,6 +19,8 @@ export type ArKpis = {
   promiseRate: number | null;
   collected: number;
   coverage: ArKpiCoverage;
+  /** Current open-AR distribution, available to report visualizations. */
+  agingBuckets?: ArAgingBucket[];
   inputs: {
     endingTotalAr: number;
     endingCurrentAr: number;
@@ -28,6 +30,12 @@ export type ArKpis = {
     contactedOpenCases: number;
     promisesCreated: number;
   };
+};
+
+export type ArAgingBucket = {
+  label: string;
+  amount: number;
+  count: number;
 };
 
 export type ArInvoice = {
@@ -43,6 +51,24 @@ export type ArPayment = {
   txnDate: string | null;
   type: "payment" | "credit_memo";
 };
+
+/** Group open invoices by due-date age without changing any KPI math. */
+export function buildArAgingBuckets(open: ArInvoice[], today: string): ArAgingBucket[] {
+  const buckets: ArAgingBucket[] = [
+    { label: "Current", amount: 0, count: 0 },
+    { label: "1–30 days", amount: 0, count: 0 },
+    { label: "31–60 days", amount: 0, count: 0 },
+    { label: "61–90 days", amount: 0, count: 0 },
+    { label: "91+ days", amount: 0, count: 0 },
+  ];
+  for (const invoice of open) {
+    const age = invoice.dueDate == null ? -1 : ageInDays(invoice.dueDate, today);
+    const index = age <= 0 ? 0 : age <= 30 ? 1 : age <= 60 ? 2 : age <= 90 ? 3 : 4;
+    buckets[index].amount += invoice.balance;
+    buckets[index].count += 1;
+  }
+  return buckets;
+}
 
 export type ArSalesRow = { invoiceDate: string; amount: number };
 
@@ -97,9 +123,15 @@ export function buildArKpis(input: {
   const creditSales = input.salesLookback
     .filter((r) => r.invoiceDate >= windowStart && r.invoiceDate <= input.today)
     .reduce((s, r) => s + r.amount, 0);
+  const inWindow = (p: ArPayment) =>
+    p.txnDate != null && p.txnDate >= windowStart && p.txnDate <= input.today;
   const collections = input.payments
-    .filter((p) => p.type === "payment" && p.txnDate != null
-      && p.txnDate >= windowStart && p.txnDate <= input.today)
+    .filter((p) => p.type === "payment" && inWindow(p))
+    .reduce((s, p) => s + p.amount, 0);
+  // Credit memos reduce ending AR the same way cash does; add them back so
+  // beginning AR is not understated. `collected` stays payments only.
+  const creditMemos = input.payments
+    .filter((p) => p.type === "credit_memo" && inWindow(p))
     .reduce((s, p) => s + p.amount, 0);
 
   // Countback walks newest first; future TxnDate rows would yield a negative DSO.
@@ -113,7 +145,7 @@ export function buildArKpis(input: {
   const dso = countbackDso(salesByDate, endingTotalAr, input.today);
   const bestPossibleDso = countbackDso(salesByDate, endingCurrentAr, input.today);
 
-  const beginningAr = Math.max(0, endingTotalAr - creditSales + collections);
+  const beginningAr = Math.max(0, endingTotalAr - creditSales + collections + creditMemos);
   const numerator = beginningAr + creditSales - endingTotalAr;
   const denominator = beginningAr + creditSales - endingCurrentAr;
   const cei = denominator <= 0 ? null : 100 * numerator / denominator;

@@ -10,8 +10,9 @@ import { applyInvoiceView, buildInvoiceQueue, sortInvoiceItems } from "../lib/in
 import { queueItemsToCsv } from "../lib/queue-csv";
 import type { ViewId } from "../lib/worklist";
 import { parseEntityMode, parseSort } from "../lib/queue-chrome";
+import { PEEK_WINDOW_DAYS } from "../lib/activity-peek";
 import { loadReplySource, peekWindowStartIso } from "../lib/activity-peek.server";
-import { loadPayerSource } from "../lib/payer-behavior.server";
+import { loadBrokenPromiseCustomers, loadPayerSource } from "../lib/payer-behavior.server";
 
 export async function loader({ request, context }: LoaderFunctionArgs) {
   const env = getEnv(context as any);
@@ -33,19 +34,17 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
     ...src.invoicesInput.map((i) => i.customer_id ?? ""),
     ...src.comingDueInvoices.map((i) => i.customer_id ?? ""),
   ].filter(Boolean))];
-  const brokenPromiseByCustomer = new Map<string, boolean>();
-  const caseById = new Map(src.cases.map((c) => [c.id, c]));
-  for (const p of src.promisesInput) {
-    if (p.status !== "broken") continue;
-    const cse = caseById.get(p.caseId);
-    if (cse) brokenPromiseByCustomer.set(cse.customerId, true);
-  }
-  const replySrc = await loadReplySource({
-    supabase,
-    orgId: org.org_id,
-    customerIds,
-    windowStartIso: peekWindowStartIso(today),
-  });
+  const tz = orgConfig.companyProfile.timezone;
+  const caseToCustomer = new Map(src.cases.map((c) => [c.id, c.customerId]));
+  const [replySrc, brokenPromiseByCustomer] = await Promise.all([
+    loadReplySource({
+      supabase,
+      orgId: org.org_id,
+      customerIds,
+      windowStartIso: peekWindowStartIso(today, PEEK_WINDOW_DAYS, tz),
+    }),
+    loadBrokenPromiseCustomers({ supabase, orgId: org.org_id, caseToCustomer }),
+  ]);
   const payerByCustomer = await loadPayerSource({
     supabase,
     orgId: org.org_id,
@@ -53,6 +52,7 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
     today,
     brokenPromiseByCustomer,
     replyByCustomer: replySrc.replyByCustomer,
+    replyTruncated: replySrc.truncated,
   });
   const allItems = buildCaseItems(
     src.cases, src.invoicesInput, src.customersInput, src.lastContactsInput,

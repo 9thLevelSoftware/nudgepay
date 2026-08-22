@@ -29,7 +29,7 @@ export function LateFeesForm({
           <select
             name="late_fee_enabled"
             defaultValue={lateFee.enabled ? "true" : "false"}
-            className="h-8 rounded-md border border-border bg-panel px-2 text-sm text-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-copper"
+            className="h-9 rounded-md border border-border bg-panel px-3 text-sm text-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-copper"
           >
             <option value="true">Enabled</option>
             <option value="false">Disabled</option>
@@ -40,21 +40,21 @@ export function LateFeesForm({
             Grace days
             <input
               type="number" name="late_fee_grace_days" min={0} defaultValue={lateFee.graceDays}
-              className="h-8 rounded-md border border-border bg-panel px-2 text-sm text-text tabular-nums focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-copper"
+              className="h-9 rounded-md border border-border bg-panel px-3 text-sm text-text tabular-nums focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-copper"
             />
           </label>
           <label className="grid gap-1 text-sm font-medium text-text">
             Monthly %
             <input
               type="number" name="late_fee_monthly_percent" min={0} max={100} step="0.01" defaultValue={lateFee.monthlyPercent}
-              className="h-8 rounded-md border border-border bg-panel px-2 text-sm text-text tabular-nums focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-copper"
+              className="h-9 rounded-md border border-border bg-panel px-3 text-sm text-text tabular-nums focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-copper"
             />
           </label>
           <label className="grid gap-1 text-sm font-medium text-text">
             Flat fee ($)
             <input
               type="number" name="late_fee_flat_amount" min={0} step="0.01" defaultValue={lateFee.flatAmount}
-              className="h-8 rounded-md border border-border bg-panel px-2 text-sm text-text tabular-nums focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-copper"
+              className="h-9 rounded-md border border-border bg-panel px-3 text-sm text-text tabular-nums focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-copper"
             />
           </label>
         </div>

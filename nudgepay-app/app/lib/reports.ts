@@ -5,6 +5,7 @@
 import { isCaseSuppressed } from "./exceptions";
 import type { PromiseStatus } from "./promises";
 import type { ExceptionReason } from "./contact-log";
+import { addCalendarDays } from "./business-days";
 
 export const REPORT_RANGES = [7, 30, 90] as const;
 export type ReportRange = (typeof REPORT_RANGES)[number];
@@ -56,6 +57,18 @@ export type TeamReport = {
   perRep: RepRow[];
   firstContact: FirstContactSummary;
   workload: WorkloadRow[];
+  trends?: ReportTrends;
+};
+
+export type ReportTrendPoint = {
+  date: string;
+  contacts: number;
+  resolved: number;
+  kept: number;
+};
+
+export type ReportTrends = {
+  points: ReportTrendPoint[];
 };
 
 const RESOLVED_STATUSES: ReadonlyArray<PromiseStatus> = ["kept", "partially_kept", "broken"];
@@ -91,8 +104,9 @@ export function buildTeamReport(input: {
   openedCases: ReportOpenedCase[];
   workloadCases: ReportWorkloadCase[];
   today: string;
+  timeZone?: string;
 }): TeamReport {
-  const { range, roster, contactLogs, promises, openedCases, workloadCases, today } = input;
+  const { range, roster, contactLogs, promises, openedCases, workloadCases, today, timeZone } = input;
 
   // --- Per-rep: throughput ---
   const contactsByRep = new Map<string, number>();
@@ -158,6 +172,42 @@ export function buildTeamReport(input: {
   const within24hPct = contacted === 0 ? null : hoursList.filter((h) => h <= 24).length / contacted;
   const firstContact: FirstContactSummary = { medianHours, avgHours, within24hPct, contacted, uncontacted };
 
+  // Keep the daily series complete so a quiet day is visible as zero rather
+  // than making the line chart jump between sparse points.
+  const dateFormatter = timeZone
+    ? new Intl.DateTimeFormat("en-US", { timeZone, year: "numeric", month: "2-digit", day: "2-digit" })
+    : null;
+  const dateKey = (value: string): string => {
+    if (!dateFormatter) return value.slice(0, 10);
+    try {
+      const parts = new Map(dateFormatter.formatToParts(new Date(value)).map((part) => [part.type, part.value]));
+      return `${parts.get("year")}-${parts.get("month")}-${parts.get("day")}`;
+    } catch {
+      return value.slice(0, 10);
+    }
+  };
+
+  const contactsByDate = new Map<string, number>();
+  for (const log of contactLogs) {
+    const date = dateKey(log.createdAt);
+    contactsByDate.set(date, (contactsByDate.get(date) ?? 0) + 1);
+  }
+  const outcomesByDate = new Map<string, { resolved: number; kept: number }>();
+  for (const promise of promises) {
+    if (!promise.resolvedAt) continue;
+    const date = dateKey(promise.resolvedAt);
+    const outcome = outcomesByDate.get(date) ?? { resolved: 0, kept: 0 };
+    outcome.resolved += 1;
+    if (promise.status === "kept") outcome.kept += 1;
+    outcomesByDate.set(date, outcome);
+  }
+  const points: ReportTrendPoint[] = [];
+  for (let offset = range - 1; offset >= 0; offset -= 1) {
+    const date = addCalendarDays(today, -offset);
+    const outcome = outcomesByDate.get(date) ?? { resolved: 0, kept: 0 };
+    points.push({ date, contacts: contactsByDate.get(date) ?? 0, ...outcome });
+  }
+
   // --- Workload snapshot (per owner, current open non-suppressed) ---
   const workloadByOwner = new Map<string | null, { openCases: number; overdueTotal: number; brokenPromises: number }>();
   for (const c of workloadCases) {
@@ -178,7 +228,7 @@ export function buildTeamReport(input: {
     if (!rosterIds.has(ownerId)) workload.push({ ownerId, label: "Unknown", ...agg });
   }
 
-  return { range, perRep, firstContact, workload };
+  return { range, perRep, firstContact, workload, trends: { points } };
 }
 
 const CSV_COLUMNS = [

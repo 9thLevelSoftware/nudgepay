@@ -2,6 +2,8 @@
 import { Form, Link } from "react-router";
 import type { ThreadRow, MessageTab, MessageSort, ChannelFilter } from "../lib/message-inbox";
 import { formatInstant } from "../lib/dates";
+import { Icon } from "./Icons";
+import { useSearchShortcut } from "../lib/use-search-shortcut";
 
 const TABS: { id: MessageTab; label: string }[] = [
   { id: "needs-reply", label: "Needs reply" },
@@ -35,6 +37,7 @@ interface Props {
 }
 
 export function MessagesInbox({ rows, tab, sort, search, counts, selectedId, selectedChannel, channel, channelCounts, timeZone }: Props) {
+  const searchRef = useSearchShortcut();
   const tabHref = (id: MessageTab) =>
     `?${new URLSearchParams({ tab: id, sort, channel, ...(search ? { q: search } : {}) }).toString()}`;
   const channelHref = (ch: ChannelFilter) =>
@@ -47,44 +50,53 @@ export function MessagesInbox({ rows, tab, sort, search, counts, selectedId, sel
       <header className="flex flex-wrap items-center gap-3 px-4 py-3 bg-paper border-b border-border">
         <h2 className="font-display text-sm font-semibold text-text">Messages</h2>
         <span className="text-xs text-muted">{rows.length} matching</span>
+        {/* Channel dimension lives in the header as a segmented control so the
+            body keeps a single filter-pill row */}
+        <div className="flex items-center rounded-md border border-border bg-panel p-0.5" aria-label="Channel filter">
+          {CHANNELS.map((ch) => {
+            const active = ch.id === channel;
+            return (
+              <Link
+                key={ch.id} to={channelHref(ch.id)} aria-pressed={active}
+                className={[
+                  "inline-flex items-center gap-1 px-2.5 h-7 rounded text-xs font-medium transition-colors",
+                  "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-copper",
+                  active
+                    ? "bg-copper text-ink"
+                    : "text-muted hover:text-text",
+                ].join(" ")}
+              >
+                {ch.label}
+                <span className={`font-mono text-[10px] tabular-nums ${active ? "text-ink/70" : "text-muted/70"}`}>
+                  {channelCounts[ch.id]}
+                </span>
+              </Link>
+            );
+          })}
+        </div>
         <Form method="get" className="ml-auto flex items-center gap-2">
           <input type="hidden" name="tab" value={tab} />
           <input type="hidden" name="channel" value={channel} />
           {selectedId ? <input type="hidden" name="customerId" value={selectedId} /> : null}
-          <label className="sr-only" htmlFor="msg-search">Search</label>
-          <input
-            id="msg-search" name="q" defaultValue={search} placeholder="Search customer…"
-            className="h-8 px-2 rounded border border-border bg-surface text-sm"
-          />
+          <label className="flex items-center gap-1.5 rounded-md border border-border bg-panel px-2.5 h-9 text-sm text-text focus-within:ring-2 focus-within:ring-copper focus-within:border-transparent transition-shadow cursor-pointer">
+            <Icon name="search" size={14} className="text-muted shrink-0" />
+            <span className="sr-only">Search</span>
+            <input
+              ref={searchRef}
+              id="msg-search" name="q" defaultValue={search} placeholder="Search customer…"
+              className="w-40 bg-transparent text-sm placeholder:text-muted focus-visible:outline-none"
+            />
+          </label>
           <label className="sr-only" htmlFor="msg-sort">Sort</label>
           <select
             id="msg-sort" name="sort" defaultValue={sort}
             onChange={(e) => e.currentTarget.form?.requestSubmit()}
-            className="h-8 px-2 rounded border border-border bg-surface text-sm"
+            className="h-9 px-2 rounded border border-border bg-surface text-sm"
           >
             {SORTS.map((s) => <option key={s.id} value={s.id}>{s.label}</option>)}
           </select>
         </Form>
       </header>
-
-      <nav className="flex flex-wrap gap-2 px-4 py-2 border-b border-border" aria-label="Channel filter">
-        {CHANNELS.map((ch) => {
-          const active = ch.id === channel;
-          const count = channelCounts[ch.id];
-          return (
-            <Link
-              key={ch.id} to={channelHref(ch.id)} aria-current={active ? "page" : undefined}
-              className={[
-                "inline-flex items-center gap-1.5 h-7 px-3 rounded-full text-xs font-medium border",
-                active ? "bg-copper text-ink border-copper" : "bg-paper text-muted border-border hover:border-copper/50",
-              ].join(" ")}
-            >
-              {ch.label}
-              <span className={active ? "text-surface/70" : "text-muted/70"}>{count}</span>
-            </Link>
-          );
-        })}
-      </nav>
 
       <nav className="flex flex-wrap gap-2 px-4 py-2 border-b border-border" aria-label="Message thread filters">
         {TABS.map((t) => {
@@ -130,10 +142,15 @@ export function MessagesInbox({ rows, tab, sort, search, counts, selectedId, sel
                       <span className="inline-flex items-center px-1.5 py-0.5 rounded-full text-[10px] font-medium bg-cool/10 text-cool border border-cool/20">Email</span>
                     )}
                     {r.needsAttention ? (
-                      <span className="inline-flex items-center px-1.5 py-0.5 rounded-full text-[10px] font-medium bg-hot/10 text-hot">Failed</span>
+                      <span className="inline-flex items-center px-1.5 py-0.5 rounded-full text-[10px] font-medium bg-hot/10 text-hot border border-hot/20">Failed</span>
                     ) : null}
                     {r.unansweredInbound > 0 ? (
-                      <span className="ml-auto inline-flex items-center justify-center min-w-5 h-5 px-1.5 rounded-full text-[11px] font-semibold bg-copper/10 text-copper">{r.unansweredInbound}</span>
+                      <span
+                        aria-label={`${r.unansweredInbound} unanswered`}
+                        className="ml-auto inline-flex items-center justify-center min-w-5 h-5 px-1.5 rounded-full text-[11px] font-semibold bg-copper/10 text-copper border border-copper/20"
+                      >
+                        {r.unansweredInbound}
+                      </span>
                     ) : null}
                   </div>
                   {r.channel === "email" && r.subjectSnippet ? (
@@ -148,7 +165,7 @@ export function MessagesInbox({ rows, tab, sort, search, counts, selectedId, sel
                         </>
                       ) : "No messages"}
                     </span>
-                    {r.lastMessage ? <span className="ml-auto shrink-0 font-mono">{formatInstant(r.lastMessage.createdAt, timeZone)}</span> : null}
+                    {r.lastMessage ? <span className="ml-auto shrink-0 font-mono tabular-nums">{formatInstant(r.lastMessage.createdAt, timeZone)}</span> : null}
                   </div>
                 </Link>
               </li>

@@ -39,7 +39,6 @@ export function BulkActionBar({
         {n >= maxBatch ? <span className="text-muted"> · max {maxBatch} per batch</span> : null}
         {skipReason ? <span className="text-muted"> · {skipReason}</span> : null}
       </span>
-
       <Form method="post" action="/api/bulk-assign" className="flex items-center gap-2 ml-auto">
         <input type="hidden" name="caseIds" value={selectedCaseIds.join(",")} />
         <input type="hidden" name="returnTo" value={returnTo} />
@@ -68,10 +67,14 @@ export function BulkActionBar({
         type="button"
         onClick={onOpenSms}
         disabled={eligibleCount === 0}
+        title={eligibleCount === 0 ? "No selected case can be texted" : undefined}
         className="rounded-md bg-copper px-3 h-9 text-xs font-sans font-semibold text-ink hover:bg-copper/90 disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-copper"
       >
         Send SMS
       </button>
+      {eligibleCount === 0 && n > 0 ? (
+        <span className="text-xs text-muted">None selected can be texted</span>
+      ) : null}
       <button
         type="button"
         onClick={onClear}

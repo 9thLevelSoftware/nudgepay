@@ -7,6 +7,10 @@ import { MessageBubbles } from "./MessageBubbles";
 import { applyTemplate, type TemplateVars } from "../lib/sms-templates";
 import { applyEmailTemplate } from "../lib/email-templates";
 import type { MessageTemplateRow } from "../lib/message-templates";
+
+// SMS composer limits: 160 chars = one GSM segment; 1600 = hard compose cap.
+const SMS_SEGMENT_CHARS = 160;
+const SMS_MAX_CHARS = 1600;
 import { formatInstant } from "../lib/dates";
 import { emailFailureLabel, isHardBounce } from "../lib/labels";
 import { smsFlash } from "../lib/flash-copy";
@@ -268,7 +272,7 @@ export function MessageThreadPanel({
               className={`mb-2 rounded-md px-3 py-2 text-xs font-sans font-medium ${
                 smsGateHard
                   ? "bg-hot/10 border border-hot/30 text-hot"
-                  : "bg-advisory/10 border border-advisory/30 text-advisory"
+                  : "bg-warm/10 border border-warm/30 text-warm"
               }`}
               role={smsGateHard ? "alert" : "status"}
             >
@@ -292,11 +296,22 @@ export function MessageThreadPanel({
               name="body" rows={3} value={body} onChange={(e) => setBody(e.target.value)}
               placeholder="Type a message…" required
               disabled={smsSendDisabled}
+              maxLength={SMS_MAX_CHARS}
               aria-label="Message body"
               className="w-full resize-none rounded-md border border-border bg-panel px-3 py-2 text-sm text-text placeholder:text-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-copper disabled:opacity-40 disabled:cursor-not-allowed"
             />
             <div className="flex items-center justify-between gap-2">
-              <span />
+              <span
+                aria-live="polite"
+                className={`font-mono text-[11px] tabular-nums ${
+                  body.length > SMS_MAX_CHARS * 0.9 ? "text-hot" : body.length > SMS_SEGMENT_CHARS ? "text-warm" : "text-muted"
+                }`}
+              >
+                {body.length} / {SMS_MAX_CHARS}
+                {body.length > SMS_SEGMENT_CHARS ? (
+                  <span className="text-muted"> (multi-segment)</span>
+                ) : null}
+              </span>
               <button
                 type="submit" disabled={smsSendDisabled || formBusy("/api/text/send")}
                 className="inline-flex items-center gap-1.5 rounded-md bg-copper px-3 py-1.5 text-xs font-semibold text-ink hover:bg-copper/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-copper disabled:opacity-40 disabled:cursor-not-allowed transition-colors"

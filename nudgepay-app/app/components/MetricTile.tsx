@@ -1,4 +1,5 @@
 import { Link } from "react-router";
+import { Sparkline, type ChartTone } from "./SvgCharts";
 
 export type MetricAccent = "ink" | "copper" | "hot" | "cool" | "neutral";
 
@@ -27,6 +28,9 @@ interface MetricTileProps {
   active?: boolean;
   className?: string;
   ariaLabel?: string;
+  /** Optional real historical series. Omit when only a current snapshot exists. */
+  sparkline?: number[];
+  sparklineTone?: ChartTone;
 }
 
 /**
@@ -39,6 +43,7 @@ interface MetricTileProps {
  */
 export function MetricTile({
   label, value, sub, accent, href, active = false, className = "", ariaLabel,
+  sparkline, sparklineTone = "copper",
 }: MetricTileProps) {
   const inner = (
     <>
@@ -55,6 +60,14 @@ export function MetricTile({
       <span className="font-display text-2xl font-semibold leading-none tracking-tight tabular-nums text-text">
         {value}
       </span>
+      {sparkline && sparkline.length > 1 ? (
+        <Sparkline
+          values={sparkline}
+          label={`${label} trend`}
+          tone={sparklineTone}
+          className="mt-2"
+        />
+      ) : null}
       <span className={`mt-1.5 text-xs ${ACCENT_TEXT[accent]}`}>{sub}</span>
     </>
   );

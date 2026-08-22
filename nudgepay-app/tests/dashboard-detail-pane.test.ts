@@ -35,8 +35,8 @@ describe("dashboard pane class contract (NP-AUD-2026-110)", () => {
     const cls = detailPaneClass();
     expect(cls).toContain("flex-1");
     expect(cls).toContain("md:w-[28rem]");
-    expect(cls).toContain("lg:w-[36rem]");
-    expect(cls).toContain("xl:w-[48rem]");
+    expect(cls).toContain("lg:w-[30rem]");
+    expect(cls).toContain("xl:w-[28rem]");
     expect(cls).toContain("md:flex-none");
     expect(cls).toContain("min-w-0");
     expect(cls).not.toContain("md:w-96");
@@ -90,10 +90,13 @@ describe("dashboard wiring (NP-AUD-2026-110)", () => {
   it("merges overdue ∪ coming-due invoices and aliases tab=activity to overview #history", () => {
     expect(dashboard).toContain("mergeWorkspaceInvoices");
     expect(dashboard).toContain("workspaceInvoices");
+    expect(dashboard).toContain("invoices={workspaceInvoices}");
     expect(dashboard).toMatch(/searchParams\.get\("tab"\) === "activity"/);
     expect(dashboard).toContain('#history');
     expect(detail).toContain('id="history"');
     expect(detail).toContain("chaseRecipientsFrom");
+    expect(detail).toContain("emailEnabled: emailEnabled ?? false");
+    expect(detail).toContain("formatUSD(repInvoice?.balance ?? selected.totalOverdue)");
     expect(detail).not.toContain('id: "activity" as const');
   });
 
@@ -102,5 +105,7 @@ describe("dashboard wiring (NP-AUD-2026-110)", () => {
     expect(detail).toContain("location.search");
     expect(detail).not.toMatch(/<a\s+href="#history"/);
     expect(detail).toContain("previewWorkspaceInvoices");
+    expect(detail).toContain("window.location.hash === \"#history\"");
+    expect(detail).toContain("hashchange");
   });
 });

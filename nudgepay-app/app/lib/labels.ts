@@ -51,6 +51,21 @@ export function emailFailureLabel(code: string | null): string {
   return EMAIL_FAILURE_LABEL[code.toLowerCase()] ?? humanizeSnakeCase(code);
 }
 
+// Twilio delivery failures — keep provider codes out of the primary UI copy.
+export const SMS_FAILURE_LABEL: Record<string, string> = {
+  "30003": "The destination number is unreachable",
+  "30005": "The destination number is unknown",
+  "30006": "The destination is a landline or cannot receive texts",
+  "30007": "The message was filtered by the carrier",
+  "30008": "The carrier reported an unknown delivery error",
+  "30034": "The carrier rejected the message",
+};
+
+export function smsFailureLabel(code: string | null): string {
+  if (!code) return "";
+  return SMS_FAILURE_LABEL[code] ?? "Text delivery failed";
+}
+
 // Hard-bounce detection used to gate the "last email bounced" composer
 // warning (F-022). Treats both the canonical key and Resend's raw bounce
 // sub-types as "hard" so the warning fires on real webhook data.

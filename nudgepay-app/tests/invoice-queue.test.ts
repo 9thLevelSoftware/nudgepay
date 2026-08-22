@@ -1,7 +1,7 @@
 import { expect, test } from "vitest";
 import { readFileSync } from "node:fs";
 import {
-  applyInvoiceView, buildInvoiceQueue, sortInvoiceItems,
+  applyInvoiceView, buildInvoiceQueue, clampInvoiceBatch, sortInvoiceItems,
   type InvoiceQueueItem,
 } from "../app/lib/invoice-queue";
 import type { InvoiceInput, CustomerInput } from "../app/lib/worklist";
@@ -79,6 +79,27 @@ test("sortInvoiceItems due-date puts nulls last and recommended is oldest then h
   expect(rec.map((i) => i.invoiceId)).toEqual(["older", "old-big", "old-small"]);
 });
 
+test("buildInvoiceQueue keeps coming-due invoices caseless even when the customer has a case", () => {
+  const items = buildInvoiceQueue({
+    invoices: [
+      { id: "soon", qbo_doc_number: "1003", customer_id: "c1", balance: 50, due_date: "2026-06-25", amount: 50, invoice_date: "2026-06-01", status: "open", paid_date: null },
+      { id: "overdue", qbo_doc_number: "1001", customer_id: "c1", balance: 6000, due_date: "2026-03-01", amount: 6000, invoice_date: "2026-02-01", status: "overdue", paid_date: null },
+    ],
+    casesByCustomer: new Map([
+      ["c1", { caseId: "case-1", lastContact: { date: "2026-06-19T00:00:00Z", channel: "Text" }, peeks: [] }],
+    ]),
+    customers: CUSTOMERS,
+    ownerLabels: new Map([["u1", "diskin"]]),
+    payerByCustomer: new Map(),
+    today: TODAY,
+  });
+  const soon = items.find((i) => i.invoiceId === "soon")!;
+  expect(soon.caseId).toBeNull();
+  expect(soon.lastContact).toBeNull();
+  expect(soon.peeks).toEqual([]);
+  expect(items.find((i) => i.invoiceId === "overdue")!.caseId).toBe("case-1");
+});
+
 test("applyInvoiceView uses invoice predicates and does not drop caseless from all-open", () => {
   const items = built();
   const matchingCaseIds = new Set(["case-1"]);
@@ -110,6 +131,20 @@ test("applyInvoiceView excludes on-hold cases from invoice-native views", () => 
     .toEqual(["i1", "i2"]);
 });
 
+test("clampInvoiceBatch caps cased rows but keeps caseless rows selectable", () => {
+  const ids = clampInvoiceBatch(
+    [
+      { invoiceId: "a1", caseId: "c1" },
+      { invoiceId: "a2", caseId: "c1" },
+      { invoiceId: "b1", caseId: "c2" },
+      { invoiceId: "x", caseId: null },
+      { invoiceId: "c1", caseId: "c3" },
+    ],
+    2,
+  );
+  expect(ids).toEqual(["a1", "a2", "b1", "x"]);
+});
+
 test("case-queue Stage-1 select includes amount/invoice_date/status/paid_date", () => {
   const src = readFileSync(new URL("../app/lib/case-queue.server.ts", import.meta.url), "utf8");
   expect(src).toContain("amount, invoice_date, status, paid_date");
@@ -132,6 +167,8 @@ test("WorkQueue invoice rows keep table roles, entity toggle, and caseless j/k",
   expect(src).not.toContain('role="tablist"');
   expect(src).toContain("navigate(`/accounts/${target.customerId}`)");
   expect(src).toContain("selectedCaseIds");
+  expect(src).toContain("clampInvoiceBatch");
+  expect(src).toContain("selectedCaseIds.length >= maxBatch");
   expect(src).toContain("`${selected.size} invoices · ${selectedCaseIds.length} accounts`");
   expect(src).toContain("Invoices without an open case skipped.");
   expect(src).toContain("SORT_OPTIONS_INVOICES");

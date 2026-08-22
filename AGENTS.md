@@ -90,6 +90,49 @@ npx supabase db reset   # Applies all migrations fresh
 - **ViewId/Metrics pattern** — add new views to `ViewId` union, `ALL_VIEWS`, `VALID_VIEWS`, `SAVED_VIEWS`, `VIEW_LABEL`, `MetricsStrip` tiles
 - **Display names** — `listOrgMembers` is the SINGLE source of user labels; never parse emails elsewhere
 
+### UI primitives & overlays (Phase 0 foundations)
+
+- **`app/components/ui.tsx`** is the shared primitive library: `cx`, `Button`
+  (`primary|secondary|destructive|ghost` × `sm|md|lg|icon`), `Input`,
+  `Textarea`, `Select`, `Badge`, `Card`, `Kbd`, `Skeleton`, `EmptyState`,
+  plus `inputClass` / `labelClass`. Compose via `cx`/className overrides
+  (later classes win). Do not hand-roll control classes.
+- **Overlays:** `DrawerShell` (right sheet — the default overlay) and
+  `ModalShell` (centered, sparingly) wrap content and share `use-dialog.ts`
+  (focus trap, Escape, focus restore, optional `onCloseHref` for
+  URL-as-state drawers). Never hand-roll `fixed inset-0 … role="dialog"`.
+- **Content width:** `ContentShell` (`app/components/ContentShell.tsx`) owns
+  the padding + max-width policy: `workspace` (full-bleed dashboard/reports),
+  `split` (accounts/promises/messages list+rail), `detail` (centered max-w-5xl
+  profile/settings). Adopt it instead of per-route `p-*/max-w-*` strings.
+- **Destructive confirm:** universal styled inline `TwoStepConfirm` / shared
+  `useTwoStep` auto-reset, or async `ConfirmProvider` + `useConfirm()`.
+  Do NOT use `window.confirm` (native dialogs are removed).
+- **Toasts:** `ToastProvider` is mounted inside `AppShell`; call `useToast()`
+  and `push(text, tone)` for transient confirmations. Prefer toasts over
+  persistent `?saved=` URL params for new surfaces. (`/focus` keeps its own
+  dark-themed stack — it's outside AppShell.)
+- **List+rail panels (accounts/promises/messages):** the quick panel renders
+  in the grid rail at `lg+` (`hidden lg:block`) AND in a `DrawerShell` below
+  `lg` when selected — selection must never dead-end at the page bottom.
+- **Virtualized lists:** fixed-height windowing via `visibleWindow`
+  (`app/lib/virtual-window.ts`) + `useScrollWindow` (app/lib/use-scroll-window.ts).
+  Force uniform desktop row heights so the pad math holds; mobile stacked
+  cards render unwindowed.
+- **Charts:** use the dependency-free SSR-safe SVG primitives in
+  `app/components/SvgCharts.tsx` for report bars, trends, and optional metric
+  sparklines. Prefer real loader data; never invent trend points for snapshots.
+- **Keyboard UX:** `CommandPalette` in `AppShell` owns `Ctrl/Cmd+K` and `?`;
+  list surfaces use `useSearchShortcut` for `/`. Queue and Focus keep their
+  scoped handlers, and editable/dialog targets must remain guarded.
+- **Color tokens:** `warm` is a distinct amber `#b45309` for cautionary
+  states (standing "fair", medium heat, quiet-hours). It is NOT copper —
+  never use it for brand actions. The old duplicate `advisory` token is
+  removed; raw palette classes (`sky/amber/emerald-…`) are disallowed in
+  components — always use semantic tokens. Dark mode is activated through the
+  persisted `nudgepay-theme` cookie/localStorage preference and
+  `[data-theme="dark"]` token overrides.
+
 ## Security
 
 - Never hardcode credentials in source. Use `wrangler secret put`.

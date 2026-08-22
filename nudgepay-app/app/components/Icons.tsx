@@ -15,6 +15,10 @@ export type IconName =
   | "mail"
   | "external"
   | "calendar"
+  | "clock"
+  | "pin"
+  | "sun"
+  | "moon"
   | "chevronRight"
   | "plus";
 
@@ -57,6 +61,32 @@ const paths: Record<IconName, React.ReactNode> = {
   ),
   chevronRight: <path d="m9 18 6-6-6-6" />,
   circle: <circle cx="12" cy="12" r="9" />,
+  clock: (
+    <>
+      <circle cx="12" cy="12" r="9" />
+      <path d="M12 7v5l3 2" />
+    </>
+  ),
+  pin: (
+    <>
+      <path d="M20 10c0 6-8 12-8 12S4 16 4 10a8 8 0 1 1 16 0Z" />
+      <circle cx="12" cy="10" r="3" />
+    </>
+  ),
+  sun: (
+    <>
+      <circle cx="12" cy="12" r="4" />
+      <path d="M12 2v2" />
+      <path d="M12 20v2" />
+      <path d="m4.93 4.93 1.41 1.41" />
+      <path d="m17.66 17.66 1.41 1.41" />
+      <path d="M2 12h2" />
+      <path d="M20 12h2" />
+      <path d="m6.34 17.66-1.41 1.41" />
+      <path d="m19.07 4.93-1.41 1.41" />
+    </>
+  ),
+  moon: <path d="M20.5 14.5A8.5 8.5 0 0 1 9.5 3.5 8.5 8.5 0 1 0 20.5 14.5Z" />,
   external: (
     <>
       <path d="M15 3h6v6" />

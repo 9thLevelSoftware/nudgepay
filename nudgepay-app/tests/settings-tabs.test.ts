@@ -65,8 +65,10 @@ describe("NP-AUD-2026-116 dirty tab guard", () => {
   it("SettingsTabs consults dirty state and confirms before a tab Link navigates", () => {
     expect(tabsSrc).toContain("useSettingsDirty");
     expect(tabsSrc).toContain("shouldBlockTabChange(dirty, isCurrent)");
-    expect(tabsSrc).toContain("window.confirm(SETTINGS_UNSAVED_MESSAGE)");
-    expect(tabsSrc).toContain("e.preventDefault()");
+    // Styled async confirm replaced native window.confirm.
+    expect(tabsSrc).toContain("useConfirm");
+    expect(tabsSrc).toContain("SETTINGS_UNSAVED_MESSAGE");
+    expect(tabsSrc).not.toContain("window.confirm");
     expect(tabsSrc).toContain('aria-current={isCurrent ? "page" : undefined}');
     expect(SETTINGS_UNSAVED_MESSAGE.toLowerCase()).toMatch(/unsaved/);
   });

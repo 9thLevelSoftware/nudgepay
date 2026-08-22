@@ -38,6 +38,21 @@ export const meta: Route.MetaFunction = () => pageTitle("Focus Mode");
 
 // Presence heartbeat interval (matches DetailPanel).
 const HEARTBEAT_MS = 20_000;
+const FOCUS_SESSION_STORAGE_KEY = "nudgepay:focus-session:v1";
+
+function sessionMatchesQueue(value: unknown, order: string[]): value is FocusSession {
+  if (!value || typeof value !== "object") return false;
+  const session = value as Partial<FocusSession>;
+  return Array.isArray(session.order)
+    && session.order.length === order.length
+    && session.order.every((id, index) => id === order[index])
+    && typeof session.index === "number"
+    && session.index >= 0
+    && session.index <= order.length
+    && session.results != null
+    && typeof session.results === "object"
+    && typeof session.actions === "number";
+}
 
 // ---------------------------------------------------------------------------
 // Loader
@@ -197,6 +212,42 @@ export default function FocusMode() {
     queue.map((c) => c.caseId),
     initFocusSession,
   );
+  const [sessionRestored, setSessionRestored] = useState(false);
+  const restoreAttemptedRef = useRef(false);
+  const restoreMismatchRef = useRef(false);
+
+  // Restore after hydration so SSR markup remains deterministic. A session is
+  // only reused when the queue order is identical to the saved session.
+  useEffect(() => {
+    if (restoreAttemptedRef.current) return;
+    restoreAttemptedRef.current = true;
+    if (typeof window !== "undefined") {
+      try {
+        const raw = window.localStorage.getItem(FOCUS_SESSION_STORAGE_KEY);
+        const saved = raw ? JSON.parse(raw) : null;
+        if (sessionMatchesQueue(saved, queue.map((item) => item.caseId))) {
+          dispatch({ type: "restore", session: saved });
+        } else if (saved && typeof saved === "object") {
+          // Keep the saved session until the user takes action in the new
+          // queue; a fresh initial state must not overwrite it on mount.
+          restoreMismatchRef.current = true;
+        }
+      } catch {
+        // Private browsing or malformed prior state: start a fresh session.
+      }
+    }
+    setSessionRestored(true);
+  }, [queue]);
+
+  useEffect(() => {
+    if (!sessionRestored || typeof window === "undefined") return;
+    if (restoreMismatchRef.current && session.actions === 0 && Object.keys(session.results).length === 0) return;
+    try {
+      window.localStorage.setItem(FOCUS_SESSION_STORAGE_KEY, JSON.stringify(session));
+    } catch {
+      // Private browsing or storage quota: focus mode remains usable in memory.
+    }
+  }, [session, sessionRestored]);
 
   // Open mini-form
   const [openForm, setOpenForm] = useState<"call" | "text" | null>(null);
@@ -281,8 +332,14 @@ export default function FocusMode() {
       case "space":
         dispatch({ type: "skip" });
         break;
+      case "u":
+        if (session.lastAction?.result === "skipped") {
+          dispatch({ type: "undo" });
+          addToast("Skip undone");
+        }
+        break;
     }
-  }, [done, currentItem, snoozeFetcher, addToast]);
+  }, [done, currentItem, snoozeFetcher, addToast, session.lastAction]);
 
   useFocusKeys({ enabled: openForm === null && !done && snoozeFetcher.state === "idle", onAction: handleKey });
 
@@ -327,6 +384,18 @@ export default function FocusMode() {
         </div>
 
         <div className="ml-auto flex items-center gap-4">
+          {session.lastAction?.result === "skipped" ? (
+            <button
+              type="button"
+              onClick={() => {
+                dispatch({ type: "undo" });
+                addToast("Skip undone");
+              }}
+              className="rounded border border-copper/40 px-2 py-1 text-xs font-medium text-copper hover:bg-copper/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-copper"
+            >
+              Undo skip <kbd className="ml-1 rounded border border-white/10 px-1 font-mono text-[10px]">u</kbd>
+            </button>
+          ) : null}
           <span className="font-mono text-xs text-muted">
             {triaged}/{totalCount} triaged
           </span>
@@ -462,7 +531,7 @@ export default function FocusMode() {
       {/* ── Key hint footer ──────────────────────────────────────────────── */}
       {!done && totalCount > 0 && (
         <footer className="border-t border-white/10 px-4 py-2 text-center text-[10px] text-muted/50 font-mono">
-          <kbd className="px-1">1</kbd> log call · <kbd className="px-1">2</kbd> send text · <kbd className="px-1">3</kbd> snooze · <kbd className="px-1">space</kbd> skip
+          <kbd className="px-1">1</kbd> log call · <kbd className="px-1">2</kbd> send text · <kbd className="px-1">3</kbd> snooze · <kbd className="px-1">space</kbd> skip · <kbd className="px-1">u</kbd> undo
         </footer>
       )}
 

@@ -7,6 +7,7 @@ import {
   VALID_SORTS,
   accountsSearchParams,
   dashboardHref,
+  withDensityParam,
   dashboardSearchParams,
   parseAccountsDensity,
   parseDensity,
@@ -95,9 +96,16 @@ test("accounts density control is General | Risk only", () => {
   expect(src).not.toContain('role="tablist"');
 });
 
+test("withDensityParam copies existing search params and sets density", () => {
+  expect(withDensityParam("?view=all-open&qbo=connected&sync=1", "risk"))
+    .toBe("?view=all-open&qbo=connected&sync=1&density=risk");
+  expect(withDensityParam("view=all-open", "general")).toBe("?view=all-open&density=general");
+});
+
 test("WorkQueue density Links sit outside the GET form and hide view+entity+density only", () => {
   const src = readFileSync(new URL("../app/components/WorkQueue.tsx", import.meta.url), "utf8");
   expect(src).toContain("persistDensity(id)");
+  expect(src).toContain("withDensityParam(location.search, next)");
   expect(src).toContain('<input type="hidden" name="view" value={view} />');
   expect(src).toContain('name="entity" value={entity}');
   expect(src).toContain('name="density" value={hrefDensity}');

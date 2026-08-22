@@ -21,6 +21,7 @@ function base() {
     openedCases: [] as { caseId: string; openedAt: string }[],
     workloadCases: [] as any[],
     today: "2026-06-26",
+    timeZone: undefined as string | undefined,
   };
 }
 
@@ -39,6 +40,31 @@ test("throughput: counts contacts and distinct cases per rep; zero-activity rep 
   expect(alice.casesTouched).toBe(2);
   expect(bob.contactsLogged).toBe(0);
   expect(bob.casesTouched).toBe(0);
+});
+
+test("team report includes a complete daily trend series", () => {
+  const input = base();
+  input.contactLogs = [
+    { userId: "u1", caseId: "c1", createdAt: "2026-06-20T10:00:00Z" },
+  ];
+  input.promises = [
+    { createdBy: "u1", status: "kept", resolvedAt: "2026-06-21T10:00:00Z" },
+  ];
+  const report = buildTeamReport(input);
+  expect(report.trends?.points).toHaveLength(30);
+  expect(report.trends?.points.find((point) => point.date === "2026-06-20")).toMatchObject({ contacts: 1 });
+  expect(report.trends?.points.find((point) => point.date === "2026-06-21")).toMatchObject({ resolved: 1, kept: 1 });
+});
+
+test("daily trends use the organization timezone instead of UTC dates", () => {
+  const input = base();
+  input.today = "2026-06-22";
+  input.timeZone = "America/Los_Angeles";
+  input.contactLogs = [{ userId: "u1", caseId: "c1", createdAt: "2026-06-21T06:30:00Z" }];
+  input.promises = [{ createdBy: "u1", status: "kept", resolvedAt: "2026-06-22T06:30:00Z" }];
+  const points = buildTeamReport(input).trends!.points;
+  expect(points.find((point) => point.date === "2026-06-20")).toMatchObject({ contacts: 1 });
+  expect(points.find((point) => point.date === "2026-06-21")).toMatchObject({ resolved: 1, kept: 1 });
 });
 
 test("kept-rate: strict (partial excluded), excludes non-outcome statuses, null when none resolved", () => {
@@ -305,6 +331,7 @@ test("reports.server loads AR KPIs with the selected range, not Stage-2 last-con
   expect(server).toContain("orderPage");
   expect(server).toContain('count: "exact"');
   expect(server).toContain("rates.truncated || openCases.truncated");
+  expect(server).toContain("localMidnightUtcIso");
   expect(server).not.toContain("lastContactsInput");
   expect(server).not.toContain("CasePromiseInput");
   expect(server).not.toContain("DASHBOARD_AR_RANGE_DAYS");

@@ -19,14 +19,16 @@ import {
   type AccountLastContactInput,
 } from "../lib/accounts";
 import type { CustomerInput, InvoiceInput } from "../lib/worklist";
+import { PEEK_WINDOW_DAYS } from "../lib/activity-peek";
 import { loadReplySource, peekWindowStartIso } from "../lib/activity-peek.server";
-import { loadPayerSource } from "../lib/payer-behavior.server";
-import { parseAccountsDensity } from "../lib/queue-chrome";
+import { loadBrokenPromiseCustomers, loadPayerSource } from "../lib/payer-behavior.server";
+import { parseAccountsDensity, accountsHref } from "../lib/queue-chrome";
 import { AppShell } from "../components/AppShell";
 import { SyncIssues } from "../components/SyncIssues";
 import { AccountsMetrics } from "../components/AccountsMetrics";
 import { AccountsDirectory } from "../components/AccountsDirectory";
 import { AccountQuickPanel } from "../components/AccountQuickPanel";
+import { DrawerShell } from "../components/DrawerShell";
 import { pageTitle } from "../lib/meta";
 import type { Route } from "./+types/accounts";
 
@@ -173,22 +175,16 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
   const ownerLabels = new Map(roster.map((m) => [m.userId, m.label]));
 
   const customerIds = customersInput.map((c) => c.id);
-  const brokenPromiseByCustomer = new Map<string, boolean>();
-  const { data: brokenProms } = await supabase
-    .from("promises")
-    .select("case_id")
-    .eq("org_id", org.org_id)
-    .eq("status", "broken");
-  for (const r of (brokenProms as { case_id: string | null }[] | null) ?? []) {
-    const cid = r.case_id ? caseToCustomer.get(r.case_id) : undefined;
-    if (cid) brokenPromiseByCustomer.set(cid, true);
-  }
-  const replySrc = await loadReplySource({
-    supabase,
-    orgId: org.org_id,
-    customerIds,
-    windowStartIso: peekWindowStartIso(today),
-  });
+  const tz = orgConfig.companyProfile.timezone;
+  const [replySrc, brokenPromiseByCustomer] = await Promise.all([
+    loadReplySource({
+      supabase,
+      orgId: org.org_id,
+      customerIds,
+      windowStartIso: peekWindowStartIso(today, PEEK_WINDOW_DAYS, tz),
+    }),
+    loadBrokenPromiseCustomers({ supabase, orgId: org.org_id, caseToCustomer }),
+  ]);
   const payerByCustomer = await loadPayerSource({
     supabase,
     orgId: org.org_id,
@@ -196,6 +192,7 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
     today,
     brokenPromiseByCustomer,
     replyByCustomer: replySrc.replyByCustomer,
+    replyTruncated: replySrc.truncated,
   });
 
   // --- Build rows ---
@@ -271,8 +268,22 @@ export default function Accounts() {
             selectedId={d.selected?.customerId ?? null}
             timeZone={d.timeZone}
           />
-          <AccountQuickPanel account={d.selected} />
+          <div className="hidden lg:block">
+            <AccountQuickPanel account={d.selected} />
+          </div>
         </div>
+        {/* Below lg the selection opens as a drawer — no dead-end at the page bottom */}
+        {d.selected ? (
+          <div className="lg:hidden">
+            <DrawerShell
+              label={`Account — ${d.selected.name}`}
+              closeHref={accountsHref({ filter: d.filter, sort: d.sort, q: d.q || undefined, density: d.densityFromUrl ? d.density : undefined })}
+              maxWidth="max-w-[420px]"
+            >
+              <AccountQuickPanel account={d.selected} />
+            </DrawerShell>
+          </div>
+        ) : null}
       </div>
     </AppShell>
   );

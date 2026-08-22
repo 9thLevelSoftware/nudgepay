@@ -24,21 +24,37 @@ function formatShare(n: number | null): string {
 
 export function ArKpiBand({ kpis, isOwner }: { kpis: ArKpis; isOwner: boolean }) {
   const empty = kpis.coverage === "empty";
+  const partial = kpis.coverage === "partial";
   const emptySub = "Connect QuickBooks";
+  const historyPrefix = partial ? "Partial history · " : "";
   const heading = `Receivables (${kpis.rangeDays}d)`;
 
   const dsoValue = empty ? "—" : formatDays(kpis.dso);
-  const dsoSub = empty ? emptySub : `Best possible ${formatDays(kpis.bestPossibleDso)}`;
+  const dsoSub = empty ? emptySub : `${historyPrefix}Best possible ${formatDays(kpis.bestPossibleDso)}`;
   const ceiValue = empty ? "—" : formatCei(kpis.cei);
-  const ceiSub = empty ? emptySub : `${kpis.rangeDays}-day collections effectiveness`;
+  const ceiSub = empty
+    ? emptySub
+    : kpis.cei == null
+      ? `${historyPrefix}No collectible overdue balance`
+      : kpis.collected === 0
+        ? `${historyPrefix}No payments in the last ${kpis.rangeDays} days`
+        : `${historyPrefix}${kpis.rangeDays}-day collections effectiveness`;
   const contactValue = empty ? "—" : formatShare(kpis.contactRate);
   const contactSub = empty
     ? emptySub
-    : `${kpis.inputs.contactedOpenCases} / ${kpis.inputs.openCases} open cases`;
+    : `${historyPrefix}${kpis.inputs.contactedOpenCases} / ${kpis.inputs.openCases} open cases`;
   const promiseValue = empty ? "—" : formatShare(kpis.promiseRate);
-  const promiseSub = empty ? emptySub : "of contacted";
+  const promiseSub = empty
+    ? emptySub
+    : kpis.promiseRate == null
+      ? `${historyPrefix}${kpis.inputs.contactedOpenCases === 0 ? "No contacted cases" : "Unavailable"}`
+      : `${historyPrefix}of contacted`;
   const collectedValue = empty ? "—" : formatUSD(kpis.collected);
-  const collectedSub = empty ? emptySub : `last ${kpis.rangeDays} days`;
+  const collectedSub = empty
+    ? emptySub
+    : kpis.collected === 0
+      ? `${historyPrefix}No payments in the last ${kpis.rangeDays} days`
+      : `${historyPrefix}last ${kpis.rangeDays} days`;
 
   return (
     <div>

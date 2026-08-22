@@ -11,15 +11,19 @@ export type FocusSession = {
   results: Record<string, TriageResult>;
   /** Count of server-write actions (excludes skips). */
   actions: number;
+  /** Immediate undo target; only skips are undoable. */
+  lastAction?: { caseId: string; index: number; result: TriageResult; actions: number } | null;
 };
 
 export type FocusEvent =
   | { type: "resolve"; result: Exclude<TriageResult, "skipped"> }
   | { type: "skip" }
+  | { type: "undo" }
+  | { type: "restore"; session: FocusSession }
   | { type: "restart"; order: string[] };
 
 export function initFocusSession(order: string[]): FocusSession {
-  return { order, index: 0, results: {}, actions: 0 };
+  return { order, index: 0, results: {}, actions: 0, lastAction: null };
 }
 
 export function focusSessionReducer(s: FocusSession, e: FocusEvent): FocusSession {
@@ -32,6 +36,7 @@ export function focusSessionReducer(s: FocusSession, e: FocusEvent): FocusSessio
         index: s.index + 1,
         results: { ...s.results, [caseId]: e.result },
         actions: s.actions + 1,
+        lastAction: null,
       };
     }
     case "skip": {
@@ -42,8 +47,18 @@ export function focusSessionReducer(s: FocusSession, e: FocusEvent): FocusSessio
         index: s.index + 1,
         results: { ...s.results, [caseId]: "skipped" },
         // actions stays the same — skip doesn't count
+        lastAction: { caseId, index: s.index, result: "skipped", actions: s.actions },
       };
     }
+    case "undo": {
+      const action = s.lastAction;
+      if (!action || action.result !== "skipped" || s.index !== action.index + 1) return s;
+      const results = { ...s.results };
+      delete results[action.caseId];
+      return { ...s, index: action.index, results, actions: action.actions, lastAction: null };
+    }
+    case "restore":
+      return e.session;
     case "restart":
       return initFocusSession(e.order);
   }

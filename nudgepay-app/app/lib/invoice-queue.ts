@@ -50,9 +50,12 @@ export function buildInvoiceQueue(args: {
     const ownerId = cust?.owner ?? null;
     const ownerLabel = ownerId ? (args.ownerLabels.get(ownerId) ?? "Unknown") : "Unassigned";
     const cse = inv.customer_id ? args.casesByCustomer.get(inv.customer_id) ?? null : null;
+    // Coming-due (not yet past due) stays caseless so the row is awareness,
+    // not a collections case — j/k opens /accounts/:id.
+    const caseId = ageDays <= 0 ? null : (cse?.caseId ?? null);
     out.push({
       invoiceId: inv.id,
-      caseId: cse?.caseId ?? null,
+      caseId,
       customerId: inv.customer_id,
       customerName: name,
       docNumber: inv.qbo_doc_number,
@@ -64,10 +67,10 @@ export function buildInvoiceQueue(args: {
       heat: heatOf(ageDays),
       owner: ownerLabel,
       ownerId,
-      lastContact: cse?.lastContact ?? null,
-      peeks: cse?.peeks ?? [],
+      lastContact: caseId ? (cse?.lastContact ?? null) : null,
+      peeks: caseId ? (cse?.peeks ?? []) : [],
       payer: inv.customer_id ? args.payerByCustomer.get(inv.customer_id) ?? null : null,
-      suppressed: cse?.suppressed ?? false,
+      suppressed: caseId ? (cse?.suppressed ?? false) : false,
       searchText: [name, inv.qbo_doc_number ?? "", cust?.phone ?? "", cust?.email ?? "", ownerLabel].join(" ").toLowerCase(),
     });
   }
@@ -102,13 +105,49 @@ export function applyInvoiceView(
   },
 ): InvoiceQueueItem[] {
   const highValue = opts.highValue ?? HIGH_VALUE_THRESHOLD;
-  if (view === "coming-due") return [];
-  if (view === "30-plus") return items.filter((i) => i.ageDays >= 30 && !i.suppressed);
-  if (view === "high-value") return items.filter((i) => i.balance >= highValue && !i.suppressed);
-  if (view === "never-contacted") return items.filter((i) => i.lastContact === null && !i.suppressed);
-  if (view === "my-work") {
-    return items.filter((i) => i.ownerId != null && i.ownerId === opts.currentUserId);
+  const byMatchingCase = () =>
+    items.filter((i) => i.caseId != null && opts.matchingCaseIds.has(i.caseId));
+  switch (view) {
+    case "coming-due":
+      return [];
+    case "30-plus":
+      return items.filter((i) => i.ageDays >= 30 && !i.suppressed);
+    case "high-value":
+      return items.filter((i) => i.balance >= highValue && !i.suppressed);
+    case "never-contacted":
+      return items.filter((i) => i.lastContact === null && !i.suppressed);
+    case "follow-ups-due":
+    case "broken-promises":
+    case "waiting":
+      return byMatchingCase();
+    case "on-hold":
+      return items.filter((i) => i.suppressed);
+    case "my-work":
+      return items.filter((i) => i.ownerId != null && i.ownerId === opts.currentUserId);
+    case "all-open":
+      return items.filter((i) => !i.suppressed);
+    default: {
+      const _exhaustive: never = view;
+      return _exhaustive;
+    }
   }
-  if (view === "all-open") return items.filter((i) => !i.suppressed);
-  return items.filter((i) => i.caseId != null && opts.matchingCaseIds.has(i.caseId));
+}
+
+/** Select-all cap: cased invoices belong to at most `maxCases`; caseless rows are uncapped. */
+export function clampInvoiceBatch(
+  items: { invoiceId: string; caseId: string | null }[],
+  maxCases: number,
+): string[] {
+  const cases = new Set<string>();
+  const out: string[] = [];
+  for (const i of items) {
+    if (i.caseId == null) {
+      out.push(i.invoiceId);
+      continue;
+    }
+    if (!cases.has(i.caseId) && cases.size >= maxCases) continue;
+    cases.add(i.caseId);
+    out.push(i.invoiceId);
+  }
+  return out;
 }

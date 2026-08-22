@@ -101,6 +101,7 @@ test("collapsePeeks sorts newest first, dedupes, and caps at three", () => {
 
 test("peekWindowStartIso is 90 days before the org-local today", () => {
   expect(peekWindowStartIso("2026-06-22")).toBe("2026-03-24T00:00:00.000Z");
+  expect(peekWindowStartIso("2026-06-22", 90, "America/New_York")).toBe("2026-03-24T04:00:00.000Z");
 });
 
 type TableRows = { rows: Record<string, unknown>[]; count?: number };

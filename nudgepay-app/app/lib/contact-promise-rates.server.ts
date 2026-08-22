@@ -7,7 +7,7 @@ import { chunkIds, orderPage, pageAll, pageAllChunked, PAGE_ALL_MAX_ROWS } from 
 
 type LogRow = { case_id: string | null; method: string | null };
 type MsgRow = { case_id: string | null };
-type PromiseRow = { id: string };
+type PromiseRow = { case_id: string | null };
 
 const CONTACT_METHODS = ["call", "text", "email"] as const;
 
@@ -69,18 +69,23 @@ export async function loadContactPromiseRates(args: {
             ).range(from, to),
           { maxRows: PAGE_ALL_MAX_ROWS },
         ),
-    pageAll<PromiseRow>(
-      (from, to) =>
-        orderPage(
-          supabase
-            .from("promises")
-            .select("id", { count: "exact" })
-            .eq("org_id", orgId)
-            .gte("created_at", windowStartIso)
-            .neq("status", "cancelled"),
-        ).range(from, to),
-      { maxRows: PAGE_ALL_MAX_ROWS },
-    ),
+    chunks.length === 0
+      ? Promise.resolve({ rows: [] as PromiseRow[], truncated: false })
+      : pageAllChunked<PromiseRow>(
+          chunks,
+          (ids, from, to) =>
+            orderPage(
+              supabase
+                .from("promises")
+                .select("case_id", { count: "exact" })
+                .eq("org_id", orgId)
+                .in("case_id", ids)
+                .gte("created_at", windowStartIso)
+                .lte("created_at", new Date().toISOString())
+                .neq("status", "cancelled"),
+            ).range(from, to),
+          { maxRows: PAGE_ALL_MAX_ROWS },
+        ),
   ]);
 
   const openSet = new Set(openCaseIds);
@@ -94,9 +99,16 @@ export async function loadContactPromiseRates(args: {
   for (const r of texts.rows) add(r.case_id);
   for (const r of emails.rows) add(r.case_id);
 
+  const promiseCases = new Set<string>();
+  for (const r of promises.rows) {
+    // A promise only contributes when its case is both open and contacted in
+    // this window. This keeps the numerator a subset of the denominator.
+    if (r.case_id && contacted.has(r.case_id)) promiseCases.add(r.case_id);
+  }
+
   return {
     contactedOpenCaseIds: [...contacted],
-    promisesCreated: promises.rows.length,
+    promisesCreated: promiseCases.size,
     truncated: logs.truncated || texts.truncated || emails.truncated || promises.truncated,
   };
 }

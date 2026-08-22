@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Link, useLocation, useNavigate, useNavigation, useSearchParams } from "react-router";
 import { HEARTBEAT_INTERVAL_MS, type Collision } from "~/lib/collision";
 import { previewWorkspaceInvoices, type CaseInvoice, type CaseItem } from "~/lib/cases";
@@ -15,7 +15,7 @@ import { STATUS_LABEL, EXCEPTION_REASON_LABEL, formatUSD } from "~/lib/format";
 import { isContactBlocked, isTerminal, exceptionLabel } from "~/lib/exceptions";
 import { smsGateFor } from "~/lib/sms-gate";
 import { whyNow } from "~/lib/next-best-action";
-import { nextActionLabel, emailFailureLabel, isHardBounce, plural } from "~/lib/labels";
+import { nextActionLabel, emailFailureLabel, smsFailureLabel, isHardBounce, plural } from "~/lib/labels";
 import type { MessageEntry, EmailMessageEntry, RosterMember } from "~/routes/dashboard";
 import { isTimelinePromiseBroken, type TimelineEntry } from "~/lib/timeline";
 import { canSendEmail, type CommPrefs } from "~/lib/comm-prefs";
@@ -137,7 +137,7 @@ const CHASE_CHANNEL_LABEL: Record<"sms" | "email" | "call", string> = {
 function MessagesTab({
   selected, invoices, repInvoiceId, messages, consent, prefs, phone, sms, smsEnabled, smsQuietNow, quietHoursLabel,
   view, sort, q, density, entity, invoice, collision,
-  smsTemplates, orgCompany, orgPhone, orgPaymentLink, timeZone,
+  smsTemplates, orgCompany, orgPhone, orgPaymentLink, timeZone, composerRef,
 }: {
   selected: CaseItem;
   invoices: CaseInvoice[];
@@ -162,6 +162,7 @@ function MessagesTab({
   orgPhone: string;
   orgPaymentLink: string;
   timeZone?: string | null;
+  composerRef: React.RefObject<HTMLDivElement | null>;
 }) {
   const returnTo = `/dashboard${panelHref(view, sort, q, density, { case: selected.caseId, tab: "messages", entity, invoice })}`;
   const prefsHref = panelHref(view, sort, q, density, { case: selected.caseId, tab: "messages", prefs: "1", entity, invoice });
@@ -173,7 +174,7 @@ function MessagesTab({
   const vars: TemplateVars = {
     customer: selected.customerName,
     invoice:  repInvoice?.docNumber ?? selected.customerName,
-    balance:  formatUSD(selected.totalOverdue),
+    balance:  formatUSD(repInvoice?.balance ?? selected.totalOverdue),
     dueDate:  formatDate(repInvoice?.dueDate ?? null),
     company: orgCompany,
     phone: orgPhone,
@@ -270,7 +271,12 @@ function MessagesTab({
       </div>
 
       {/* Templates + composer */}
-      <div className="border-t border-border px-5 py-3 shrink-0">
+      <div
+        ref={composerRef}
+        tabIndex={-1}
+        aria-label="Text message composer"
+        className="border-t border-border px-5 py-3 shrink-0 focus-visible:outline-none"
+      >
         {smsQuietNow && (
           <p
             className="mb-2 rounded-md border border-warm/30 bg-warm/10 px-3 py-2 text-xs font-sans font-medium text-warm"
@@ -284,7 +290,7 @@ function MessagesTab({
             className={`mb-2 rounded-md px-3 py-2 text-xs font-sans font-medium ${
               smsGate.severity === "hard"
                 ? "bg-hot/10 border border-hot/30 text-hot"
-                : "bg-advisory/10 border border-advisory/30 text-advisory"
+                : "bg-warm/10 border border-warm/30 text-warm"
             }`}
             role={smsGate.severity === "hard" ? "alert" : "status"}
           >
@@ -329,7 +335,7 @@ function MessagesTab({
             className="w-full resize-none rounded-md border border-border bg-panel px-3 py-2 text-sm font-sans text-text placeholder:text-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-copper disabled:opacity-40 disabled:cursor-not-allowed"
           />
           {confirmSend ? (
-            <p className="text-xs font-sans text-advisory" role="alert">
+            <p className="text-xs font-sans text-warm" role="alert">
               {collision?.level === "live"
                 ? `${collision.byUser} is viewing this customer now. Send anyway?`
                 : `${collision?.byUser} contacted this customer recently. Send anyway?`}
@@ -354,7 +360,7 @@ function MessagesTab({
 
 function EmailTab({
   selected, invoices, repInvoiceId, emailMessages, prefs, customerEmail, emailEnabled,
-  view, sort, q, density, entity, invoice, emailTemplates, orgCompany, orgPhone, orgPaymentLink, timeZone,
+  view, sort, q, density, entity, invoice, emailTemplates, orgCompany, orgPhone, orgPaymentLink, timeZone, composerRef,
 }: {
   selected: CaseItem;
   invoices: CaseInvoice[];
@@ -374,6 +380,7 @@ function EmailTab({
   orgPhone: string;
   orgPaymentLink: string;
   timeZone?: string | null;
+  composerRef: React.RefObject<HTMLDivElement | null>;
 }) {
   const [searchParams] = useSearchParams();
   const emailResult = searchParams.get("email");
@@ -388,7 +395,7 @@ function EmailTab({
   const vars: TemplateVars = {
     customer: selected.customerName,
     invoice:  repInvoice?.docNumber ?? selected.customerName,
-    balance:  formatUSD(selected.totalOverdue),
+    balance:  formatUSD(repInvoice?.balance ?? selected.totalOverdue),
     dueDate:  formatDate(repInvoice?.dueDate ?? null),
     company: orgCompany,
     phone: orgPhone,
@@ -477,7 +484,12 @@ function EmailTab({
       </div>
 
       {/* Template picker + composer */}
-      <div className="border-t border-border px-5 py-3 shrink-0">
+      <div
+        ref={composerRef}
+        tabIndex={-1}
+        aria-label="Email composer"
+        className="border-t border-border px-5 py-3 shrink-0 focus-visible:outline-none"
+      >
         {/* Template select — fills subject + body on change */}
         <select
           defaultValue=""
@@ -666,12 +678,31 @@ export function DetailPanel({
   const formBusy = (action: string) => navigation.state !== "idle" && navigation.formAction === action;
   const [confirmCancelPromise, setConfirmCancelPromise] = useState(false);
   const [showAllInvoices, setShowAllInvoices] = useState(false);
+  const [hashHistory, setHashHistory] = useState(false);
+  const composerRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const sync = () => setHashHistory(window.location.hash === "#history");
+    sync();
+    window.addEventListener("hashchange", sync);
+    return () => window.removeEventListener("hashchange", sync);
+  }, [location.hash]);
 
   // Reset confirm / invoice-preview state when case changes
   useEffect(() => {
     setConfirmCancelPromise(false);
     setShowAllInvoices(false);
   }, [customerId]);
+
+  // Tab links update URL state while preserving the panel instance. Bring the
+  // active composer into view so Email/Messages never appear to do nothing.
+  useEffect(() => {
+    if (activeTab !== "messages" && activeTab !== "email") return;
+    const frame = window.requestAnimationFrame(() => {
+      composerRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+      composerRef.current?.focus({ preventScroll: true });
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [activeTab, customerId]);
 
   // Auto-reset cancel confirmation after 5s; cleanup prevents stale timers
   useEffect(() => {
@@ -709,7 +740,7 @@ export function DetailPanel({
 
   const callAction = resolveCallAction(prefs, selected.phone, selected.contactBlocked);
   const callLogHref = panelHref(view, sort, q, density, { ...hrefBase, tab, log: "1", method: "call" });
-  const historyExpanded = location.hash === "#history" || activeTab === "activity";
+  const historyExpanded = hashHistory || location.hash === "#history" || activeTab === "activity";
   const chase = chaseRecipientsFrom({
     phone: phone ?? selected.phone,
     email: customerEmail ?? selected.email,
@@ -718,6 +749,7 @@ export function DetailPanel({
     contactBlocked: selected.contactBlocked,
     exceptionReason: selected.exceptionReason,
     smsEnabled,
+    emailEnabled: emailEnabled ?? false,
     hasInvoice: invoices.length > 0,
   });
   const visibleInvoices = showAllInvoices
@@ -858,12 +890,17 @@ export function DetailPanel({
           role="status"
           className={
             collision.level === "live"
-              ? "mx-5 mt-3 rounded-md border border-advisory/40 bg-advisory/10 px-3 py-2 text-xs font-sans text-advisory"
+              ? "mx-5 mt-3 rounded-md border border-warm/40 bg-warm/10 px-3 py-2 text-xs font-sans text-warm"
               : "mx-5 mt-3 rounded-md border border-border bg-panel px-3 py-2 text-xs font-sans text-muted"
           }
         >
           {collision.level === "live"
-            ? `⚠ ${collision.liveUsers.join(", ")} ${collision.liveUsers.length > 1 ? "are" : "is"} viewing this customer now`
+            ? (
+              <span className="inline-flex items-center gap-1">
+                <Icon name="alert" size={12} aria-hidden="true" />
+                {collision.liveUsers.join(", ")} {collision.liveUsers.length > 1 ? "are" : "is"} viewing this customer now
+              </span>
+            )
             : `Last contacted by ${collision.byUser}`}
         </div>
       ) : null}
@@ -979,7 +1016,7 @@ export function DetailPanel({
               </span>
               <span className={`text-sm font-sans font-semibold ${LEVEL_TONE[selected.effectiveLevel] ?? "text-text"}`}>
                 {selected.effectiveLevel}
-                {selected.override ? <span aria-hidden> 📌</span> : null}
+                {selected.override ? <Icon name="pin" size={12} aria-hidden="true" className="ml-0.5 inline" /> : null}
               </span>
             </div>
 
@@ -1227,6 +1264,7 @@ export function DetailPanel({
           orgPhone={orgPhone}
           orgPaymentLink={orgPaymentLink}
           timeZone={timeZone}
+          composerRef={composerRef}
         />
       ) : null}
 
@@ -1251,6 +1289,7 @@ export function DetailPanel({
           orgPhone={orgPhone}
           orgPaymentLink={orgPaymentLink}
           timeZone={timeZone}
+          composerRef={composerRef}
         />
       ) : null}
     </aside>
@@ -1291,7 +1330,9 @@ function TimelineList({
                   <span className="text-xs text-muted whitespace-pre-wrap line-clamp-3">{e.body}</span>
                 ) : null}
                 {e.errorCode ? (
-                  <span className="text-xs font-sans text-hot">Error {e.errorCode}</span>
+                  <span className="text-xs font-sans text-hot" title={`Provider code ${e.errorCode}`}>
+                    {smsFailureLabel(e.errorCode)}
+                  </span>
                 ) : null}
               </div>
             </li>

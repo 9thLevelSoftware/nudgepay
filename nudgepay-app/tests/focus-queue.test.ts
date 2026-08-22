@@ -17,7 +17,7 @@ function stub(overrides: Partial<CaseItem> & { caseId: string }): CaseItem {
     invoiceCount: overrides.invoiceCount ?? 1,
     oldestAgeDays: overrides.oldestAgeDays ?? 30,
     heat: overrides.heat ?? { band: "warm", label: "WARM", days: 30 },
-    priority: overrides.priority ?? { level: "Medium", tone: "warm", reason: "30d", rank: 3, factors: [] },
+    priority: overrides.priority ?? { level: "Medium", tone: "warm", reason: "30d", rank: 3 },
     score: overrides.score ?? 30,
     factors: overrides.factors ?? [],
     effectiveLevel: overrides.effectiveLevel ?? "Medium",
@@ -70,6 +70,17 @@ test("falls back to all-open when user owns nothing", () => {
   const { queue, scope } = buildFocusQueue(items, TODAY, USER);
   expect(scope).toBe("all-open");
   expect(queue).toHaveLength(2);
+});
+
+test("my-work includes urgent unassigned cases", () => {
+  const items = [
+    stub({ caseId: "mine", ownerId: USER, effectiveLevel: "Medium", score: 80 }),
+    stub({ caseId: "urgent", ownerId: null, effectiveLevel: "High", score: 50 }),
+    stub({ caseId: "normal-unassigned", ownerId: null, effectiveLevel: "Medium", score: 99 }),
+  ];
+  const { queue, scope } = buildFocusQueue(items, TODAY, USER);
+  expect(scope).toBe("my-work");
+  expect(queue.map((c) => c.caseId)).toEqual(["urgent", "mine"]);
 });
 
 test("suppressed cases excluded from my-work scope", () => {

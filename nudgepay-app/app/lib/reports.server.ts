@@ -5,10 +5,10 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { listOrgMembers } from "./orgs.server";
 import { addCalendarDays } from "./business-days";
 import { loadOrgConfig } from "./org-config.server";
-import { todayInTz } from "./tz";
+import { localMidnightUtcIso, todayInTz } from "./tz";
 import { isCaseSuppressed } from "./exceptions";
 import type { ExceptionReason } from "./contact-log";
-import { buildArKpis, type ArKpis } from "./ar-kpis";
+import { buildArAgingBuckets, buildArKpis, type ArKpis } from "./ar-kpis";
 import { loadArKpiSource } from "./ar-kpis.server";
 import { loadContactPromiseRates } from "./contact-promise-rates.server";
 import { orderPage, pageAll, PAGE_ALL_MAX_ROWS } from "./page-all";
@@ -34,8 +34,9 @@ export async function loadTeamReport(args: {
   const { supabase, service, orgId, range } = args;
 
   const orgConfig = await loadOrgConfig(supabase, orgId);
-  const today = todayInTz(orgConfig.companyProfile.timezone);
-  const windowStart = addCalendarDays(today, -range);
+  const tz = orgConfig.companyProfile.timezone;
+  const today = todayInTz(tz);
+  const windowStartIso = localMidnightUtcIso(addCalendarDays(today, -range), tz);
 
   const roster = (await listOrgMembers(service, orgId)).map((m) => ({ userId: m.userId, label: m.label }));
 
@@ -43,7 +44,7 @@ export async function loadTeamReport(args: {
     .from("contact_logs")
     .select("user_id, case_id, created_at")
     .eq("org_id", orgId)
-    .gte("created_at", windowStart);
+    .gte("created_at", windowStartIso);
   const contactLogs: ReportContactLog[] = ((logRows as any[]) ?? []).map((r) => ({
     userId: r.user_id, caseId: r.case_id ?? null, createdAt: r.created_at,
   }));
@@ -53,7 +54,7 @@ export async function loadTeamReport(args: {
     .select("created_by, status, resolved_at")
     .eq("org_id", orgId)
     .in("status", ["kept", "partially_kept", "broken"])
-    .gte("resolved_at", windowStart);
+    .gte("resolved_at", windowStartIso);
   const promises: ReportPromise[] = ((promRows as any[]) ?? []).map((r) => ({
     createdBy: r.created_by ?? null, status: r.status, resolvedAt: r.resolved_at ?? null,
   }));
@@ -62,7 +63,7 @@ export async function loadTeamReport(args: {
     .from("collection_cases")
     .select("id, opened_at")
     .eq("org_id", orgId)
-    .gte("opened_at", windowStart);
+    .gte("opened_at", windowStartIso);
   const openedCases: ReportOpenedCase[] = ((openedRows as any[]) ?? []).map((r) => ({
     caseId: r.id, openedAt: r.opened_at,
   }));
@@ -115,7 +116,7 @@ export async function loadTeamReport(args: {
     hasBrokenPromise: brokenCaseIds.has(c.id),
   }));
 
-  return buildTeamReport({ range, roster, contactLogs, promises, openedCases, workloadCases, today });
+  return buildTeamReport({ range, roster, contactLogs, promises, openedCases, workloadCases, today, timeZone: tz });
 }
 
 // Selected 7/30/90 window — not Stage-2 last-contact / case-promise inputs,
@@ -127,8 +128,9 @@ export async function loadReportArKpis(args: {
 }): Promise<ArKpis> {
   const { supabase, orgId, range } = args;
   const orgConfig = await loadOrgConfig(supabase, orgId);
-  const today = todayInTz(orgConfig.companyProfile.timezone);
-  const windowStartIso = `${addCalendarDays(today, -range)}T00:00:00.000Z`;
+  const tz = orgConfig.companyProfile.timezone;
+  const today = todayInTz(tz);
+  const windowStartIso = localMidnightUtcIso(addCalendarDays(today, -range), tz);
 
   const [arSrc, openCases] = await Promise.all([
     loadArKpiSource({ supabase, orgId, today, rangeDays: range }),
@@ -158,7 +160,7 @@ export async function loadReportArKpis(args: {
     supabase, orgId, windowStartIso, openCaseIds,
   });
 
-  return buildArKpis({
+  const kpis = buildArKpis({
     open: arSrc.open,
     salesLookback: arSrc.salesLookback,
     payments: arSrc.payments,
@@ -169,4 +171,5 @@ export async function loadReportArKpis(args: {
     promisesCreatedInWindow: rates.promisesCreated,
     truncated: { ...arSrc.truncated, contact: rates.truncated || openCases.truncated },
   });
+  return { ...kpis, agingBuckets: buildArAgingBuckets(arSrc.open, today) };
 }

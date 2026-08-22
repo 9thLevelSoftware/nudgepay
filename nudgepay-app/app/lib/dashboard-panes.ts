@@ -17,7 +17,8 @@ export function queuePaneClass(caseOpen: boolean): string {
 export function detailPaneClass(): string {
   return [
     "min-h-0 min-w-0 flex-1 overflow-hidden",
-    "md:flex-none md:w-[28rem] lg:w-[36rem] xl:w-[48rem]",
+    // Cap the detail pane so the queue keeps breathing room on wide screens.
+    "md:flex-none md:w-[28rem] lg:w-[30rem] xl:w-[28rem]",
     "md:border-l border-border shadow-panel",
   ].join(" ");
 }

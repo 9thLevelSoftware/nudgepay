@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { Form } from "react-router";
+import { Icon } from "./Icons";
 
 export type SyncIssue = {
   id: string;
@@ -56,13 +57,13 @@ export function SyncIssues({ issues, returnTo }: { issues: SyncIssue[]; returnTo
       <button
         ref={triggerRef}
         type="button"
-        className="hidden sm:inline-flex items-center gap-1.5 rounded-md border border-advisory/40 bg-advisory/10 px-2.5 h-8 text-xs font-sans text-advisory hover:border-advisory/60 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-copper"
+        className="inline-flex items-center gap-1.5 rounded-md border border-warm/40 bg-warm/10 px-2.5 h-8 text-xs font-sans text-warm hover:border-warm/60 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-copper"
         aria-haspopup="dialog"
         aria-expanded={open}
         aria-label={`${label} — show details`}
         onClick={() => setOpen((v) => !v)}
       >
-        <span aria-hidden="true">⚠</span>
+        <Icon name="alert" size={13} aria-hidden="true" />
         <span>{issues.length}</span>
       </button>
 

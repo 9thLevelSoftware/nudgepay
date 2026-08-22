@@ -38,7 +38,7 @@ export function TriageStrip({ items, view, sort, search, density, entity, timeZo
         Start here
       </p>
       <div className="flex gap-3 overflow-x-auto snap-x snap-mandatory scrollbar-none">
-        {top.map((item) => {
+        {top.map((item, idx) => {
           const nba = whyNow(item, timeZone);
           const border = BORDER[item.heat.band] ?? "border-l-muted";
           return (
@@ -46,7 +46,7 @@ export function TriageStrip({ items, view, sort, search, density, entity, timeZo
               key={item.caseId}
               to={dashboardHref({ view, sort, q: search || undefined, entity, density, case: item.caseId })}
               className={[
-                "snap-start shrink-0 flex flex-col gap-1 rounded-lg border border-l-[3px] bg-surface px-4 py-3 min-w-[200px] max-w-[280px]",
+                "snap-start shrink-0 flex flex-col gap-1 rounded-lg border border-l-[3px] bg-surface px-4 py-3 w-[240px]",
                 "hover:border-copper/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-copper transition-colors",
                 border,
               ].join(" ")}
@@ -55,8 +55,11 @@ export function TriageStrip({ items, view, sort, search, density, entity, timeZo
                 <span className="font-sans text-sm font-semibold text-text truncate">
                   {item.customerName}
                 </span>
-                <span className="font-mono text-xs text-copper font-semibold tabular-nums shrink-0">
-                  {formatUSD(item.totalOverdue)}
+                <span className="flex items-center gap-2 shrink-0">
+                  <span className="font-mono text-[10px] font-semibold text-muted">#{idx + 1}</span>
+                  <span className="font-mono text-xs text-copper font-semibold tabular-nums">
+                    {formatUSD(item.totalOverdue)}
+                  </span>
                 </span>
               </span>
               <span className="text-xs font-sans font-medium text-text leading-snug line-clamp-1">

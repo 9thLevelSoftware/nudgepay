@@ -3,6 +3,7 @@ import { expect, test } from "vitest";
 import { ageInDays } from "../app/lib/worklist";
 import {
   arKpisToCsv,
+  buildArAgingBuckets,
   buildArKpis,
   countbackDso,
   salesByDateFrom,
@@ -14,6 +15,18 @@ import { loadArKpiSource } from "../app/lib/ar-kpis.server";
 import { loadContactPromiseRates } from "../app/lib/contact-promise-rates.server";
 
 const TODAY = "2026-08-21";
+
+test("buildArAgingBuckets groups open balances by due-date age", () => {
+  const buckets = buildArAgingBuckets([
+    { amount: 100, balance: 100, invoiceDate: null, dueDate: null, customerId: "c1" },
+    { amount: 200, balance: 200, invoiceDate: null, dueDate: "2026-08-20", customerId: "c2" },
+    { amount: 300, balance: 300, invoiceDate: null, dueDate: "2026-07-21", customerId: "c3" },
+    { amount: 400, balance: 400, invoiceDate: null, dueDate: "2026-06-21", customerId: "c4" },
+    { amount: 500, balance: 500, invoiceDate: null, dueDate: "2026-05-01", customerId: "c5" },
+  ], TODAY);
+  expect(buckets.map((bucket) => bucket.amount)).toEqual([100, 200, 300, 400, 500]);
+  expect(buckets.map((bucket) => bucket.count)).toEqual([1, 1, 1, 1, 1]);
+});
 
 function kpis(overrides: Partial<Parameters<typeof buildArKpis>[0]> = {}) {
   return buildArKpis({
@@ -147,6 +160,24 @@ test("credit sales and collections use the range window; credit memos are not co
   expect(result.inputs.creditSales).toBe(500);
   expect(result.inputs.collections).toBe(200);
   expect(result.collected).toBe(200);
+  // beginning AR = 1000 - 500 + 200 + 75 (credit memo) = 775
+  expect(result.cei).not.toBeNull();
+});
+
+test("CEI beginning AR includes credit memos as AR reductions", () => {
+  const result = kpis({
+    open: [{ amount: 1000, balance: 1000, invoiceDate: "2026-06-01", dueDate: "2026-06-15", customerId: "c1" }],
+    salesLookback: [{ invoiceDate: "2026-08-01", amount: 400 }],
+    payments: [
+      { amount: 300, txnDate: "2026-08-10", type: "payment" },
+      { amount: 100, txnDate: "2026-08-10", type: "credit_memo" },
+    ],
+  });
+  // beginning = 1000 - 400 + 300 + 100 = 1000
+  // numerator = 1000 + 400 - 1000 = 400
+  // denominator = 1000 + 400 - 0 = 1400
+  expect(result.collected).toBe(300);
+  expect(result.cei).toBeCloseTo(100 * 400 / 1400, 10);
 });
 
 test("CEI reconstructs beginning AR and is null when the denominator is not positive", () => {
@@ -405,9 +436,11 @@ test("loadContactPromiseRates counts customer contacts, outbound messages, and c
     },
     promises: {
       rows: [
-        { org_id: "org-1", id: "p1", status: "pending", created_at: "2026-08-10T10:00:00Z" },
-        { org_id: "org-1", id: "p2", status: "cancelled", created_at: "2026-08-10T10:00:00Z" },
-        { org_id: "org-1", id: "p3", status: "kept", created_at: "2026-08-10T10:00:00Z" },
+        { org_id: "org-1", case_id: "c1", status: "pending", created_at: "2026-08-10T10:00:00Z" },
+        { org_id: "org-1", case_id: "c1", status: "cancelled", created_at: "2026-08-10T10:00:00Z" },
+        { org_id: "org-1", case_id: "c2", status: "kept", created_at: "2026-08-10T10:00:00Z" },
+        { org_id: "org-1", case_id: "c9", status: "pending", created_at: "2026-08-10T10:00:00Z" },
+        { org_id: "org-1", case_id: "c1", status: "pending", created_at: "2026-08-11T10:00:00Z" },
       ],
     },
   });
@@ -418,7 +451,7 @@ test("loadContactPromiseRates counts customer contacts, outbound messages, and c
     openCaseIds: ["c1", "c2", "c3"],
   });
   expect(result.contactedOpenCaseIds.sort()).toEqual(["c1", "c2", "c3"]);
-  expect(result.promisesCreated).toBe(2);
+  expect(result.promisesCreated).toBe(2); // c1/c2 contacted; c9 is outside the open/contacted cohort
   expect(result.truncated).toBe(false);
   expect(calls.filter((c) => c.table === "contact_logs")[0]?.filters.some((f) => f.method === "in" && f.args[0] === "method")).toBe(true);
   expect(calls.filter((c) => c.table === "text_messages")[0]?.filters.some((f) => f.method === "eq" && f.args[0] === "direction" && f.args[1] === "outbound")).toBe(true);
@@ -426,9 +459,9 @@ test("loadContactPromiseRates counts customer contacts, outbound messages, and c
   expect(calls.every((c) => JSON.stringify(c.orders) === JSON.stringify(STABLE_PAGE_ORDER))).toBe(true);
 });
 
-test("loadContactPromiseRates skips contact queries when there are no open cases", async () => {
+test("loadContactPromiseRates skips all rate queries when there are no open cases", async () => {
   const { client, calls } = makeClient({
-    promises: { rows: [{ org_id: "org-1", id: "p1", status: "pending", created_at: "2026-08-10T10:00:00Z" }] },
+    promises: { rows: [{ org_id: "org-1", case_id: "c9", status: "pending", created_at: "2026-08-10T10:00:00Z" }] },
   });
   const result = await loadContactPromiseRates({
     supabase: client,
@@ -437,9 +470,9 @@ test("loadContactPromiseRates skips contact queries when there are no open cases
     openCaseIds: [],
   });
   expect(result.contactedOpenCaseIds).toEqual([]);
-  expect(result.promisesCreated).toBe(1);
+  expect(result.promisesCreated).toBe(0);
   expect(result.truncated).toBe(false);
-  expect(calls.map((c) => c.table)).toEqual(["promises"]);
+  expect(calls.map((c) => c.table)).toEqual([]);
 });
 
 test("loadContactPromiseRates flags truncation and does not throw", async () => {
@@ -448,7 +481,7 @@ test("loadContactPromiseRates flags truncation and does not throw", async () => 
       rows: [{ org_id: "org-1", case_id: "c1", method: "call", created_at: "2026-08-10T10:00:00Z" }],
       count: 6000,
     },
-    promises: { rows: [{ org_id: "org-1", id: "p1", status: "pending", created_at: "2026-08-10T10:00:00Z" }] },
+    promises: { rows: [{ org_id: "org-1", case_id: "c9", status: "pending", created_at: "2026-08-10T10:00:00Z" }] },
   });
   const result = await loadContactPromiseRates({
     supabase: client,
@@ -469,6 +502,9 @@ test("dashboard places ArKpiBand above KpiBand and links reports for owners only
   expect(dashboard).toContain("loadContactPromiseRates");
   expect(dashboard).toContain("DASHBOARD_AR_RANGE_DAYS");
   expect(dashboard).toContain("contact: rates.truncated");
+  expect(dashboard).toContain("peekWindowStartIso(today, PEEK_WINDOW_DAYS, tz)");
+  expect(dashboard).toContain("loadBrokenPromiseCustomers");
+  expect(dashboard).toContain("localMidnightUtcIso");
   expect(band).toContain('to="/reports"');
   expect(band).toContain("isOwner");
   expect(band).not.toMatch(/<MetricTile[^>]*href=/);
