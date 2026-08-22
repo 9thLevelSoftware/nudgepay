@@ -342,6 +342,7 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
   let selectedTimeline: TimelineEntry[] = [];
   let selectedMessages: MessageEntry[] = [];
   let selectedConsent = false;
+  let selectedSmsConsentSource: "inbound_stop" | "inbound_start" | "staff" | "import" | "unknown" | null = null;
   let selectedPhone: string | null = null;
   let selectedPrefs: CommPrefs = DEFAULT_COMM_PREFS;
   let selectedRepInvoiceId: string | null = null;
@@ -500,7 +501,7 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
         { maxRows: PAGE_ALL_MAX_ROWS },
       ),
       supabase
-        .from("customers").select("phone, email, sms_consent, preferred_channel, do_not_call, do_not_text, do_not_email").eq("id", customerId).maybeSingle(),
+        .from("customers").select("phone, email, sms_consent, sms_consent_source, preferred_channel, do_not_call, do_not_text, do_not_email").eq("id", customerId).maybeSingle(),
       supabase
         .from("promises").select("id").eq("org_id", org.org_id).eq("case_id", sel.caseId).eq("status", "pending").maybeSingle(),
       pageAll<EmailRow>(
@@ -549,6 +550,7 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
 
     // Consent + phone + email prefs from the customer.
     selectedConsent = (custRow as any)?.sms_consent ?? false;
+    selectedSmsConsentSource = (custRow as any)?.sms_consent_source ?? null;
     selectedPhone = (custRow as any)?.phone ?? null;
     selectedPrefs = resolveCommPrefs(custRow as any);
     selectedCustomerEmail = (custRow as any)?.email ?? null;
@@ -601,6 +603,7 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
       selectedTimeline,
       selectedMessages,
       selectedConsent,
+      selectedSmsConsentSource,
       selectedPhone,
       selectedPrefs,
       selectedPromiseId,
@@ -675,6 +678,7 @@ export default function Dashboard() {
     selectedTimeline,
     selectedMessages,
     selectedConsent,
+    selectedSmsConsentSource,
     selectedPhone,
     selectedPrefs,
     selectedPromiseId,
@@ -859,6 +863,8 @@ export default function Dashboard() {
                   timeline={selectedTimeline}
                   messages={selectedMessages}
                   consent={selectedConsent}
+                  smsConsentSource={selectedSmsConsentSource}
+                  isOwner={isOwner}
                   prefs={selectedPrefs}
                   phone={selectedPhone}
                   selectedPromiseId={selectedPromiseId}

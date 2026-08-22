@@ -122,7 +122,9 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
   const custChunks = chunkIds(customerIds, 100);
   type CustRow = {
     id: string; name: string | null; phone: string | null; email: string | null; owner: string | null;
-    sms_consent: boolean | null; preferred_channel: string | null; do_not_call: boolean | null;
+    sms_consent: boolean | null;
+    sms_consent_source: "inbound_stop" | "inbound_start" | "staff" | "import" | "unknown" | null;
+    preferred_channel: string | null; do_not_call: boolean | null;
     do_not_text: boolean | null; do_not_email: boolean | null;
   };
   type CaseLookupRow = { id: string; customer_id: string; closed_at: string | null; exception_reason: string | null };
@@ -142,7 +144,7 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
             orderPage(
               supabase
                 .from("customers")
-                .select("id, name, phone, email, owner, sms_consent, preferred_channel, do_not_call, do_not_text, do_not_email", { count: "exact" })
+                .select("id, name, phone, email, owner, sms_consent, sms_consent_source, preferred_channel, do_not_call, do_not_text, do_not_email", { count: "exact" })
                 .eq("org_id", org.org_id)
                 .in("id", ids),
             ).range(from, to),
@@ -272,12 +274,14 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
   let selectedMessages: MessageEntry[] = [];
   let selectedEmailMessages: EmailMessageEntry[] = [];
   let selectedConsent = false;
+  let selectedSmsConsentSource: "inbound_stop" | "inbound_start" | "staff" | "import" | "unknown" | null = null;
   let selectedPhone: string | null = null;
   let selectedEmail: string | null = null;
   let selectedVars: TemplateVars = { customer: "", invoice: "", balance: "", dueDate: "", company: "", phone: "", paymentLink: "" };
   if (selected) {
     const cust = custRows.find((c) => c.id === selected.customerId);
     selectedConsent = Boolean(cust?.sms_consent);
+    selectedSmsConsentSource = cust?.sms_consent_source ?? null;
     selectedPhone = (cust?.phone as string | null) ?? null;
     selectedEmail = (cust?.email as string | null) ?? null;
     if (selected.channel === "email") {
@@ -339,7 +343,7 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
       rows, metrics, counts, tab, sort, q,
       channel, channelCounts, emailEnabled, lastInboundAt,
       selected, selectedMessages, selectedEmailMessages,
-      selectedConsent, selectedPhone, selectedEmail,
+      selectedConsent, selectedSmsConsentSource, selectedPhone, selectedEmail,
       selectedVars, sms, smsEnabled, smsQuietNow, quietHoursLabel,
       smsTemplates: templates.sms,
       emailTemplates: templates.email,
@@ -428,6 +432,8 @@ export default function Messages() {
               messages={d.selectedMessages}
               emailMessages={d.selectedEmailMessages}
               consent={d.selectedConsent}
+              smsConsentSource={d.selectedSmsConsentSource}
+              isOwner={d.isOwner}
               phone={d.selectedPhone}
               vars={d.selectedVars}
               sms={d.sms}

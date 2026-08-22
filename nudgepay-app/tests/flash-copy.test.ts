@@ -46,6 +46,8 @@ test("SMS_FLASH sent and error entries keep the dashboard banner copy", () => {
   expect(SMS_FLASH.error.tone).toBe("text-hot");
   expect(SMS_FLASH.quiet.tone).toBe("text-warm");
   expect(SMS_FLASH.error.text).toBe("Could not send the text.");
+  expect(SMS_FLASH.consent_locked.tone).toBe("text-hot");
+  expect(SMS_FLASH.consent_locked.text).toMatch(/owner override/i);
 });
 
 test("Focus SMS toasts use human copy, not the raw result code", () => {

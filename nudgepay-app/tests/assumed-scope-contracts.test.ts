@@ -14,6 +14,23 @@ test("DetailPanel consent posts customerId (NP-AUD-2026-109)", () => {
   expect(form![0]).not.toMatch(/name="assign"/);
 });
 
+test("STOP-locked consent hides Mark consented for members; owner override requires reason", () => {
+  const src = read("../app/components/DetailPanel.tsx");
+  const memberPath = src.match(
+    /!consent && smsConsentSource === "inbound_stop" && !isOwner \? \([\s\S]*?\) : \(/,
+  );
+  expect(memberPath, "member STOP-locked branch missing").toBeTruthy();
+  expect(memberPath![0]).toContain("Stopped by inbound STOP. Owner override required.");
+  expect(memberPath![0]).not.toMatch(/Mark consented/);
+  expect(memberPath![0]).not.toMatch(/type="submit"/);
+
+  const form = src.match(/<form method="post" action="\/api\/sms-consent">[\s\S]*?<\/form>/);
+  expect(form, "sms-consent form missing").toBeTruthy();
+  expect(form![0]).toMatch(/name="reason"/);
+  expect(form![0]).toMatch(/minLength=\{3\}/);
+  expect(form![0]).toContain("Override STOP");
+});
+
 test("invite flash is generic, not raw DB (NP-AUD-2026-126)", () => {
   const action = read("../app/routes/api.members.tsx");
   expect(action).toContain('flag(returnTo, "error", "invite")');

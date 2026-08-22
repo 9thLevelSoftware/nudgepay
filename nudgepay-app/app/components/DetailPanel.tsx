@@ -135,7 +135,7 @@ const CHASE_CHANNEL_LABEL: Record<"sms" | "email" | "call", string> = {
 };
 
 function MessagesTab({
-  selected, invoices, repInvoiceId, messages, consent, prefs, phone, sms, smsEnabled, smsQuietNow, quietHoursLabel,
+  selected, invoices, repInvoiceId, messages, consent, smsConsentSource, isOwner, prefs, phone, sms, smsEnabled, smsQuietNow, quietHoursLabel,
   view, sort, q, density, entity, invoice, collision,
   smsTemplates, orgCompany, orgPhone, orgPaymentLink, timeZone, composerRef,
 }: {
@@ -144,6 +144,8 @@ function MessagesTab({
   repInvoiceId: string | null;
   messages: MessageEntry[];
   consent: boolean;
+  smsConsentSource: "inbound_stop" | "inbound_start" | "staff" | "import" | "unknown" | null;
+  isOwner: boolean;
   prefs: CommPrefs;
   phone: string | null;
   sms: string | null;
@@ -231,19 +233,35 @@ function MessagesTab({
           >
             Communication preferences
           </Link>
-          <form method="post" action="/api/sms-consent">
-            <input type="hidden" name="invoiceId" value={repInvoiceId ?? ""} />
-            <input type="hidden" name="customerId" value={selected.customerId} />
-            <input type="hidden" name="returnTo" value={returnTo} />
-            <input type="hidden" name="consent" value={consent ? "false" : "true"} />
-            <button
-              type="submit"
-              disabled={consentBusy}
-              className="text-xs font-sans font-medium text-copper hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-copper rounded disabled:opacity-60 disabled:cursor-not-allowed"
-            >
-              {consentBusy ? "Updating…" : consent ? "Revoke consent" : "Mark consented"}
-            </button>
-          </form>
+          {!consent && smsConsentSource === "inbound_stop" && !isOwner ? (
+            <p className="text-xs font-sans text-hot">Stopped by inbound STOP. Owner override required.</p>
+          ) : (
+            <form method="post" action="/api/sms-consent">
+              <div className="flex items-center gap-2">
+                <input type="hidden" name="invoiceId" value={repInvoiceId ?? ""} />
+                <input type="hidden" name="customerId" value={selected.customerId} />
+                <input type="hidden" name="returnTo" value={returnTo} />
+                <input type="hidden" name="consent" value={consent ? "false" : "true"} />
+                {!consent && smsConsentSource === "inbound_stop" ? (
+                  <input
+                    name="reason"
+                    required
+                    minLength={3}
+                    placeholder="Override reason"
+                    className="h-7 w-40 rounded border border-border bg-surface px-2 text-xs font-sans"
+                    aria-label="Consent override reason"
+                  />
+                ) : null}
+                <button
+                  type="submit"
+                  disabled={consentBusy}
+                  className="text-xs font-sans font-medium text-copper hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-copper rounded disabled:opacity-60 disabled:cursor-not-allowed"
+                >
+                  {consentBusy ? "Updating…" : consent ? "Revoke consent" : smsConsentSource === "inbound_stop" ? "Override STOP" : "Mark consented"}
+                </button>
+              </div>
+            </form>
+          )}
         </div>
       </div>
 
@@ -592,6 +610,8 @@ export function DetailPanel({
   timeline,
   messages,
   consent,
+  smsConsentSource,
+  isOwner,
   prefs,
   phone,
   sms,
@@ -626,6 +646,8 @@ export function DetailPanel({
   timeline: TimelineEntry[];
   messages: MessageEntry[];
   consent: boolean;
+  smsConsentSource: "inbound_stop" | "inbound_start" | "staff" | "import" | "unknown" | null;
+  isOwner: boolean;
   prefs: CommPrefs;
   phone: string | null;
   sms: string | null;
@@ -1246,6 +1268,8 @@ export function DetailPanel({
           repInvoiceId={repInvoiceId}
           messages={messages}
           consent={consent}
+          smsConsentSource={smsConsentSource}
+          isOwner={isOwner}
           prefs={prefs}
           phone={phone}
           sms={sms}
