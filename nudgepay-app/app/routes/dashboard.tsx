@@ -29,7 +29,8 @@ import {
 } from "../lib/worklist";
 import {
   buildCaseItems, applyCaseView, sortCaseItems, computeCaseMetrics,
-  type CaseItem, type CaseRow, type CaseStatus, type NextActionType,
+  mergeWorkspaceInvoices,
+  type CaseItem, type CaseInvoice, type CaseRow, type CaseStatus, type NextActionType,
   type CasePromiseInput, type CaseLastContactInput,
 } from "../lib/cases";
 import type { PriorityOverrideLevel } from "../lib/priority";
@@ -212,6 +213,13 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
   const env = getEnv(context as any);
   const { supabase, headers, user, org } = await requireOrgUser(request, env);
 
+  // tab=activity aliases to overview + #history (timeline lives on overview).
+  const activityAliasUrl = new URL(request.url);
+  if (activityAliasUrl.searchParams.get("tab") === "activity") {
+    activityAliasUrl.searchParams.delete("tab");
+    throw redirect(`${activityAliasUrl.pathname}${activityAliasUrl.search}#history`);
+  }
+
   // User initials from display name or email
   const userLabel = displayLabel(user.user_metadata?.display_name, user.email, user.id);
   const initials = initialsFrom(userLabel);
@@ -322,6 +330,7 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
   let collisions: Record<string, Collision> = {};
   let selectedEmailMessages: EmailMessageEntry[] = [];
   let selectedCustomerEmail: string | null = null;
+  let workspaceInvoices: CaseInvoice[] = [];
 
   // Destructure the shared queue source
   const {
@@ -425,10 +434,13 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
   const sel = dashboardData.selected;
   if (sel) {
     const customerId = sel.customerId;
+    workspaceInvoices = mergeWorkspaceInvoices(
+      sel.invoices, comingDueInvoices, sel.customerId, today,
+    );
     const repInvoiceId =
-      (invoice && sel.invoices.some((iv) => iv.invoiceId === invoice))
+      (invoice && workspaceInvoices.some((iv) => iv.invoiceId === invoice))
         ? invoice
-        : (sel.invoices[0]?.invoiceId ?? null);
+        : (sel.invoices[0]?.invoiceId ?? workspaceInvoices[0]?.invoiceId ?? null);
 
     // Batch C: the 5 selected-case queries.
     const [
@@ -574,6 +586,7 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
       today,
       timeZone: orgConfig.companyProfile.timezone,
       arKpis,
+      workspaceInvoices,
       ...dashboardData,
     },
     { headers },
@@ -643,6 +656,7 @@ export default function Dashboard() {
     today,
     arKpis,
     repInvoiceId,
+    workspaceInvoices,
     smsTemplates,
     emailTemplates,
     orgCompany,
@@ -787,7 +801,9 @@ export default function Dashboard() {
                 <DetailPanel
                   selected={selected ?? null}
                   repInvoiceId={repInvoiceId ?? null}
-                  activeTab={tab}
+                  workspaceInvoices={workspaceInvoices}
+                  selectedInvoiceId={invoice}
+                  activeTab={tab === "activity" ? "overview" : tab}
                   timeline={selectedTimeline}
                   messages={selectedMessages}
                   consent={selectedConsent}
@@ -826,7 +842,7 @@ export default function Dashboard() {
               key={selected.caseId}
               selected={selected}
               repInvoiceId={repInvoiceId ?? null}
-              returnTo={`/dashboard${dashboardHref({ view, sort, q: q || undefined, entity: hrefEntity, density: hrefDensity, case: selected.caseId, tab })}`}
+              returnTo={`/dashboard${dashboardHref({ view, sort, q: q || undefined, entity: hrefEntity, density: hrefDensity, case: selected.caseId, tab, invoice: invoice ?? undefined })}`}
               logError={logError}
               collision={collisions[selected.caseId] ?? null}
               method={logMethod}
@@ -839,8 +855,8 @@ export default function Dashboard() {
               caseId={selected.caseId}
               repInvoiceId={repInvoiceId ?? null}
               prefs={selectedPrefs}
-              returnTo={`/dashboard${dashboardHref({ view, sort, q: q || undefined, entity: hrefEntity, density: hrefDensity, case: selected.caseId, tab })}`}
-              closeHref={dashboardHref({ view, sort, q: q || undefined, entity: hrefEntity, density: hrefDensity, case: selected.caseId, tab })}
+              returnTo={`/dashboard${dashboardHref({ view, sort, q: q || undefined, entity: hrefEntity, density: hrefDensity, case: selected.caseId, tab, invoice: invoice ?? undefined })}`}
+              closeHref={dashboardHref({ view, sort, q: q || undefined, entity: hrefEntity, density: hrefDensity, case: selected.caseId, tab, invoice: invoice ?? undefined })}
             />
           ) : null}
         </div>

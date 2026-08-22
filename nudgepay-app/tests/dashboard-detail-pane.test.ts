@@ -34,10 +34,12 @@ describe("dashboard pane class contract (NP-AUD-2026-110)", () => {
   it("sizes detail full-width below md and two-pane at md+", () => {
     const cls = detailPaneClass();
     expect(cls).toContain("flex-1");
-    expect(cls).toContain("md:w-96");
-    expect(cls).toContain("xl:w-[28rem]");
+    expect(cls).toContain("md:w-[28rem]");
+    expect(cls).toContain("lg:w-[36rem]");
+    expect(cls).toContain("xl:w-[48rem]");
     expect(cls).toContain("md:flex-none");
     expect(cls).toContain("min-w-0");
+    expect(cls).not.toContain("md:w-96");
     expect(unprefixedWidth(cls, "w-96")).toBe(false);
     expect(unprefixedWidth(cls, "shrink-0")).toBe(false);
   });
@@ -76,5 +78,22 @@ describe("dashboard wiring (NP-AUD-2026-110)", () => {
     expect(detail.match(closeHref)?.length).toBeGreaterThanOrEqual(2);
     expect(detail).not.toMatch(/new URLSearchParams\(\{\s*view,\s*sort,\s*\.\.\.\(q \? \{ q \} : \{\}\)\s*\}\)/);
     expect(detail).not.toMatch(/lg:hidden px-4 pt-3 pb-1/);
+  });
+
+  it("opens the account record and does not embed AccountProfile", () => {
+    expect(detail).toContain("Open account record");
+    expect(detail).toContain("`/accounts/${selected.customerId}`");
+    expect(detail).not.toContain("AccountProfile");
+    expect(dashboard).not.toContain("AccountProfile");
+  });
+
+  it("merges overdue ∪ coming-due invoices and aliases tab=activity to overview #history", () => {
+    expect(dashboard).toContain("mergeWorkspaceInvoices");
+    expect(dashboard).toContain("workspaceInvoices");
+    expect(dashboard).toMatch(/searchParams\.get\("tab"\) === "activity"/);
+    expect(dashboard).toContain('#history');
+    expect(detail).toContain('id="history"');
+    expect(detail).toContain("chaseRecipientsFrom");
+    expect(detail).not.toContain('id: "activity" as const');
   });
 });

@@ -15,5 +15,9 @@ export function queuePaneClass(caseOpen: boolean): string {
 }
 
 export function detailPaneClass(): string {
-  return "min-h-0 min-w-0 flex-1 overflow-hidden md:flex-none md:w-96 xl:w-[28rem] md:border-l border-border shadow-panel";
+  return [
+    "min-h-0 min-w-0 flex-1 overflow-hidden",
+    "md:flex-none md:w-[28rem] lg:w-[36rem] xl:w-[48rem]",
+    "md:border-l border-border shadow-panel",
+  ].join(" ");
 }
