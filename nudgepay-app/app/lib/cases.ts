@@ -19,6 +19,7 @@ import { suggestFollowUpDate } from "./follow-up-cadence";
 import type { OrgConfig } from "./org-config";
 import { computeLateFee } from "./late-fees";
 import type { ActivityPeek } from "./activity-peek";
+import type { PayerStats } from "./payer-behavior";
 
 export type CasePromiseInput = {
   caseId: string;
@@ -100,7 +101,7 @@ export type CaseItem = {
   invoices: CaseInvoice[];
   // Defaults; dashboard mapper overwrites after dedicated peek / payer queries.
   peeks: ActivityPeek[];
-  payer: null;
+  payer: PayerStats | null;
 };
 
 export type ReconcileOp =

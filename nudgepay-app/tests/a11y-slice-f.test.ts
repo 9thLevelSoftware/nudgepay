@@ -27,6 +27,12 @@ describe("TEMP-UX-015 queue table roles", () => {
     expect(src).toContain('role="columnheader"');
     expect(src).toContain('role="cell"');
     expect(src).toContain("QUEUE_GRID");
+    expect(src).toContain("QUEUE_GRID_CUST_DETAILED");
+    expect(src).toContain("QUEUE_GRID_CUST_RISK");
+    expect(src).toContain('data-label="Peek"');
+    expect(src).toContain('data-label="Payer"');
+    expect(src).not.toContain('role="tablist"');
+    expect(src).toContain("aria-pressed={density === id}");
   });
 
   it("owns Heat/Customer cells from the row, not via a spanning Open link", () => {

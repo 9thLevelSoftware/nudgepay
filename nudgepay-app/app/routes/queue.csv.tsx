@@ -7,7 +7,8 @@ import { loadOrgConfig } from "../lib/org-config.server";
 import { todayInTz } from "../lib/tz";
 import { buildCaseItems, applyCaseView, sortCaseItems } from "../lib/cases";
 import { queueItemsToCsv } from "../lib/queue-csv";
-import type { ViewId, SortId } from "../lib/worklist";
+import type { ViewId } from "../lib/worklist";
+import { parseSort } from "../lib/queue-chrome";
 
 export async function loader({ request, context }: LoaderFunctionArgs) {
   const env = getEnv(context as any);
@@ -20,7 +21,7 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
   });
   const url = new URL(request.url);
   const view = (url.searchParams.get("view") ?? "all-open") as ViewId;
-  const sort = (url.searchParams.get("sort") ?? "recommended") as SortId;
+  const sort = parseSort(url.searchParams.get("sort"));
   const items = sortCaseItems(
     applyCaseView(
       buildCaseItems(

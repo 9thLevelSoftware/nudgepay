@@ -1,12 +1,31 @@
 // Fixed-height list window. Pure; no I/O, no DOM. Used by WorkQueue so a
 // 1,000-row queue only mounts the rows in view (+ overscan).
+// Local density union — do not import queue-chrome.
+
+export type QueueDensity = "general" | "detailed" | "risk";
 
 /** Desktop queue row: py-2 + two text lines + border ≈ 56px. */
 export const QUEUE_ROW_H = 56;
+/** Two peek lines + existing two-line customer cell. */
+export const QUEUE_ROW_DETAILED_H = 96;
+export const QUEUE_ROW_RISK_H = 64;
 /** Mobile card: p-3 + header/status/contact + mb-2 ≈ 108px. */
 export const QUEUE_CARD_H = 108;
+export const QUEUE_CARD_DETAILED_H = 132;
+export const QUEUE_CARD_RISK_H = 128;
 /** Extra rows mounted above and below the viewport. */
 export const QUEUE_OVERSCAN = 8;
+
+export function queueRowHeight(density: QueueDensity, mobile: boolean): number {
+  if (mobile) {
+    if (density === "detailed") return QUEUE_CARD_DETAILED_H;
+    if (density === "risk") return QUEUE_CARD_RISK_H;
+    return QUEUE_CARD_H;
+  }
+  if (density === "detailed") return QUEUE_ROW_DETAILED_H;
+  if (density === "risk") return QUEUE_ROW_RISK_H;
+  return QUEUE_ROW_H;
+}
 
 export type VisibleWindowArgs = {
   scrollTop: number;

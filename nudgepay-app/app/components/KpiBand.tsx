@@ -5,6 +5,7 @@
 
 import { Link } from "react-router";
 import type { Metrics, ViewId, SortId } from "../lib/worklist";
+import { dashboardHref, type DensityId } from "../lib/queue-chrome";
 import { formatUSD } from "../lib/format";
 import { plural } from "../lib/labels";
 import { Icon } from "./Icons";
@@ -33,15 +34,14 @@ interface KpiBandProps {
   view?: ViewId;
   sort?: SortId;
   search?: string;
+  density?: DensityId;
   scopeLabel?: string | null;
   clearHref?: string;
 }
 
-export function KpiBand({ metrics, view, sort = "recommended", search = "", scopeLabel, clearHref }: KpiBandProps) {
-  const href = (v: ViewId) => {
-    const p = new URLSearchParams({ view: v, sort, ...(search ? { q: search } : {}) });
-    return `?${p.toString()}`;
-  };
+export function KpiBand({ metrics, view, sort = "recommended", search = "", density, scopeLabel, clearHref }: KpiBandProps) {
+  const href = (v: ViewId) =>
+    dashboardHref({ view: v, sort, q: search || undefined, density });
 
   const tiles: { label: string; viewId: ViewId; accent: Accent; m: { count: number; amount: number } }[] = [
     { label: "30+ days past due", viewId: "30-plus",         accent: "copper",  m: metrics.thirtyPlus },

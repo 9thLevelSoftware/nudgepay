@@ -6,6 +6,7 @@
 import { Link } from "react-router";
 import type { CaseItem } from "../lib/cases";
 import type { ViewId, SortId } from "../lib/worklist";
+import { dashboardHref, type DensityId } from "../lib/queue-chrome";
 import { pickTriage } from "../lib/next-best-action";
 import { whyNow } from "../lib/next-best-action";
 import { formatUSD } from "../lib/format";
@@ -22,10 +23,11 @@ interface TriageStripProps {
   view: ViewId;
   sort: SortId;
   search: string;
+  density?: DensityId;
   timeZone?: string | null;
 }
 
-export function TriageStrip({ items, view, sort, search, timeZone }: TriageStripProps) {
+export function TriageStrip({ items, view, sort, search, density, timeZone }: TriageStripProps) {
   const top = pickTriage(items, 3);
   if (top.length === 0) return null;
 
@@ -37,17 +39,11 @@ export function TriageStrip({ items, view, sort, search, timeZone }: TriageStrip
       <div className="flex gap-3 overflow-x-auto snap-x snap-mandatory scrollbar-none">
         {top.map((item) => {
           const nba = whyNow(item, timeZone);
-          const params = new URLSearchParams({
-            case: item.caseId,
-            view,
-            sort,
-            ...(search ? { q: search } : {}),
-          });
           const border = BORDER[item.heat.band] ?? "border-l-muted";
           return (
             <Link
               key={item.caseId}
-              to={`?${params.toString()}`}
+              to={dashboardHref({ view, sort, q: search || undefined, density, case: item.caseId })}
               className={[
                 "snap-start shrink-0 flex flex-col gap-1 rounded-lg border border-l-[3px] bg-surface px-4 py-3 min-w-[200px] max-w-[280px]",
                 "hover:border-copper/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-copper transition-colors",

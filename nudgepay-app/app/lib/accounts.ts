@@ -5,6 +5,7 @@
 
 import { ageInDays, type CustomerInput, type InvoiceInput, type LastContact } from "./worklist";
 import { DEFAULT_COMM_PREFS, type CommPrefs } from "./comm-prefs";
+import type { PayerStats } from "./payer-behavior";
 
 export type AccountStanding = "current" | "overdue" | "in_collections" | "on_hold";
 
@@ -29,6 +30,8 @@ export type AccountRow = {
   smsConsent: boolean;
   lastContact: LastContact;
   searchText: string;
+  // Attached in the accounts mapper after loadPayerSource; not computed here.
+  payer?: PayerStats | null;
 };
 
 export function deriveStanding(input: {
