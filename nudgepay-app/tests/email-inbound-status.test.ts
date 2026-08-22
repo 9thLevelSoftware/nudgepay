@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from "vitest";
 import { serviceClient } from "./helpers";
-import { updateEmailStatus, recordInboundEmail } from "../app/lib/email-messaging.server";
+import { alreadyRecordedInboundEmail, updateEmailStatus, recordInboundEmail } from "../app/lib/email-messaging.server";
 
 const svc = serviceClient();
 
@@ -184,6 +184,7 @@ describe("email inbound + status", () => {
       const second = await recordInboundEmail(svc, args);
       expect(first.matched).toBe(false);
       expect(second.matched).toBe(false);
+      expect(await alreadyRecordedInboundEmail(svc, pid)).toEqual({ matched: false });
       const { data: orphans } = await svc
         .from("inbound_orphans")
         .select("id")
@@ -300,6 +301,7 @@ describe("email inbound + status", () => {
     const second = await recordInboundEmail(svc, args); // replay/retry
     expect(first.matched).toBe(true);
     expect(second.matched).toBe(true);
+    expect(await alreadyRecordedInboundEmail(svc, pid)).toEqual({ matched: true });
     const { data: rows } = await svc
       .from("email_messages")
       .select("id")

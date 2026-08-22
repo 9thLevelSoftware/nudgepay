@@ -117,6 +117,29 @@ export async function updateEmailStatus(
   }
 }
 
+export async function alreadyRecordedInboundEmail(
+  service: SupabaseClient,
+  providerMessageId: string,
+): Promise<{ matched: boolean } | null> {
+  if (!providerMessageId) return null;
+  const { data: dup, error: dupErr } = await service
+    .from("email_messages")
+    .select("id")
+    .eq("provider_message_id", providerMessageId)
+    .limit(1)
+    .maybeSingle();
+  if (dupErr) throw dupErr;
+  if (dup) return { matched: true };
+  const { data: orphanDup, error: orphanErr } = await service
+    .from("inbound_orphans")
+    .select("id")
+    .eq("provider_message_id", providerMessageId)
+    .maybeSingle();
+  if (orphanErr) throw orphanErr;
+  if (orphanDup) return { matched: false };
+  return null;
+}
+
 export async function recordInboundEmail(
   service: SupabaseClient,
   args: { from: string; to: string; subject: string; body: string; providerMessageId: string },
@@ -130,26 +153,10 @@ export async function recordInboundEmail(
   // Idempotency: Resend retries an event it does not see 2xx'd, and a signed
   // payload can be replayed within the ±5min window. Skip if we already recorded
   // this provider event (the unique index on provider_message_id is the backstop).
-  if (args.providerMessageId) {
-    const { data: dup, error: dupErr } = await service
-      .from("email_messages")
-      .select("id")
-      .eq("provider_message_id", args.providerMessageId)
-      .limit(1)
-      .maybeSingle();
-    if (dupErr) throw dupErr;
-    if (dup) return { matched: true };
+  const recorded = await alreadyRecordedInboundEmail(service, args.providerMessageId);
+  if (recorded) return recorded;
 
-    const { data: orphanDup, error: orphanErr } = await service
-      .from("inbound_orphans")
-      .select("id")
-      .eq("provider_message_id", args.providerMessageId)
-      .maybeSingle();
-    if (orphanErr) throw orphanErr;
-    if (orphanDup) return { matched: false };
-  }
-
-  // Indexed eq — never ILIKE user-controlled input. 0 or 2 hits are unmatched.
+  // Ambiguous (2) is unmatched, same as none.
   const { data: configs, error: configErr } = await service
     .from("email_config")
     .select("org_id, from_address")
