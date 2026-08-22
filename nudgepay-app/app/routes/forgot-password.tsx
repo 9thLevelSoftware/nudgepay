@@ -1,6 +1,7 @@
 import {
   Form,
   Link,
+  data,
   useActionData,
   useNavigation,
   type ActionFunctionArgs,
@@ -8,6 +9,8 @@ import {
 import { getEnv } from "../lib/env.server";
 import { createSupabaseUserClient } from "../lib/supabase.server";
 import { requireSameOrigin } from "../lib/csrf.server";
+import { humanAuthError } from "../lib/auth-flow.server";
+import { authRateLimited, authRateLimitKey } from "../lib/auth-rate-limit.server";
 import { PublicLayout } from "../components/PublicLayout";
 import { Button, inputClass } from "../components/ui";
 import { pageTitle } from "../lib/meta";
@@ -28,6 +31,12 @@ function publicOrigin(request: Request, env: Record<string, string>): string {
 
 export async function action({ request, context }: ActionFunctionArgs) {
   requireSameOrigin(request);
+  if (await authRateLimited((context as any).cloudflare?.env ?? {}, authRateLimitKey(request))) {
+    return data(
+      { error: humanAuthError("email rate limit exceeded") },
+      { status: 429 },
+    );
+  }
   const env = getEnv(context as any);
   const form = await request.formData();
   const rawEmail = form.get("email");
@@ -46,10 +55,13 @@ export default function ForgotPassword() {
   const busy = useNavigation().state !== "idle";
   return (
     <PublicLayout title="Reset your password" width="card">
-      {actionData?.ok ? (
+      {actionData && "ok" in actionData && actionData.ok ? (
         <p className="text-sm text-muted" role="status">{actionData.message}</p>
       ) : (
         <Form method="post" className="grid gap-4">
+          {actionData && "error" in actionData && actionData.error && (
+            <p role="alert" className="text-sm text-hot">{actionData.error}</p>
+          )}
           <p className="text-sm text-muted">Enter the email on your account. We will send a reset link if it exists.</p>
           <label className="grid gap-1 text-sm font-medium text-text">
             Email

@@ -12,6 +12,7 @@ import { getEnv } from "../lib/env.server";
 import { createSupabaseUserClient } from "../lib/supabase.server";
 import { requireSameOrigin } from "../lib/csrf.server";
 import { signupOutcome, humanAuthError } from "../lib/auth-flow.server";
+import { authRateLimited, authRateLimitKey } from "../lib/auth-rate-limit.server";
 import { safeReturnTo } from "../lib/return-to";
 import { PublicLayout } from "../components/PublicLayout";
 import { Button, inputClass } from "../components/ui";
@@ -22,6 +23,12 @@ export const meta: Route.MetaFunction = () => pageTitle("Sign up");
 
 export async function action({ request, context }: ActionFunctionArgs) {
   requireSameOrigin(request);
+  if (await authRateLimited((context as any).cloudflare?.env ?? {}, authRateLimitKey(request))) {
+    return routerData(
+      { error: humanAuthError("email rate limit exceeded") },
+      { status: 429 },
+    );
+  }
   const env = getEnv(context as any);
   const form = await request.formData();
   const rawEmail = form.get("email");
