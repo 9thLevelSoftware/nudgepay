@@ -106,11 +106,10 @@ export function TemplateEditor({
       )}
 
       {/* Channel toggle */}
-      <div className="mt-3 inline-flex rounded-md border border-border p-0.5" role="tablist" aria-label="Template channel">
+      <div className="mt-3 inline-flex rounded-md border border-border p-0.5" role="group" aria-label="Template channel">
         <button
           type="button"
-          role="tab"
-          aria-selected={channel === "sms"}
+          aria-pressed={channel === "sms"}
           onClick={() => { setChannel("sms"); setEditingId(null); setAddingOpen(false); }}
           className={`rounded px-3 py-1 text-xs font-semibold transition-colors ${
             channel === "sms" ? "bg-copper text-ink" : "text-muted hover:text-text"
@@ -120,8 +119,7 @@ export function TemplateEditor({
         </button>
         <button
           type="button"
-          role="tab"
-          aria-selected={channel === "email"}
+          aria-pressed={channel === "email"}
           onClick={() => { setChannel("email"); setEditingId(null); setAddingOpen(false); }}
           className={`rounded px-3 py-1 text-xs font-semibold transition-colors ${
             channel === "email" ? "bg-copper text-ink" : "text-muted hover:text-text"
