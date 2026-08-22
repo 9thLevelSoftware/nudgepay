@@ -126,10 +126,14 @@ export function applyInvoiceView(
       return items.filter((i) => i.ownerId != null && i.ownerId === opts.currentUserId);
     case "all-open":
       return items.filter((i) => !i.suppressed);
+    default: {
+      const _exhaustive: never = view;
+      return _exhaustive;
+    }
   }
 }
 
-/** Select-all cap: all invoices belonging to at most `maxCases` distinct cases. */
+/** Select-all cap: cased invoices belong to at most `maxCases`; caseless rows are uncapped. */
 export function clampInvoiceBatch(
   items: { invoiceId: string; caseId: string | null }[],
   maxCases: number,
@@ -137,7 +141,10 @@ export function clampInvoiceBatch(
   const cases = new Set<string>();
   const out: string[] = [];
   for (const i of items) {
-    if (i.caseId == null) continue;
+    if (i.caseId == null) {
+      out.push(i.invoiceId);
+      continue;
+    }
     if (!cases.has(i.caseId) && cases.size >= maxCases) continue;
     cases.add(i.caseId);
     out.push(i.invoiceId);

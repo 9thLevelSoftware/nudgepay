@@ -104,8 +104,9 @@ export function buildTeamReport(input: {
   openedCases: ReportOpenedCase[];
   workloadCases: ReportWorkloadCase[];
   today: string;
+  timeZone?: string;
 }): TeamReport {
-  const { range, roster, contactLogs, promises, openedCases, workloadCases, today } = input;
+  const { range, roster, contactLogs, promises, openedCases, workloadCases, today, timeZone } = input;
 
   // --- Per-rep: throughput ---
   const contactsByRep = new Map<string, number>();
@@ -173,15 +174,28 @@ export function buildTeamReport(input: {
 
   // Keep the daily series complete so a quiet day is visible as zero rather
   // than making the line chart jump between sparse points.
+  const dateFormatter = timeZone
+    ? new Intl.DateTimeFormat("en-US", { timeZone, year: "numeric", month: "2-digit", day: "2-digit" })
+    : null;
+  const dateKey = (value: string): string => {
+    if (!dateFormatter) return value.slice(0, 10);
+    try {
+      const parts = new Map(dateFormatter.formatToParts(new Date(value)).map((part) => [part.type, part.value]));
+      return `${parts.get("year")}-${parts.get("month")}-${parts.get("day")}`;
+    } catch {
+      return value.slice(0, 10);
+    }
+  };
+
   const contactsByDate = new Map<string, number>();
   for (const log of contactLogs) {
-    const date = log.createdAt.slice(0, 10);
+    const date = dateKey(log.createdAt);
     contactsByDate.set(date, (contactsByDate.get(date) ?? 0) + 1);
   }
   const outcomesByDate = new Map<string, { resolved: number; kept: number }>();
   for (const promise of promises) {
     if (!promise.resolvedAt) continue;
-    const date = promise.resolvedAt.slice(0, 10);
+    const date = dateKey(promise.resolvedAt);
     const outcome = outcomesByDate.get(date) ?? { resolved: 0, kept: 0 };
     outcome.resolved += 1;
     if (promise.status === "kept") outcome.kept += 1;

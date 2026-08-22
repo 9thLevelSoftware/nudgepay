@@ -50,14 +50,14 @@ export function CommandPalette() {
 
   useEffect(() => {
     function onKeyDown(event: KeyboardEvent) {
+      const target = event.target as HTMLElement | null;
+      if (isEditableTarget(event.target) || target?.closest('[role="dialog"], [role="alertdialog"]')) return;
       if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "k") {
         event.preventDefault();
         setMode("commands");
         return;
       }
       if (event.key === "?" && !isEditableTarget(event.target)) {
-        const target = event.target as HTMLElement | null;
-        if (target?.closest('[role="dialog"], [role="alertdialog"]')) return;
         event.preventDefault();
         setMode("shortcuts");
       }

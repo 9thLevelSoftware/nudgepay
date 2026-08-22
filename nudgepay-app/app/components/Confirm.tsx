@@ -19,10 +19,14 @@ export interface ConfirmOptions {
 
 type ConfirmContextValue = (options: ConfirmOptions) => Promise<boolean>;
 
-const ConfirmContext = createContext<ConfirmContextValue>(async () => true);
+const ConfirmContext = createContext<ConfirmContextValue | null>(null);
 
 export function useConfirm(): ConfirmContextValue {
-  return useContext(ConfirmContext);
+  const confirm = useContext(ConfirmContext);
+  if (!confirm) {
+    throw new Error("useConfirm must be used within a ConfirmProvider");
+  }
+  return confirm;
 }
 
 interface OpenState extends ConfirmOptions {

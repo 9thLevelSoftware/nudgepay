@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useLoaderData, useFetcher, useRevalidator, data, type LoaderFunctionArgs } from "react-router";
 import { useToast } from "../components/Toasts";
 import { useFlashCleanup } from "../lib/use-flash-cleanup";
@@ -288,19 +288,29 @@ export default function Messages() {
   useFlashCleanup();
   const revalidator = useRevalidator();
   const readFetcher = useFetcher();
+  const activityFetcher = useFetcher<{ lastInboundAt: string | null }>();
   const toast = useToast();
-  const lastInboundRef = useRef<string | null>(null);
+  const lastInboundRef = useRef<string | null>(d.lastInboundAt ?? null);
+  const [isDesktop, setIsDesktop] = useState(false);
 
-  // Live-refresh: skip while the tab is hidden, while a navigation is in
-  // flight, or while the user is composing in any field (revalidation would
-  // churn the composer). Refresh immediately on tab refocus.
+  useEffect(() => {
+    const query = window.matchMedia("(min-width: 1024px)");
+    const update = () => setIsDesktop(query.matches);
+    update();
+    query.addEventListener("change", update);
+    return () => query.removeEventListener("change", update);
+  }, []);
+
+  // Poll only a latest-inbound fingerprint. A full route revalidation happens
+  // after a new reply is detected, not on every interval.
   useEffect(() => {
     const tick = () => {
       if (document.visibilityState !== "visible") return;
       if (revalidator.state !== "idle") return;
+      if (activityFetcher.state !== "idle") return;
       const active = document.activeElement as HTMLElement | null;
       if (active && ["TEXTAREA", "INPUT", "SELECT"].includes(active.tagName)) return;
-      revalidator.revalidate();
+      activityFetcher.load("/api/messages-activity");
     };
     const id = window.setInterval(tick, 20_000);
     const onVisible = () => { if (document.visibilityState === "visible") tick(); };
@@ -309,20 +319,18 @@ export default function Messages() {
       window.clearInterval(id);
       document.removeEventListener("visibilitychange", onVisible);
     };
-  }, [revalidator]);
+  }, [activityFetcher, revalidator]);
 
-  // Toast when a new inbound customer reply lands (fingerprint from loader).
+  // Toast and refresh when a new inbound customer reply lands.
   useEffect(() => {
-    const current = d.lastInboundAt ?? null;
-    if (lastInboundRef.current === null) {
-      lastInboundRef.current = current;
-      return;
-    }
-    if (current && current > lastInboundRef.current) {
+    const current = activityFetcher.data?.lastInboundAt ?? null;
+    const previous = lastInboundRef.current;
+    if (current && current !== previous && (previous == null || current > previous)) {
       lastInboundRef.current = current;
       toast("New inbound message", "info");
+      revalidator.revalidate();
     }
-  }, [d.lastInboundAt, toast]);
+  }, [activityFetcher.data, revalidator, toast]);
   useEffect(() => {
     if (!d.selected) return;
     const fd = new FormData();
@@ -385,12 +393,10 @@ export default function Messages() {
                   channelCounts={d.channelCounts}
                   timeZone={d.timeZone}
                 />
-                <div className="hidden lg:block">
-                  {threadPanel}
-                </div>
+                {isDesktop ? <div className="hidden lg:block">{threadPanel}</div> : null}
               </div>
               {/* Below lg the thread opens as a drawer — no dead-end at the page bottom */}
-              {d.selected ? (
+              {d.selected && !isDesktop ? (
                 <div className="lg:hidden">
                   <DrawerShell
                     label={`Thread — ${d.selected.customerName}`}

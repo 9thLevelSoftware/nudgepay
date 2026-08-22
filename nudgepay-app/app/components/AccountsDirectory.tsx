@@ -285,15 +285,13 @@ export function AccountsDirectory({
           ref={scrollerRef}
           className={windowed ? "max-h-[72dvh] overflow-auto" : undefined}
         >
-          <div
-            className="hidden md:block"
-            role="list"
-            style={windowed ? { paddingTop: win.padTop, paddingBottom: win.padBottom, overflowAnchor: "none" } : undefined}
-          >
-            <div role="presentation" className="divide-y divide-border">
-              {deskRows.map(renderRow)}
-            </div>
-          </div>
+           <ul
+             className="hidden md:block divide-y divide-border"
+             role="list"
+             style={windowed ? { paddingTop: win.padTop, paddingBottom: win.padBottom, overflowAnchor: "none" } : undefined}
+           >
+             {deskRows.map(renderRow)}
+           </ul>
           {/* Mobile (stacked) renders fully — heights vary, so no fixed-height window */}
           <ul role="list" className="divide-y divide-border md:hidden">
             {rows.map(renderRow)}

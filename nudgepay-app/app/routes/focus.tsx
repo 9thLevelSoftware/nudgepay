@@ -214,6 +214,7 @@ export default function FocusMode() {
   );
   const [sessionRestored, setSessionRestored] = useState(false);
   const restoreAttemptedRef = useRef(false);
+  const restoreMismatchRef = useRef(false);
 
   // Restore after hydration so SSR markup remains deterministic. A session is
   // only reused when the queue order is identical to the saved session.
@@ -226,6 +227,10 @@ export default function FocusMode() {
         const saved = raw ? JSON.parse(raw) : null;
         if (sessionMatchesQueue(saved, queue.map((item) => item.caseId))) {
           dispatch({ type: "restore", session: saved });
+        } else if (saved && typeof saved === "object") {
+          // Keep the saved session until the user takes action in the new
+          // queue; a fresh initial state must not overwrite it on mount.
+          restoreMismatchRef.current = true;
         }
       } catch {
         // Private browsing or malformed prior state: start a fresh session.
@@ -236,6 +241,7 @@ export default function FocusMode() {
 
   useEffect(() => {
     if (!sessionRestored || typeof window === "undefined") return;
+    if (restoreMismatchRef.current && session.actions === 0 && Object.keys(session.results).length === 0) return;
     try {
       window.localStorage.setItem(FOCUS_SESSION_STORAGE_KEY, JSON.stringify(session));
     } catch {

@@ -1,3 +1,4 @@
+import { useEffect, useState } from "react";
 import { useLoaderData, data, type LoaderFunctionArgs } from "react-router";
 import { useFlashCleanup } from "../lib/use-flash-cleanup";
 import { getEnv } from "../lib/env.server";
@@ -201,6 +202,23 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
 export default function Promises() {
   const d = useLoaderData<typeof loader>();
   useFlashCleanup();
+  const [isDesktop, setIsDesktop] = useState(false);
+  useEffect(() => {
+    const query = window.matchMedia("(min-width: 1024px)");
+    const update = () => setIsDesktop(query.matches);
+    update();
+    query.addEventListener("change", update);
+    return () => query.removeEventListener("change", update);
+  }, []);
+  const quickPanel = (
+    <PromiseQuickPanel
+      promise={d.selected}
+      invoices={d.selectedInvoices}
+      note={d.selectedNote}
+      returnTo={d.returnTo}
+      promiseError={d.promiseError}
+    />
+  );
   return (
     <AppShell
       orgName={d.orgName}
@@ -223,31 +241,17 @@ export default function Promises() {
             counts={d.counts}
             selectedId={d.selected?.promiseId ?? null}
           />
-          <div className="hidden lg:block">
-            <PromiseQuickPanel
-              promise={d.selected}
-              invoices={d.selectedInvoices}
-              note={d.selectedNote}
-              returnTo={d.returnTo}
-              promiseError={d.promiseError}
-            />
-          </div>
+          <div className="hidden lg:block">{isDesktop ? quickPanel : null}</div>
         </div>
         {/* Below lg the selection opens as a drawer — no dead-end at the page bottom */}
-        {d.selected ? (
+        {d.selected && !isDesktop ? (
           <div className="lg:hidden">
             <DrawerShell
               label={`Promise — ${d.selected.customerName}`}
               closeHref={d.returnTo.replace(/[?&]promiseId=[^&]*/, "").replace(/\?$/, "")}
               maxWidth="max-w-[420px]"
             >
-              <PromiseQuickPanel
-                promise={d.selected}
-                invoices={d.selectedInvoices}
-                note={d.selectedNote}
-                returnTo={d.returnTo}
-                promiseError={d.promiseError}
-              />
+              {quickPanel}
             </DrawerShell>
           </div>
         ) : null}

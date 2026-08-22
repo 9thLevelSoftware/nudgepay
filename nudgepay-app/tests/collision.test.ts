@@ -132,10 +132,11 @@ test("Focus send/log require confirm on live or recent collision (dashboard pari
 });
 
 test("Focus rechecks collision via /api/collision before send/log", () => {
-  const hook = readFileSync(new URL("../app/lib/use-collision-recheck.ts", import.meta.url), "utf8");
+  const hook = readFileSync(new URL("../app/lib/use-collision-recheck.client.ts", import.meta.url), "utf8");
   const api = readFileSync(new URL("../app/routes/api.collision.tsx", import.meta.url), "utf8");
   const routes = readFileSync(new URL("../app/routes.ts", import.meta.url), "utf8");
   expect(hook).toContain('fetch(`/api/collision?caseId=${encodeURIComponent(caseId)}`)');
+  expect(hook).toContain("passRef.current = false");
   expect(api).toContain("collisionState");
   expect(api).toContain("readPresence");
   expect(routes).toContain('"routes/api.collision.tsx"');

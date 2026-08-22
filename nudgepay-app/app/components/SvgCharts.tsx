@@ -77,7 +77,7 @@ export function TrendLineChart({
   tone?: ChartTone;
   formatValue?: (value: number) => string;
 }) {
-  const values = points.map((point) => point.value ?? 0);
+  const values = points.flatMap((point) => point.value == null ? [] : [point.value]);
   const max = Math.max(...values, 1);
   const width = 600;
   const height = 160;
@@ -88,7 +88,17 @@ export function TrendLineChart({
   const xFor = (index: number) =>
     points.length <= 1 ? width / 2 : left + (index / (points.length - 1)) * (right - left);
   const yFor = (value: number) => bottom - (value / max) * (bottom - top);
-  const line = points.map((point, index) => `${xFor(index)},${yFor(point.value ?? 0)}`).join(" ");
+  const lineSegments: string[] = [];
+  let segment: string[] = [];
+  for (const [index, point] of points.entries()) {
+    if (point.value == null) {
+      if (segment.length > 0) lineSegments.push(segment.join(" "));
+      segment = [];
+    } else {
+      segment.push(`${xFor(index)},${yFor(point.value)}`);
+    }
+  }
+  if (segment.length > 0) lineSegments.push(segment.join(" "));
   const labelIndexes = points.length <= 4
     ? points.map((_, index) => index)
     : [0, Math.floor((points.length - 1) / 2), points.length - 1];
@@ -99,14 +109,17 @@ export function TrendLineChart({
         <title>{label}</title>
         <line x1={left} x2={right} y1={bottom} y2={bottom} className="stroke-border" strokeWidth="1" />
         <line x1={left} x2={right} y1={(top + bottom) / 2} y2={(top + bottom) / 2} className="stroke-border/60" strokeWidth="1" strokeDasharray="3 4" />
-        <polyline
-          points={line}
-          fill="none"
-          strokeWidth="3"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-          className={STROKE[tone]}
-        />
+        {lineSegments.map((line, index) => (
+          <polyline
+            key={`segment-${index}`}
+            points={line}
+            fill="none"
+            strokeWidth="3"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            className={STROKE[tone]}
+          />
+        ))}
         {points.map((point, index) => point.value == null ? null : (
           <circle key={`${point.label}-${index}`} cx={xFor(index)} cy={yFor(point.value)} r="3" className={FILL[tone]}>
             <title>{`${point.label}: ${formatValue(point.value)}`}</title>

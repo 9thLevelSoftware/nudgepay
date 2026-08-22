@@ -148,7 +148,7 @@ export function AppShell({
               className={`w-1.5 h-1.5 rounded-full shrink-0 ${connected ? "bg-copper" : "bg-muted"}`}
               aria-hidden="true"
             />
-            <span className="text-[11px] font-sans text-surface/60 leading-none" aria-live="polite">
+            <span className="text-[11px] font-sans text-surface/60 leading-none">
               {syncLabel}
             </span>
           </Link>

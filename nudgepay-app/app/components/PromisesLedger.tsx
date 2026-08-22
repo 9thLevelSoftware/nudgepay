@@ -45,7 +45,15 @@ interface Props {
 
 /** Compact received-vs-promised progress: fill bar + % + amounts. */
 function ReceivedProgress({ received, promised }: { received: number; promised: number }) {
-  const pct = promised > 0 ? Math.min(100, Math.round((received / promised) * 100)) : 0;
+  if (promised <= 0) {
+    return (
+      <span className="flex min-w-0 flex-col gap-1">
+        <span className="text-sm text-muted tabular-nums truncate">{formatUSD(received)} received</span>
+        <span className="text-[11px] font-medium text-cool">No amount promised</span>
+      </span>
+    );
+  }
+  const pct = Math.min(100, Math.round((received / promised) * 100));
   return (
     <span className="flex flex-col gap-1 min-w-0">
       <span className="flex items-baseline justify-between gap-2">

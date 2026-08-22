@@ -3,7 +3,7 @@
 // Dirty tab Links confirm before navigating so unsaved edits are not discarded.
 
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
-import { useNavigate, useSearchParams } from "react-router";
+import { Link, useNavigate, useSearchParams } from "react-router";
 import { ConfirmProvider, useConfirm } from "./Confirm";
 
 export const SETTINGS_TABS = [
@@ -112,13 +112,18 @@ function SettingsTabsNav() {
         const isCurrent = t.id === active;
         const to = t.id === "workspace" ? "/settings" : `?tab=${t.id}`;
         return (
-          <button
+          <Link
             key={t.id}
-            type="button"
+            to={to}
             aria-current={isCurrent ? "page" : undefined}
-            onClick={async () => {
-              if (isCurrent) return;
+            onClick={async (event) => {
+              if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey || event.button !== 0) return;
+              if (isCurrent) {
+                event.preventDefault();
+                return;
+              }
               if (shouldBlockTabChange(dirty, isCurrent)) {
+                event.preventDefault();
                 const ok = await confirm({
                   title: "Unsaved changes",
                   message: SETTINGS_UNSAVED_MESSAGE,
@@ -127,8 +132,8 @@ function SettingsTabsNav() {
                   tone: "destructive",
                 });
                 if (!ok) return;
+                navigate(to);
               }
-              navigate(to);
             }}
             className={[
               "px-3 py-2 text-sm font-medium transition-colors -mb-px border-b-2",
@@ -139,7 +144,7 @@ function SettingsTabsNav() {
             ].join(" ")}
           >
             {t.label}
-          </button>
+          </Link>
         );
       })}
     </nav>

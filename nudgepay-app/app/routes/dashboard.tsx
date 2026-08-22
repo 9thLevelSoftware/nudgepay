@@ -791,7 +791,7 @@ export default function Dashboard() {
                 invoice={invoice}
                 selectedCaseId={selected?.caseId ?? null}
                 selectedInvoiceId={invoice ?? null}
-                totalCount={(entity === "invoices" && view !== "coming-due" ? invoiceViewCounts : viewCounts)["all-open"]}
+                totalCount={entity === "invoices" && view !== "coming-due" ? invoiceItems.length : viewCounts["all-open"]}
                 viewCounts={entity === "invoices" && view !== "coming-due" ? invoiceViewCounts : viewCounts}
                 roster={roster}
                 returnTo={`/dashboard${dashboardHref({ view, sort, q: q || undefined, entity: hrefEntity, density: hrefDensity })}`}

@@ -15,7 +15,12 @@ export function useCollisionRecheck(caseId: string, seed: Collision | null) {
   }, [caseId, seed]);
 
   const guardSubmit = (e: FormEvent<HTMLFormElement>) => {
-    if (passRef.current) return;
+    if (passRef.current) {
+      // requestSubmit() re-enters this handler synchronously. Consume the
+      // bypass so a failed server submission cannot disable future checks.
+      passRef.current = false;
+      return;
+    }
     e.preventDefault();
     const form = e.currentTarget;
     if (showConfirm) {

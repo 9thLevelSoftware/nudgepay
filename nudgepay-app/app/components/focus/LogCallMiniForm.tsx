@@ -8,7 +8,7 @@ import { useFetcher } from "react-router";
 import type { CaseItem } from "../../lib/cases";
 import type { Collision } from "../../lib/collision";
 import { formatDate } from "../../lib/dates";
-import { useCollisionRecheck } from "../../lib/use-collision-recheck";
+import { useCollisionRecheck } from "../../lib/use-collision-recheck.client";
 import type { action } from "../../routes/api.contact-logs";
 
 const OUTCOMES: { label: string; value: string }[] = [

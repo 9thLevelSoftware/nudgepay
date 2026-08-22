@@ -116,7 +116,7 @@ export async function loadTeamReport(args: {
     hasBrokenPromise: brokenCaseIds.has(c.id),
   }));
 
-  return buildTeamReport({ range, roster, contactLogs, promises, openedCases, workloadCases, today });
+  return buildTeamReport({ range, roster, contactLogs, promises, openedCases, workloadCases, today, timeZone: tz });
 }
 
 // Selected 7/30/90 window — not Stage-2 last-contact / case-promise inputs,

@@ -6,7 +6,7 @@ import { useEffect, useRef, useState } from "react";
 import { useFetcher } from "react-router";
 import type { CaseItem } from "../../lib/cases";
 import type { Collision } from "../../lib/collision";
-import { useCollisionRecheck } from "../../lib/use-collision-recheck";
+import { useCollisionRecheck } from "../../lib/use-collision-recheck.client";
 import { smsGateFor } from "../../lib/sms-gate";
 import { applyTemplate, type TemplateVars } from "../../lib/sms-templates";
 import type { MessageTemplateRow } from "../../lib/message-templates";

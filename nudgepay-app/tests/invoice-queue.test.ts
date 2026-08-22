@@ -131,7 +131,7 @@ test("applyInvoiceView excludes on-hold cases from invoice-native views", () => 
     .toEqual(["i1", "i2"]);
 });
 
-test("clampInvoiceBatch caps by distinct case ids and skips caseless rows", () => {
+test("clampInvoiceBatch caps cased rows but keeps caseless rows selectable", () => {
   const ids = clampInvoiceBatch(
     [
       { invoiceId: "a1", caseId: "c1" },
@@ -142,7 +142,7 @@ test("clampInvoiceBatch caps by distinct case ids and skips caseless rows", () =
     ],
     2,
   );
-  expect(ids).toEqual(["a1", "a2", "b1"]);
+  expect(ids).toEqual(["a1", "a2", "b1", "x"]);
 });
 
 test("case-queue Stage-1 select includes amount/invoice_date/status/paid_date", () => {

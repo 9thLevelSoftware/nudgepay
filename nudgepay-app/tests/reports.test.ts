@@ -21,6 +21,7 @@ function base() {
     openedCases: [] as { caseId: string; openedAt: string }[],
     workloadCases: [] as any[],
     today: "2026-06-26",
+    timeZone: undefined as string | undefined,
   };
 }
 
@@ -53,6 +54,17 @@ test("team report includes a complete daily trend series", () => {
   expect(report.trends?.points).toHaveLength(30);
   expect(report.trends?.points.find((point) => point.date === "2026-06-20")).toMatchObject({ contacts: 1 });
   expect(report.trends?.points.find((point) => point.date === "2026-06-21")).toMatchObject({ resolved: 1, kept: 1 });
+});
+
+test("daily trends use the organization timezone instead of UTC dates", () => {
+  const input = base();
+  input.today = "2026-06-22";
+  input.timeZone = "America/Los_Angeles";
+  input.contactLogs = [{ userId: "u1", caseId: "c1", createdAt: "2026-06-21T06:30:00Z" }];
+  input.promises = [{ createdBy: "u1", status: "kept", resolvedAt: "2026-06-22T06:30:00Z" }];
+  const points = buildTeamReport(input).trends!.points;
+  expect(points.find((point) => point.date === "2026-06-20")).toMatchObject({ contacts: 1 });
+  expect(points.find((point) => point.date === "2026-06-21")).toMatchObject({ resolved: 1, kept: 1 });
 });
 
 test("kept-rate: strict (partial excluded), excludes non-outcome statuses, null when none resolved", () => {

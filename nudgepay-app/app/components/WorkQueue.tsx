@@ -777,16 +777,6 @@ function InvoiceMobileCard({
           </p>
         ) : null}
       </Link>
-      {/* Mobile quick action (touch) — desktop uses hover-revealed icons */}
-      <div className="flex items-center gap-2 pl-1" onClick={(e) => e.stopPropagation()}>
-        <Link
-          to={href}
-          aria-label={`Open ${label}`}
-          className="flex h-7 w-7 items-center justify-center rounded border border-border bg-panel text-muted hover:border-copper hover:text-copper focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-copper"
-        >
-          <Icon name="message" size={14} />
-        </Link>
-      </div>
     </div>
   );
 }
@@ -1082,7 +1072,7 @@ export function WorkQueue({
           </h2>
           <p className="font-sans text-xs text-muted">
             {invoiceMode
-              ? `${invoiceItems.length} matching invoices · ${totalCount} open cases`
+              ? `${invoiceItems.length} matching invoices · ${totalCount} open invoices`
               : `${items.length} matching · ${totalCount} open`}
           </p>
           <p className="hidden md:block font-mono text-[10px] text-muted/60">
@@ -1386,7 +1376,7 @@ export function WorkQueue({
                       hrefDensity={hrefDensity}
                       checked={selected.has(item.invoiceId)}
                       onToggle={toggle}
-                      disabled={!selected.has(item.invoiceId) && capReached && (!item.caseId || !selectedCaseIds.includes(item.caseId))}
+                       disabled={!selected.has(item.invoiceId) && capReached && item.caseId != null && !selectedCaseIds.includes(item.caseId)}
                       collision={item.caseId ? collisions[item.caseId] : undefined}
                     />
                   ))
@@ -1432,7 +1422,7 @@ export function WorkQueue({
                       hrefDensity={hrefDensity}
                       checked={selected.has(item.invoiceId)}
                       onToggle={toggle}
-                      disabled={!selected.has(item.invoiceId) && capReached && (!item.caseId || !selectedCaseIds.includes(item.caseId))}
+                       disabled={!selected.has(item.invoiceId) && capReached && item.caseId != null && !selectedCaseIds.includes(item.caseId)}
                       collision={item.caseId ? collisions[item.caseId] : undefined}
                     />
                   </div>

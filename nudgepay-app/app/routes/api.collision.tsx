@@ -47,7 +47,7 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
       .eq("direction", "outbound")
       .order("created_at", { ascending: false })
       .limit(50),
-    readPresence(service, { orgId: org.org_id, customerIds: [cse.customer_id as string] }),
+    readPresence(service, { orgId: org.org_id, customerIds: [cse.customer_id] }),
     listOrgMembers(service, org.org_id),
   ]);
 
