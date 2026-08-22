@@ -1,7 +1,8 @@
 import { useEffect, useState } from "react";
-import { Link, useNavigate, useNavigation, useSearchParams } from "react-router";
+import { Link, useLocation, useNavigate, useNavigation, useSearchParams } from "react-router";
 import { HEARTBEAT_INTERVAL_MS, type Collision } from "~/lib/collision";
-import { type CaseItem } from "~/lib/cases";
+import { previewWorkspaceInvoices, type CaseInvoice, type CaseItem } from "~/lib/cases";
+import { chaseRecipientsFrom } from "~/lib/chase-recipients";
 import type { ViewId, SortId } from "~/lib/worklist";
 import { dashboardHref, dashboardSearchParams, type DensityId, type EntityMode } from "~/lib/queue-chrome";
 import { Icon } from "~/components/Icons";
@@ -108,7 +109,7 @@ function panelHref(
   sort: SortId,
   q: string,
   density: DensityId | undefined,
-  extra?: { case?: string; tab?: string; log?: string; method?: string; prefs?: string; entity?: EntityMode },
+  extra?: { case?: string; tab?: string; log?: string; method?: string; prefs?: string; entity?: EntityMode; invoice?: string | null },
 ): string {
   const sp = dashboardSearchParams({
     view,
@@ -118,6 +119,7 @@ function panelHref(
     density,
     case: extra?.case,
     tab: extra?.tab,
+    invoice: extra?.invoice ?? undefined,
   });
   if (extra?.log) sp.set("log", extra.log);
   if (extra?.method) sp.set("method", extra.method);
@@ -125,12 +127,20 @@ function panelHref(
   return `?${sp.toString()}`;
 }
 
+const INVOICE_PREVIEW = 5;
+const HISTORY_PREVIEW = 5;
+
+const CHASE_CHANNEL_LABEL: Record<"sms" | "email" | "call", string> = {
+  sms: "SMS", email: "Email", call: "Call",
+};
+
 function MessagesTab({
-  selected, repInvoiceId, messages, consent, prefs, phone, sms, smsEnabled, smsQuietNow, quietHoursLabel,
-  view, sort, q, density, entity, collision,
+  selected, invoices, repInvoiceId, messages, consent, prefs, phone, sms, smsEnabled, smsQuietNow, quietHoursLabel,
+  view, sort, q, density, entity, invoice, collision,
   smsTemplates, orgCompany, orgPhone, orgPaymentLink, timeZone,
 }: {
   selected: CaseItem;
+  invoices: CaseInvoice[];
   repInvoiceId: string | null;
   messages: MessageEntry[];
   consent: boolean;
@@ -145,6 +155,7 @@ function MessagesTab({
   q: string;
   density?: DensityId;
   entity?: EntityMode;
+  invoice?: string | null;
   collision: Collision | null;
   smsTemplates: MessageTemplateRow[];
   orgCompany: string;
@@ -152,11 +163,11 @@ function MessagesTab({
   orgPaymentLink: string;
   timeZone?: string | null;
 }) {
-  const returnTo = `/dashboard${panelHref(view, sort, q, density, { case: selected.caseId, tab: "messages", entity })}`;
-  const prefsHref = panelHref(view, sort, q, density, { case: selected.caseId, tab: "messages", prefs: "1", entity });
+  const returnTo = `/dashboard${panelHref(view, sort, q, density, { case: selected.caseId, tab: "messages", entity, invoice })}`;
+  const prefsHref = panelHref(view, sort, q, density, { case: selected.caseId, tab: "messages", prefs: "1", entity, invoice });
 
   const repInvoice = repInvoiceId
-    ? selected.invoices.find((i) => i.invoiceId === repInvoiceId)
+    ? invoices.find((i) => i.invoiceId === repInvoiceId)
     : null;
 
   const vars: TemplateVars = {
@@ -342,10 +353,11 @@ function MessagesTab({
 }
 
 function EmailTab({
-  selected, repInvoiceId, emailMessages, prefs, customerEmail, emailEnabled,
-  view, sort, q, density, entity, emailTemplates, orgCompany, orgPhone, orgPaymentLink, timeZone,
+  selected, invoices, repInvoiceId, emailMessages, prefs, customerEmail, emailEnabled,
+  view, sort, q, density, entity, invoice, emailTemplates, orgCompany, orgPhone, orgPaymentLink, timeZone,
 }: {
   selected: CaseItem;
+  invoices: CaseInvoice[];
   repInvoiceId: string | null;
   emailMessages: EmailMessageEntry[];
   prefs: CommPrefs;
@@ -356,6 +368,7 @@ function EmailTab({
   q: string;
   density?: DensityId;
   entity?: EntityMode;
+  invoice?: string | null;
   emailTemplates: MessageTemplateRow[];
   orgCompany: string;
   orgPhone: string;
@@ -366,10 +379,10 @@ function EmailTab({
   const emailResult = searchParams.get("email");
   const banner = emailResult ? (EMAIL_BANNER[emailResult] ?? null) : null;
 
-  const returnTo = `/dashboard${panelHref(view, sort, q, density, { case: selected.caseId, tab: "email", entity })}`;
+  const returnTo = `/dashboard${panelHref(view, sort, q, density, { case: selected.caseId, tab: "email", entity, invoice })}`;
 
   const repInvoice = repInvoiceId
-    ? selected.invoices.find((i) => i.invoiceId === repInvoiceId)
+    ? invoices.find((i) => i.invoiceId === repInvoiceId)
     : null;
 
   const vars: TemplateVars = {
@@ -552,7 +565,6 @@ function InfoRow({ label, value, tone }: { label: string; value: string; tone?: 
 
 const TABS = [
   { id: "overview" as const, label: "Overview" },
-  { id: "activity" as const, label: "Timeline" },
   { id: "messages" as const, label: "Messages" },
   { id: "email" as const, label: "Email" },
 ];
@@ -562,6 +574,8 @@ const TABS = [
 export function DetailPanel({
   selected,
   repInvoiceId,
+  workspaceInvoices,
+  selectedInvoiceId,
   activeTab,
   timeline,
   messages,
@@ -594,6 +608,8 @@ export function DetailPanel({
 }: {
   selected: CaseItem | null;
   repInvoiceId: string | null;
+  workspaceInvoices?: CaseInvoice[];
+  selectedInvoiceId?: string | null;
   activeTab: "overview" | "activity" | "messages" | "email";
   timeline: TimelineEntry[];
   messages: MessageEntry[];
@@ -646,11 +662,16 @@ export function DetailPanel({
   }, [customerId]);
   const navigate = useNavigate();
   const navigation = useNavigation();
+  const location = useLocation();
   const formBusy = (action: string) => navigation.state !== "idle" && navigation.formAction === action;
   const [confirmCancelPromise, setConfirmCancelPromise] = useState(false);
+  const [showAllInvoices, setShowAllInvoices] = useState(false);
 
-  // Reset confirm state when case changes
-  useEffect(() => { setConfirmCancelPromise(false); }, [customerId]);
+  // Reset confirm / invoice-preview state when case changes
+  useEffect(() => {
+    setConfirmCancelPromise(false);
+    setShowAllInvoices(false);
+  }, [customerId]);
 
   // Auto-reset cancel confirmation after 5s; cleanup prevents stale timers
   useEffect(() => {
@@ -679,11 +700,30 @@ export function DetailPanel({
   }
 
   // ── Derived values ─────────────────────────────────────────────────────────
-  const logHref = panelHref(view, sort, q, density, { case: selected.caseId, tab: "activity", log: "1", entity });
-  const overviewReturnTo = `/dashboard${panelHref(view, sort, q, density, { case: selected.caseId, tab: "overview", entity })}`;
+  const tab = activeTab === "activity" ? "overview" : activeTab;
+  const invoice = selectedInvoiceId ?? null;
+  const invoices = workspaceInvoices ?? selected.invoices;
+  const hrefBase = { case: selected.caseId, entity, invoice };
+  const logHref = panelHref(view, sort, q, density, { ...hrefBase, tab, log: "1" });
+  const overviewReturnTo = `/dashboard${panelHref(view, sort, q, density, { ...hrefBase, tab: "overview" })}`;
 
   const callAction = resolveCallAction(prefs, selected.phone, selected.contactBlocked);
-  const callLogHref = panelHref(view, sort, q, density, { case: selected.caseId, tab: "activity", log: "1", method: "call", entity });
+  const callLogHref = panelHref(view, sort, q, density, { ...hrefBase, tab, log: "1", method: "call" });
+  const historyExpanded = location.hash === "#history" || activeTab === "activity";
+  const chase = chaseRecipientsFrom({
+    phone: phone ?? selected.phone,
+    email: customerEmail ?? selected.email,
+    commPrefs: prefs,
+    smsConsent: consent,
+    contactBlocked: selected.contactBlocked,
+    exceptionReason: selected.exceptionReason,
+    smsEnabled,
+    hasInvoice: invoices.length > 0,
+  });
+  const visibleInvoices = showAllInvoices
+    ? invoices
+    : previewWorkspaceInvoices(invoices, invoice, INVOICE_PREVIEW);
+  const visibleTimeline = historyExpanded ? timeline : timeline.slice(0, HISTORY_PREVIEW);
 
   return (
     <aside
@@ -727,6 +767,13 @@ export function DetailPanel({
           </span>{" "}
           overdue
         </p>
+        <Link
+          to={`/accounts/${selected.customerId}`}
+          className="mt-2 inline-flex items-center gap-1 text-xs font-medium text-copper-bright hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-copper rounded"
+        >
+          Open account record
+          <Icon name="external" size={12} aria-hidden />
+        </Link>
       </div>
 
       {/* ── Stat tiles band ─────────────────────────────────────────────────── */}
@@ -779,7 +826,7 @@ export function DetailPanel({
 
         {/* Text → Messages tab */}
         <Link
-          to={panelHref(view, sort, q, density, { case: selected.caseId, tab: "messages", entity })}
+          to={panelHref(view, sort, q, density, { ...hrefBase, tab: "messages" })}
           className="flex-1 flex flex-col items-center gap-1.5 py-2.5 rounded-card bg-surface border border-border text-copper hover:border-copper focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-copper transition-colors"
         >
           <Icon name="message" size={16} aria-hidden />
@@ -794,36 +841,16 @@ export function DetailPanel({
           <Icon name="note" size={16} aria-hidden />
           <span className="text-[11.5px] font-sans font-semibold text-text">Log</span>
         </Link>
+
+        {/* Email → Email tab */}
+        <Link
+          to={panelHref(view, sort, q, density, { ...hrefBase, tab: "email" })}
+          className="flex-1 flex flex-col items-center gap-1.5 py-2.5 rounded-card bg-surface border border-border text-copper hover:border-copper focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-copper transition-colors"
+        >
+          <Icon name="mail" size={16} aria-hidden />
+          <span className="text-[11.5px] font-sans font-semibold text-text">Email</span>
+        </Link>
       </div>
-
-      {/* ── Next best action card ─────────────────────────────────────────── */}
-      <NbaCard selected={selected} smsEnabled={smsEnabled} prefs={prefs} phone={phone} view={view} sort={sort} q={q} density={density} entity={entity} logHref={logHref} timeZone={timeZone} />
-
-      {/* ── Tab bar ─────────────────────────────────────────────────────────── */}
-      <nav
-        aria-label="Selected account sections"
-        className="flex border-b border-border shrink-0 bg-paper"
-      >
-        {TABS.map((tab) => {
-          const isActive = activeTab === tab.id;
-          return (
-            <Link
-              key={tab.id}
-              to={panelHref(view, sort, q, density, { case: selected.caseId, tab: tab.id, entity })}
-              id={`${tab.id}-tab`}
-              aria-current={isActive ? "page" : undefined}
-              className={[
-                "px-4 py-3 text-[13px] font-sans focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-copper transition-colors",
-                isActive
-                  ? "border-b-2 border-copper text-text font-semibold"
-                  : "border-b-2 border-transparent text-muted font-medium hover:text-text",
-              ].join(" ")}
-            >
-              {tab.label}
-            </Link>
-          );
-        })}
-      </nav>
 
       {/* ── Collision banner ────────────────────────────────────────────────── */}
       {collision && (collision.level !== "none" || collision.byUser) ? (
@@ -841,13 +868,68 @@ export function DetailPanel({
         </div>
       ) : null}
 
+      {/* ── Next best action card ─────────────────────────────────────────── */}
+      <NbaCard selected={selected} smsEnabled={smsEnabled} prefs={prefs} phone={phone} view={view} sort={sort} q={q} density={density} entity={entity} invoice={invoice} logHref={logHref} timeZone={timeZone} />
+
+      {/* ── Tab bar ─────────────────────────────────────────────────────────── */}
+      <nav
+        aria-label="Selected account sections"
+        className="flex border-b border-border shrink-0 bg-paper"
+      >
+        {TABS.map((t) => {
+          const isActive = tab === t.id;
+          return (
+            <Link
+              key={t.id}
+              to={panelHref(view, sort, q, density, { ...hrefBase, tab: t.id })}
+              id={`${t.id}-tab`}
+              aria-current={isActive ? "page" : undefined}
+              className={[
+                "px-4 py-3 text-[13px] font-sans focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-copper transition-colors",
+                isActive
+                  ? "border-b-2 border-copper text-text font-semibold"
+                  : "border-b-2 border-transparent text-muted font-medium hover:text-text",
+              ].join(" ")}
+            >
+              {t.label}
+            </Link>
+          );
+        })}
+      </nav>
+
       {/* ── Tab panels ──────────────────────────────────────────────────────── */}
 
-      {activeTab === "overview" ? (
+      {tab === "overview" ? (
         <section
           id="overview-panel"
           className="flex-1 px-5 py-4"
         >
+          <div className="mb-4">
+            <span className="text-xs font-sans font-medium uppercase tracking-wider text-muted">Contacts</span>
+            {chase.length === 0 ? (
+              <p className="mt-2 text-xs text-muted">No chase recipients on file.</p>
+            ) : (
+              <ul className="mt-2 flex flex-col gap-1" aria-label="Chase recipients">
+                {chase.map((row) => (
+                  <li
+                    key={`${row.channel}:${row.address}`}
+                    className="flex items-start justify-between gap-2 rounded-md bg-paper px-3 py-2"
+                  >
+                    <span className="text-xs font-sans text-text">
+                      <span className="font-semibold">{CHASE_CHANNEL_LABEL[row.channel]}</span>
+                      <span className="text-muted"> · {row.address}</span>
+                    </span>
+                    {row.enabled ? (
+                      <span className="text-[11px] font-sans font-medium text-cool">Ready</span>
+                    ) : (
+                      <span className="text-[11px] font-sans text-muted text-right">{row.reasonDisabled}</span>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+
           <div className="grid grid-cols-1 gap-6 sm:grid-cols-2">
             <InfoRow
               label="Status"
@@ -871,7 +953,7 @@ export function DetailPanel({
                 <input
                   type="hidden"
                   name="returnTo"
-                  value={`/dashboard${panelHref(view, sort, q, density, { case: selected.caseId, tab: "overview", entity })}`}
+                  value={`/dashboard${panelHref(view, sort, q, density, { ...hrefBase, tab: "overview" })}`}
                 />
                 <select
                   name="ownerId"
@@ -887,8 +969,6 @@ export function DetailPanel({
                 </select>
               </form>
             </div>
-            <InfoRow label="Phone" value={selected.phone ?? "—"} />
-            <InfoRow label="Email" value={selected.email ?? "—"} />
           </div>
 
           {/* Why this priority */}
@@ -964,23 +1044,66 @@ export function DetailPanel({
             </form>
           </div>
 
-          {/* Invoice list */}
+          {/* Invoice list — overdue ∪ coming-due; click sets ?invoice= */}
           <div className="mt-4">
             <span className="text-xs font-sans font-medium uppercase tracking-wider text-muted">Invoices</span>
-            <ul className="mt-2 flex flex-col gap-1">
-              {selected.invoices.map((inv) => (
-                <li key={inv.invoiceId} className="flex items-center justify-between gap-2 rounded-md bg-paper px-3 py-2">
-                  <span className="font-mono text-xs text-text">{inv.docNumber ?? "—"}</span>
-                  <span className="font-mono text-xs text-muted tabular-nums">
-                    {formatUSD(inv.balance)}
-                    {inv.lateFee > 0 ? <span className="text-hot"> + {formatUSD(inv.lateFee)} late fee</span> : null}
-                    {" · "}{inv.ageDays > 0 ? `${inv.ageDays}d` : "Due"}
-                  </span>
-                </li>
-              ))}
-            </ul>
+            {invoices.length === 0 ? (
+              <p className="mt-2 text-xs text-muted">No invoices.</p>
+            ) : (
+              <ul className="mt-2 flex flex-col gap-1">
+                {visibleInvoices.map((inv) => {
+                  const highlighted = invoice === inv.invoiceId;
+                  return (
+                    <li key={inv.invoiceId}>
+                      <Link
+                        to={panelHref(view, sort, q, density, { ...hrefBase, tab: "overview", invoice: inv.invoiceId })}
+                        aria-current={highlighted ? "true" : undefined}
+                        className={[
+                          "flex items-center justify-between gap-2 rounded-md px-3 py-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-copper",
+                          highlighted ? "bg-copper/10 ring-1 ring-copper/40" : "bg-paper hover:bg-panel",
+                        ].join(" ")}
+                      >
+                        <span className="font-mono text-xs text-text">{inv.docNumber ?? "—"}</span>
+                        <span className="font-mono text-xs text-muted tabular-nums">
+                          {formatUSD(inv.balance)}
+                          {inv.lateFee > 0 ? <span className="text-hot"> + {formatUSD(inv.lateFee)} late fee</span> : null}
+                          {" · "}{inv.ageDays > 0 ? `${inv.ageDays}d` : "Due"}
+                        </span>
+                      </Link>
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
+            {visibleInvoices.length < invoices.length ? (
+              <button
+                type="button"
+                onClick={() => setShowAllInvoices(true)}
+                className="mt-2 text-xs font-sans font-medium text-copper hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-copper rounded"
+              >
+                Show all {invoices.length}
+              </button>
+            ) : null}
             {selected.lateFeeTotal > 0 ? (
               <p className="mt-1 text-xs text-muted italic">Late fees are display-only estimates; QuickBooks balances are unchanged.</p>
+            ) : null}
+          </div>
+
+          {/* History — collapsed to 5; #history expands */}
+          <div id="history" className="mt-4 scroll-mt-4">
+            <span className="text-xs font-sans font-medium uppercase tracking-wider text-muted">History</span>
+            {timeline.length === 0 ? (
+              <p className="mt-2 text-xs text-muted">No activity yet.</p>
+            ) : (
+              <TimelineList entries={visibleTimeline} today={today} timeZone={timeZone} />
+            )}
+            {timeline.length > HISTORY_PREVIEW && !historyExpanded ? (
+              <Link
+                to={{ pathname: location.pathname, search: location.search, hash: "#history" }}
+                className="mt-2 inline-block text-xs font-sans font-medium text-copper hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-copper rounded"
+              >
+                Show all {timeline.length}
+              </Link>
             ) : null}
           </div>
 
@@ -1079,81 +1202,10 @@ export function DetailPanel({
         </section>
       ) : null}
 
-      {activeTab === "activity" ? (
-        <section id="activity-panel" className="flex-1 px-5 py-4">
-          {timeline.length === 0 ? (
-            <div className="flex flex-col items-center justify-center gap-2 py-10 text-center">
-              <Icon name="note" size={24} className="text-border" aria-hidden />
-              <p className="text-sm font-sans font-semibold text-text">No activity yet.</p>
-              <p className="text-xs text-muted max-w-xs">Logged contacts and texts will appear here.</p>
-            </div>
-          ) : (
-            <ol className="flex flex-col">
-              {timeline.map((e, index) => {
-                  const isLast = index === timeline.length - 1;
-                  if (e.kind === "sms") {
-                    const node = TL_NODE[e.direction] ?? TL_NODE.outbound;
-                    return (
-                      <li key={e.id} className="flex gap-3 pb-4 last:pb-0">
-                        <div className="flex flex-col items-center shrink-0">
-                          <span className={`grid place-items-center w-7 h-7 rounded-lg ${node.bg} ${node.color}`}>
-                            <Icon name="message" size={14} aria-hidden />
-                          </span>
-                          {!isLast ? <span aria-hidden="true" className="flex-1 w-0.5 bg-border mt-1.5" /> : null}
-                        </div>
-                        <div className="min-w-0 flex flex-col gap-0.5 pt-0.5">
-                          <span className={`text-sm font-sans font-semibold ${e.direction === "inbound" ? "text-cool" : "text-text"}`}>
-                            {e.outcomeLabel}
-                          </span>
-                          <span className="font-mono text-xs text-muted">{formatInstant(e.at, timeZone)}</span>
-                          {e.body ? (
-                            <span className="text-xs text-muted whitespace-pre-wrap line-clamp-3">{e.body}</span>
-                          ) : null}
-                          {e.errorCode ? (
-                            <span className="text-xs font-sans text-hot">Error {e.errorCode}</span>
-                          ) : null}
-                        </div>
-                      </li>
-                    );
-                  }
-                  const broken = isTimelinePromiseBroken(e.promisedDate, today);
-                  const node = TL_NODE[e.method] ?? TL_NODE.note;
-                  return (
-                    <li key={e.id} className="flex gap-3 pb-4 last:pb-0">
-                      <div className="flex flex-col items-center shrink-0">
-                        <span className={`grid place-items-center w-7 h-7 rounded-lg ${node.bg} ${node.color}`}>
-                          <Icon name={METHOD_ICON[e.method] ?? "note"} size={14} aria-hidden />
-                        </span>
-                        {!isLast ? <span aria-hidden="true" className="flex-1 w-0.5 bg-border mt-1.5" /> : null}
-                      </div>
-                      <div className="min-w-0 flex flex-col gap-0.5 pt-0.5">
-                        <span className="text-sm font-sans font-semibold text-text">
-                          {e.outcomeLabel ?? "Logged"}
-                          {e.authorLabel ? <span className="font-normal text-muted"> · by {e.authorLabel}</span> : null}
-                        </span>
-                        <span className="font-mono text-xs text-muted">{formatInstant(e.at, timeZone)}</span>
-                        {e.promisedAmount != null && e.promisedDate != null && (
-                          <span className={`text-xs font-sans font-medium ${broken ? "text-hot" : "text-text"}`}>
-                            Promised {formatUSD(e.promisedAmount)} by {formatDate(e.promisedDate)}
-                            {broken ? " · broken" : ""}
-                          </span>
-                        )}
-                        {e.followUpAt && (
-                          <span className="text-xs font-sans text-muted">Follow up {formatDate(e.followUpAt)}</span>
-                        )}
-                        {e.notes && <span className="text-xs text-muted whitespace-pre-wrap">{e.notes}</span>}
-                      </div>
-                    </li>
-                  );
-                })}
-            </ol>
-          )}
-        </section>
-      ) : null}
-
-      {activeTab === "messages" ? (
+      {tab === "messages" ? (
         <MessagesTab
           selected={selected}
+          invoices={invoices}
           repInvoiceId={repInvoiceId}
           messages={messages}
           consent={consent}
@@ -1168,6 +1220,7 @@ export function DetailPanel({
           q={q}
           density={density}
           entity={entity}
+          invoice={invoice}
           collision={collision}
           smsTemplates={smsTemplates}
           orgCompany={orgCompany}
@@ -1177,10 +1230,11 @@ export function DetailPanel({
         />
       ) : null}
 
-      {activeTab === "email" ? (
+      {tab === "email" ? (
         <EmailTab
           key={selected.caseId}
           selected={selected}
+          invoices={invoices}
           repInvoiceId={repInvoiceId}
           emailMessages={emailMessages ?? []}
           prefs={prefs}
@@ -1191,6 +1245,7 @@ export function DetailPanel({
           q={q}
           density={density}
           entity={entity}
+          invoice={invoice}
           emailTemplates={emailTemplates}
           orgCompany={orgCompany}
           orgPhone={orgPhone}
@@ -1206,8 +1261,78 @@ export function DetailPanel({
 // NbaCard — "Next best action" callout between action tiles and tab bar
 // ---------------------------------------------------------------------------
 
+function TimelineList({
+  entries, today, timeZone,
+}: {
+  entries: TimelineEntry[];
+  today: string;
+  timeZone?: string | null;
+}) {
+  return (
+    <ol className="mt-2 flex flex-col">
+      {entries.map((e, index) => {
+        const isLast = index === entries.length - 1;
+        if (e.kind === "sms") {
+          const node = TL_NODE[e.direction] ?? TL_NODE.outbound;
+          return (
+            <li key={e.id} className="flex gap-3 pb-4 last:pb-0">
+              <div className="flex flex-col items-center shrink-0">
+                <span className={`grid place-items-center w-7 h-7 rounded-lg ${node.bg} ${node.color}`}>
+                  <Icon name="message" size={14} aria-hidden />
+                </span>
+                {!isLast ? <span aria-hidden="true" className="flex-1 w-0.5 bg-border mt-1.5" /> : null}
+              </div>
+              <div className="min-w-0 flex flex-col gap-0.5 pt-0.5">
+                <span className={`text-sm font-sans font-semibold ${e.direction === "inbound" ? "text-cool" : "text-text"}`}>
+                  {e.outcomeLabel}
+                </span>
+                <span className="font-mono text-xs text-muted">{formatInstant(e.at, timeZone)}</span>
+                {e.body ? (
+                  <span className="text-xs text-muted whitespace-pre-wrap line-clamp-3">{e.body}</span>
+                ) : null}
+                {e.errorCode ? (
+                  <span className="text-xs font-sans text-hot">Error {e.errorCode}</span>
+                ) : null}
+              </div>
+            </li>
+          );
+        }
+        const broken = isTimelinePromiseBroken(e.promisedDate, today);
+        const node = TL_NODE[e.method] ?? TL_NODE.note;
+        return (
+          <li key={e.id} className="flex gap-3 pb-4 last:pb-0">
+            <div className="flex flex-col items-center shrink-0">
+              <span className={`grid place-items-center w-7 h-7 rounded-lg ${node.bg} ${node.color}`}>
+                <Icon name={METHOD_ICON[e.method] ?? "note"} size={14} aria-hidden />
+              </span>
+              {!isLast ? <span aria-hidden="true" className="flex-1 w-0.5 bg-border mt-1.5" /> : null}
+            </div>
+            <div className="min-w-0 flex flex-col gap-0.5 pt-0.5">
+              <span className="text-sm font-sans font-semibold text-text">
+                {e.outcomeLabel ?? "Logged"}
+                {e.authorLabel ? <span className="font-normal text-muted"> · by {e.authorLabel}</span> : null}
+              </span>
+              <span className="font-mono text-xs text-muted">{formatInstant(e.at, timeZone)}</span>
+              {e.promisedAmount != null && e.promisedDate != null && (
+                <span className={`text-xs font-sans font-medium ${broken ? "text-hot" : "text-text"}`}>
+                  Promised {formatUSD(e.promisedAmount)} by {formatDate(e.promisedDate)}
+                  {broken ? " · broken" : ""}
+                </span>
+              )}
+              {e.followUpAt && (
+                <span className="text-xs font-sans text-muted">Follow up {formatDate(e.followUpAt)}</span>
+              )}
+              {e.notes && <span className="text-xs text-muted whitespace-pre-wrap">{e.notes}</span>}
+            </div>
+          </li>
+        );
+      })}
+    </ol>
+  );
+}
+
 function NbaCard({
-  selected, smsEnabled, prefs, phone, view, sort, q, density, entity, logHref, timeZone,
+  selected, smsEnabled, prefs, phone, view, sort, q, density, entity, invoice, logHref, timeZone,
 }: {
   selected: CaseItem;
   smsEnabled: boolean;
@@ -1218,6 +1343,7 @@ function NbaCard({
   q: string;
   density?: DensityId;
   entity?: EntityMode;
+  invoice?: string | null;
   logHref: string;
   timeZone?: string | null;
 }) {
@@ -1236,8 +1362,8 @@ function NbaCard({
   const canText = gate === null;
   const callAction = resolveCallAction(prefs, phone, selected.contactBlocked);
   const canCall = callAction.kind === "live";
-  const textHref = panelHref(view, sort, q, density, { case: selected.caseId, tab: "messages", entity });
-  const callHref = panelHref(view, sort, q, density, { case: selected.caseId, tab: "activity", log: "1", method: "call", entity });
+  const textHref = panelHref(view, sort, q, density, { case: selected.caseId, tab: "messages", entity, invoice });
+  const callHref = panelHref(view, sort, q, density, { case: selected.caseId, tab: "overview", log: "1", method: "call", entity, invoice });
 
   return (
     <div className="mx-4 my-3 rounded-lg border border-copper/30 bg-copper/5 px-4 py-3">

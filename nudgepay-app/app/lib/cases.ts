@@ -287,6 +287,44 @@ export function sortCaseItems(items: CaseItem[], sort: SortId): CaseItem[] {
     || b.totalOverdue - a.totalOverdue);
 }
 
+/** Overdue case invoices ∪ coming-due lines for the same customer (so ?invoice= can highlight). */
+export function mergeWorkspaceInvoices(
+  overdue: CaseInvoice[],
+  comingDueInputs: InvoiceInput[],
+  customerId: string,
+  today: string,
+): CaseInvoice[] {
+  const extra = comingDueInputs
+    .filter((inv) => inv.customer_id === customerId && inv.due_date)
+    .map((inv) => {
+      const ageDays = ageInDays(inv.due_date as string, today); // ≤ 0 when not yet due
+      return {
+        invoiceId: inv.id,
+        docNumber: inv.qbo_doc_number,
+        balance: Number(inv.balance || 0),
+        dueDate: inv.due_date,
+        ageDays,
+        heat: heatOf(Math.max(0, ageDays)),
+        lateFee: 0, // not yet due; computeLateFee is 0 when ageDays <= grace
+      } satisfies CaseInvoice;
+    });
+  const seen = new Set(overdue.map((i) => i.invoiceId));
+  return [...overdue, ...extra.filter((i) => !seen.has(i.invoiceId))];
+}
+
+/** First `limit` invoices, with `selectedInvoiceId` pinned in if it would otherwise be sliced off. */
+export function previewWorkspaceInvoices(
+  invoices: CaseInvoice[],
+  selectedInvoiceId: string | null | undefined,
+  limit: number,
+): CaseInvoice[] {
+  if (invoices.length <= limit) return invoices;
+  const head = invoices.slice(0, limit);
+  if (!selectedInvoiceId || head.some((i) => i.invoiceId === selectedInvoiceId)) return head;
+  const selected = invoices.find((i) => i.invoiceId === selectedInvoiceId);
+  return selected ? [...head, selected] : head;
+}
+
 export function computeCaseMetrics(items: CaseItem[], today: string, highValue: number = HIGH_VALUE_THRESHOLD): Metrics {
   const active = items.filter((i) => !i.suppressed);
   const bucket = (source: CaseItem[], pred: (i: CaseItem) => boolean): Metric => {

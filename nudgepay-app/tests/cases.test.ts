@@ -2,7 +2,8 @@ import { expect, test } from "vitest";
 import {
   reconcileCases,
   buildCaseItems, applyCaseView, sortCaseItems, computeCaseMetrics,
-  type CaseRow,
+  mergeWorkspaceInvoices, previewWorkspaceInvoices,
+  type CaseRow, type CaseInvoice,
   type CasePromiseInput, type CaseLastContactInput,
 } from "../app/lib/cases";
 import { suggestFollowUpDate } from "../app/lib/follow-up-cadence";
@@ -463,4 +464,46 @@ test("buildCaseItems defaults peeks to [] and payer to null", () => {
   const items = buildCaseItems(CASES, INVOICES, CUSTOMERS, [], [], TODAY, LABELS, DEFAULT_ORG_CONFIG);
   expect(items.every((i) => i.peeks.length === 0)).toBe(true);
   expect(items.every((i) => i.payer === null)).toBe(true);
+});
+
+test("mergeWorkspaceInvoices unions overdue with coming-due for the same customer", () => {
+  const overdue: CaseInvoice[] = [{
+    invoiceId: "i1", docNumber: "1001", balance: 6000, dueDate: "2026-03-01",
+    ageDays: 113, heat: { band: "hot", label: "HOT", days: 113 }, lateFee: 12,
+  }];
+  const comingDue = [
+    { id: "cd1", qbo_doc_number: "1009", customer_id: "c1", balance: 400, due_date: "2026-06-29" },
+    { id: "cd-other", qbo_doc_number: "2009", customer_id: "c2", balance: 50, due_date: "2026-06-25" },
+    { id: "cd-nodue", qbo_doc_number: "1010", customer_id: "c1", balance: 10, due_date: null },
+    { id: "i1", qbo_doc_number: "1001", customer_id: "c1", balance: 6000, due_date: "2026-03-01" },
+  ];
+  const merged = mergeWorkspaceInvoices(overdue, comingDue, "c1", TODAY);
+  expect(merged.map((i) => i.invoiceId)).toEqual(["i1", "cd1"]);
+  expect(merged[1].lateFee).toBe(0);
+  expect(merged[1].ageDays).toBeLessThanOrEqual(0);
+  expect(merged[1].heat.band).toBe("cool");
+  expect(merged[1].heat.days).toBe(0);
+});
+
+test("previewWorkspaceInvoices pins a selected row that would be sliced off", () => {
+  const rows: CaseInvoice[] = [1, 2, 3, 4, 5, 6].map((n) => ({
+    invoiceId: `i${n}`, docNumber: String(n), balance: n, dueDate: "2026-06-01",
+    ageDays: 21, heat: { band: "cool", label: "COOL", days: 21 }, lateFee: 0,
+  }));
+  expect(previewWorkspaceInvoices(rows, null, 5).map((i) => i.invoiceId)).toEqual(["i1", "i2", "i3", "i4", "i5"]);
+  expect(previewWorkspaceInvoices(rows, "i2", 5).map((i) => i.invoiceId)).toEqual(["i1", "i2", "i3", "i4", "i5"]);
+  expect(previewWorkspaceInvoices(rows, "i6", 5).map((i) => i.invoiceId)).toEqual(["i1", "i2", "i3", "i4", "i5", "i6"]);
+  expect(previewWorkspaceInvoices(rows, "missing", 5)).toHaveLength(5);
+  expect(previewWorkspaceInvoices(rows.slice(0, 3), "i1", 5)).toHaveLength(3);
+});
+
+test("mergeWorkspaceInvoices keeps overdue order and skips other customers", () => {
+  const overdue: CaseInvoice[] = [
+    { invoiceId: "a", docNumber: "1", balance: 1, dueDate: "2026-01-01", ageDays: 172, heat: { band: "hot", label: "HOT", days: 172 }, lateFee: 0 },
+    { invoiceId: "b", docNumber: "2", balance: 2, dueDate: "2026-06-01", ageDays: 21, heat: { band: "cool", label: "COOL", days: 21 }, lateFee: 0 },
+  ];
+  expect(mergeWorkspaceInvoices(overdue, [], "c1", TODAY).map((i) => i.invoiceId)).toEqual(["a", "b"]);
+  expect(mergeWorkspaceInvoices([], [
+    { id: "x", qbo_doc_number: "X", customer_id: "other", balance: 1, due_date: "2026-06-25" },
+  ], "c1", TODAY)).toEqual([]);
 });
