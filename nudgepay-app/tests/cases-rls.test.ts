@@ -112,3 +112,31 @@ test("applyCaseReconciliation pages 1001 overdue invoices instead of throwing on
     .select("id").eq("org_id", orgId).is("closed_at", null);
   expect(openCases!.length).toBe(1);
 });
+
+test("RLS: a member can update next_action but cannot delete a case", async () => {
+  const svc = serviceClient();
+  const member = await makeUserClient(`cases-rls-mem-${Math.random()}@example.com`);
+  const { data: org } = await svc.from("organizations").insert({ name: `Cases mem ${member.userId}` }).select("id").single();
+  await svc.from("memberships").insert({ org_id: org!.id, user_id: member.userId, role: "member" });
+  const { data: cust } = await svc.from("customers")
+    .insert({ org_id: org!.id, qbo_id: `cs-mem-${member.userId}`, name: "Member Cust" }).select("id").single();
+  const { data: cse } = await svc.from("collection_cases")
+    .insert({
+      org_id: org!.id, customer_id: cust!.id, status: "new",
+      next_action_type: "contact", next_action_at: "2026-06-01",
+    })
+    .select("id").single();
+
+  const { error: updErr } = await member.client.from("collection_cases")
+    .update({ next_action_type: "follow_up", next_action_at: "2026-06-15" })
+    .eq("id", cse!.id);
+  expect(updErr).toBeNull();
+  const { data: afterUpd } = await svc.from("collection_cases")
+    .select("next_action_type, next_action_at").eq("id", cse!.id).single();
+  expect(afterUpd!.next_action_type).toBe("follow_up");
+  expect(afterUpd!.next_action_at).toBe("2026-06-15");
+
+  await member.client.from("collection_cases").delete().eq("id", cse!.id);
+  const { data: still } = await svc.from("collection_cases").select("id").eq("id", cse!.id);
+  expect(still).toHaveLength(1);
+});

@@ -56,6 +56,57 @@ describe("email_messages RLS + do_not_email default", () => {
     expect(rowsB).toHaveLength(0);
   });
 
+  it("member and owner JWT cannot INSERT or DELETE email_messages", async () => {
+    const svc = serviceClient();
+
+    const { data: org } = await svc
+      .from("organizations")
+      .insert({ name: `EM-write ${Math.random()}` })
+      .select("id")
+      .single();
+    const orgId = org!.id as string;
+
+    const owner = await makeUserClient(`em-write-owner-${Math.random()}@example.com`);
+    const member = await makeUserClient(`em-write-mem-${Math.random()}@example.com`);
+    await svc.from("memberships").insert([
+      { org_id: orgId, user_id: owner.userId, role: "owner" },
+      { org_id: orgId, user_id: member.userId, role: "member" },
+    ]);
+
+    const { data: seeded } = await svc.from("email_messages").insert({
+      org_id: orgId,
+      direction: "outbound",
+      status: "sent",
+      to_address: "customer@example.com",
+      subject: "Ledger",
+      body: "Seed",
+    }).select("id").single();
+    const rowId = seeded!.id as string;
+
+    const payload = {
+      org_id: orgId,
+      direction: "outbound" as const,
+      status: "sent",
+      to_address: "forged@example.com",
+      subject: "Forged",
+      body: "Forged body",
+    };
+
+    const memberIns = await member.client.from("email_messages").insert(payload);
+    expect(memberIns.error).not.toBeNull();
+    const ownerIns = await owner.client.from("email_messages").insert(payload);
+    expect(ownerIns.error).not.toBeNull();
+
+    const { data: afterIns } = await svc.from("email_messages")
+      .select("id").eq("org_id", orgId).eq("to_address", "forged@example.com");
+    expect(afterIns ?? []).toHaveLength(0);
+
+    await member.client.from("email_messages").delete().eq("id", rowId);
+    await owner.client.from("email_messages").delete().eq("id", rowId);
+    const { data: still } = await svc.from("email_messages").select("id").eq("id", rowId);
+    expect(still).toHaveLength(1);
+  });
+
   it("customers.do_not_email defaults false", async () => {
     const svc = serviceClient();
 
