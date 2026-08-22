@@ -1,4 +1,5 @@
 import { describe, expect, it, test } from "vitest";
+import { readFileSync } from "node:fs";
 import {
   buildThreadRows, applyMessageTab, applyChannelFilter, sortThreadRows, computeMessageMetrics,
   MESSAGE_TABS, MESSAGE_SORTS, inboundIsUnread, threadReadKey,
@@ -251,4 +252,10 @@ test("needs-reply is unread inbound only (last_read_at)", () => {
   const reads = new Map([[threadReadKey("c1", "sms"), "2026-06-22T00:00:00Z"]]);
   const rows = buildThreadRows(CUSTOMERS, MESSAGES, LABELS, reads);
   expect(rows.find((r) => r.customerId === "c1")!.needsReply).toBe(false);
+});
+
+test("MessagesMetrics shows em dash totals when truncated", () => {
+  const src = readFileSync(new URL("../app/components/MessagesMetrics.tsx", import.meta.url), "utf8");
+  expect(src).toContain("truncated");
+  expect(src).toContain('"—"');
 });

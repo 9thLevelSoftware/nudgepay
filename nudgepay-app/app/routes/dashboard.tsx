@@ -349,7 +349,7 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
   // Destructure the shared queue source
   const {
     cases, invoicesInput, comingDueInvoices, customersInput,
-    lastContactsInput, promisesInput, recentByCase, presenceRows,
+    lastContactsInput, lastContactTruncated, promisesInput, recentByCase, presenceRows,
     roster, ownerLabels, orgConfig, smsEnabled, smsQuietNow, quietHoursLabel, templates,
   } = src;
 
@@ -601,6 +601,7 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
       today,
       timeZone: orgConfig.companyProfile.timezone,
       arKpis,
+      lastContactTruncated,
       workspaceInvoices,
       ...dashboardData,
     },
@@ -671,6 +672,7 @@ export default function Dashboard() {
     comingDueDays,
     today,
     arKpis,
+    lastContactTruncated,
     repInvoiceId,
     workspaceInvoices,
     smsTemplates,
@@ -768,7 +770,7 @@ export default function Dashboard() {
           {/* KPI band */}
           <div className="px-6 py-3 border-b border-border bg-panel shrink-0 space-y-3">
             <ArKpiBand kpis={arKpis} isOwner={isOwner} />
-            <KpiBand metrics={metrics} view={view} sort={sort} search={q} entity={hrefEntity} density={hrefDensity} scopeLabel={scopeLabel} clearHref={clearHref} />
+            <KpiBand metrics={metrics} view={view} sort={sort} search={q} entity={hrefEntity} density={hrefDensity} scopeLabel={scopeLabel} clearHref={clearHref} lastContactTruncated={lastContactTruncated} />
           </div>
 
           {/* Triage strip — top-3 actionable cases */}

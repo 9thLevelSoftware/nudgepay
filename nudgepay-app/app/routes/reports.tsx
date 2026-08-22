@@ -9,6 +9,7 @@ import { ArKpiBand } from "../components/ArKpiBand";
 import { AgingBarChart, ChartCard, TrendLineChart } from "../components/SvgCharts";
 import { ContentShell } from "../components/ContentShell";
 import { pageTitle } from "../lib/meta";
+import { TruncationBanner } from "../components/TruncationBanner";
 import type { Route } from "./+types/reports";
 
 export const meta: Route.MetaFunction = ({ data }) => {
@@ -49,6 +50,7 @@ function fmtHours(x: number | null): string {
 
 export default function Reports() {
   const { report, arKpis, orgName, initials, userLabel, connected, syncLabel, syncIssues } = useLoaderData<typeof loader>();
+  const truncated = report.truncated || arKpis.coverage === "partial";
   const teamContacts = report.perRep.reduce((s, r) => s + r.contactsLogged, 0);
   const teamKept = report.perRep.reduce((s, r) => s + r.kept, 0);
   const teamResolved = report.perRep.reduce((s, r) => s + r.resolved, 0);
@@ -100,6 +102,8 @@ export default function Reports() {
           </div>
         </div>
 
+        {truncated ? <TruncationBanner /> : null}
+
         <section>
           <ArKpiBand kpis={arKpis} isOwner={false} />
         </section>
@@ -108,17 +112,17 @@ export default function Reports() {
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
           <div className="rounded-lg border border-border bg-panel p-4">
             <p className="text-xs font-sans uppercase tracking-wider text-muted">Median time to first contact</p>
-            <p className="mt-1 font-display text-2xl text-text">{fmtHours(report.firstContact.medianHours)}</p>
-            <p className="text-xs text-muted">{fmtPct(report.firstContact.within24hPct)} within 24h · {report.firstContact.uncontacted} uncontacted</p>
+            <p className="mt-1 font-display text-2xl text-text">{report.truncated ? "—" : fmtHours(report.firstContact.medianHours)}</p>
+            <p className="text-xs text-muted">{report.truncated ? "—" : `${fmtPct(report.firstContact.within24hPct)} within 24h · ${report.firstContact.uncontacted} uncontacted`}</p>
           </div>
           <div className="rounded-lg border border-border bg-panel p-4">
             <p className="text-xs font-sans uppercase tracking-wider text-muted">Contacts logged ({report.range}d)</p>
-            <p className="mt-1 font-display text-2xl text-text">{teamContacts}</p>
+            <p className="mt-1 font-display text-2xl text-text">{report.truncated ? "—" : teamContacts}</p>
           </div>
           <div className="rounded-lg border border-border bg-panel p-4">
             <p className="text-xs font-sans uppercase tracking-wider text-muted">Team promise-kept rate</p>
-            <p className="mt-1 font-display text-2xl text-text">{fmtPct(teamKeptRate)}</p>
-            <p className="text-xs text-muted">{teamKept} kept / {teamResolved} resolved</p>
+            <p className="mt-1 font-display text-2xl text-text">{report.truncated ? "—" : fmtPct(teamKeptRate)}</p>
+            <p className="text-xs text-muted">{report.truncated ? "—" : `${teamKept} kept / ${teamResolved} resolved`}</p>
           </div>
         </div>
 

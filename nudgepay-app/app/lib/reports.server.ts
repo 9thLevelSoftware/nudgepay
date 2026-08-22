@@ -11,7 +11,7 @@ import type { ExceptionReason } from "./contact-log";
 import { buildArAgingBuckets, buildArKpis, type ArKpis } from "./ar-kpis";
 import { loadArKpiSource } from "./ar-kpis.server";
 import { loadContactPromiseRates } from "./contact-promise-rates.server";
-import { orderPage, pageAll, PAGE_ALL_MAX_ROWS } from "./page-all";
+import { chunkIds, orderPage, pageAll, pageAllChunked, PAGE_ALL_MAX_ROWS } from "./page-all";
 import {
   activeBrokenCaseIds, buildTeamReport, type ReportRange,
   type ReportContactLog, type ReportPromise, type ReportOpenedCase, type ReportWorkloadCase,
@@ -30,7 +30,7 @@ export async function loadTeamReport(args: {
   service: SupabaseClient;
   orgId: string;
   range: ReportRange;
-}): Promise<TeamReport> {
+}): Promise<TeamReport & { truncated: boolean }> {
   const { supabase, service, orgId, range } = args;
 
   const orgConfig = await loadOrgConfig(supabase, orgId);
@@ -40,71 +40,130 @@ export async function loadTeamReport(args: {
 
   const roster = (await listOrgMembers(service, orgId)).map((m) => ({ userId: m.userId, label: m.label }));
 
-  const { data: logRows } = await supabase
-    .from("contact_logs")
-    .select("user_id, case_id, created_at")
-    .eq("org_id", orgId)
-    .gte("created_at", windowStartIso);
-  const contactLogs: ReportContactLog[] = ((logRows as any[]) ?? []).map((r) => ({
+  type LogRow = { user_id: string; case_id: string | null; created_at: string };
+  type PromRow = { created_by: string | null; status: ReportPromise["status"]; resolved_at: string | null };
+  type OpenedRow = { id: string; opened_at: string };
+  type OpenRow = {
+    id: string; customer_id: string | null; status: string;
+    exception_reason: ExceptionReason | null; next_action_at: string | null;
+  };
+  type InvRow = { customer_id: string | null; balance: number | string | null };
+  const [logs, proms, opened, openCasesPage, invs] = await Promise.all([
+    pageAll<LogRow>(
+      (from, to) =>
+        orderPage(
+          supabase
+            .from("contact_logs")
+            .select("user_id, case_id, created_at", { count: "exact" })
+            .eq("org_id", orgId)
+            .gte("created_at", windowStartIso),
+        ).range(from, to),
+      { maxRows: PAGE_ALL_MAX_ROWS },
+    ),
+    pageAll<PromRow>(
+      (from, to) =>
+        orderPage(
+          supabase
+            .from("promises")
+            .select("created_by, status, resolved_at", { count: "exact" })
+            .eq("org_id", orgId)
+            .in("status", ["kept", "partially_kept", "broken"])
+            .gte("resolved_at", windowStartIso),
+        ).range(from, to),
+      { maxRows: PAGE_ALL_MAX_ROWS },
+    ),
+    pageAll<OpenedRow>(
+      (from, to) =>
+        orderPage(
+          supabase
+            .from("collection_cases")
+            .select("id, opened_at", { count: "exact" })
+            .eq("org_id", orgId)
+            .gte("opened_at", windowStartIso),
+        ).range(from, to),
+      { maxRows: PAGE_ALL_MAX_ROWS },
+    ),
+    pageAll<OpenRow>(
+      (from, to) =>
+        orderPage(
+          supabase
+            .from("collection_cases")
+            .select("id, customer_id, status, exception_reason, next_action_at", { count: "exact" })
+            .eq("org_id", orgId)
+            .is("closed_at", null),
+        ).range(from, to),
+      { maxRows: PAGE_ALL_MAX_ROWS },
+    ),
+    pageAll<InvRow>(
+      (from, to) =>
+        orderPage(
+          supabase
+            .from("invoices")
+            .select("customer_id, balance", { count: "exact" })
+            .eq("org_id", orgId)
+            .gt("balance", 0)
+            .lt("due_date", today),
+        ).range(from, to),
+      { maxRows: PAGE_ALL_MAX_ROWS },
+    ),
+  ]);
+
+  const contactLogs: ReportContactLog[] = logs.rows.map((r) => ({
     userId: r.user_id, caseId: r.case_id ?? null, createdAt: r.created_at,
   }));
-
-  const { data: promRows } = await supabase
-    .from("promises")
-    .select("created_by, status, resolved_at")
-    .eq("org_id", orgId)
-    .in("status", ["kept", "partially_kept", "broken"])
-    .gte("resolved_at", windowStartIso);
-  const promises: ReportPromise[] = ((promRows as any[]) ?? []).map((r) => ({
+  const promises: ReportPromise[] = proms.rows.map((r) => ({
     createdBy: r.created_by ?? null, status: r.status, resolvedAt: r.resolved_at ?? null,
   }));
-
-  const { data: openedRows } = await supabase
-    .from("collection_cases")
-    .select("id, opened_at")
-    .eq("org_id", orgId)
-    .gte("opened_at", windowStartIso);
-  const openedCases: ReportOpenedCase[] = ((openedRows as any[]) ?? []).map((r) => ({
+  const openedCases: ReportOpenedCase[] = opened.rows.map((r) => ({
     caseId: r.id, openedAt: r.opened_at,
   }));
+  const openCases = openCasesPage.rows;
+  const customerIds = [...new Set(openCases.map((c) => c.customer_id).filter((id): id is string => Boolean(id)))];
 
-  const { data: openCaseRows } = await supabase
-    .from("collection_cases")
-    .select("id, customer_id, status, exception_reason, next_action_at")
-    .eq("org_id", orgId)
-    .is("closed_at", null);
-  const openCases = ((openCaseRows as any[]) ?? []);
-  const customerIds = [...new Set(openCases.map((c) => c.customer_id).filter(Boolean))];
-
+  type CustOwnerRow = { id: string; owner: string | null };
+  const custPage = customerIds.length === 0
+    ? { rows: [] as CustOwnerRow[], truncated: false }
+    : await pageAllChunked<CustOwnerRow>(
+        chunkIds(customerIds, 100),
+        (ids, from, to) =>
+          orderPage(
+            supabase
+              .from("customers")
+              .select("id, owner", { count: "exact" })
+              .eq("org_id", orgId)
+              .in("id", ids),
+          ).range(from, to),
+        { maxRows: PAGE_ALL_MAX_ROWS },
+      );
   const ownerByCustomer = new Map<string, string | null>();
-  if (customerIds.length > 0) {
-    const { data: custRows } = await supabase
-      .from("customers").select("id, owner").eq("org_id", orgId).in("id", customerIds);
-    for (const r of (custRows as any[]) ?? []) ownerByCustomer.set(r.id, r.owner ?? null);
-  }
+  for (const r of custPage.rows) ownerByCustomer.set(r.id, r.owner ?? null);
 
   const overdueByCustomer = new Map<string, number>();
-  const { data: invRows } = await supabase
-    .from("invoices").select("customer_id, balance").eq("org_id", orgId)
-    .gt("balance", 0).lt("due_date", today);
-  for (const r of (invRows as any[]) ?? []) {
+  for (const r of invs.rows) {
     if (!r.customer_id) continue;
     overdueByCustomer.set(r.customer_id, (overdueByCustomer.get(r.customer_id) ?? 0) + (Number(r.balance) || 0));
   }
 
   const openCaseIds = openCases.map((c) => c.id);
-  let brokenCaseIds = new Set<string>();
-  if (openCaseIds.length > 0) {
-    const { data: promForCases } = await supabase
-      .from("promises")
-      .select("case_id, status, created_at")
-      .eq("org_id", orgId)
-      .in("case_id", openCaseIds)
-      .neq("status", "cancelled");
-    brokenCaseIds = activeBrokenCaseIds(
-      ((promForCases as any[]) ?? []).map((r) => ({ caseId: r.case_id, status: r.status, createdAt: r.created_at })),
-    );
-  }
+  type PromCaseRow = { case_id: string; status: ReportPromise["status"]; created_at: string };
+  const promForCases = openCaseIds.length === 0
+    ? { rows: [] as PromCaseRow[], truncated: false }
+    : await pageAllChunked<PromCaseRow>(
+        chunkIds(openCaseIds, 100),
+        (ids, from, to) =>
+          orderPage(
+            supabase
+              .from("promises")
+              .select("case_id, status, created_at", { count: "exact" })
+              .eq("org_id", orgId)
+              .in("case_id", ids)
+              .neq("status", "cancelled"),
+          ).range(from, to),
+        { maxRows: PAGE_ALL_MAX_ROWS },
+      );
+  const brokenCaseIds = activeBrokenCaseIds(
+    promForCases.rows.map((r) => ({ caseId: r.case_id, status: r.status, createdAt: r.created_at })),
+  );
 
   const workloadCases: ReportWorkloadCase[] = openCases.map((c) => ({
     caseId: c.id,
@@ -116,7 +175,13 @@ export async function loadTeamReport(args: {
     hasBrokenPromise: brokenCaseIds.has(c.id),
   }));
 
-  return buildTeamReport({ range, roster, contactLogs, promises, openedCases, workloadCases, today, timeZone: tz });
+  const truncated = logs.truncated || proms.truncated || opened.truncated
+    || openCasesPage.truncated || invs.truncated || custPage.truncated || promForCases.truncated;
+
+  return {
+    ...buildTeamReport({ range, roster, contactLogs, promises, openedCases, workloadCases, today, timeZone: tz }),
+    truncated,
+  };
 }
 
 // Selected 7/30/90 window — not Stage-2 last-contact / case-promise inputs,

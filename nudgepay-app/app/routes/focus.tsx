@@ -32,6 +32,7 @@ import { SendTextMiniForm } from "../components/focus/SendTextMiniForm";
 import { formatDate, formatInstant } from "../lib/dates";
 import { pageTitle } from "../lib/meta";
 import { smsFlashCopy } from "../lib/flash-copy";
+import { TruncationBanner } from "../components/TruncationBanner";
 import type { Route } from "./+types/focus";
 
 export const meta: Route.MetaFunction = () => pageTitle("Focus Mode");
@@ -186,6 +187,7 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
     smsEnabled: src.smsEnabled,
     smsQuietNow: src.smsQuietNow,
     quietHoursLabel: src.quietHoursLabel,
+    lastContactTruncated: src.lastContactTruncated,
     currentUserId: user.id,
     today,
     smsTemplates: src.templates.sms,
@@ -203,7 +205,7 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
 export default function FocusMode() {
   const {
     queue, scope, heldLabels, collisions, timelines, smsEnabled, smsQuietNow, quietHoursLabel, today,
-    smsTemplates, orgCompany, orgPhone, orgPaymentLink, timeZone,
+    smsTemplates, orgCompany, orgPhone, orgPaymentLink, timeZone, lastContactTruncated,
   } = useLoaderData<typeof loader>();
 
   // Session state
@@ -417,6 +419,11 @@ export default function FocusMode() {
           You own no cases — working the full open queue
         </div>
       )}
+      {lastContactTruncated ? (
+        <div className="px-4 py-2">
+          <TruncationBanner />
+        </div>
+      ) : null}
 
       {/* ── Main content ─────────────────────────────────────────────────── */}
       <main className="flex-1 flex items-start justify-center px-4 py-8 gap-6">

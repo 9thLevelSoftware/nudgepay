@@ -1,4 +1,5 @@
 import { expect, test } from "vitest";
+import { readFileSync } from "node:fs";
 import {
   assertNotTruncated,
   chunkIds,
@@ -196,4 +197,15 @@ test("pageAllChunked returns empty and not truncated for no chunks", async () =>
   });
   expect(rows).toEqual([]);
   expect(truncated).toBe(false);
+});
+
+test("Stage 1 of loadCaseQueueSource uses pageAll on non-embedded queries", () => {
+  const pageAllSrc = readFileSync(new URL("../app/lib/page-all.ts", import.meta.url), "utf8");
+  expect(pageAllSrc).toMatch(/Stage 1 of loadCaseQueueSource uses pageAll/);
+  expect(pageAllSrc).not.toMatch(/do not page Stage-1/);
+  const queue = readFileSync(new URL("../app/lib/case-queue.server.ts", import.meta.url), "utf8");
+  expect(queue).not.toContain("customers!invoices_org_customer_fk");
+  expect(queue).toContain("pageAll<InvoiceRow>");
+  expect(queue).toContain("pageAllChunked");
+  expect(queue).toContain("lastContactTruncated");
 });

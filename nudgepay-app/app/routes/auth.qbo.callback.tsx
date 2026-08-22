@@ -66,6 +66,7 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
       api,
       key,
       notify,
+      errorSource: "manual",
     };
     const backfill = syncOverdueInvoices(deps, orgId).catch(async (err) => {
       console.error("[qbo-callback] first sync failed for org", orgId, err);

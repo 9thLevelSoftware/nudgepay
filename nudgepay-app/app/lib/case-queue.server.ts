@@ -24,7 +24,7 @@ import { readPresence } from "./presence.server";
 import type { RecentContactInput } from "./collision";
 import { loadTemplates } from "./message-templates.server";
 import type { OrgTemplates } from "./message-templates";
-import { assertNotTruncated } from "./page-all";
+import { chunkIds, orderPage, pageAll, pageAllChunked, PAGE_ALL_MAX_ROWS } from "./page-all";
 import { countsAsCustomerContact } from "./last-contact";
 
 // ---------------------------------------------------------------------------
@@ -41,16 +41,18 @@ type InvoiceRow = {
   invoice_date: string | null;
   status: string | null;
   paid_date: string | null;
-  customers: {
-    name: string | null;
-    phone: string | null;
-    email: string | null;
-    owner: string | null;
-    sms_consent: boolean | null;
-    preferred_channel: string | null;
-    do_not_call: boolean | null;
-    do_not_text: boolean | null;
-  } | null;
+};
+
+type CustomerRow = {
+  id: string;
+  name: string | null;
+  phone: string | null;
+  email: string | null;
+  owner: string | null;
+  sms_consent: boolean | null;
+  preferred_channel: string | null;
+  do_not_call: boolean | null;
+  do_not_text: boolean | null;
 };
 
 type CaseRowRaw = {
@@ -80,6 +82,8 @@ export type CaseQueueSource = {
   comingDueInvoices: InvoiceInput[];
   customersInput: CustomerInput[];
   lastContactsInput: CaseLastContactInput[];
+  /** True when Stage-2 last-contact / promise pages hit PAGE_ALL_MAX_ROWS. */
+  lastContactTruncated: boolean;
   promisesInput: CasePromiseInput[];
   /** Per-case recent contacts (for collision detection). */
   recentByCase: Map<string, RecentContactInput[]>;
@@ -131,43 +135,68 @@ export async function loadCaseQueueSource(args: LoadCaseQueueArgs): Promise<Case
   const todayMs = new Date(today + "T00:00:00Z").getTime();
   const plus7 = new Date(todayMs + orgConfig.workflow.comingDueDays * 86_400_000).toISOString().slice(0, 10);
 
-  // Stage 1 — everything that needs only orgId. PostgREST builders resolve
-  // with { data, error } (never reject), so Promise.all won't short-circuit.
+  // Stage 1 — invoices and cases without embeds. orderPage has no table
+  // qualifier, so the former customers! embed cannot be ranged.
   const [
-    invRes,
-    caseRes,
+    invPage,
+    casePage,
     roster,
     mcfgRes,
     templates,
   ] = await Promise.all([
-    supabase
-      .from("invoices")
-      .select("id, qbo_doc_number, balance, due_date, customer_id, amount, invoice_date, status, paid_date, customers!invoices_org_customer_fk(name, phone, email, owner, sms_consent, preferred_channel, do_not_call, do_not_text)", { count: "exact" })
-      .eq("org_id", orgId)
-      .gt("balance", 0)
-      .lte("due_date", plus7),
-    supabase
-      .from("collection_cases")
-      .select("id, customer_id, status, next_action_type, next_action_at, opened_at, exception_reason, exception_note, priority_override, priority_override_reason, priority_override_by, priority_override_at", { count: "exact" })
-      .eq("org_id", orgId)
-      .is("closed_at", null),
+    pageAll<InvoiceRow>(
+      (from, to) =>
+        orderPage(
+          supabase
+            .from("invoices")
+            .select("id, qbo_doc_number, balance, due_date, customer_id, amount, invoice_date, status, paid_date", { count: "exact" })
+            .eq("org_id", orgId)
+            .gt("balance", 0)
+            .lte("due_date", plus7),
+        ).range(from, to),
+      { maxRows: PAGE_ALL_MAX_ROWS },
+    ),
+    pageAll<CaseRowRaw>(
+      (from, to) =>
+        orderPage(
+          supabase
+            .from("collection_cases")
+            .select("id, customer_id, status, next_action_type, next_action_at, opened_at, exception_reason, exception_note, priority_override, priority_override_reason, priority_override_by, priority_override_at", { count: "exact" })
+            .eq("org_id", orgId)
+            .is("closed_at", null),
+        ).range(from, to),
+      { maxRows: PAGE_ALL_MAX_ROWS },
+    ),
     listOrgMembers(service, orgId).catch(() => [] as OrgMember[]),
     supabase.from("messaging_config").select("sms_enabled").eq("org_id", orgId).maybeSingle(),
     loadTemplates(supabase, orgId).catch(() => ({ sms: [], email: [] })),
   ]);
 
-  if (invRes.error) throw invRes.error;
-  if (caseRes.error) throw caseRes.error;
   if (mcfgRes.error) throw mcfgRes.error;
-  assertNotTruncated(invRes.data?.length ?? 0, invRes.count, "invoices");
-  assertNotTruncated(caseRes.data?.length ?? 0, caseRes.count, "cases");
-  const invRows = invRes.data;
-  const caseRows = caseRes.data;
+  if (invPage.truncated) throw new Error("invoices truncated: page is incomplete");
+  if (casePage.truncated) throw new Error("cases truncated: page is incomplete");
   const mcfg = mcfgRes.data;
 
-  // Map raw invoice rows → InvoiceInput, split overdue / coming-due.
-  const rawInvoices = (invRows as unknown as InvoiceRow[]) ?? [];
-  const allInvoicesInput: InvoiceInput[] = rawInvoices.map((r) => ({
+  const customerIds = [...new Set(
+    invPage.rows.map((r) => r.customer_id).filter((id): id is string => Boolean(id)),
+  )];
+  const custPage = customerIds.length === 0
+    ? { rows: [] as CustomerRow[], truncated: false }
+    : await pageAllChunked<CustomerRow>(
+        chunkIds(customerIds, 100),
+        (ids, from, to) =>
+          orderPage(
+            supabase
+              .from("customers")
+              .select("id, name, phone, email, owner, sms_consent, preferred_channel, do_not_call, do_not_text", { count: "exact" })
+              .eq("org_id", orgId)
+              .in("id", ids),
+          ).range(from, to),
+        { maxRows: PAGE_ALL_MAX_ROWS },
+      );
+  if (custPage.truncated) throw new Error("customers truncated: page is incomplete");
+
+  const allInvoicesInput: InvoiceInput[] = invPage.rows.map((r) => ({
     id: r.id,
     qbo_doc_number: r.qbo_doc_number,
     customer_id: r.customer_id,
@@ -181,25 +210,22 @@ export async function loadCaseQueueSource(args: LoadCaseQueueArgs): Promise<Case
   const invoicesInput = allInvoicesInput.filter((i) => i.due_date != null && i.due_date < today);
   const comingDueInvoices = allInvoicesInput.filter((i) => i.due_date != null && i.due_date >= today);
 
-  // Deduplicate customers from the embedded rows
   const customerMap = new Map<string, CustomerInput>();
-  for (const r of rawInvoices) {
-    if (r.customer_id && r.customers && !customerMap.has(r.customer_id)) {
-      customerMap.set(r.customer_id, {
-        id: r.customer_id,
-        name: r.customers.name ?? "(unknown customer)",
-        phone: r.customers.phone ?? null,
-        email: r.customers.email ?? null,
-        owner: r.customers.owner ?? null,
-        smsConsent: r.customers.sms_consent ?? false,
-        commPrefs: resolveCommPrefs(r.customers),
-      });
-    }
+  for (const c of custPage.rows) {
+    if (customerMap.has(c.id)) continue;
+    customerMap.set(c.id, {
+      id: c.id,
+      name: c.name ?? "(unknown customer)",
+      phone: c.phone ?? null,
+      email: c.email ?? null,
+      owner: c.owner ?? null,
+      smsConsent: c.sms_consent ?? false,
+      commPrefs: resolveCommPrefs(c),
+    });
   }
   const customersInput: CustomerInput[] = [...customerMap.values()];
 
-  // Map raw case rows → CaseRow (domain shape).
-  const cases: CaseRow[] = ((caseRows as CaseRowRaw[]) ?? []).map((r) => ({
+  const cases: CaseRow[] = casePage.rows.map((r) => ({
     id: r.id,
     customerId: r.customer_id,
     status: r.status as CaseStatus,
@@ -226,31 +252,71 @@ export async function loadCaseQueueSource(args: LoadCaseQueueArgs): Promise<Case
   const presenceCustomerIds = [...new Set(cases.map((c) => c.customerId))];
   const promisesInput: CasePromiseInput[] = [];
   let presenceRows: { customer_id: string; user_id: string; last_seen_at: string }[] = [];
+  let lastContactTruncated = false;
+
+  type LogRow = { case_id: string | null; method: string | null; created_at: string; user_id: string | null };
+  type MsgRow = { case_id: string | null; created_at: string; sent_by_user_id: string | null };
+  type PromRow = {
+    case_id: string; status: CasePromiseInput["status"]; promised_amount: number | string | null;
+    promised_date: string; amount_received: number | string | null;
+  };
 
   // Stage 2 — everything keyed on caseIds. Skipped when there are no open cases.
+  // Truncated last-contact is a banner, not an empty queue.
   if (caseIds.length > 0) {
-    const [{ data: logRows }, { data: msgRows }, { data: emailRows }, { data: promRows }, presenceResult] = await Promise.all([
-      supabase
-        .from("contact_logs")
-        .select("case_id, method, created_at, user_id")
-        .eq("org_id", orgId).in("case_id", caseIds)
-        .order("created_at", { ascending: false }),
-      supabase
-        .from("text_messages")
-        .select("case_id, created_at, sent_by_user_id")
-        .eq("org_id", orgId).in("case_id", caseIds).eq("direction", "outbound")
-        .order("created_at", { ascending: false }),
-      supabase
-        .from("email_messages")
-        .select("case_id, created_at, sent_by_user_id")
-        .eq("org_id", orgId).in("case_id", caseIds).eq("direction", "outbound")
-        .order("created_at", { ascending: false }),
-      supabase
-        .from("promises")
-        .select("case_id, status, promised_amount, promised_date, amount_received, created_at")
-        .eq("org_id", orgId).in("case_id", caseIds)
-        .neq("status", "cancelled")
-        .order("created_at", { ascending: false }),
+    const chunks = chunkIds(caseIds, 100);
+    const [logs, texts, emails, proms, presenceResult] = await Promise.all([
+      pageAllChunked<LogRow>(
+        chunks,
+        (ids, from, to) =>
+          orderPage(
+            supabase
+              .from("contact_logs")
+              .select("case_id, method, created_at, user_id", { count: "exact" })
+              .eq("org_id", orgId)
+              .in("case_id", ids),
+          ).range(from, to),
+        { maxRows: PAGE_ALL_MAX_ROWS },
+      ),
+      pageAllChunked<MsgRow>(
+        chunks,
+        (ids, from, to) =>
+          orderPage(
+            supabase
+              .from("text_messages")
+              .select("case_id, created_at, sent_by_user_id", { count: "exact" })
+              .eq("org_id", orgId)
+              .in("case_id", ids)
+              .eq("direction", "outbound"),
+          ).range(from, to),
+        { maxRows: PAGE_ALL_MAX_ROWS },
+      ),
+      pageAllChunked<MsgRow>(
+        chunks,
+        (ids, from, to) =>
+          orderPage(
+            supabase
+              .from("email_messages")
+              .select("case_id, created_at, sent_by_user_id", { count: "exact" })
+              .eq("org_id", orgId)
+              .in("case_id", ids)
+              .eq("direction", "outbound"),
+          ).range(from, to),
+        { maxRows: PAGE_ALL_MAX_ROWS },
+      ),
+      pageAllChunked<PromRow>(
+        chunks,
+        (ids, from, to) =>
+          orderPage(
+            supabase
+              .from("promises")
+              .select("case_id, status, promised_amount, promised_date, amount_received, created_at", { count: "exact" })
+              .eq("org_id", orgId)
+              .in("case_id", ids)
+              .neq("status", "cancelled"),
+          ).range(from, to),
+        { maxRows: PAGE_ALL_MAX_ROWS },
+      ),
       includePresence
         ? readPresence(supabase, { orgId, customerIds: presenceCustomerIds }).catch((e) => {
             console.error("presence read failed (degrading to no presence):", e);
@@ -259,22 +325,24 @@ export async function loadCaseQueueSource(args: LoadCaseQueueArgs): Promise<Case
         : Promise.resolve([]),
     ]);
 
+    lastContactTruncated = logs.truncated || texts.truncated || emails.truncated || proms.truncated;
+
     const methodLabel: Record<string, string> = { call: "Call", email: "Email", text: "Text", note: "Note" };
-    for (const r of (logRows as any[]) ?? []) {
+    for (const r of logs.rows) {
       if (r.case_id) {
         if (countsAsCustomerContact(r.method as string)) {
-          lastContactsInput.push({ caseId: r.case_id, date: r.created_at, channel: methodLabel[r.method] ?? "Note" });
+          lastContactsInput.push({ caseId: r.case_id, date: r.created_at, channel: methodLabel[r.method ?? ""] ?? "Note" });
         }
         pushRecent(r.case_id, r.user_id ?? null, r.created_at);
       }
     }
-    for (const r of (msgRows as any[]) ?? []) {
+    for (const r of texts.rows) {
       if (r.case_id) {
         lastContactsInput.push({ caseId: r.case_id, date: r.created_at, channel: "Text" });
         pushRecent(r.case_id, r.sent_by_user_id ?? null, r.created_at);
       }
     }
-    for (const r of (emailRows as any[]) ?? []) {
+    for (const r of emails.rows) {
       if (r.case_id) {
         lastContactsInput.push({ caseId: r.case_id, date: r.created_at, channel: "Email" });
         pushRecent(r.case_id, r.sent_by_user_id ?? null, r.created_at);
@@ -283,7 +351,7 @@ export async function loadCaseQueueSource(args: LoadCaseQueueArgs): Promise<Case
 
     // Active promise per open case (pending preferred, else most-recent non-cancelled).
     const seen = new Set<string>();
-    const pendingFirst = [...((promRows as any[]) ?? [])].sort((a, b) =>
+    const pendingFirst = [...proms.rows].sort((a, b) =>
       (a.status === "pending" ? 0 : 1) - (b.status === "pending" ? 0 : 1));
     for (const r of pendingFirst) {
       if (seen.has(r.case_id)) continue;
@@ -312,6 +380,7 @@ export async function loadCaseQueueSource(args: LoadCaseQueueArgs): Promise<Case
     comingDueInvoices,
     customersInput,
     lastContactsInput,
+    lastContactTruncated,
     promisesInput,
     recentByCase,
     presenceRows,

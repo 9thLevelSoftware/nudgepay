@@ -26,6 +26,8 @@ import { PromisesLedger } from "../components/PromisesLedger";
 import { PromiseQuickPanel } from "../components/PromiseQuickPanel";
 import { DrawerShell } from "../components/DrawerShell";
 import { pageTitle } from "../lib/meta";
+import { chunkIds, orderPage, pageAll, pageAllChunked, PAGE_ALL_MAX_ROWS } from "../lib/page-all";
+import { TruncationBanner } from "../components/TruncationBanner";
 import type { Route } from "./+types/promises";
 
 export const meta: Route.MetaFunction = () => pageTitle("Promises");
@@ -65,56 +67,106 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
   };
 
   // --- Data loading (USER client, explicit org_id scope) ---
-  const { data: promiseRows } = await supabase
-    .from("promises")
-    .select("id, case_id, customer_id, status, promised_amount, amount_received, baseline_balance, promised_date, grace_until, created_at, contact_log_id")
-    .eq("org_id", org.org_id);
-  const rawPromises = (promiseRows as any[]) ?? [];
+  type PromiseDbRow = {
+    id: string; case_id: string; customer_id: string; status: PromiseInput["status"];
+    promised_amount: number | string | null; amount_received: number | string | null;
+    baseline_balance: number | string | null; promised_date: string; grace_until: string;
+    created_at: string; contact_log_id: string | null;
+  };
+  const promisePage = await pageAll<PromiseDbRow>(
+    (from, to) =>
+      orderPage(
+        supabase
+          .from("promises")
+          .select("id, case_id, customer_id, status, promised_amount, amount_received, baseline_balance, promised_date, grace_until, created_at, contact_log_id", { count: "exact" })
+          .eq("org_id", org.org_id),
+      ).range(from, to),
+    { maxRows: PAGE_ALL_MAX_ROWS },
+  );
+  const rawPromises = promisePage.rows;
 
-  // Only the customers referenced by promises (not the whole directory).
-  const customerIds = Array.from(new Set(rawPromises.map((r) => r.customer_id as string)));
-  let custRows: any[] = [];
-  if (customerIds.length > 0) {
-    const { data } = await supabase
-      .from("customers").select("id, name, owner").eq("org_id", org.org_id).in("id", customerIds);
-    custRows = (data as any[]) ?? [];
-  }
-  const custById = new Map(custRows.map((c) => [c.id, c]));
+  const customerIds = Array.from(new Set(rawPromises.map((r) => r.customer_id)));
+  const caseIds = Array.from(new Set(rawPromises.map((r) => r.case_id)));
+  const pendingIds = rawPromises.filter((r) => r.status === "pending").map((r) => r.id);
 
-  // Open/closed state per referenced case — a closed case can't be selected by
-  // the Collections deep-link (dashboard loads only `closed_at is null`).
-  const caseIds = Array.from(new Set(rawPromises.map((r) => r.case_id as string)));
-  let openCaseIds = new Set<string>();
-  if (caseIds.length > 0) {
-    const { data: caseRows } = await supabase
-      .from("collection_cases").select("id, closed_at").eq("org_id", org.org_id).in("id", caseIds);
-    openCaseIds = new Set(
-      ((caseRows as any[]) ?? []).filter((c) => c.closed_at == null).map((c) => c.id as string),
-    );
-  }
+  type CustRow = { id: string; name: string | null; owner: string | null };
+  type CaseLookupRow = { id: string; closed_at: string | null };
+  type PiRow = { promise_id: string; invoice_id: string };
+  const [custPage, casePage, piPage] = await Promise.all([
+    customerIds.length === 0
+      ? Promise.resolve({ rows: [] as CustRow[], truncated: false })
+      : pageAllChunked<CustRow>(
+          chunkIds(customerIds, 100),
+          (ids, from, to) =>
+            orderPage(
+              supabase
+                .from("customers")
+                .select("id, name, owner", { count: "exact" })
+                .eq("org_id", org.org_id)
+                .in("id", ids),
+            ).range(from, to),
+          { maxRows: PAGE_ALL_MAX_ROWS },
+        ),
+    caseIds.length === 0
+      ? Promise.resolve({ rows: [] as CaseLookupRow[], truncated: false })
+      : pageAllChunked<CaseLookupRow>(
+          chunkIds(caseIds, 100),
+          (ids, from, to) =>
+            orderPage(
+              supabase
+                .from("collection_cases")
+                .select("id, closed_at", { count: "exact" })
+                .eq("org_id", org.org_id)
+                .in("id", ids),
+            ).range(from, to),
+          { maxRows: PAGE_ALL_MAX_ROWS },
+        ),
+    pendingIds.length === 0
+      ? Promise.resolve({ rows: [] as PiRow[], truncated: false })
+      : pageAllChunked<PiRow>(
+          chunkIds(pendingIds, 100),
+          (ids, from, to) =>
+            supabase
+              .from("promise_invoices")
+              .select("promise_id, invoice_id", { count: "exact" })
+              .eq("org_id", org.org_id)
+              .in("promise_id", ids)
+              .order("promise_id", { ascending: false })
+              .order("invoice_id", { ascending: false })
+              .range(from, to),
+          { maxRows: PAGE_ALL_MAX_ROWS },
+        ),
+  ]);
+  const custById = new Map(custPage.rows.map((c) => [c.id, c]));
+  const openCaseIds = new Set(
+    casePage.rows.filter((c) => c.closed_at == null).map((c) => c.id),
+  );
 
-  // Live linked-invoice balance per PENDING promise → read-time received
-  // (the persisted amount_received lags until the evaluator settles the promise).
-  const pendingIds = rawPromises.filter((r) => r.status === "pending").map((r) => r.id as string);
   const liveLinkedBalanceByPromiseId = new Map<string, number>();
-  if (pendingIds.length > 0) {
-    const { data: piRows } = await supabase
-      .from("promise_invoices").select("promise_id, invoice_id").eq("org_id", org.org_id).in("promise_id", pendingIds);
-    const links = (piRows as any[]) ?? [];
-    const linkInvIds = Array.from(new Set(links.map((l) => l.invoice_id as string)));
-    const balById = new Map<string, number>();
-    if (linkInvIds.length > 0) {
-      const { data: invRows } = await supabase
-        .from("invoices").select("id, balance").eq("org_id", org.org_id).in("id", linkInvIds);
-      for (const inv of (invRows as any[]) ?? []) balById.set(inv.id as string, Number(inv.balance) || 0);
-    }
-    for (const l of links) {
-      const bal = balById.get(l.invoice_id as string) ?? 0;
-      liveLinkedBalanceByPromiseId.set(
-        l.promise_id as string,
-        (liveLinkedBalanceByPromiseId.get(l.promise_id as string) ?? 0) + bal,
+  const linkInvIds = Array.from(new Set(piPage.rows.map((l) => l.invoice_id)));
+  type BalRow = { id: string; balance: number | string | null };
+  const invBalPage = linkInvIds.length === 0
+    ? { rows: [] as BalRow[], truncated: false }
+    : await pageAllChunked<BalRow>(
+        chunkIds(linkInvIds, 100),
+        (ids, from, to) =>
+          orderPage(
+            supabase
+              .from("invoices")
+              .select("id, balance", { count: "exact" })
+              .eq("org_id", org.org_id)
+              .in("id", ids),
+          ).range(from, to),
+        { maxRows: PAGE_ALL_MAX_ROWS },
       );
-    }
+  const balById = new Map<string, number>();
+  for (const inv of invBalPage.rows) balById.set(inv.id, Number(inv.balance) || 0);
+  for (const l of piPage.rows) {
+    const bal = balById.get(l.invoice_id) ?? 0;
+    liveLinkedBalanceByPromiseId.set(
+      l.promise_id,
+      (liveLinkedBalanceByPromiseId.get(l.promise_id) ?? 0) + bal,
+    );
   }
 
   const promisesInput: PromiseInput[] = rawPromises.map((r) => {
@@ -158,22 +210,38 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
   const selected = promiseId ? (allRows.find((r) => r.promiseId === promiseId) ?? null) : null;
   let selectedInvoices: PromiseLinkedInvoice[] = [];
   let selectedNote: string | null = null;
+  let selectedTruncated = false;
   if (selected) {
-    const { data: piRows } = await supabase
-      .from("promise_invoices")
-      .select("invoice_id")
-      .eq("org_id", org.org_id)
-      .eq("promise_id", selected.promiseId);
-    const invIds = ((piRows as any[]) ?? []).map((r) => r.invoice_id as string);
-    let invById = new Map<string, any>();
-    if (invIds.length > 0) {
-      const { data: invRows } = await supabase
-        .from("invoices")
-        .select("id, qbo_doc_number, balance")
-        .eq("org_id", org.org_id)
-        .in("id", invIds);
-      invById = new Map(((invRows as any[]) ?? []).map((r) => [r.id, r]));
-    }
+    const selectedPi = await pageAll<{ invoice_id: string }>(
+      (from, to) =>
+        supabase
+          .from("promise_invoices")
+          .select("invoice_id", { count: "exact" })
+          .eq("org_id", org.org_id)
+          .eq("promise_id", selected.promiseId)
+          .order("invoice_id", { ascending: false })
+          .range(from, to),
+      { maxRows: PAGE_ALL_MAX_ROWS },
+    );
+    selectedTruncated = selectedPi.truncated;
+    const invIds = selectedPi.rows.map((r) => r.invoice_id);
+    type SelInv = { id: string; qbo_doc_number: string | null; balance: number | string | null };
+    const selInvPage = invIds.length === 0
+      ? { rows: [] as SelInv[], truncated: false }
+      : await pageAllChunked<SelInv>(
+          chunkIds(invIds, 100),
+          (ids, from, to) =>
+            orderPage(
+              supabase
+                .from("invoices")
+                .select("id, qbo_doc_number, balance", { count: "exact" })
+                .eq("org_id", org.org_id)
+                .in("id", ids),
+            ).range(from, to),
+          { maxRows: PAGE_ALL_MAX_ROWS },
+        );
+    selectedTruncated = selectedTruncated || selInvPage.truncated;
+    const invById = new Map(selInvPage.rows.map((r) => [r.id, r]));
     selectedInvoices = invIds.map((id) => ({
       invoiceId: id,
       docNumber: invById.get(id)?.qbo_doc_number ?? null,
@@ -182,11 +250,15 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
 
     const contactLogId = rawPromises.find((r) => r.id === selected.promiseId)?.contact_log_id ?? null;
     if (contactLogId) {
-      const { data: log } = await supabase
+      const { data: log, error: logErr } = await supabase
         .from("contact_logs").select("notes").eq("org_id", org.org_id).eq("id", contactLogId).maybeSingle();
-      selectedNote = (log as any)?.notes ?? null;
+      if (logErr) throw logErr;
+      selectedNote = (log as { notes?: string | null } | null)?.notes ?? null;
     }
   }
+
+  const truncated = promisePage.truncated || custPage.truncated || casePage.truncated
+    || piPage.truncated || invBalPage.truncated || selectedTruncated;
 
   return data(
     {
@@ -194,6 +266,7 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
       initials, userLabel, syncLabel, connected, isOwner, syncIssues,
       rows, metrics, counts, tab, sort, q, returnTo,
       selected, selectedInvoices, selectedNote, promiseError,
+      truncated,
     },
     { headers },
   );
@@ -231,7 +304,8 @@ export default function Promises() {
       syncIssues={<SyncIssues issues={d.syncIssues} returnTo="/promises" />}
     >
       <div className="p-4 sm:p-6 space-y-4 sm:space-y-6">
-        <PromisesMetrics metrics={d.metrics} />
+        {d.truncated ? <TruncationBanner /> : null}
+        <PromisesMetrics metrics={d.metrics} truncated={d.truncated} />
         <div className="grid gap-4 lg:grid-cols-[1fr_360px]">
           <PromisesLedger
             rows={d.rows}

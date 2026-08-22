@@ -38,9 +38,10 @@ interface KpiBandProps {
   entity?: EntityMode;
   scopeLabel?: string | null;
   clearHref?: string;
+  lastContactTruncated?: boolean;
 }
 
-export function KpiBand({ metrics, view, sort = "recommended", search = "", density, entity, scopeLabel, clearHref }: KpiBandProps) {
+export function KpiBand({ metrics, view, sort = "recommended", search = "", density, entity, scopeLabel, clearHref, lastContactTruncated = false }: KpiBandProps) {
   const href = (v: ViewId) =>
     dashboardHref({ view: v, sort, q: search || undefined, entity, density });
 
@@ -55,14 +56,26 @@ export function KpiBand({ metrics, view, sort = "recommended", search = "", dens
     { label: "On hold",           viewId: "on-hold",         accent: "neutral", m: metrics.onHold },
   ];
 
+  const contactViews = new Set<ViewId>(["never-contacted", "broken-promises"]);
+
   return (
     <>
-      {scopeLabel && (
+      {(scopeLabel || lastContactTruncated) && (
         <div className="flex items-center gap-2 mb-2 text-xs font-sans text-muted">
-          <span className="inline-flex items-center gap-1.5 rounded-md bg-copper/10 border border-copper/20 px-2.5 py-1 font-medium text-copper">
-            <Icon name="filter" size={12} aria-hidden />
-            {scopeLabel}
-          </span>
+          {lastContactTruncated ? (
+            <span
+              className="inline-flex items-center rounded-md bg-copper/10 border border-copper/20 px-2 py-0.5 text-[10px] font-sans font-medium text-copper"
+              title="Based on the last 5,000 contact rows. Totals may under-count."
+            >
+              Partial history
+            </span>
+          ) : null}
+          {scopeLabel ? (
+            <span className="inline-flex items-center gap-1.5 rounded-md bg-copper/10 border border-copper/20 px-2.5 py-1 font-medium text-copper">
+              <Icon name="filter" size={12} aria-hidden />
+              {scopeLabel}
+            </span>
+          ) : null}
           {clearHref && (
             <Link to={clearHref} className="text-copper hover:underline font-medium">
               Clear
@@ -76,11 +89,14 @@ export function KpiBand({ metrics, view, sort = "recommended", search = "", dens
       >
         {tiles.map((t) => {
           const active = view === t.viewId;
+          const hideTotals = lastContactTruncated && contactViews.has(t.viewId);
+          const amountLabel = hideTotals ? "—" : formatUSD(t.m.amount);
+          const countLabel = hideTotals ? "—" : String(t.m.count);
           return (
             <Link
               key={t.viewId}
               to={href(t.viewId)}
-              aria-label={`${t.label}: ${plural(t.m.count, "account")}, ${formatUSD(t.m.amount)}`}
+              aria-label={`${t.label}: ${hideTotals ? "incomplete" : `${plural(t.m.count, "account")}, ${formatUSD(t.m.amount)}`}`}
               aria-current={active ? "true" : undefined}
               className={[
                 "snap-start shrink-0 flex items-center gap-2.5 rounded-lg border px-3 py-2 min-w-[160px] transition-colors",
@@ -97,10 +113,10 @@ export function KpiBand({ metrics, view, sort = "recommended", search = "", dens
                 </span>
                 <span className="flex items-baseline gap-1.5">
                   <span className="font-display text-sm font-bold tabular-nums text-text leading-tight">
-                    {formatUSD(t.m.amount)}
+                    {amountLabel}
                   </span>
                   <span className={`text-[10px] tabular-nums ${TEXT[t.accent]}`}>
-                    {t.m.count}
+                    {countLabel}
                   </span>
                 </span>
               </span>

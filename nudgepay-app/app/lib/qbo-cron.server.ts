@@ -7,6 +7,7 @@ import { createSupabaseServiceClient } from "./supabase.server";
 import { qboApiBaseUrl } from "./qbo-api.server";
 import { runCdcCatchup, type SyncDeps } from "./qbo-sync.server";
 import { recordSyncError, resolveSyncErrors } from "./sync-errors.server";
+import { orderPage, pageAll, PAGE_ALL_MAX_ROWS } from "./page-all";
 import { sendBrokenPromiseAlerts } from "./notifications.server";
 import {
   CDC_CHECKPOINT_JOB,
@@ -58,11 +59,18 @@ export async function runScheduledCdc(
   const qbo = getQboEnv(context);
   const service = createSupabaseServiceClient(env);
 
-  const { data: conns, error } = await service.from("qbo_connections")
-    .select("org_id").eq("status", "connected");
-  if (error) throw error;
+  const conns = await pageAll<{ org_id: string }>(
+    (from, to) =>
+      orderPage(
+        service.from("qbo_connections")
+          .select("org_id", { count: "exact" })
+          .eq("status", "connected"),
+      ).range(from, to),
+    { maxRows: PAGE_ALL_MAX_ROWS },
+  );
+  if (conns.truncated) throw new Error("connected orgs truncated: page is incomplete");
 
-  const orgIds = (conns ?? []).map((c) => c.org_id as string);
+  const orgIds = conns.rows.map((c) => c.org_id as string);
   const checkpoint = await loadCdcCheckpoint(service);
   const ordered = planOrderedOrgIds(orgIds, checkpoint);
 
@@ -83,6 +91,7 @@ export async function runScheduledCdc(
     api: { baseUrl: qboApiBaseUrl(qbo.QBO_SANDBOX) },
     key: qbo.QBO_ENCRYPTION_KEY,
     notify,
+    errorSource: "cron",
   };
 
   let processed = 0;

@@ -1,7 +1,7 @@
 // PostgREST/Supabase list cap: a page shorter than `count` is truncated.
 // Never treat a truncated set as complete (recon must not auto-resolve).
-// pageAll / pageAllChunked are for dedicated peek / payer / AR reads only —
-// they do not page Stage-1 of loadCaseQueueSource.
+// Stage 1 of loadCaseQueueSource uses pageAll on invoices and cases (no embed).
+// orderPage has no table qualifier — do not use it on embedded selects.
 
 export const POSTGREST_MAX_ROWS = 1000;
 export const PAGE_ALL_MAX_ROWS = 5000;

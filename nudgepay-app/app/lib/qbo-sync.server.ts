@@ -12,6 +12,7 @@ import { loadOrgConfig } from "./org-config.server";
 import { DEFAULT_ORG_CONFIG } from "./org-config";
 import { todayInTz } from "./tz";
 import { mergePaidDate, type ExistingPaidRow } from "./paid-date";
+import { recordSyncError } from "./sync-errors.server";
 
 export type NotifyFn = (orgId: string, brokenDetails: BrokenPromiseDetail[], today: string) => Promise<void>;
 
@@ -22,6 +23,7 @@ export type SyncDeps = {
   api: QboApiConfig;    // data API base url
   key: string;          // AES key for token decrypt
   notify?: NotifyFn;    // optional broken-promise alert callback
+  errorSource?: "manual" | "webhook" | "cron";
 };
 
 // QBO query page cap. Chancey carries 125-175 overdue invoices; CDC caps at
@@ -142,8 +144,18 @@ export async function applyPaymentsAndEvaluate(
     try { await repullCustomerInvoices(deps, orgId, accessToken, realmId, payCustQboIds, today); }
     catch (e) { console.error("[6b] payment re-pull failed", e); }
   }
-  try { await applyCaseReconciliation(deps.service, orgId, today); }
-  catch (e) { console.error("[6b] reconciliation failed (payments)", e); }
+  try {
+    await applyCaseReconciliation(deps.service, orgId, today);
+  } catch (e) {
+    console.error("[6b] reconciliation failed (payments)", e);
+    await recordSyncError(deps.service, {
+      orgId,
+      source: deps.errorSource ?? "cron",
+      scope: "recon",
+      message: e instanceof Error ? e.message : String(e),
+    }).catch((err) => console.error("[6b] recordSyncError failed", err));
+    throw e;
+  }
   try {
     const evalResult = await applyPromiseEvaluation(deps.service, orgId, today);
     if (evalResult.brokenDetails.length > 0 && deps.notify) {
