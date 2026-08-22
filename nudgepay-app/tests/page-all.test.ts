@@ -3,6 +3,7 @@ import {
   assertNotTruncated,
   chunkIds,
   isTruncatedPage,
+  orderPage,
   pageAll,
   pageAllChunked,
   PAGE_ALL_MAX_ROWS,
@@ -172,6 +173,21 @@ test("pageAllChunked is complete when every chunk is exhausted under the cap", a
   const { rows, truncated } = await pageAllChunked([["a"], ["b"]], runChunk, { pageSize: 10, maxRows: 50 });
   expect(rows).toEqual(["a-0", "a-1", "a-2", "b-0", "b-1", "b-2"]);
   expect(truncated).toBe(false);
+});
+
+test("orderPage applies created_at desc then id desc", () => {
+  const calls: { column: string; ascending: boolean }[] = [];
+  const q = {
+    order(column: string, opts: { ascending: boolean }) {
+      calls.push({ column, ascending: opts.ascending });
+      return q;
+    },
+  };
+  expect(orderPage(q)).toBe(q);
+  expect(calls).toEqual([
+    { column: "created_at", ascending: false },
+    { column: "id", ascending: false },
+  ]);
 });
 
 test("pageAllChunked returns empty and not truncated for no chunks", async () => {

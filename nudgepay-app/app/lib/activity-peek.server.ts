@@ -2,7 +2,7 @@
 // (customer-scoped, no bodies) reads. Do not widen Stage-2 last-contact.
 
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { chunkIds, pageAllChunked, PAGE_ALL_MAX_ROWS } from "./page-all";
+import { chunkIds, orderPage, pageAllChunked, PAGE_ALL_MAX_ROWS } from "./page-all";
 import {
   collapsePeeks,
   summarizePeek,
@@ -38,14 +38,6 @@ type ReplyRow = {
   customer_id: string | null;
   direction: string | null;
 };
-
-type Orderable<Q> = { order: (column: string, opts: { ascending: boolean }) => Q };
-
-// Range pages without ORDER BY can skip/duplicate rows. created_at desc + id
-// desc is a stable unique key so equal timestamps cannot slip between pages.
-function orderPage<Q extends Orderable<Q>>(q: Q): Q {
-  return q.order("created_at", { ascending: false }).order("id", { ascending: false });
-}
 
 export function peekWindowStartIso(today: string, days = PEEK_WINDOW_DAYS): string {
   const start = new Date(`${today}T00:00:00.000Z`);
