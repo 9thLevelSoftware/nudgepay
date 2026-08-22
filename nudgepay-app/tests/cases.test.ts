@@ -450,3 +450,9 @@ test("buildCaseItems surfaces suggestedFollowUpIntervalDays driven by the org co
   expect(item.suggestedFollowUpIntervalDays).toBe(config.cadenceDays[item.effectiveLevel]);
   expect(item.suggestedFollowUpAt).toBeTruthy();
 });
+
+test("buildCaseItems defaults peeks to [] and payer to null", () => {
+  const items = buildCaseItems(CASES, INVOICES, CUSTOMERS, [], [], TODAY, LABELS, DEFAULT_ORG_CONFIG);
+  expect(items.every((i) => i.peeks.length === 0)).toBe(true);
+  expect(items.every((i) => i.payer === null)).toBe(true);
+});

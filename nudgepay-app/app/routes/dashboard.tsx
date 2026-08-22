@@ -6,6 +6,8 @@ import { requireOrgUser } from "../lib/session.server";
 import { getConnectionStatus } from "../lib/qbo-connection.server";
 import { createSupabaseServiceClient } from "../lib/supabase.server";
 import { loadCaseQueueSource } from "../lib/case-queue.server";
+import { loadPeekSource, peekWindowStartIso } from "../lib/activity-peek.server";
+import type { ActivityPeek } from "../lib/activity-peek";
 import { loadOrgConfig } from "../lib/org-config.server";
 import { todayInTz } from "../lib/tz";
 import type { OrgMember } from "../lib/orgs.server";
@@ -89,10 +91,17 @@ export function buildCaseData(
   currentUserId: string | null,
   config: OrgConfig,
   comingDueInvoices: InvoiceInput[] = [],
+  peeksByCase: Map<string, ActivityPeek[]> = new Map(),
+  payerByCustomer: Map<string, CaseItem["payer"]> = new Map(),
 ): DashboardData {
   const { view, sort, q, caseId } = params;
   const highValue = config.priority.highValue;
-  const allItems = buildCaseItems(cases, invoices, customers, lastContacts, promises, today, ownerLabels, config);
+  const base = buildCaseItems(cases, invoices, customers, lastContacts, promises, today, ownerLabels, config);
+  const allItems = base.map((i) => ({
+    ...i,
+    peeks: peeksByCase.get(i.caseId) ?? [],
+    payer: payerByCustomer.get(i.customerId) ?? null,
+  }));
   const searched = q.trim() === "" ? allItems : allItems.filter((i) => i.searchText.includes(q.toLowerCase()));
   const metrics = computeCaseMetrics(searched, today, highValue);
 
@@ -304,10 +313,17 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
 
   const emailEnabled = resolveEmailSettings(ecfg as any).emailEnabled;
 
+  const peekSrc = await loadPeekSource({
+    supabase,
+    orgId: org.org_id,
+    caseIds: cases.map((c) => c.id),
+    windowStartIso: peekWindowStartIso(today),
+  });
+
   const dashboardData: DashboardData = buildCaseData(
     cases, invoicesInput, customersInput, lastContactsInput, promisesInput,
     { view, sort, q, caseId, invoice, tab }, today, ownerLabels, user.id, orgConfig,
-    comingDueInvoices,
+    comingDueInvoices, peekSrc.peeksByCase,
   );
 
   const sel = dashboardData.selected;

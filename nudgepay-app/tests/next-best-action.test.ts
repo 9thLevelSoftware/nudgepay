@@ -43,6 +43,8 @@ function stub(overrides: Partial<CaseItem> & { caseId: string }): CaseItem {
     lateFeeTotal: overrides.lateFeeTotal ?? 0,
     searchText: overrides.searchText ?? "",
     invoices: overrides.invoices ?? [],
+    peeks: overrides.peeks ?? [],
+    payer: overrides.payer ?? null,
   };
 }
 
