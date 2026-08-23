@@ -33,3 +33,25 @@ create policy promise_invoices_owner_delete on promise_invoices
   for delete using (public.is_org_owner(org_id));
 
 drop policy if exists email_messages_owner_write on email_messages;
+
+-- ON DELETE CASCADE from parent tables bypasses child RLS. Restrict so a
+-- member cannot erase cases/promises/email by deleting the customer or invoice.
+alter table collection_cases
+  drop constraint collection_cases_customer_id_fkey,
+  add constraint collection_cases_customer_id_fkey
+    foreign key (customer_id) references customers(id) on delete restrict;
+
+alter table promises
+  drop constraint promises_customer_id_fkey,
+  add constraint promises_customer_id_fkey
+    foreign key (customer_id) references customers(id) on delete restrict;
+
+alter table promise_invoices
+  drop constraint promise_invoices_invoice_id_fkey,
+  add constraint promise_invoices_invoice_id_fkey
+    foreign key (invoice_id) references invoices(id) on delete restrict;
+
+alter table email_messages
+  drop constraint email_messages_invoice_id_fkey,
+  add constraint email_messages_invoice_id_fkey
+    foreign key (invoice_id) references invoices(id) on delete restrict;

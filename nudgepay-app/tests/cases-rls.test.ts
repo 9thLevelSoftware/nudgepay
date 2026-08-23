@@ -139,4 +139,9 @@ test("RLS: a member can update next_action but cannot delete a case", async () =
   await member.client.from("collection_cases").delete().eq("id", cse!.id);
   const { data: still } = await svc.from("collection_cases").select("id").eq("id", cse!.id);
   expect(still).toHaveLength(1);
+
+  const { error: custDelErr } = await member.client.from("customers").delete().eq("id", cust!.id);
+  expect(custDelErr).not.toBeNull();
+  const { data: caseAfterCust } = await svc.from("collection_cases").select("id").eq("id", cse!.id);
+  expect(caseAfterCust).toHaveLength(1);
 });
