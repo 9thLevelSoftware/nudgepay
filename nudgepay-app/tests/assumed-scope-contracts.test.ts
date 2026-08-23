@@ -65,6 +65,7 @@ test("inbound STOP lock is enforced by a BEFORE INSERT OR UPDATE trigger", () =>
   expect(sql).toMatch(/sms_consent_actor := auth\.uid\(\)/);
   expect(sql).toMatch(/sms_consent_at := now\(\)/);
   expect(sql).toMatch(/new\.sms_consent_at is not distinct from old\.sms_consent_at/);
+  expect(sql).toContain("btrim(new.sms_consent_reason, E' \\t\\n\\r\\v\\f')");
 });
 
 test("invite flash is generic, not raw DB (NP-AUD-2026-126)", () => {
