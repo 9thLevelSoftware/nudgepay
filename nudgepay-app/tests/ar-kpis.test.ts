@@ -222,6 +222,7 @@ test("contact and promise rates are null when the denominator is zero", () => {
 
 test("coverage is empty, partial, or full", () => {
   expect(kpis().coverage).toBe("empty");
+  expect(kpis().truncated).toBe(false);
   expect(kpis({
     open: [{ amount: 100, balance: 100, invoiceDate: "2026-08-11", dueDate: TODAY, customerId: "c1" }],
     salesLookback: [{ invoiceDate: "2026-08-11", amount: 100 }],
@@ -229,8 +230,17 @@ test("coverage is empty, partial, or full", () => {
   }).coverage).toBe("partial");
   expect(kpis({
     open: [{ amount: 100, balance: 100, invoiceDate: "2026-08-11", dueDate: TODAY, customerId: "c1" }],
+    salesLookback: [{ invoiceDate: "2026-08-11", amount: 100 }],
+    truncated: { a: true, b: false, c: false },
+  }).truncated).toBe(true);
+  expect(kpis({
+    open: [{ amount: 100, balance: 100, invoiceDate: "2026-08-11", dueDate: TODAY, customerId: "c1" }],
     salesLookback: [{ invoiceDate: "2026-08-11", amount: 50 }],
   }).coverage).toBe("partial");
+  expect(kpis({
+    open: [{ amount: 100, balance: 100, invoiceDate: "2026-08-11", dueDate: TODAY, customerId: "c1" }],
+    salesLookback: [{ invoiceDate: "2026-08-11", amount: 50 }],
+  }).truncated).toBe(false);
   expect(kpis({
     open: [{ amount: 100, balance: 100, invoiceDate: "2026-08-11", dueDate: TODAY, customerId: "c1" }],
     salesLookback: [{ invoiceDate: "2026-08-11", amount: 100 }],
@@ -244,6 +254,7 @@ test("coverage is empty, partial, or full", () => {
     truncated: { a: false, b: false, c: false, contact: true },
   });
   expect(contactTrunc.coverage).toBe("partial");
+  expect(contactTrunc.truncated).toBe(true);
   expect(contactTrunc.contactRate).toBeNull();
   expect(contactTrunc.promiseRate).toBeNull();
 });

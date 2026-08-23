@@ -297,6 +297,7 @@ test("arKpisToCsv is reused from ar-kpis (blank nulls, coverage column)", () => 
     promiseRate: null,
     collected: 0,
     coverage: "empty",
+    truncated: false,
     inputs: {
       endingTotalAr: 0, endingCurrentAr: 0, creditSales: 0, collections: 0,
       openCases: 0, contactedOpenCases: 0, promisesCreated: 0,
@@ -319,7 +320,7 @@ test("reports page renders ArKpiBand for the selected range and stays owner-only
   expect(page).toContain("sheet=ar");
   expect(page).toContain('report.truncated ? "—"');
   expect(page).toContain("!report.truncated");
-  expect(page).toContain('arKpis.coverage !== "partial"');
+  expect(page).toContain("!arKpis.truncated");
   expect(page).not.toContain("lastContactsInput");
   expect(page).not.toContain("CasePromiseInput");
   expect(page).not.toContain("DASHBOARD_AR_RANGE_DAYS");
@@ -358,7 +359,7 @@ test("reports.csv sheet=ar uses arKpisToCsv; default team skips AR queries", () 
   expect(teamBranch).not.toContain("loadReportArKpis");
   expect(csvRoute).toContain("status: 409");
   expect(csvRoute).toContain("report.truncated");
-  expect(csvRoute).toContain('coverage === "partial"');
+  expect(csvRoute).toContain("arKpis.truncated");
 });
 
 // ── loadReportArKpis open-case paging ────────────────────────────────────────
@@ -511,6 +512,7 @@ test("loadReportArKpis truncated open-case page nulls rates instead of looking c
   expect(kpis.contactRate).toBeNull();
   expect(kpis.promiseRate).toBeNull();
   expect(kpis.coverage).toBe("partial");
+  expect(kpis.truncated).toBe(true);
 });
 
 test("loadReportArKpis throws when the open-case query errors", async () => {

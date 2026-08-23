@@ -19,7 +19,7 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
   let filename: string;
   if (sheet === "ar") {
     const arKpis = await loadReportArKpis({ supabase, orgId: org.org_id, range });
-    if (arKpis.coverage === "partial") {
+    if (arKpis.truncated) {
       return new Response(
         "This list is incomplete (over 5,000 rows). Totals may under-count.",
         { status: 409, headers },

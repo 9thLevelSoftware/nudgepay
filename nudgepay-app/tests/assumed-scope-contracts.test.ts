@@ -146,6 +146,8 @@ test("CDC catch-up rethrows recon so last_cdc_time is not stamped", () => {
   const src = read("../app/lib/qbo-sync.server.ts");
   const recon = src.slice(src.indexOf("await applyCaseReconciliation"));
   expect(recon).toContain("recordSyncError");
+  expect(recon).toContain('scope: "recon"');
+  expect(recon).toContain("resolveSyncErrors");
   expect(recon).toContain("throw e");
   const cdc = src.slice(src.indexOf("export async function runCdcCatchup"));
   expect(cdc.indexOf("throw e")).toBeGreaterThan(-1);

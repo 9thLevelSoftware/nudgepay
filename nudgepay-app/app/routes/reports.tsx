@@ -50,7 +50,7 @@ function fmtHours(x: number | null): string {
 
 export default function Reports() {
   const { report, arKpis, orgName, initials, userLabel, connected, syncLabel, syncIssues } = useLoaderData<typeof loader>();
-  const truncated = report.truncated || arKpis.coverage === "partial";
+  const truncated = report.truncated || arKpis.truncated;
   const teamContacts = report.perRep.reduce((s, r) => s + r.contactsLogged, 0);
   const teamKept = report.perRep.reduce((s, r) => s + r.kept, 0);
   const teamResolved = report.perRep.reduce((s, r) => s + r.resolved, 0);
@@ -80,7 +80,7 @@ export default function Reports() {
                 Download CSV
               </a>
             ) : null}
-            {arKpis.coverage !== "partial" ? (
+            {!arKpis.truncated ? (
               <a
                 href={`/reports.csv?range=${report.range}&sheet=ar`}
                 download={`nudgepay-ar-${report.range}d.csv`}

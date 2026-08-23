@@ -12,7 +12,7 @@ import { loadOrgConfig } from "./org-config.server";
 import { DEFAULT_ORG_CONFIG } from "./org-config";
 import { todayInTz } from "./tz";
 import { mergePaidDate, type ExistingPaidRow } from "./paid-date";
-import { recordSyncError } from "./sync-errors.server";
+import { recordSyncError, resolveSyncErrors } from "./sync-errors.server";
 
 export type NotifyFn = (orgId: string, brokenDetails: BrokenPromiseDetail[], today: string) => Promise<void>;
 
@@ -146,6 +146,8 @@ export async function applyPaymentsAndEvaluate(
   }
   try {
     await applyCaseReconciliation(deps.service, orgId, today);
+    await resolveSyncErrors(deps.service, { orgId, scope: "recon" })
+      .catch((err) => console.error("[6b] resolveSyncErrors recon failed", err));
   } catch (e) {
     console.error("[6b] reconciliation failed (payments)", e);
     await recordSyncError(deps.service, {
