@@ -203,6 +203,17 @@ test("inbound history filters by any webhook SID and keeps pre-migration null-SI
   expect(src).toContain('status: "ambiguous"');
   expect(src).toContain('if (histOrg.status === "ambiguous") return null');
   expect(src).toContain("sidOrg.orgId === fromHist.orgId");
+  expect(src).toContain("if (opts.requireFromMatch) return null");
+});
+
+test("SMS settings labels unprovisioned when inventory is required", () => {
+  const ui = read("../app/components/SmsSettingsSection.tsx");
+  expect(ui).toContain("requireInventory");
+  expect(ui).toContain("Unprovisioned");
+  expect(ui).toContain("Outbound texts are blocked until NudgePay assigns one");
+  const settings = read("../app/routes/settings.tsx");
+  expect(settings).toContain("smsRequireInventory");
+  expect(settings).toContain("requireInventory={d.messaging.requireInventory}");
 });
 
 test("JWT cannot stamp text_messages sender identity used for inbound routing", () => {

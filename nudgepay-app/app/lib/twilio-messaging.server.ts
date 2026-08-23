@@ -290,19 +290,14 @@ async function uniqueOutboundOrg(
     const legacy = await uniqueLegacyNullSidOrg(service, fromNorm);
     return legacy.status === "unique" ? legacy.orgId : null;
   }
-  let q = service.from("text_messages")
-    .select("org_id")
-    .eq("direction", "outbound")
-    .eq("to_number_norm", fromNorm);
-  if (opts.requireFromMatch) {
-    q = q.eq("from_number_norm", toNorm);
-  } else {
-    q = q.or(`from_number_norm.is.null,from_number_norm.eq."${toNorm}"`);
-  }
-  const { data: outbound, error: outboundErr } = await q;
-  if (outboundErr) throw outboundErr;
-  const orgIds = new Set((outbound ?? []).map((msg) => msg.org_id as string));
-  return orgIds.size === 1 ? [...orgIds][0]! : null;
+  // No webhook SID: exact From history first so a retired/disabled From
+  // still owns replies instead of mixing with another org's null-From MS rows.
+  const fromHist = await uniqueFromHistoryOrg(service, fromNorm, toNorm);
+  if (fromHist.status === "unique") return fromHist.orgId;
+  if (fromHist.status === "ambiguous") return null;
+  if (opts.requireFromMatch) return null;
+  const legacy = await uniqueLegacyNullSidOrg(service, fromNorm);
+  return legacy.status === "unique" ? legacy.orgId : null;
 }
 
 function canonicalSid(value: string | null | undefined): string {
