@@ -208,6 +208,33 @@ async function uniqueSidHistoryOrg(
   return other ? { status: "ambiguous" } : { status: "unique", orgId };
 }
 
+async function uniqueFromHistoryOrg(
+  service: SupabaseClient,
+  fromNorm: string,
+  toNorm: string,
+): Promise<UniqueOrgLookup> {
+  const { data: first, error } = await service.from("text_messages")
+    .select("org_id")
+    .eq("direction", "outbound")
+    .eq("to_number_norm", fromNorm)
+    .eq("from_number_norm", toNorm)
+    .limit(1)
+    .maybeSingle();
+  if (error) throw error;
+  if (!first) return { status: "none" };
+  const orgId = first.org_id as string;
+  const { data: other, error: otherErr } = await service.from("text_messages")
+    .select("org_id")
+    .eq("direction", "outbound")
+    .eq("to_number_norm", fromNorm)
+    .eq("from_number_norm", toNorm)
+    .neq("org_id", orgId)
+    .limit(1)
+    .maybeSingle();
+  if (otherErr) throw otherErr;
+  return other ? { status: "ambiguous" } : { status: "unique", orgId };
+}
+
 async function uniqueLegacyNullSidOrg(
   service: SupabaseClient,
   fromNorm: string,
@@ -324,7 +351,16 @@ async function resolveInboundOrgId(service: SupabaseClient, args: {
     if (invErr) throw invErr;
     invOrgs = [...new Set((inventoryHits ?? []).map((row) => row.org_id as string))];
     if (invOrgs.length > 1) return null;
-    if (invOrgs.length === 1 && !overlapsFallback) return invOrgs[0];
+    if (invOrgs.length === 1 && !overlapsFallback) {
+      // Exact From history wins if the number was reassigned: an old
+      // conversation must stay on the org that actually sent it.
+      if (fromNorm.length >= 10) {
+        const histOrg = await uniqueFromHistoryOrg(service, fromNorm, toNorm);
+        if (histOrg.status === "unique") return histOrg.orgId;
+        if (histOrg.status === "ambiguous") return null;
+      }
+      return invOrgs[0];
+    }
   }
 
   if (fromNorm.length < 10) return null;

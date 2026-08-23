@@ -194,9 +194,11 @@ test("inbound history filters by any webhook SID and keeps pre-migration null-SI
   expect(src).toContain('.is("messaging_service_sid_norm", null)');
   expect(src).toContain('.is("from_number_norm", null)');
   expect(src).toContain("uniqueSidHistoryOrg");
+  expect(src).toContain("uniqueFromHistoryOrg");
   expect(src).toContain("uniqueLegacyNullSidOrg");
   expect(src).toContain('.neq("org_id", orgId)');
   expect(src).toContain(".limit(1)");
+  expect(src).toContain('.eq("from_number_norm", toNorm)');
   expect(src).toContain('status: "ambiguous"');
   expect(src).toContain('if (histOrg.status === "ambiguous") return null');
 });

@@ -359,6 +359,84 @@ test("recordInboundMessage routes by inventory from_number_last10 and skips outb
   expect(rows![0].customer_id).toBe(custA!.id);
 });
 
+test("reassigned inventory From defers to unique persisted From history", async () => {
+  const phone = "+13105550232";
+  const movedFrom = "+15005552232";
+  const { data: orgA } = await svc.from("organizations").insert({ name: "Former From Org" }).select("id").single();
+  const orgAId = orgA!.id as string;
+  const { data: orgB } = await svc.from("organizations").insert({ name: "New From Inventory Org" }).select("id").single();
+  const orgBId = orgB!.id as string;
+
+  const { error: invErr } = await svc.from("sms_sender_inventory").insert({
+    org_id: orgBId, from_number: movedFrom, status: "active",
+  });
+  expect(invErr).toBeNull();
+
+  const { data: custA } = await svc.from("customers")
+    .insert({ org_id: orgAId, qbo_id: "c-from-a", name: "Former From A", phone, sms_consent: true }).select("id").single();
+  await svc.from("customers")
+    .insert({ org_id: orgBId, qbo_id: "c-from-b", name: "New From B", phone, sms_consent: true });
+
+  await svc.from("text_messages").insert({
+    org_id: orgAId, customer_id: custA!.id, direction: "outbound",
+    twilio_message_sid: "SMout-232-former", from_number: movedFrom, to_number: phone, body: "ping",
+  });
+
+  const out = await recordInboundMessage(svc, {
+    from: phone,
+    to: movedFrom,
+    body: "hello",
+    messageSid: "SMin-232-reassigned-from",
+  });
+  expect(out.matched).toBe(true);
+  const { data: rows } = await svc.from("text_messages")
+    .select("org_id, customer_id").eq("twilio_message_sid", "SMin-232-reassigned-from");
+  expect(rows).toHaveLength(1);
+  expect(rows![0].org_id).toBe(orgAId);
+  expect(rows![0].customer_id).toBe(custA!.id);
+});
+
+test("reassigned From with history in both orgs is treated as ambiguous", async () => {
+  const phone = "+13105550233";
+  const movedFrom = "+15005552233";
+  const { data: orgA } = await svc.from("organizations").insert({ name: "Ambiguous Former From Org" }).select("id").single();
+  const orgAId = orgA!.id as string;
+  const { data: orgB } = await svc.from("organizations").insert({ name: "Ambiguous Current From Org" }).select("id").single();
+  const orgBId = orgB!.id as string;
+
+  const { error: invErr } = await svc.from("sms_sender_inventory").insert({
+    org_id: orgBId, from_number: movedFrom, status: "active",
+  });
+  expect(invErr).toBeNull();
+
+  const { data: custA } = await svc.from("customers")
+    .insert({ org_id: orgAId, qbo_id: "c-from-ambig-a", name: "From Ambig A", phone, sms_consent: true }).select("id").single();
+  const { data: custB } = await svc.from("customers")
+    .insert({ org_id: orgBId, qbo_id: "c-from-ambig-b", name: "From Ambig B", phone, sms_consent: true }).select("id").single();
+
+  await svc.from("text_messages").insert([
+    {
+      org_id: orgAId, customer_id: custA!.id, direction: "outbound",
+      twilio_message_sid: "SMout-233-former", from_number: movedFrom, to_number: phone, body: "a",
+    },
+    {
+      org_id: orgBId, customer_id: custB!.id, direction: "outbound",
+      twilio_message_sid: "SMout-233-current", from_number: movedFrom, to_number: phone, body: "b",
+    },
+  ]);
+
+  const out = await recordInboundMessage(svc, {
+    from: phone,
+    to: movedFrom,
+    body: "hello",
+    messageSid: "SMin-233-ambiguous-from",
+  });
+  expect(out.matched).toBe(false);
+  const { data: rows } = await svc.from("text_messages")
+    .select("id").eq("twilio_message_sid", "SMin-233-ambiguous-from");
+  expect(rows ?? []).toHaveLength(0);
+});
+
 test("recordInboundMessage routes by inventory MessagingServiceSid before history", async () => {
   const phone = "+13105550221";
   const inboundTo = "+15005552221";
