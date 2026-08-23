@@ -31,7 +31,10 @@ test("parseCommPrefsUpdate never includes sms_consent (legal record untouched)",
 });
 
 test("a non-true checkbox value resolves to false when the sentinel is posted", () => {
-  const u = parseCommPrefsUpdate(fd({ do_not_call_set: "1", do_not_call: "false", do_not_text_set: "1" }));
+  const u = parseCommPrefsUpdate(fd({
+    do_not_call_set: "1", do_not_call: "false",
+    do_not_text_set: "1", confirm_resubscribe_sms: "true",
+  }));
   expect(u.do_not_call).toBe(false);
   expect(u.do_not_text).toBe(false);
 });
@@ -97,4 +100,11 @@ test("comm-prefs resolves a bare customerId (Accounts profile path)", async () =
 test("api.comm-prefs source resolves a bare customerId", () => {
   const src = readFileSync(new URL("../app/routes/api.comm-prefs.tsx", import.meta.url), "utf8");
   expect(src).toMatch(/form\.get\("customerId"\)/);
+});
+
+test("api.comm-prefs re-reads STOP source before clearing do_not_text", () => {
+  const src = readFileSync(new URL("../app/routes/api.comm-prefs.tsx", import.meta.url), "utf8");
+  expect(src).toContain("sms_consent_source");
+  expect(src).toContain("inbound_stop");
+  expect(src).toContain("confirm_resubscribe_sms");
 });

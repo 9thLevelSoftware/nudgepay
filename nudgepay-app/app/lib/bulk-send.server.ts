@@ -4,6 +4,7 @@ import { isContactBlocked, type ExceptionState } from "./exceptions";
 import type { OrgConfig } from "./org-config";
 import { smsSendReason } from "./sms-send-reason";
 import { smsFlashCopy } from "./flash-copy";
+import { orderPage, pageAll } from "./page-all";
 
 export type BulkSmsFailure = { caseId: string; name: string; error: string };
 
@@ -68,16 +69,24 @@ export async function runBulkSms(
   if (custErr) throw custErr;
   const custById = new Map(((custRows as CustomerRow[]) ?? []).map((c) => [c.id, c]));
 
-  const { data: invRows, error: invErr } = await svc.from("invoices")
-    .select("id, qbo_doc_number, due_date, balance, customer_id")
-    .eq("org_id", args.orgId).in("customer_id", customerIds).gt("balance", 0).lt("due_date", args.today);
-  if (invErr) throw invErr;
+  const invPage = await pageAll<InvoiceRow>(
+    (from, to) =>
+      orderPage(
+        svc.from("invoices")
+          .select("id, qbo_doc_number, due_date, balance, customer_id", { count: "exact" })
+          .eq("org_id", args.orgId)
+          .in("customer_id", customerIds)
+          .gt("balance", 0)
+          .lt("due_date", args.today),
+      ).range(from, to),
+  );
   const invByCustomer = new Map<string, { id: string; doc: string | null; due: string | null; bal: number }[]>();
-  for (const r of ((invRows as InvoiceRow[]) ?? [])) {
+  for (const r of invPage.rows) {
     const list = invByCustomer.get(r.customer_id) ?? [];
     list.push({ id: r.id, doc: r.qbo_doc_number, due: r.due_date, bal: Number(r.balance) || 0 });
     invByCustomer.set(r.customer_id, list);
   }
+  const totalsTruncated = invPage.truncated;
 
   const built: CaseForSend[] = [];
   for (const c of cases) {
@@ -103,6 +112,12 @@ export async function runBulkSms(
   const { eligible, skipped } = partitionEligibility(built);
   const failures: BulkSmsFailure[] = [];
   let sent = 0;
+  if (totalsTruncated) {
+    for (const c of eligible) {
+      failures.push({ caseId: c.caseId, name: c.customerName, error: smsFlashCopy("error") });
+    }
+    return { sent: 0, failed: failures.length, skipped: skipped.length, failures };
+  }
   for (const c of eligible) {
     // Missing overdue invoice is a per-case failure (not skipped), so
     // failed === failures.length including this bucket.

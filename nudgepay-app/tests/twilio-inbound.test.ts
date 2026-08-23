@@ -31,7 +31,7 @@ async function seedCustomerWithOutbound(
 test("recordInboundMessage matches by phone and threads to the latest outbound invoice", async () => {
   const { customerId, invoiceId, inboundTo } = await seedCustomerWithOutbound("+13105550201", "SMout-201");
   const out = await recordInboundMessage(svc, { from: "(310) 555-0201", to: inboundTo, body: "ok thanks", messageSid: "SMin1-201" });
-  expect(out).toEqual({ matched: true, optOut: false });
+  expect(out).toMatchObject({ matched: true, optOut: false });
   const { data: msg } = await svc.from("text_messages").select("direction, customer_id, invoice_id, body")
     .eq("twilio_message_sid", "SMin1-201").single();
   expect(msg!.direction).toBe("inbound");
@@ -149,7 +149,7 @@ test("recordInboundMessage resolves the tenant from To before matching duplicate
     body: "STOP",
     messageSid: "SMin-207-target-b",
   });
-  expect(out).toEqual({ matched: true, optOut: true });
+  expect(out).toMatchObject({ matched: true, optOut: true });
 
   const { data: custA } = await svc.from("customers").select("sms_consent").eq("id", orgA.customerId).single();
   const { data: custB } = await svc.from("customers").select("sms_consent").eq("id", orgB.customerId).single();
@@ -172,12 +172,51 @@ test("recordInboundMessage ignores messages addressed to an unconfigured To numb
     body: "STOP",
     messageSid: "SMin-208-unconfigured-to",
   });
-  expect(out).toEqual({ matched: false, optOut: false });
+  expect(out.matched).toBe(false);
+  expect(out.optOut).toBe(true);
+  expect(out.keyword).toBe("stop");
 
-  const { data: cust } = await svc.from("customers").select("sms_consent").eq("id", customerId).single();
+  const { data: cust } = await svc.from("customers").select("sms_consent, do_not_text").eq("id", customerId).single();
   expect(cust!.sms_consent).toBe(true);
+  expect(cust!.do_not_text).toBe(false);
   const { data: rows } = await svc.from("text_messages").select("id").eq("twilio_message_sid", "SMin-208-unconfigured-to");
   expect(rows ?? []).toHaveLength(0);
+});
+
+test("unmatched STOP does not flip consent on any matching last-10", async () => {
+  const phone = "+13105550910";
+  const { customerId } = await seedCustomerWithOutbound(phone, "SMout-910", true, "+15005559101");
+  const out = await recordInboundMessage(svc, {
+    from: phone,
+    to: "+15005559910",
+    body: "STOP",
+    messageSid: "SMin-910-unmatched-stop",
+  });
+  expect(out.matched).toBe(false);
+  const { data: cust } = await svc.from("customers")
+    .select("sms_consent, do_not_text, sms_consent_source").eq("id", customerId).single();
+  expect(cust!.sms_consent).toBe(true);
+  expect(cust!.do_not_text).toBe(false);
+  expect(cust!.sms_consent_source).not.toBe("inbound_stop");
+});
+
+test("two-org last-10 STOP writes neither org when To does not uniquely resolve", async () => {
+  const phone = "+13105550901";
+  const orgA = await seedCustomerWithOutbound(phone, "SMout-901-a", true, "+15005559011");
+  const orgB = await seedCustomerWithOutbound(phone, "SMout-901-b", true, "+15005559012");
+  const out = await recordInboundMessage(svc, {
+    from: phone,
+    to: "+15005559901",
+    body: "STOP",
+    messageSid: "SMin-901-ambiguous",
+  });
+  expect(out.matched).toBe(false);
+  const { data: a } = await svc.from("customers").select("sms_consent, do_not_text").eq("id", orgA.customerId).single();
+  const { data: b } = await svc.from("customers").select("sms_consent, do_not_text").eq("id", orgB.customerId).single();
+  expect(a!.sms_consent).toBe(true);
+  expect(a!.do_not_text).toBe(false);
+  expect(b!.sms_consent).toBe(true);
+  expect(b!.do_not_text).toBe(false);
 });
 
 test("recordInboundMessage STOP resolves org from default sender outbound history", async () => {
@@ -203,7 +242,7 @@ test("recordInboundMessage STOP resolves org from default sender outbound histor
   });
 
   const out = await recordInboundMessage(svc, { from: phone, to: defaultSender, body: "STOP", messageSid: "SMin-210-default-stop" });
-  expect(out).toEqual({ matched: true, optOut: true });
+  expect(out).toMatchObject({ matched: true, optOut: true });
 
   const { data: custAfter } = await svc.from("customers").select("sms_consent").eq("id", customerId).single();
   expect(custAfter!.sms_consent).toBe(false);
@@ -230,7 +269,7 @@ test("recordInboundMessage ignores stale tenant sender config when outbound used
   });
 
   const staleOut = await recordInboundMessage(svc, { from: phone, to: staleSender, body: "STOP", messageSid: "SMin-212-stale-stop" });
-  expect(staleOut).toEqual({ matched: false, optOut: false });
+  expect(staleOut).toMatchObject({ matched: false, optOut: true });
 
   const { data: custAfterStale } = await svc.from("customers").select("sms_consent").eq("id", customerId).single();
   expect(custAfterStale!.sms_consent).toBe(true);
@@ -238,7 +277,7 @@ test("recordInboundMessage ignores stale tenant sender config when outbound used
   expect(staleRows ?? []).toHaveLength(0);
 
   const defaultOut = await recordInboundMessage(svc, { from: phone, to: defaultSender, body: "STOP", messageSid: "SMin-212-default-stop" });
-  expect(defaultOut).toEqual({ matched: true, optOut: true });
+  expect(defaultOut).toMatchObject({ matched: true, optOut: true });
 
   const { data: custAfterDefault } = await svc.from("customers").select("sms_consent").eq("id", customerId).single();
   expect(custAfterDefault!.sms_consent).toBe(false);
@@ -278,7 +317,7 @@ test("recordInboundMessage STOP uses normalized outbound history before recency 
   })));
 
   const out = await recordInboundMessage(svc, { from: phone, to: defaultSender, body: "STOP", messageSid: "SMin-213-old-stop" });
-  expect(out).toEqual({ matched: true, optOut: true });
+  expect(out).toMatchObject({ matched: true, optOut: true });
 
   const { data: custAfter } = await svc.from("customers").select("sms_consent").eq("id", customerId).single();
   expect(custAfter!.sms_consent).toBe(false);
@@ -304,7 +343,7 @@ test("recordInboundMessage STOP resolves org from unique messaging service outbo
   });
 
   const out = await recordInboundMessage(svc, { from: phone, to: inboundTo, body: "STOP", messageSid: "SMin-211-mg-stop" });
-  expect(out).toEqual({ matched: true, optOut: true });
+  expect(out).toMatchObject({ matched: true, optOut: true });
 
   const { data: custAfter } = await svc.from("customers").select("sms_consent").eq("id", customerId).single();
   expect(custAfter!.sms_consent).toBe(false);
@@ -981,7 +1020,7 @@ test("retired inventory SID still routes via persisted outbound history", async 
 test("reassigned SID with history in both orgs is treated as ambiguous", async () => {
   const phone = "+13105550231";
   const inboundTo = "+15005552231";
-  const movedSid = "MG" + "a".repeat(32);
+  const movedSid = "MG" + "1".repeat(32);
   const { data: orgA } = await svc.from("organizations").insert({ name: "Ambiguous Former SID Org" }).select("id").single();
   const orgAId = orgA!.id as string;
   const { data: orgB } = await svc.from("organizations").insert({ name: "Ambiguous Current SID Org" }).select("id").single();
@@ -1063,8 +1102,8 @@ test("recordInboundMessage treats replayed MessageSid as idempotent", async () =
   const first = await recordInboundMessage(svc, args);
   const second = await recordInboundMessage(svc, args);
 
-  expect(first).toEqual({ matched: true, optOut: false });
-  expect(second).toEqual({ matched: true, optOut: false });
+  expect(first).toMatchObject({ matched: true, optOut: false });
+  expect(second).toMatchObject({ matched: true, optOut: false });
   const { data: rows } = await svc.from("text_messages").select("id").eq("twilio_message_sid", args.messageSid);
   expect(rows ?? []).toHaveLength(1);
 });

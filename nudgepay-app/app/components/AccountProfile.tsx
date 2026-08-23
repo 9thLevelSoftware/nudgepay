@@ -142,6 +142,11 @@ export function AccountProfile(p: Props) {
           <label className="flex items-center gap-1.5 text-sm">
             <input type="checkbox" name="do_not_text" value="true" defaultChecked={p.commPrefs.doNotText} /> Do not text
           </label>
+          {p.commPrefs.doNotText ? (
+            <label className="flex items-center gap-1.5 text-sm">
+              <input type="checkbox" name="confirm_resubscribe_sms" value="true" /> Confirm re-enable texts
+            </label>
+          ) : null}
           <label className="flex items-center gap-1.5 text-sm">
             <input type="checkbox" name="do_not_email" value="true" defaultChecked={p.commPrefs.doNotEmail} /> Do not email
           </label>

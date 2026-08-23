@@ -69,7 +69,14 @@ export function parseCommPrefsUpdate(form: FormData): CommPrefsPatch {
     patch.do_not_call = form.get("do_not_call") === "true";
   }
   if (form.get("do_not_text_set") === "1") {
-    patch.do_not_text = form.get("do_not_text") === "true";
+    const next = form.get("do_not_text") === "true";
+    // Re-enable texts (true → false) requires confirm_resubscribe_sms so Save
+    // cannot silently undo a STOP-sourced or collector DNC.
+    if (next === false && form.get("confirm_resubscribe_sms") !== "true") {
+      // omit — leave the existing DB value
+    } else {
+      patch.do_not_text = next;
+    }
   }
   if (form.get("do_not_email_set") === "1") {
     const next = form.get("do_not_email") === "true";

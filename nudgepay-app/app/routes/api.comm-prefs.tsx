@@ -51,8 +51,22 @@ export async function action({ request, context }: ActionFunctionArgs) {
   }
   if (!customerId) return redirect(returnTo, { headers });
 
+  const patch = parseCommPrefsUpdate(form);
+  if (patch.do_not_text === false) {
+    const { data: current, error: srcErr } = await supabase
+      .from("customers")
+      .select("sms_consent_source")
+      .eq("org_id", org.org_id)
+      .eq("id", customerId)
+      .maybeSingle();
+    if (srcErr) throw new Error(`Failed to read communication preferences: ${srcErr.message}`);
+    if (current?.sms_consent_source === "inbound_stop" && form.get("confirm_resubscribe_sms") !== "true") {
+      delete patch.do_not_text;
+    }
+  }
+
   const { error } = await supabase.from("customers")
-    .update(parseCommPrefsUpdate(form)).eq("org_id", org.org_id).eq("id", customerId);
+    .update(patch).eq("org_id", org.org_id).eq("id", customerId);
   // Fail loud on a write error (matches api.assign / api.account-notes) — a silent
   // redirect would imply the preferences saved when they didn't.
   if (error) throw new Error(`Failed to save communication preferences: ${error.message}`);

@@ -31,7 +31,7 @@ export type MessagingDeps = {
   requireInventory?: boolean;
 };
 
-async function loadQuietHoursWindow(service: SupabaseClient, orgId: string): Promise<QuietHoursWindow> {
+export async function loadQuietHoursWindow(service: SupabaseClient, orgId: string): Promise<QuietHoursWindow> {
   const { data, error } = await service.from("org_settings")
     .select("timezone, sms_send_start_hour, sms_send_end_hour").eq("org_id", orgId).maybeSingle();
   if (error) throw error;
@@ -153,7 +153,7 @@ export async function sendInvoiceText(
   await assertSmsBudget(deps.service, { orgId: args.orgId, customerId: cust.id as string, now });
   const result = await sendSms(deps.fetchFn, deps.twilio, {
     to: cust.phone as string, body, sender, statusCallback: deps.statusCallback ?? null,
-    idempotencyKey: sendIdempotencyKey("sms", [args.orgId, args.invoiceId, body], now),
+    idempotencyKey: sendIdempotencyKey("sms", [args.orgId, args.invoiceId, body]),
   });
 
   const { data: row, error: insErr } = await deps.service.from("text_messages").insert({
@@ -456,6 +456,7 @@ async function applyKeywordByPhone(
   service: SupabaseClient,
   fromNorm: string,
   keyword: InboundKeyword,
+  orgId: string,
 ): Promise<void> {
   if (keyword !== "stop" && keyword !== "start") return;
   const now = new Date().toISOString();
@@ -474,7 +475,9 @@ async function applyKeywordByPhone(
         sms_consent_source: "inbound_start",
         sms_consent_at: now,
       };
-  const { error } = await service.from("customers").update(patch).eq("phone_last10", fromNorm);
+  const { error } = await service.from("customers").update(patch)
+    .eq("org_id", orgId)
+    .eq("phone_last10", fromNorm);
   if (error) throw error;
 }
 
@@ -506,10 +509,6 @@ export async function recordInboundMessage(
   }
 
   const fromNorm = normalizePhone(args.from);
-  if (fromNorm.length >= 10 && (keyword === "stop" || keyword === "start")) {
-    await applyKeywordByPhone(service, fromNorm, keyword);
-  }
-
   const orgId = await resolveInboundOrgId(service, {
     from: args.from,
     to: args.to,
@@ -523,6 +522,10 @@ export async function recordInboundMessage(
   if (!orgId || fromNorm.length < 10) {
     await persistOrphan(service, { ...args, keyword });
     return { matched: false, optOut, keyword, twiml };
+  }
+
+  if (keyword === "stop" || keyword === "start") {
+    await applyKeywordByPhone(service, fromNorm, keyword, orgId);
   }
 
   const { data: matches, error: matchErr } = await service.from("customers")

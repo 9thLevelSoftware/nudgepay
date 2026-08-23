@@ -57,6 +57,12 @@ export function CommPrefsDrawer({
               <input type="checkbox" name="do_not_text" value="true" defaultChecked={prefs.doNotText} className="h-4 w-4 rounded border-border text-copper" />
               Do not text <span className="text-[11px] text-muted">(blocks SMS sending)</span>
             </label>
+            {prefs.doNotText ? (
+              <label className="flex items-center gap-2 text-sm text-text">
+                <input type="checkbox" name="confirm_resubscribe_sms" value="true" className="h-4 w-4 rounded border-border text-copper" />
+                Confirm re-enable texts (customer asked to receive texts again)
+              </label>
+            ) : null}
             <label className="flex items-center gap-2 text-sm text-text">
               <input type="checkbox" name="do_not_email" value="true" defaultChecked={prefs.doNotEmail} className="h-4 w-4 rounded border-border text-copper" />
               Do not email <span className="text-[11px] text-muted">(blocks email sending)</span>

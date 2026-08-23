@@ -34,6 +34,8 @@ export async function action({ request, context }: ActionFunctionArgs) {
   } catch (err) {
     const msg = err instanceof Error ? err.message : "";
     const reason = /disabled/i.test(msg) ? "disabled"
+      : /quiet/i.test(msg) ? "quiet"
+      : /allowlist/i.test(msg) ? "from_allowlist"
       : /blocked/i.test(msg) ? "blocked"
       : /opted out/i.test(msg) ? "optout"
       : /rate cap/i.test(msg) ? "limited"
