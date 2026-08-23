@@ -7,13 +7,18 @@ export type AuthRateLimitEnv = {
   NODE_ENV?: string;
 };
 
+/** Node/Render: no authenticated CF-Connecting-IP. Same signal as the memory limiter. */
+function isNodeRuntime(env: AuthRateLimitEnv): boolean {
+  return env.BUILD_TARGET === "node" || env.NODE_ENV === "production";
+}
+
 /**
  * Cloudflare: CF-Connecting-IP (authenticated by the edge).
  * Node/Render: last X-Forwarded-For hop (the one the trusted proxy appended).
  * Never trust CF-Connecting-IP on Node — Render does not set or authenticate it.
  */
 export function authRateLimitKey(request: Request, env: AuthRateLimitEnv = {}): string {
-  const node = env.BUILD_TARGET === "node";
+  const node = isNodeRuntime(env);
   if (!node) {
     const cf = request.headers.get("CF-Connecting-IP")?.trim();
     if (cf) return cf;
@@ -65,9 +70,7 @@ export function memoryAuthRateLimited(key: string, now = Date.now()): boolean {
 }
 
 function useMemoryLimiter(env: AuthRateLimitEnv): boolean {
-  return env.AUTH_RATE_LIMIT_MEMORY === "true"
-    || env.BUILD_TARGET === "node"
-    || env.NODE_ENV === "production";
+  return env.AUTH_RATE_LIMIT_MEMORY === "true" || isNodeRuntime(env);
 }
 
 /** true = reject this attempt. Never throw a raw Response (breaks PublicLayout). */
