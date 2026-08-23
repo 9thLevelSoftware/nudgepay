@@ -79,9 +79,10 @@ export async function applyPromiseEvaluation(
       broken += 1;
       const caseId = caseByPromise.get(op.promiseId);
       if (caseId) {
+        // Closed or missing cases: 0-row UPDATE is a no-op (do not reopen).
         const { error: cErr } = await client.from("collection_cases")
           .update({ status: "working", next_action_type: "follow_up", next_action_at: today })
-          .eq("id", caseId).eq("org_id", orgId);
+          .eq("id", caseId).eq("org_id", orgId).is("closed_at", null);
         if (cErr) throw cErr;
         const promRow = promises.find((p) => (p.id as string) === op.promiseId);
         brokenDetails.push({

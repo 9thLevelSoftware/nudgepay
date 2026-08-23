@@ -82,6 +82,37 @@ test("applyPromiseEvaluation: kept on payment, broken at deadline, case reflecti
   expect(brokenCase!.next_action_at).toBe("2026-07-06");
 });
 
+test("applyPromiseEvaluation does not reopen a closed case on broken", async () => {
+  const svc = serviceClient();
+  const { data: org } = await svc.from("organizations").insert({ name: `EvalClosed ${Math.random()}` }).select("id").single();
+  const orgId = org!.id;
+  const { data: cust } = await svc.from("customers")
+    .insert({ org_id: orgId, qbo_id: `ev-cl-${Math.random()}`, name: "Closed Co" }).select("id").single();
+  const { data: inv } = await svc.from("invoices").insert({
+    org_id: orgId, qbo_id: `ev-cli-${Math.random()}`, qbo_doc_number: "cl", customer_id: cust!.id,
+    amount: 1200, balance: 1200, due_date: "2026-03-01", status: "overdue",
+  }).select("id").single();
+  const { data: cse } = await svc.from("collection_cases").insert({
+    org_id: orgId, customer_id: cust!.id, status: "resolved",
+    closed_at: new Date().toISOString(),
+  }).select("id").single();
+  const { data: prom } = await svc.from("promises").insert({
+    org_id: orgId, case_id: cse!.id, customer_id: cust!.id, status: "pending",
+    promised_amount: 500, promised_date: "2026-07-01", grace_until: "2026-07-03", baseline_balance: 1200,
+  }).select("id").single();
+  await svc.from("promise_invoices").insert({
+    promise_id: prom!.id, invoice_id: inv!.id, org_id: orgId, baseline_balance: 1200,
+  });
+
+  const res = await applyPromiseEvaluation(svc, orgId, "2026-07-06");
+  expect(res.broken).toBe(1);
+
+  const { data: still } = await svc.from("collection_cases")
+    .select("status, closed_at").eq("id", cse!.id).single();
+  expect(still!.status).toBe("resolved");
+  expect(still!.closed_at).not.toBeNull();
+});
+
 // F-scenario (high-risk) coverage — five invoices / one payment.
 // Exercises the multi-invoice aggregation in applyPromiseEvaluation: a promise
 // links FIVE invoices, and the received amount is derived from the SUM of their

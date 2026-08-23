@@ -94,7 +94,7 @@ test("3: member cancelPromise still succeeds", async () => {
 });
 
 test("4: non-owner member createPromiseForLog supersedes existing pending", async () => {
-  const { svc, orgId, member, customerId, caseId } = await seedOrg({
+  const { svc, orgId, member, customerId, caseId, invoiceId } = await seedOrg({
     ownerEmail: "promises-rls-super-o@example.com",
     memberEmail: "promises-rls-super-m@example.com",
   });
@@ -108,14 +108,29 @@ test("4: non-owner member createPromiseForLog supersedes existing pending", asyn
   if (!res.ok) return;
 
   const { data: rows } = await svc.from("promises")
-    .select("id, status, replacement_promise_id")
+    .select("id, status, replacement_promise_id, created_by, grace_until, baseline_balance")
     .eq("org_id", orgId);
   const prior = rows!.find((r) => r.id === priorId);
   const next = rows!.find((r) => r.id === res.promiseId);
   expect(prior!.status).toBe("renegotiated");
   expect(prior!.replacement_promise_id).toBe(res.promiseId);
   expect(next!.status).toBe("pending");
+  expect(next!.created_by).toBe(member!.userId);
+  expect(next!.grace_until).toBe("2026-07-14");
+  expect(Number(next!.baseline_balance)).toBe(1200);
   expect(rows!.filter((r) => r.status === "pending")).toHaveLength(1);
+
+  const { data: links } = await svc.from("promise_invoices")
+    .select("invoice_id, baseline_balance").eq("promise_id", res.promiseId);
+  expect(links).toHaveLength(1);
+  expect(links![0].invoice_id).toBe(invoiceId);
+  expect(Number(links![0].baseline_balance)).toBe(1200);
+
+  const { data: cse } = await svc.from("collection_cases")
+    .select("status, next_action_type, next_action_at").eq("id", caseId).single();
+  expect(cse!.status).toBe("promised");
+  expect(cse!.next_action_type).toBe("promise");
+  expect(cse!.next_action_at).toBe("2026-07-14");
 });
 
 test("5: create_promise failure leaves the prior pending untouched", async () => {
@@ -130,11 +145,9 @@ test("5: create_promise failure leaves the prior pending untouched", async () =>
     p_org_id: orgId,
     p_case_id: caseId,
     p_customer_id: customerId,
-    p_user_id: member!.userId,
     p_contact_log_id: null,
     p_promised_amount: 0,
     p_promised_date: "2026-07-10",
-    p_grace_until: "2026-07-14",
   });
   expect(error).not.toBeNull();
 
@@ -191,7 +204,66 @@ test("7: member cannot UPDATE replacement_promise_id on a renegotiated row", asy
   expect(locked!.replacement_promise_id).toBe(replacement!.id);
 });
 
-test("8: cross-org SELECT of promises is empty", async () => {
+test("8: member cannot INSERT promises", async () => {
+  const { svc, orgId, member, customerId, caseId } = await seedOrg({
+    ownerEmail: "promises-rls-ins-o@example.com",
+    memberEmail: "promises-rls-ins-m@example.com",
+  });
+
+  const { error } = await member!.client.from("promises").insert({
+    org_id: orgId, case_id: caseId, customer_id: customerId, status: "pending",
+    promised_amount: 500, promised_date: "2026-07-01", grace_until: "2026-07-03",
+    baseline_balance: 1200,
+  });
+  expect(error).not.toBeNull();
+
+  const { data: rows } = await svc.from("promises").select("id").eq("org_id", orgId);
+  expect(rows ?? []).toHaveLength(0);
+});
+
+test("9: owner cannot PATCH pending → kept", async () => {
+  const { svc, orgId, owner, customerId, caseId } = await seedOrg({
+    ownerEmail: "promises-rls-okpt-o@example.com",
+  });
+  const promiseId = await insertPending(svc, orgId, caseId, customerId);
+
+  const { error } = await owner.client.from("promises")
+    .update({ status: "kept" })
+    .eq("org_id", orgId)
+    .eq("id", promiseId);
+  expect(error).not.toBeNull();
+
+  const { data: row } = await svc.from("promises").select("status").eq("id", promiseId).single();
+  expect(row!.status).toBe("pending");
+});
+
+test("10: cancel UPDATE cannot rewrite created_by or promised_amount", async () => {
+  const { svc, orgId, member, owner, customerId, caseId } = await seedOrg({
+    ownerEmail: "promises-rls-trig-o@example.com",
+    memberEmail: "promises-rls-trig-m@example.com",
+  });
+  const promiseId = await insertPending(svc, orgId, caseId, customerId);
+
+  const { error: moneyErr } = await member!.client.from("promises")
+    .update({ status: "cancelled", promised_amount: 1, resolved_at: new Date().toISOString() })
+    .eq("org_id", orgId)
+    .eq("id", promiseId);
+  expect(moneyErr).not.toBeNull();
+
+  const { error: identErr } = await member!.client.from("promises")
+    .update({ status: "cancelled", created_by: owner.userId, resolved_at: new Date().toISOString() })
+    .eq("org_id", orgId)
+    .eq("id", promiseId);
+  expect(identErr).not.toBeNull();
+
+  const { data: row } = await svc.from("promises")
+    .select("status, promised_amount, created_by").eq("id", promiseId).single();
+  expect(row!.status).toBe("pending");
+  expect(Number(row!.promised_amount)).toBe(500);
+  expect(row!.created_by).toBeNull();
+});
+
+test("11: cross-org SELECT of promises is empty", async () => {
   const a = await seedOrg({ ownerEmail: "promises-rls-xorg-a@example.com" });
   const b = await makeUserClient("promises-rls-xorg-b@example.com");
   const { data: orgB } = await a.svc.from("organizations")
