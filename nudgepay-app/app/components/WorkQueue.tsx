@@ -416,7 +416,9 @@ function QueueRow({
 
         {density !== "detailed" ? (
           <span role="cell" data-label="Last contact" className={density === "risk" ? "hidden xl:block min-w-0" : "hidden lg:block min-w-0"}>
-            {item.lastContact ? (
+            {item.lastContactUnknown ? (
+              <span className="text-muted text-xs">Unknown</span>
+            ) : item.lastContact ? (
               <>
                 <span className="block text-text text-xs">{formatInstant(item.lastContact.date, timeZone)}</span>
                 <span className="block text-muted text-xs capitalize">{item.lastContact.channel}</span>
@@ -535,7 +537,9 @@ function MobileCard({
           </span>
         </div>
         <div className="mt-1 text-xs">
-          {item.lastContact ? (
+          {item.lastContactUnknown ? (
+            <span className="text-muted">Unknown</span>
+          ) : item.lastContact ? (
             <span className="text-muted">{formatInstant(item.lastContact.date, timeZone)} · {item.lastContact.channel}</span>
           ) : (
             <span className="text-muted">Never contacted</span>

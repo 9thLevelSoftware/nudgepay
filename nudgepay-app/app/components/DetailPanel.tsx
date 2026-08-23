@@ -1299,7 +1299,7 @@ export function DetailPanel({
       ) : null}
 
       {tab === "email" ? (
-        <EmailTab>
+        <EmailTab
           key={selected.caseId}
           selected={selected}
           invoices={invoices}

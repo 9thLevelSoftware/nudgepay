@@ -22,12 +22,13 @@ function formatShare(n: number | null): string {
   return `${Math.round(n * 100)}%`;
 }
 
-export function ArKpiBand({ kpis, isOwner }: { kpis: ArKpis; isOwner: boolean }) {
+export function ArKpiBand({ kpis, isOwner, loadError = null }: { kpis: ArKpis; isOwner: boolean; loadError?: string | null }) {
   const empty = kpis.coverage === "empty";
   const partial = kpis.truncated;
   const emptySub = "Connect QuickBooks";
   const historyPrefix = partial ? "Partial history · " : "";
   const heading = `Receivables (${kpis.rangeDays}d)`;
+  const unknownRates = !!loadError;
 
   const dsoValue = empty ? "—" : formatDays(kpis.dso);
   const dsoSub = empty ? emptySub : `${historyPrefix}Best possible ${formatDays(kpis.bestPossibleDso)}`;
@@ -39,16 +40,20 @@ export function ArKpiBand({ kpis, isOwner }: { kpis: ArKpis; isOwner: boolean })
       : kpis.collected === 0
         ? `${historyPrefix}No payments in the last ${kpis.rangeDays} days`
         : `${historyPrefix}${kpis.rangeDays}-day collections effectiveness`;
-  const contactValue = empty ? "—" : formatShare(kpis.contactRate);
+  const contactValue = empty || unknownRates ? "—" : formatShare(kpis.contactRate);
   const contactSub = empty
     ? emptySub
-    : `${historyPrefix}${kpis.inputs.contactedOpenCases} / ${kpis.inputs.openCases} open cases`;
-  const promiseValue = empty ? "—" : formatShare(kpis.promiseRate);
+    : unknownRates
+      ? "Could not load case rates"
+      : `${historyPrefix}${kpis.inputs.contactedOpenCases} / ${kpis.inputs.openCases} open cases`;
+  const promiseValue = empty || unknownRates ? "—" : formatShare(kpis.promiseRate);
   const promiseSub = empty
     ? emptySub
-    : kpis.promiseRate == null
-      ? `${historyPrefix}${kpis.inputs.contactedOpenCases === 0 ? "No contacted cases" : "Unavailable"}`
-      : `${historyPrefix}of contacted`;
+    : unknownRates
+      ? "Could not load case rates"
+      : kpis.promiseRate == null
+        ? `${historyPrefix}${kpis.inputs.contactedOpenCases === 0 ? "No contacted cases" : "Unavailable"}`
+        : `${historyPrefix}of contacted`;
   const collectedValue = empty ? "—" : formatUSD(kpis.collected);
   const collectedSub = empty
     ? emptySub

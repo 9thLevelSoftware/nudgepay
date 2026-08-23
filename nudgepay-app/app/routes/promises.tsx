@@ -259,12 +259,10 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
     }
   }
 
-  const listState = honestListState([
-    promisePage, custPage, casePage, piPage, invBalPage,
-    { error: selectedError, truncated: selectedTruncated },
-  ]);
+  const listState = honestListState([promisePage, custPage, casePage, piPage, invBalPage]);
   const loadError = listState.loadError ? "Could not load promises" : null;
   const truncated = listState.truncated;
+  const selectedLoadError = selectedError ? "Could not load promise detail" : null;
 
   return data(
     {
@@ -273,11 +271,12 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
       rows: loadError ? [] : rows,
       metrics, counts, tab, sort, q, returnTo,
       selected: loadError ? null : selected,
-      selectedInvoices: loadError ? [] : selectedInvoices,
+      selectedInvoices: loadError || selectedLoadError ? [] : selectedInvoices,
       selectedNote: loadError ? null : selectedNote,
       promiseError,
       truncated,
       loadError,
+      selectedLoadError,
     },
     { headers },
   );
@@ -301,6 +300,7 @@ export default function Promises() {
       note={d.selectedNote}
       returnTo={d.returnTo}
       promiseError={d.promiseError}
+      loadError={d.selectedLoadError}
     />
   );
   return (

@@ -112,7 +112,7 @@ export default function Reports() {
         {loadError ? <LoadErrorBanner message={loadError} /> : truncated ? <TruncationBanner /> : null}
 
         <section>
-          <ArKpiBand kpis={arKpis} isOwner={false} />
+          <ArKpiBand kpis={arKpis} isOwner={false} loadError={arKpis.loadError} />
         </section>
 
         {/* Summary strip */}

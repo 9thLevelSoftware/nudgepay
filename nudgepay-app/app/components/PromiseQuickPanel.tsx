@@ -18,9 +18,10 @@ interface Props {
   note: string | null;
   returnTo: string;
   promiseError?: string | null;
+  loadError?: string | null;
 }
 
-export function PromiseQuickPanel({ promise, invoices, note, returnTo, promiseError }: Props) {
+export function PromiseQuickPanel({ promise, invoices, note, returnTo, promiseError, loadError = null }: Props) {
   const navigation = useNavigation();
   const cancelBusy = navigation.state !== "idle" && navigation.formAction === "/api/promises/cancel";
   const [confirmCancel, setConfirmCancel] = useState(false);
@@ -68,7 +69,9 @@ export function PromiseQuickPanel({ promise, invoices, note, returnTo, promiseEr
 
       <div className="p-4 border-b border-border">
         <p className="font-mono text-[11px] uppercase text-muted mb-2">Linked invoices</p>
-        {invoices.length === 0 ? (
+        {loadError ? (
+          <p className="text-sm text-hot">{loadError}</p>
+        ) : invoices.length === 0 ? (
           <p className="text-sm text-muted">No linked invoices.</p>
         ) : (
           <ul className="space-y-1 text-sm">

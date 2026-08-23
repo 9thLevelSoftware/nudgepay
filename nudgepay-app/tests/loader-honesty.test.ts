@@ -175,3 +175,40 @@ test("dashboard AR contactRate is truncated when Stage-1 cases are truncated", (
   expect(src).toContain("lastContactLoadError");
 });
 
+test("EmailTab binds loadError (not a closed empty tag)", () => {
+  const src = read("../app/components/DetailPanel.tsx");
+  expect(src).not.toMatch(/<EmailTab>/);
+  expect(src).toMatch(/<EmailTab[\s\S]*?loadError=\{loadError\}/);
+});
+
+test("WorkQueue does not label lastContactUnknown as Never contacted", () => {
+  const src = read("../app/components/WorkQueue.tsx");
+  expect(src).toContain("lastContactUnknown");
+  expect(src).toMatch(/lastContactUnknown \?[\s\S]{0,80}Unknown/);
+});
+
+test("Batch C detail errors do not fold into queue KPI chrome", () => {
+  const src = read("../app/routes/dashboard.tsx");
+  expect(src).toContain("detailLoadError");
+  expect(src).toContain('detailLoadError = "Could not load thread"');
+  expect(src).toContain("lastContactTruncated={lastContactTruncated || !!loadError}");
+  expect(src).toContain("loadError={detailLoadError}");
+  expect(src).not.toMatch(/lastContactTruncated = true/);
+});
+
+test("selected-promise detail error does not blank the ledger", () => {
+  const src = read("../app/routes/promises.tsx");
+  expect(src).toContain("selectedLoadError");
+  const listState = src.slice(src.indexOf("const listState = honestListState"), src.indexOf("const loadError"));
+  expect(listState).not.toContain("selectedError");
+  expect(src).toContain("loadError={d.selectedLoadError}");
+});
+
+test("ArKpiBand hides 0/0 open cases on loadError", () => {
+  const src = read("../app/components/ArKpiBand.tsx");
+  expect(src).toContain("unknownRates");
+  expect(src).toContain("Could not load case rates");
+  expect(src).toContain("loadError = null");
+});
+
+

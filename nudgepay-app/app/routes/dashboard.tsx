@@ -367,7 +367,8 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
     roster, ownerLabels, orgConfig, smsEnabled, smsQuietNow, quietHoursLabel, templates,
   } = src;
   let lastContactTruncated = lastContactTruncatedSrc;
-  let loadError = lastContactLoadError;
+  const queueLoadError = lastContactLoadError;
+  let detailLoadError: string | null = null;
 
   const orgCompany = orgRow?.name ?? "";
   const orgPhone = orgConfig.companyProfile.phone ?? "";
@@ -534,9 +535,8 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
     if (apErr) throw apErr;
     const batchC = honestListState([actPage, msgPage, emailPage]);
     if (batchC.loadError) {
-      loadError = loadError ?? "Could not load thread";
+      detailLoadError = "Could not load thread";
     } else {
-      if (batchC.truncated) lastContactTruncated = true;
       // Activity: contact logs for the case (timeline input).
       const logInputs: TimelineLogInput[] = actPage.rows.map((r) => ({
         id: r.id, at: r.created_at, method: r.method, outcome: r.outcome, notes: r.notes,
@@ -656,7 +656,8 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
       lastContactTruncated,
       queueTruncated,
       queueTruncatedMessage: queueTruncationMessage(queueTruncation),
-      loadError,
+      loadError: queueLoadError,
+      detailLoadError,
       workspaceInvoices,
       ...dashboardData,
     },
@@ -731,6 +732,7 @@ export default function Dashboard() {
     lastContactTruncated,
     queueTruncatedMessage,
     loadError,
+    detailLoadError,
     repInvoiceId,
     workspaceInvoices,
     smsTemplates,
@@ -912,7 +914,7 @@ export default function Dashboard() {
                   orgPaymentLink={orgPaymentLink}
                   today={today}
                   timeZone={timeZone}
-                  loadError={loadError}
+                  loadError={detailLoadError}
                 />
               </div>
             ) : null}
