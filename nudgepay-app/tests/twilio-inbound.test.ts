@@ -600,6 +600,94 @@ test("recordInboundMessage matches inventory SID stored with surrounding whitesp
   expect(rows![0].customer_id).toBe(cust!.id);
 });
 
+test("fallback SID replies still match pre-migration null-SID outbound history", async () => {
+  const phone = "+13105550227";
+  const inboundTo = "+15005552227";
+  const fallbackSid = "MG" + "f".repeat(32);
+  const { data: orgA } = await svc.from("organizations").insert({ name: "Legacy SID Inventory Org" }).select("id").single();
+  const orgAId = orgA!.id as string;
+  const { data: orgB } = await svc.from("organizations").insert({ name: "Legacy SID History Org" }).select("id").single();
+  const orgBId = orgB!.id as string;
+
+  const { error: invErr } = await svc.from("sms_sender_inventory").insert({
+    org_id: orgAId, messaging_service_sid: fallbackSid, status: "active",
+  });
+  expect(invErr).toBeNull();
+
+  await svc.from("customers")
+    .insert({ org_id: orgAId, qbo_id: "c-legacy-a", name: "Legacy A", phone, sms_consent: true });
+  const { data: custB } = await svc.from("customers")
+    .insert({ org_id: orgBId, qbo_id: "c-legacy-b", name: "Legacy B", phone, sms_consent: true }).select("id").single();
+
+  await svc.from("text_messages").insert({
+    org_id: orgBId, customer_id: custB!.id, direction: "outbound",
+    twilio_message_sid: "SMout-227-legacy", from_number: null, to_number: phone, body: "ping",
+  });
+
+  const out = await recordInboundMessage(svc, {
+    from: phone,
+    to: inboundTo,
+    body: "hello",
+    messageSid: "SMin-227-legacy-sid",
+    messagingServiceSid: fallbackSid,
+    fallbackMessagingServiceSid: fallbackSid,
+  });
+  expect(out.matched).toBe(true);
+  const { data: rows } = await svc.from("text_messages")
+    .select("org_id, customer_id").eq("twilio_message_sid", "SMin-227-legacy-sid");
+  expect(rows).toHaveLength(1);
+  expect(rows![0].org_id).toBe(orgBId);
+  expect(rows![0].customer_id).toBe(custB!.id);
+});
+
+test("retired inventory SID still routes via persisted outbound history", async () => {
+  const phone = "+13105550228";
+  const inboundTo = "+15005552228";
+  const retiredSid = "MG" + "7".repeat(32);
+  const otherSid = "MG" + "8".repeat(32);
+  const { data: orgA } = await svc.from("organizations").insert({ name: "Retired SID Org" }).select("id").single();
+  const orgAId = orgA!.id as string;
+  const { data: orgB } = await svc.from("organizations").insert({ name: "Other SID Org" }).select("id").single();
+  const orgBId = orgB!.id as string;
+
+  const { error: invErr } = await svc.from("sms_sender_inventory").insert({
+    org_id: orgAId, messaging_service_sid: retiredSid, status: "disabled",
+  });
+  expect(invErr).toBeNull();
+
+  const { data: custA } = await svc.from("customers")
+    .insert({ org_id: orgAId, qbo_id: "c-ret-a", name: "Retired A", phone, sms_consent: true }).select("id").single();
+  const { data: custB } = await svc.from("customers")
+    .insert({ org_id: orgBId, qbo_id: "c-ret-b", name: "Other B", phone, sms_consent: true }).select("id").single();
+
+  await svc.from("text_messages").insert([
+    {
+      org_id: orgAId, customer_id: custA!.id, direction: "outbound",
+      twilio_message_sid: "SMout-228-retired", from_number: null,
+      messaging_service_sid: retiredSid, to_number: phone, body: "a",
+    },
+    {
+      org_id: orgBId, customer_id: custB!.id, direction: "outbound",
+      twilio_message_sid: "SMout-228-other", from_number: null,
+      messaging_service_sid: otherSid, to_number: phone, body: "b",
+    },
+  ]);
+
+  const out = await recordInboundMessage(svc, {
+    from: phone,
+    to: inboundTo,
+    body: "hello",
+    messageSid: "SMin-228-retired-sid",
+    messagingServiceSid: retiredSid,
+  });
+  expect(out.matched).toBe(true);
+  const { data: rows } = await svc.from("text_messages")
+    .select("org_id, customer_id").eq("twilio_message_sid", "SMin-228-retired-sid");
+  expect(rows).toHaveLength(1);
+  expect(rows![0].org_id).toBe(orgAId);
+  expect(rows![0].customer_id).toBe(custA!.id);
+});
+
 test("recordInboundMessage treats replayed MessageSid as idempotent", async () => {
   const { inboundTo } = await seedCustomerWithOutbound("+13105550209", "SMout-209", true);
   const args = { from: "+13105550209", to: inboundTo, body: "hello", messageSid: "SMin-209-idempotent" };

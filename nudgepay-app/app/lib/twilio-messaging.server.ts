@@ -195,7 +195,21 @@ async function uniqueOutboundOrg(
   const { data: outbound, error: outboundErr } = await q;
   if (outboundErr) throw outboundErr;
   const orgIds = new Set((outbound ?? []).map((msg) => msg.org_id as string));
-  return orgIds.size === 1 ? [...orgIds][0]! : null;
+  if (orgIds.size === 1) return [...orgIds][0]!;
+  if (orgIds.size > 1) return null;
+  if (!opts.messagingServiceSid) return null;
+  // Pre-0048 Messaging Service sends stored from_number and SID as null.
+  // Env fallback SID is not in Postgres, so backfill cannot stamp those
+  // rows; unique null-from/null-SID history is the safe rollout fallback.
+  const { data: legacy, error: legacyErr } = await service.from("text_messages")
+    .select("org_id")
+    .eq("direction", "outbound")
+    .eq("to_number_norm", fromNorm)
+    .is("from_number_norm", null)
+    .is("messaging_service_sid_norm", null);
+  if (legacyErr) throw legacyErr;
+  const legacyIds = new Set((legacy ?? []).map((msg) => msg.org_id as string));
+  return legacyIds.size === 1 ? [...legacyIds][0]! : null;
 }
 
 function canonicalSid(value: string | null | undefined): string {
@@ -248,14 +262,15 @@ async function resolveInboundOrgId(service: SupabaseClient, args: {
   }
 
   if (fromNorm.length < 10) return null;
-  // From-number overlap: require from_number_norm = To so another org's
-  // Messaging Service rows (from_number_norm null) cannot steal the reply.
-  // SID overlap: those same null-from rows ARE the production history — do
-  // not apply the From-number filter or fallback-SID replies become orphans.
+  // From-number overlap with no webhook SID: require from_number_norm = To
+  // so another org's Messaging Service rows (from_number_norm null) cannot
+  // steal the reply. Any nonempty webhook SID (fallback or a retired
+  // inventory service) is passed through so history can filter to that
+  // sender instead of treating every null-from send as a match.
   const historyOrg = toNorm.length >= 10
     ? await uniqueOutboundOrg(service, fromNorm, toNorm, {
-      requireFromMatch: overlapsFallbackFrom && !overlapsFallbackSid,
-      messagingServiceSid: overlapsFallbackSid ? sid : undefined,
+      requireFromMatch: overlapsFallbackFrom && !sid,
+      messagingServiceSid: sid || undefined,
     })
     : null;
   if (historyOrg) return historyOrg;

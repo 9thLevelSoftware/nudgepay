@@ -187,6 +187,13 @@ test("sms_sender_inventory uniqueness is on trimmed messaging_service_sid", () =
   expect(sql).toMatch(/btrim\(from_number\) <> ''/);
 });
 
+test("inbound history filters by any webhook SID and keeps pre-migration null-SID fallback", () => {
+  const src = read("../app/lib/twilio-messaging.server.ts");
+  expect(src).toContain("messagingServiceSid: sid || undefined");
+  expect(src).toContain('.is("messaging_service_sid_norm", null)');
+  expect(src).toContain('.is("from_number_norm", null)');
+});
+
 test("RESEND_ALLOWED_FROM is documented in production deploy config", () => {
   const wrangler = read("../wrangler.toml");
   expect(wrangler).toMatch(/RESEND_ALLOWED_FROM/);
