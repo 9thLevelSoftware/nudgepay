@@ -11,6 +11,11 @@ begin
   if auth.role() = 'service_role' then
     return new;
   end if;
+  if new.sms_consent_source is not distinct from 'inbound_stop'
+     and old.sms_consent_source is distinct from 'inbound_stop' then
+    raise exception 'inbound STOP can only be set by the inbound webhook'
+      using errcode = '42501';
+  end if;
   if old.sms_consent_source is distinct from 'inbound_stop' then
     return new;
   end if;
