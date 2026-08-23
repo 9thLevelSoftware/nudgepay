@@ -164,9 +164,6 @@ export async function runDailyDigest(
     .maybeSingle();
   const fromAddress = ((ecfg?.from_address as string) ?? "").trim();
   if (!fromAddress) return;
-  if (!fromAddressAllowed(fromAddress, parseAllowedFromList(deps.email.allowedFrom))) {
-    throw new Error("from address not on RESEND_ALLOWED_FROM");
-  }
   const fromName = ((ecfg?.from_name as string) ?? "").trim();
   const from = fromName ? `${fromName} <${fromAddress}>` : fromAddress;
 
@@ -278,6 +275,10 @@ export async function runDailyDigest(
       .eq("kind", "daily_digest")
       .eq("dedupe_key", dedupeKey);
     if ((count ?? 0) > 0) continue; // already sent today
+
+    if (!fromAddressAllowed(fromAddress, parseAllowedFromList(deps.email.allowedFrom))) {
+      throw new Error("from address not on RESEND_ALLOWED_FROM");
+    }
 
     const emailContent = digestEmail({
       recipientName: member.label,
