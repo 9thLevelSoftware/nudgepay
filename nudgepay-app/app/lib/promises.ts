@@ -55,3 +55,30 @@ export function evaluatePromises(
   }
   return ops;
 }
+
+export type LinkedInvoiceRef = { promiseId: string; invoiceId: string };
+
+// Missing invoice id after a COMPLETE lookup is a deleted invoice → $0 remaining.
+// A truncated links/invoices page must throw (eval) or return null (loader live-delta)
+// instead of calling this — missing-as-zero would forge received / kept.
+export function sumLinkedBalances(
+  links: readonly LinkedInvoiceRef[],
+  balanceByInvoice: ReadonlyMap<string, number>,
+): Map<string, number> {
+  const out = new Map<string, number>();
+  for (const l of links) {
+    const prev = out.get(l.promiseId) ?? 0;
+    out.set(l.promiseId, prev + (balanceByInvoice.get(l.invoiceId) ?? 0));
+  }
+  return out;
+}
+
+// Loader live-delta: truncated reads null the map so received is never inflated.
+export function liveLinkedBalancesOrNull(
+  truncated: boolean,
+  links: readonly LinkedInvoiceRef[],
+  balanceByInvoice: ReadonlyMap<string, number>,
+): Map<string, number> | null {
+  if (truncated) return null;
+  return sumLinkedBalances(links, balanceByInvoice);
+}

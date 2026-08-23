@@ -1,5 +1,11 @@
 import type { SupabaseClient, PostgrestError } from "@supabase/supabase-js";
-import { evaluatePromises, type PromiseEvalRow, type PromiseStatus } from "./promises";
+import { chunkIds, orderPage, pageAll, pageAllChunked, PAGE_ALL_MAX_ROWS } from "./page-all";
+import {
+  evaluatePromises,
+  sumLinkedBalances,
+  type PromiseEvalRow,
+  type PromiseStatus,
+} from "./promises";
 
 // Recompute pending promises for one org against current linked-invoice balances.
 // Org-scoped on every query (service client at the sync layer). Idempotent: only
@@ -11,44 +17,92 @@ export type BrokenPromiseDetail = {
   promisedDate: string;
 };
 
+type PendingRow = {
+  id: string;
+  status: PromiseStatus;
+  promised_amount: number | string | null;
+  promised_date: string | null;
+  baseline_balance: number | string | null;
+  grace_until: string;
+  case_id: string;
+  created_at: string;
+};
+
+type LinkRow = { promise_id: string; invoice_id: string };
+type InvRow = { id: string; balance: number | string | null; created_at: string };
+
 export async function applyPromiseEvaluation(
   client: SupabaseClient, orgId: string, today: string,
 ): Promise<{ kept: number; partiallyKept: number; broken: number; brokenDetails: BrokenPromiseDetail[] }> {
-  const { data: pend, error: pErr } = await client
-    .from("promises")
-    .select("id, status, promised_amount, promised_date, baseline_balance, grace_until, case_id")
-    .eq("org_id", orgId)
-    .eq("status", "pending");
-  if (pErr) throw pErr;
-  const promises = pend ?? [];
+  const pendingPage = await pageAll<PendingRow>(
+    (from, to) =>
+      orderPage(
+        client
+          .from("promises")
+          .select(
+            "id, status, promised_amount, promised_date, baseline_balance, grace_until, case_id, created_at",
+            { count: "exact" },
+          )
+          .eq("org_id", orgId)
+          .eq("status", "pending"),
+      ).range(from, to),
+    { maxRows: PAGE_ALL_MAX_ROWS },
+  );
+  if (pendingPage.truncated) {
+    throw new Error("promise evaluation truncated: pending promise page is incomplete");
+  }
+  const promises = pendingPage.rows;
   if (promises.length === 0) return { kept: 0, partiallyKept: 0, broken: 0, brokenDetails: [] };
 
   // Map case_id for case-state reflection on broken promises.
   const caseByPromise = new Map(promises.map((p) => [p.id as string, p.case_id as string]));
 
   const ids = promises.map((p) => p.id as string);
-  const { data: links, error: lErr } = await client
-    .from("promise_invoices")
-    .select("promise_id, invoice_id")
-    .eq("org_id", orgId)
-    .in("promise_id", ids);
-  if (lErr) throw lErr;
+  const linksPage = await pageAllChunked<LinkRow>(
+    chunkIds(ids, 100),
+    (chunk, from, to) =>
+      client
+        .from("promise_invoices")
+        .select("promise_id, invoice_id", { count: "exact" })
+        .eq("org_id", orgId)
+        .in("promise_id", chunk)
+        .order("promise_id", { ascending: false })
+        .order("invoice_id", { ascending: false })
+        .range(from, to),
+    { maxRows: PAGE_ALL_MAX_ROWS },
+  );
+  if (linksPage.truncated) {
+    throw new Error("promise evaluation truncated: promise invoice links page is incomplete");
+  }
 
-  const invoiceIds = [...new Set((links ?? []).map((l) => l.invoice_id as string))];
+  const invoiceIds = [...new Set(linksPage.rows.map((l) => l.invoice_id as string))];
+  const invPage = invoiceIds.length === 0
+    ? { rows: [] as InvRow[], truncated: false }
+    : await pageAllChunked<InvRow>(
+        chunkIds(invoiceIds, 100),
+        (chunk, from, to) =>
+          orderPage(
+            client
+              .from("invoices")
+              .select("id, balance, created_at", { count: "exact" })
+              .eq("org_id", orgId)
+              .in("id", chunk),
+          ).range(from, to),
+        { maxRows: PAGE_ALL_MAX_ROWS },
+      );
+  if (invPage.truncated) {
+    throw new Error("promise evaluation truncated: invoice page is incomplete");
+  }
+
+  // Credit memos that reduce invoice balance still count: QBO balance is the source of truth.
   const balanceByInvoice = new Map<string, number>();
-  if (invoiceIds.length > 0) {
-    // Credit memos that reduce invoice balance still count: QBO balance is the source of truth.
-    const { data: invs, error: iErr } = await client
-      .from("invoices").select("id, balance").eq("org_id", orgId).in("id", invoiceIds);
-    if (iErr) throw iErr;
-    for (const inv of invs ?? []) balanceByInvoice.set(inv.id as string, Number(inv.balance) || 0);
-  }
+  for (const inv of invPage.rows) balanceByInvoice.set(inv.id as string, Number(inv.balance) || 0);
 
-  const balanceByPromiseId = new Map<string, number>();
-  for (const l of links ?? []) {
-    const prev = balanceByPromiseId.get(l.promise_id as string) ?? 0;
-    balanceByPromiseId.set(l.promise_id as string, prev + (balanceByInvoice.get(l.invoice_id as string) ?? 0));
-  }
+  // Missing id after this complete map: deleted invoice → $0 remaining (documented).
+  const balanceByPromiseId = sumLinkedBalances(
+    linksPage.rows.map((l) => ({ promiseId: l.promise_id as string, invoiceId: l.invoice_id as string })),
+    balanceByInvoice,
+  );
 
   const rows: PromiseEvalRow[] = promises.map((p) => ({
     id: p.id as string,
