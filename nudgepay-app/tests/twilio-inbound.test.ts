@@ -568,6 +568,47 @@ test("retired From history wins over another org's null-From Messaging Service r
   expect(rows![0].customer_id).toBe(custA!.id);
 });
 
+test("inventory SID on fallback From defers to unique default-From history", async () => {
+  const phone = "+13105550237";
+  const fallbackFrom = "+15005552237";
+  const inventorySid = "MG" + "5".repeat(32);
+  const envFallbackSid = "MG" + "6".repeat(32);
+  const { data: orgA } = await svc.from("organizations").insert({ name: "SID On Fallback From Org" }).select("id").single();
+  const orgAId = orgA!.id as string;
+  const { data: orgB } = await svc.from("organizations").insert({ name: "Default From Hist Org" }).select("id").single();
+  const orgBId = orgB!.id as string;
+
+  expect((await svc.from("sms_sender_inventory").insert({
+    org_id: orgAId, messaging_service_sid: inventorySid, status: "active",
+  })).error).toBeNull();
+
+  await svc.from("customers")
+    .insert({ org_id: orgAId, qbo_id: "c-sid-fbfrom-a", name: "SID A", phone, sms_consent: true });
+  const { data: custB } = await svc.from("customers")
+    .insert({ org_id: orgBId, qbo_id: "c-sid-fbfrom-b", name: "Default From B", phone, sms_consent: true }).select("id").single();
+
+  await svc.from("text_messages").insert({
+    org_id: orgBId, customer_id: custB!.id, direction: "outbound",
+    twilio_message_sid: "SMout-237-from", from_number: fallbackFrom, to_number: phone, body: "ping",
+  });
+
+  const out = await recordInboundMessage(svc, {
+    from: phone,
+    to: fallbackFrom,
+    body: "hello",
+    messageSid: "SMin-237-sid-on-fallback-from",
+    messagingServiceSid: inventorySid,
+    fallbackFrom,
+    fallbackMessagingServiceSid: envFallbackSid,
+  });
+  expect(out.matched).toBe(true);
+  const { data: rows } = await svc.from("text_messages")
+    .select("org_id, customer_id").eq("twilio_message_sid", "SMin-237-sid-on-fallback-from");
+  expect(rows).toHaveLength(1);
+  expect(rows![0].org_id).toBe(orgBId);
+  expect(rows![0].customer_id).toBe(custB!.id);
+});
+
 test("recordInboundMessage routes by inventory MessagingServiceSid before history", async () => {
   const phone = "+13105550221";
   const inboundTo = "+15005552221";

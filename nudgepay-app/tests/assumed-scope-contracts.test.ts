@@ -191,6 +191,8 @@ test("inbound history filters by any webhook SID and keeps pre-migration null-SI
   const src = read("../app/lib/twilio-messaging.server.ts");
   expect(src).toContain("messagingServiceSid: sid || undefined");
   expect(src).toContain("allowLegacyNullSid: overlapsFallbackSid");
+  expect(src).toContain("allowFromHistory: overlapsFallbackFrom");
+  expect(src).toContain("!overlapsFallbackSid && !overlapsFallbackFrom");
   expect(src).toContain('.is("messaging_service_sid_norm", null)');
   expect(src).toContain('.is("from_number_norm", null)');
   expect(src).toContain("uniqueSidHistoryOrg");

@@ -267,19 +267,20 @@ async function uniqueOutboundOrg(
   service: SupabaseClient,
   fromNorm: string,
   toNorm: string,
-  opts: { requireFromMatch?: boolean; messagingServiceSid?: string; allowLegacyNullSid?: boolean } = {},
+  opts: { requireFromMatch?: boolean; messagingServiceSid?: string; allowLegacyNullSid?: boolean; allowFromHistory?: boolean } = {},
 ): Promise<string | null> {
   if (opts.messagingServiceSid) {
     const sidOrg = await uniqueSidHistoryOrg(service, fromNorm, opts.messagingServiceSid);
     // Retired/unused inventory SID: exact SID history only. Do not consult
-    // From or pre-0048 null-SID rows.
-    if (!opts.allowLegacyNullSid) {
+    // From or pre-0048 null-SID rows unless the inbound To is the env
+    // fallback From (Twilio may stamp a workspace SID on that number).
+    const consultFrom = Boolean(opts.allowLegacyNullSid || opts.allowFromHistory);
+    if (!consultFrom) {
       if (sidOrg.status === "unique") return sidOrg.orgId;
       return null;
     }
-    // Env fallback SID may also arrive on a workspace's provisioned From
-    // number. Compare SID and exact-From histories; disagreeing uniques
-    // are ambiguous (orphan) rather than preferring SID.
+    // Env fallback SID/From may share a number with a provisioned sender.
+    // Compare SID and exact-From histories; disagreeing uniques orphan.
     const fromHist = await uniqueFromHistoryOrg(service, fromNorm, toNorm);
     if (sidOrg.status === "ambiguous" || fromHist.status === "ambiguous") return null;
     if (sidOrg.status === "unique" && fromHist.status === "unique") {
@@ -287,6 +288,7 @@ async function uniqueOutboundOrg(
     }
     if (sidOrg.status === "unique") return sidOrg.orgId;
     if (fromHist.status === "unique") return fromHist.orgId;
+    if (!opts.allowLegacyNullSid) return null;
     const legacy = await uniqueLegacyNullSidOrg(service, fromNorm);
     return legacy.status === "unique" ? legacy.orgId : null;
   }
@@ -316,6 +318,9 @@ async function resolveInboundOrgId(service: SupabaseClient, args: {
   const overlapsFallbackSid = Boolean(sid && fallbackSid && sid === fallbackSid);
   const toNorm = normalizePhone(args.to);
   const fromNorm = normalizePhone(args.from);
+  const fallbackNorm = args.fallbackFrom ? normalizePhone(args.fallbackFrom) : "";
+  const overlapsFallbackFrom = fallbackNorm.length >= 10 && fallbackNorm === toNorm;
+  const overlapsFallback = overlapsFallbackFrom || overlapsFallbackSid;
 
   let sidOrgs: string[] = [];
   if (sid) {
@@ -328,7 +333,7 @@ async function resolveInboundOrgId(service: SupabaseClient, args: {
     if (sidErr) throw sidErr;
     sidOrgs = [...new Set((sidHits ?? []).map((row) => row.org_id as string))];
     if (sidOrgs.length > 1) return null;
-    if (sidOrgs.length === 1 && !overlapsFallbackSid) {
+    if (sidOrgs.length === 1 && !overlapsFallbackSid && !overlapsFallbackFrom) {
       // Exact SID history wins if the service was reassigned: an old
       // conversation must stay on the org that actually sent it.
       if (fromNorm.length >= 10) {
@@ -341,9 +346,6 @@ async function resolveInboundOrgId(service: SupabaseClient, args: {
       return sidOrgs[0];
     }
   }
-  const fallbackNorm = args.fallbackFrom ? normalizePhone(args.fallbackFrom) : "";
-  const overlapsFallbackFrom = fallbackNorm.length >= 10 && fallbackNorm === toNorm;
-  const overlapsFallback = overlapsFallbackFrom || overlapsFallbackSid;
 
   let invOrgs: string[] = [];
   if (toNorm.length >= 10) {
@@ -379,6 +381,7 @@ async function resolveInboundOrgId(service: SupabaseClient, args: {
       requireFromMatch: overlapsFallbackFrom && !sid,
       messagingServiceSid: sid || undefined,
       allowLegacyNullSid: overlapsFallbackSid,
+      allowFromHistory: overlapsFallbackFrom,
     })
     : null;
   if (historyOrg) return historyOrg;
