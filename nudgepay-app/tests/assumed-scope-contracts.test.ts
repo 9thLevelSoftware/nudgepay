@@ -112,6 +112,13 @@ test("app README is NudgePay not the starter (NP-AUD-2026-132-README)", () => {
   expect(readme).not.toMatch(/Welcome to Remix/i);
 });
 
+test("RESEND_ALLOWED_FROM is documented in production deploy config", () => {
+  const wrangler = read("../wrangler.toml");
+  expect(wrangler).toMatch(/RESEND_ALLOWED_FROM/);
+  const render = read("../render.yaml");
+  expect(render).toMatch(/RESEND_ALLOWED_FROM/);
+});
+
 test("email_config upsert stamps updated_at (NP-AUD-2026-128)", () => {
   const src = read("../app/routes/api.org-settings.tsx");
   expect(src).toContain("emailConfigUpsertRow");
