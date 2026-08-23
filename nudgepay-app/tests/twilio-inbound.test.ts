@@ -479,6 +479,53 @@ test("fallback SID inbound still matches unique direct-From history", async () =
   expect(rows![0].customer_id).toBe(custB!.id);
 });
 
+test("fallback SID history conflicting with direct-From history is treated as ambiguous", async () => {
+  const phone = "+13105550235";
+  const inboundTo = "+15005552235";
+  const fallbackSid = "MG" + "4".repeat(32);
+  const { data: orgA } = await svc.from("organizations").insert({ name: "Conflict SID Hist Org" }).select("id").single();
+  const orgAId = orgA!.id as string;
+  const { data: orgB } = await svc.from("organizations").insert({ name: "Conflict From Hist Org" }).select("id").single();
+  const orgBId = orgB!.id as string;
+
+  expect((await svc.from("sms_sender_inventory").insert({
+    org_id: orgAId, messaging_service_sid: fallbackSid, status: "active",
+  })).error).toBeNull();
+  expect((await svc.from("sms_sender_inventory").insert({
+    org_id: orgBId, from_number: inboundTo, status: "active",
+  })).error).toBeNull();
+
+  const { data: custA } = await svc.from("customers")
+    .insert({ org_id: orgAId, qbo_id: "c-sid-from-conf-a", name: "SID Hist A", phone, sms_consent: true }).select("id").single();
+  const { data: custB } = await svc.from("customers")
+    .insert({ org_id: orgBId, qbo_id: "c-sid-from-conf-b", name: "From Hist B", phone, sms_consent: true }).select("id").single();
+
+  await svc.from("text_messages").insert([
+    {
+      org_id: orgAId, customer_id: custA!.id, direction: "outbound",
+      twilio_message_sid: "SMout-235-sid", from_number: null,
+      messaging_service_sid: fallbackSid, to_number: phone, body: "a",
+    },
+    {
+      org_id: orgBId, customer_id: custB!.id, direction: "outbound",
+      twilio_message_sid: "SMout-235-from", from_number: inboundTo, to_number: phone, body: "b",
+    },
+  ]);
+
+  const out = await recordInboundMessage(svc, {
+    from: phone,
+    to: inboundTo,
+    body: "hello",
+    messageSid: "SMin-235-sid-from-conflict",
+    messagingServiceSid: fallbackSid,
+    fallbackMessagingServiceSid: fallbackSid,
+  });
+  expect(out.matched).toBe(false);
+  const { data: rows } = await svc.from("text_messages")
+    .select("id").eq("twilio_message_sid", "SMin-235-sid-from-conflict");
+  expect(rows ?? []).toHaveLength(0);
+});
+
 test("recordInboundMessage routes by inventory MessagingServiceSid before history", async () => {
   const phone = "+13105550221";
   const inboundTo = "+15005552221";

@@ -202,6 +202,7 @@ test("inbound history filters by any webhook SID and keeps pre-migration null-SI
   expect(src).toContain('.eq("from_number_norm", toNorm)');
   expect(src).toContain('status: "ambiguous"');
   expect(src).toContain('if (histOrg.status === "ambiguous") return null');
+  expect(src).toContain("sidOrg.orgId === fromHist.orgId");
 });
 
 test("JWT cannot stamp text_messages sender identity used for inbound routing", () => {

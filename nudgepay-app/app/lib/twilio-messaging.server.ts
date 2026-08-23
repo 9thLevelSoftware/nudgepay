@@ -271,18 +271,22 @@ async function uniqueOutboundOrg(
 ): Promise<string | null> {
   if (opts.messagingServiceSid) {
     const sidOrg = await uniqueSidHistoryOrg(service, fromNorm, opts.messagingServiceSid);
-    if (sidOrg.status === "unique") return sidOrg.orgId;
-    if (sidOrg.status === "ambiguous") return null;
-    // Pre-0048 Messaging Service sends stored from_number and SID as null.
-    // Only the env fallback SID may use that history; a retired/unused
-    // inventory SID must not steal another workspace's legacy rows.
-    if (!opts.allowLegacyNullSid) return null;
-    // Direct From sends on a number also attached to the env fallback
-    // Messaging Service: Twilio may stamp the fallback SID on the inbound
-    // callback while outbound rows stored from_number and a null SID.
+    // Retired/unused inventory SID: exact SID history only. Do not consult
+    // From or pre-0048 null-SID rows.
+    if (!opts.allowLegacyNullSid) {
+      if (sidOrg.status === "unique") return sidOrg.orgId;
+      return null;
+    }
+    // Env fallback SID may also arrive on a workspace's provisioned From
+    // number. Compare SID and exact-From histories; disagreeing uniques
+    // are ambiguous (orphan) rather than preferring SID.
     const fromHist = await uniqueFromHistoryOrg(service, fromNorm, toNorm);
+    if (sidOrg.status === "ambiguous" || fromHist.status === "ambiguous") return null;
+    if (sidOrg.status === "unique" && fromHist.status === "unique") {
+      return sidOrg.orgId === fromHist.orgId ? sidOrg.orgId : null;
+    }
+    if (sidOrg.status === "unique") return sidOrg.orgId;
     if (fromHist.status === "unique") return fromHist.orgId;
-    if (fromHist.status === "ambiguous") return null;
     const legacy = await uniqueLegacyNullSidOrg(service, fromNorm);
     return legacy.status === "unique" ? legacy.orgId : null;
   }
