@@ -1,6 +1,7 @@
 import {
   Form,
   Link,
+  data as routerData,
   redirect,
   useActionData,
   useNavigation,
@@ -13,6 +14,7 @@ import { resolveOrg } from "../lib/session.server";
 import { requireSameOrigin } from "../lib/csrf.server";
 import { safeReturnTo } from "../lib/return-to";
 import { humanAuthError } from "../lib/auth-flow.server";
+import { authRateLimited, authRateLimitKey } from "../lib/auth-rate-limit.server";
 import { PublicLayout } from "../components/PublicLayout";
 import { Button, inputClass } from "../components/ui";
 import { pageTitle } from "../lib/meta";
@@ -22,6 +24,13 @@ export const meta: Route.MetaFunction = () => pageTitle("Log in");
 
 export async function action({ request, context }: ActionFunctionArgs) {
   requireSameOrigin(request);
+  const rateEnv = (context as any).cloudflare?.env ?? {};
+  if (await authRateLimited(rateEnv, authRateLimitKey(request, rateEnv))) {
+    return routerData(
+      { error: humanAuthError("email rate limit exceeded") },
+      { status: 429 },
+    );
+  }
   let env;
   try {
     env = getEnv(context as any);

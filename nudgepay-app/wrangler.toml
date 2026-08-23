@@ -8,6 +8,9 @@ workers_dev = true
 # Non-secret defaults only. Secrets set via `wrangler secret put`.
 SUPABASE_URL = "http://127.0.0.1:54321"
 QBO_SANDBOX = "true"
+# Optional non-secret flags (not bindings; unset here, set in vars when enabling):
+#   RESEND_ALLOWED_FROM     comma-separated verified From addresses
+#   SMS_REQUIRE_INVENTORY   "true" requires sms_sender_inventory rows at send
 # Secrets (wrangler secret put): SUPABASE_ANON_KEY, SUPABASE_SERVICE_KEY,
 # QBO_CLIENT_ID, QBO_CLIENT_SECRET, QBO_REDIRECT_URI, QBO_ENCRYPTION_KEY,
 # QBO_WEBHOOK_VERIFIER_TOKEN,
@@ -38,12 +41,24 @@ enabled = true
 invocation_logs = true
 persist = true
 
+# Auth POST limiter (login / signup / forgot-password). 20 / 60s / IP.
+# namespace_id is a string up to 32 chars, unique per account (Cloudflare examples use "1001").
+# Ratelimits are NOT inherited by named environments — duplicate under production.
+[[ratelimits]]
+name = "AUTH_RATE_LIMIT"
+namespace_id = "1001"
+simple = { limit = 20, period = 60 }
+
 # --- Production environment ---------------------------------------------------
 # Deploy with: npx wrangler deploy --env production
 # Non-secret production vars (secrets are set separately via `wrangler secret put`).
 [env.production.vars]
 SUPABASE_URL = "https://epjumsnmpvilgasycpau.supabase.co"
 QBO_SANDBOX = "false"   # production QBO: gates ONLY the Data API base URL
+AUTH_RATE_LIMIT_REQUIRED = "true"  # fail closed if the AUTH_RATE_LIMIT binding is missing
+# Optional non-secret flags (not bindings; set when enabling the feature):
+#   RESEND_ALLOWED_FROM = "billing@example.com"
+#   SMS_REQUIRE_INVENTORY = "true"
 
 # [env.production.triggers] mirrors the top-level crons.
 [env.production.triggers]
@@ -61,6 +76,11 @@ head_sampling_rate = 1
 enabled = true
 invocation_logs = true
 persist = true
+
+[[env.production.ratelimits]]
+name = "AUTH_RATE_LIMIT"
+namespace_id = "1001"
+simple = { limit = 20, period = 60 }
 
 # Secrets required in production (set each: `npx wrangler secret put <NAME> --env production`):
 #   SUPABASE_ANON_KEY            Supabase anon/publishable key
