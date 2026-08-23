@@ -60,7 +60,7 @@ QBO_SANDBOX = "false"
 |-------------------------|----------------------------|-------------------------------------------------------|
 | `RESEND_API_KEY`        | Resend dashboard → API Keys | `npx wrangler secret put RESEND_API_KEY --env production` |
 | `RESEND_WEBHOOK_SECRET` | Resend dashboard → Webhooks | `npx wrangler secret put RESEND_WEBHOOK_SECRET --env production` |
-| `RESEND_ALLOWED_FROM`   | Comma-separated verified From addresses | `npx wrangler secret put RESEND_ALLOWED_FROM --env production` |
+| `RESEND_ALLOWED_FROM`   | Comma-separated verified From addresses (`email` or `orgId:email`) | `npx wrangler secret put RESEND_ALLOWED_FROM --env production` |
 | `UNSUBSCRIBE_SECRET`    | `openssl rand -base64 32`  | `npx wrangler secret put UNSUBSCRIBE_SECRET --env production` |
 | `APP_PUBLIC_BASE_URL`   | Worker production URL       | `npx wrangler secret put APP_PUBLIC_BASE_URL --env production` |
 

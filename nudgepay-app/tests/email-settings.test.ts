@@ -55,6 +55,23 @@ describe("email settings", () => {
     expect(() => assertFromAddressAllowed("other@x.com", "billing@x.com")).toThrow(/allowlist/i);
     expect(() => assertFromAddressAllowed("billing@x.com", "billing@x.com")).not.toThrow();
   });
+  it("org-scoped allowlist entries are not interchangeable across workspaces", () => {
+    const orgA = "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa";
+    const orgB = "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb";
+    const raw = `${orgA}:billing@a.test,${orgB}:billing@b.test`;
+    expect(() => assertFromAddressAllowed("billing@a.test", raw, orgA)).not.toThrow();
+    expect(() => assertFromAddressAllowed("billing@a.test", raw, orgB)).toThrow(/allowlist/i);
+    expect(() => assertFromAddressAllowed("billing@b.test", raw, orgA)).toThrow(/allowlist/i);
+    const mixed = `${orgA}:billing@a.test,billing@a.test`;
+    expect(() => assertFromAddressAllowed("billing@a.test", mixed, orgB)).toThrow(/allowlist/i);
+    const r = parseEmailSettingsUpdate(
+      fd({ email_enabled: "true", from_address: "billing@a.test", postal_address: "1 Main" }),
+      raw,
+      orgB,
+    );
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.error).toBe("from_allowlist");
+  });
   it("rejects enable when the From allowlist is empty", () => {
     const r = parseEmailSettingsUpdate(
       fd({ email_enabled: "true", from_address: "billing@x.com", postal_address: "1 Main" }),

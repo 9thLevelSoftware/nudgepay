@@ -43,7 +43,7 @@ export async function sendInvoiceEmail(
   if (ecErr) throw ecErr;
   if (!ec || ec.email_enabled !== true) throw new Error("Email disabled for this workspace");
   if (!ec.from_address) throw new Error("No from address configured");
-  assertFromAddressAllowed(ec.from_address as string, deps.email.allowedFrom);
+  assertFromAddressAllowed(ec.from_address as string, deps.email.allowedFrom, args.orgId);
 
   // Contact-block (case legal hold) dominates the per-customer opt-out, mirroring SMS.
   const activeCase = await activeCaseForSend(deps.service, args.orgId, cust.id as string);

@@ -14,7 +14,8 @@ QBO_SANDBOX = "true"
 # TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, TWILIO_MESSAGING_SERVICE_SID (or TWILIO_FROM_NUMBER),
 # TWILIO_PUBLIC_BASE_URL,
 # RESEND_API_KEY, RESEND_WEBHOOK_SECRET, RESEND_ALLOWED_FROM, UNSUBSCRIBE_SECRET, APP_PUBLIC_BASE_URL
-# RESEND_ALLOWED_FROM is a comma-separated list of verified From addresses; email
+# RESEND_ALLOWED_FROM is a comma-separated list of verified From addresses
+# (`email` any workspace, or `orgId:email` bound to that workspace); email
 # enable fails closed when it is unset or empty.
 
 [[routes]]
@@ -76,7 +77,7 @@ persist = true
 #   TWILIO_PUBLIC_BASE_URL       ${APP_BASE_URL}  (origin Twilio uses for signature validation + StatusCallback)
 #   RESEND_API_KEY               Resend send key (for customer + team alert emails)
 #   RESEND_WEBHOOK_SECRET        Resend webhook signing secret
-#   RESEND_ALLOWED_FROM          comma-separated verified From addresses (required to enable email)
+#   RESEND_ALLOWED_FROM          comma-separated verified From addresses (`email` or `orgId:email`; required to enable email)
 #   UNSUBSCRIBE_SECRET           HMAC key for CAN-SPAM unsubscribe tokens
 #   APP_PUBLIC_BASE_URL          ${APP_BASE_URL}  (public origin for unsubscribe links + alert deep links)
 # DEPLOY GATE: Connect/Refresh/Disconnect degrade via getQboEnvOrNull (no 500) until
