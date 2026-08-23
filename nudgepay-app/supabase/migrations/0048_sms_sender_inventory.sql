@@ -57,3 +57,43 @@ alter table text_messages
 create index if not exists text_messages_outbound_sid_idx
   on text_messages (to_number_norm, messaging_service_sid_norm)
   where direction = 'outbound' and messaging_service_sid_norm is not null;
+
+-- Inbound SID routing treats outbound history as sender evidence. JWT
+-- members/owners may insert ledger rows, but they must not stamp a Twilio
+-- SID, From, or outbound direction that could redirect a signed reply.
+create or replace function public.protect_text_message_sender_identity()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  if auth.role() = 'service_role' then
+    return new;
+  end if;
+  if TG_OP = 'INSERT' then
+    if new.direction is not distinct from 'outbound' then
+      raise exception 'outbound SMS is service-written'
+        using errcode = '42501';
+    end if;
+    new.messaging_service_sid := null;
+    new.twilio_message_sid := null;
+    new.from_number := null;
+    return new;
+  end if;
+  if new.messaging_service_sid is distinct from old.messaging_service_sid
+     or new.twilio_message_sid is distinct from old.twilio_message_sid
+     or new.from_number is distinct from old.from_number
+     or new.to_number is distinct from old.to_number
+     or new.direction is distinct from old.direction then
+    raise exception 'SMS sender identity is service-written'
+      using errcode = '42501';
+  end if;
+  return new;
+end;
+$$;
+
+drop trigger if exists protect_text_message_sender_identity on text_messages;
+create trigger protect_text_message_sender_identity
+before insert or update on text_messages
+for each row execute function public.protect_text_message_sender_identity();

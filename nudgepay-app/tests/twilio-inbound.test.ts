@@ -728,6 +728,51 @@ test("retired inventory SID still routes via persisted outbound history", async 
   expect(rows![0].customer_id).toBe(custA!.id);
 });
 
+test("reassigned SID with history in both orgs is treated as ambiguous", async () => {
+  const phone = "+13105550231";
+  const inboundTo = "+15005552231";
+  const movedSid = "MG" + "a".repeat(32);
+  const { data: orgA } = await svc.from("organizations").insert({ name: "Ambiguous Former SID Org" }).select("id").single();
+  const orgAId = orgA!.id as string;
+  const { data: orgB } = await svc.from("organizations").insert({ name: "Ambiguous Current SID Org" }).select("id").single();
+  const orgBId = orgB!.id as string;
+
+  const { error: invErr } = await svc.from("sms_sender_inventory").insert({
+    org_id: orgBId, messaging_service_sid: movedSid, status: "active",
+  });
+  expect(invErr).toBeNull();
+
+  const { data: custA } = await svc.from("customers")
+    .insert({ org_id: orgAId, qbo_id: "c-ambig-a", name: "Ambig A", phone, sms_consent: true }).select("id").single();
+  const { data: custB } = await svc.from("customers")
+    .insert({ org_id: orgBId, qbo_id: "c-ambig-b", name: "Ambig B", phone, sms_consent: true }).select("id").single();
+
+  await svc.from("text_messages").insert([
+    {
+      org_id: orgAId, customer_id: custA!.id, direction: "outbound",
+      twilio_message_sid: "SMout-231-former", from_number: null,
+      messaging_service_sid: movedSid, to_number: phone, body: "a",
+    },
+    {
+      org_id: orgBId, customer_id: custB!.id, direction: "outbound",
+      twilio_message_sid: "SMout-231-current", from_number: null,
+      messaging_service_sid: movedSid, to_number: phone, body: "b",
+    },
+  ]);
+
+  const out = await recordInboundMessage(svc, {
+    from: phone,
+    to: inboundTo,
+    body: "hello",
+    messageSid: "SMin-231-ambiguous-sid",
+    messagingServiceSid: movedSid,
+  });
+  expect(out.matched).toBe(false);
+  const { data: rows } = await svc.from("text_messages")
+    .select("id").eq("twilio_message_sid", "SMin-231-ambiguous-sid");
+  expect(rows ?? []).toHaveLength(0);
+});
+
 test("unused non-fallback SID does not steal another org's pre-migration history", async () => {
   const phone = "+13105550230";
   const inboundTo = "+15005552230";

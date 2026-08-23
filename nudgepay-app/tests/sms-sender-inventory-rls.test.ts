@@ -56,3 +56,27 @@ test("sms_sender_inventory: member reads own org; nonmember denied; JWT cannot w
   const { data: still } = await svc.from("sms_sender_inventory").select("org_id").eq("org_id", orgAId);
   expect(still).toHaveLength(1);
 });
+
+test("JWT cannot stamp outbound SID history used for inbound routing", async () => {
+  const svc = serviceClient();
+  const { data: org } = await svc.from("organizations").insert({ name: `SSI-sid-jwt ${Math.random()}` }).select("id").single();
+  const orgId = org!.id as string;
+  const member = await makeUserClient(`ssi-sid-${Math.random()}@example.com`);
+  await svc.from("memberships").insert({ org_id: orgId, user_id: member.userId, role: "member" });
+  const { data: cust } = await svc.from("customers")
+    .insert({ org_id: orgId, qbo_id: `c-sid-jwt-${Math.random()}`, name: "SID JWT", phone: "+13105550999", sms_consent: true })
+    .select("id").single();
+
+  const spoof = await member.client.from("text_messages").insert({
+    org_id: orgId,
+    customer_id: cust!.id,
+    direction: "outbound",
+    twilio_message_sid: "SMspoof-sid",
+    messaging_service_sid: "MG" + "d".repeat(32),
+    to_number: "+13105550999",
+    body: "spoof",
+  });
+  expect(spoof.error).not.toBeNull();
+  const { data: rows } = await svc.from("text_messages").select("id").eq("twilio_message_sid", "SMspoof-sid");
+  expect(rows ?? []).toHaveLength(0);
+});

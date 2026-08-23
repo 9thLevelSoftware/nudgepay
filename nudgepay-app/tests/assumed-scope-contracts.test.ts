@@ -194,8 +194,21 @@ test("inbound history filters by any webhook SID and keeps pre-migration null-SI
   expect(src).toContain('.is("messaging_service_sid_norm", null)');
   expect(src).toContain('.is("from_number_norm", null)');
   expect(src).toContain("uniqueSidHistoryOrg");
+  expect(src).toContain("uniqueLegacyNullSidOrg");
   expect(src).toContain('.neq("org_id", orgId)');
   expect(src).toContain(".limit(1)");
+  expect(src).toContain('status: "ambiguous"');
+  expect(src).toContain('if (histOrg.status === "ambiguous") return null');
+});
+
+test("JWT cannot stamp text_messages sender identity used for inbound routing", () => {
+  const sql = read("../supabase/migrations/0048_sms_sender_inventory.sql");
+  expect(sql).toContain("protect_text_message_sender_identity");
+  expect(sql).toContain("outbound SMS is service-written");
+  expect(sql).toContain("SMS sender identity is service-written");
+  expect(sql).toMatch(/auth\.role\(\) = 'service_role'/);
+  expect(sql).toMatch(/new\.messaging_service_sid := null/);
+  expect(sql).toMatch(/new\.twilio_message_sid := null/);
 });
 
 test("RESEND_ALLOWED_FROM is documented in production deploy config", () => {

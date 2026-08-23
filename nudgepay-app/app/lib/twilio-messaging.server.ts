@@ -175,12 +175,17 @@ export async function sendInvoiceText(
   return { id: row!.id as string, sid: result.sid, status: result.status };
 }
 
-/** Distinct org for this phone+SID without paging past PostgREST max_rows. */
+/** Distinct-org probe that does not page past PostgREST max_rows=1000. */
+type UniqueOrgLookup =
+  | { status: "unique"; orgId: string }
+  | { status: "none" }
+  | { status: "ambiguous" };
+
 async function uniqueSidHistoryOrg(
   service: SupabaseClient,
   fromNorm: string,
   sid: string,
-): Promise<string | null> {
+): Promise<UniqueOrgLookup> {
   const { data: first, error } = await service.from("text_messages")
     .select("org_id")
     .eq("direction", "outbound")
@@ -189,7 +194,7 @@ async function uniqueSidHistoryOrg(
     .limit(1)
     .maybeSingle();
   if (error) throw error;
-  if (!first) return null;
+  if (!first) return { status: "none" };
   const orgId = first.org_id as string;
   const { data: other, error: otherErr } = await service.from("text_messages")
     .select("org_id")
@@ -200,7 +205,35 @@ async function uniqueSidHistoryOrg(
     .limit(1)
     .maybeSingle();
   if (otherErr) throw otherErr;
-  return other ? null : orgId;
+  return other ? { status: "ambiguous" } : { status: "unique", orgId };
+}
+
+async function uniqueLegacyNullSidOrg(
+  service: SupabaseClient,
+  fromNorm: string,
+): Promise<UniqueOrgLookup> {
+  const { data: first, error } = await service.from("text_messages")
+    .select("org_id")
+    .eq("direction", "outbound")
+    .eq("to_number_norm", fromNorm)
+    .is("from_number_norm", null)
+    .is("messaging_service_sid_norm", null)
+    .limit(1)
+    .maybeSingle();
+  if (error) throw error;
+  if (!first) return { status: "none" };
+  const orgId = first.org_id as string;
+  const { data: other, error: otherErr } = await service.from("text_messages")
+    .select("org_id")
+    .eq("direction", "outbound")
+    .eq("to_number_norm", fromNorm)
+    .is("from_number_norm", null)
+    .is("messaging_service_sid_norm", null)
+    .neq("org_id", orgId)
+    .limit(1)
+    .maybeSingle();
+  if (otherErr) throw otherErr;
+  return other ? { status: "ambiguous" } : { status: "unique", orgId };
 }
 
 async function uniqueOutboundOrg(
@@ -211,20 +244,14 @@ async function uniqueOutboundOrg(
 ): Promise<string | null> {
   if (opts.messagingServiceSid) {
     const sidOrg = await uniqueSidHistoryOrg(service, fromNorm, opts.messagingServiceSid);
-    if (sidOrg) return sidOrg;
+    if (sidOrg.status === "unique") return sidOrg.orgId;
+    if (sidOrg.status === "ambiguous") return null;
     // Pre-0048 Messaging Service sends stored from_number and SID as null.
     // Only the env fallback SID may use that history; a retired/unused
     // inventory SID must not steal another workspace's legacy rows.
     if (!opts.allowLegacyNullSid) return null;
-    const { data: legacy, error: legacyErr } = await service.from("text_messages")
-      .select("org_id")
-      .eq("direction", "outbound")
-      .eq("to_number_norm", fromNorm)
-      .is("from_number_norm", null)
-      .is("messaging_service_sid_norm", null);
-    if (legacyErr) throw legacyErr;
-    const legacyIds = new Set((legacy ?? []).map((msg) => msg.org_id as string));
-    return legacyIds.size === 1 ? [...legacyIds][0]! : null;
+    const legacy = await uniqueLegacyNullSidOrg(service, fromNorm);
+    return legacy.status === "unique" ? legacy.orgId : null;
   }
   let q = service.from("text_messages")
     .select("org_id")
@@ -274,7 +301,10 @@ async function resolveInboundOrgId(service: SupabaseClient, args: {
       // conversation must stay on the org that actually sent it.
       if (fromNorm.length >= 10) {
         const histOrg = await uniqueSidHistoryOrg(service, fromNorm, sid);
-        if (histOrg) return histOrg;
+        if (histOrg.status === "unique") return histOrg.orgId;
+        // Both former and current workspaces sent on this SID: do not
+        // fall through to the active inventory owner.
+        if (histOrg.status === "ambiguous") return null;
       }
       return sidOrgs[0];
     }
