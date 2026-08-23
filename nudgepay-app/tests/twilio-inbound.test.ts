@@ -600,6 +600,46 @@ test("recordInboundMessage matches inventory SID stored with surrounding whitesp
   expect(rows![0].customer_id).toBe(cust!.id);
 });
 
+test("reassigned inventory SID defers to unique persisted SID history", async () => {
+  const phone = "+13105550229";
+  const inboundTo = "+15005552229";
+  const movedSid = "MG" + "9".repeat(32);
+  const { data: orgA } = await svc.from("organizations").insert({ name: "Former SID Org" }).select("id").single();
+  const orgAId = orgA!.id as string;
+  const { data: orgB } = await svc.from("organizations").insert({ name: "New SID Inventory Org" }).select("id").single();
+  const orgBId = orgB!.id as string;
+
+  const { error: invErr } = await svc.from("sms_sender_inventory").insert({
+    org_id: orgBId, messaging_service_sid: movedSid, status: "active",
+  });
+  expect(invErr).toBeNull();
+
+  const { data: custA } = await svc.from("customers")
+    .insert({ org_id: orgAId, qbo_id: "c-moved-a", name: "Former A", phone, sms_consent: true }).select("id").single();
+  await svc.from("customers")
+    .insert({ org_id: orgBId, qbo_id: "c-moved-b", name: "New B", phone, sms_consent: true });
+
+  await svc.from("text_messages").insert({
+    org_id: orgAId, customer_id: custA!.id, direction: "outbound",
+    twilio_message_sid: "SMout-229-former", from_number: null,
+    messaging_service_sid: movedSid, to_number: phone, body: "ping",
+  });
+
+  const out = await recordInboundMessage(svc, {
+    from: phone,
+    to: inboundTo,
+    body: "hello",
+    messageSid: "SMin-229-reassigned",
+    messagingServiceSid: movedSid,
+  });
+  expect(out.matched).toBe(true);
+  const { data: rows } = await svc.from("text_messages")
+    .select("org_id, customer_id").eq("twilio_message_sid", "SMin-229-reassigned");
+  expect(rows).toHaveLength(1);
+  expect(rows![0].org_id).toBe(orgAId);
+  expect(rows![0].customer_id).toBe(custA!.id);
+});
+
 test("fallback SID replies still match pre-migration null-SID outbound history", async () => {
   const phone = "+13105550227";
   const inboundTo = "+15005552227";

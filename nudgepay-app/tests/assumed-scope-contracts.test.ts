@@ -192,6 +192,8 @@ test("inbound history filters by any webhook SID and keeps pre-migration null-SI
   expect(src).toContain("messagingServiceSid: sid || undefined");
   expect(src).toContain('.is("messaging_service_sid_norm", null)');
   expect(src).toContain('.is("from_number_norm", null)');
+  expect(src).toContain("histOrgs");
+  expect(src).toContain('.eq("messaging_service_sid_norm", sid)');
 });
 
 test("RESEND_ALLOWED_FROM is documented in production deploy config", () => {

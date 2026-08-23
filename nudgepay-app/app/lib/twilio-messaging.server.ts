@@ -226,6 +226,8 @@ async function resolveInboundOrgId(service: SupabaseClient, args: {
   const sid = canonicalSid(args.messagingServiceSid);
   const fallbackSid = canonicalSid(args.fallbackMessagingServiceSid);
   const overlapsFallbackSid = Boolean(sid && fallbackSid && sid === fallbackSid);
+  const toNorm = normalizePhone(args.to);
+  const fromNorm = normalizePhone(args.from);
 
   let sidOrgs: string[] = [];
   if (sid) {
@@ -238,11 +240,24 @@ async function resolveInboundOrgId(service: SupabaseClient, args: {
     if (sidErr) throw sidErr;
     sidOrgs = [...new Set((sidHits ?? []).map((row) => row.org_id as string))];
     if (sidOrgs.length > 1) return null;
-    if (sidOrgs.length === 1 && !overlapsFallbackSid) return sidOrgs[0];
+    if (sidOrgs.length === 1 && !overlapsFallbackSid) {
+      // Exact SID history wins if the service was reassigned: an old
+      // conversation must stay on the org that actually sent it.
+      if (fromNorm.length >= 10) {
+        const { data: sidHist, error: sidHistErr } = await service
+          .from("text_messages")
+          .select("org_id")
+          .eq("direction", "outbound")
+          .eq("to_number_norm", fromNorm)
+          .eq("messaging_service_sid_norm", sid);
+        if (sidHistErr) throw sidHistErr;
+        const histOrgs = [...new Set((sidHist ?? []).map((row) => row.org_id as string))];
+        if (histOrgs.length > 1) return null;
+        if (histOrgs.length === 1) return histOrgs[0];
+      }
+      return sidOrgs[0];
+    }
   }
-
-  const toNorm = normalizePhone(args.to);
-  const fromNorm = normalizePhone(args.from);
   const fallbackNorm = args.fallbackFrom ? normalizePhone(args.fallbackFrom) : "";
   const overlapsFallbackFrom = fallbackNorm.length >= 10 && fallbackNorm === toNorm;
   const overlapsFallback = overlapsFallbackFrom || overlapsFallbackSid;
