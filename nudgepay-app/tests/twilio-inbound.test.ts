@@ -514,12 +514,12 @@ test("inventory SID overlapping the fallback SID defers to unique outbound histo
     messagingServiceSid: sharedSid,
     fallbackMessagingServiceSid: sharedSid,
   });
-  // Null-from Messaging Service history is not a match when the SID overlaps
-  // the env fallback; otherwise any org that ever texted this phone would win.
-  expect(out.matched).toBe(false);
+  expect(out.matched).toBe(true);
   const { data: rows } = await svc.from("text_messages")
-    .select("org_id").eq("twilio_message_sid", "SMin-223-fallback-sid");
-  expect(rows ?? []).toHaveLength(0);
+    .select("org_id, customer_id").eq("twilio_message_sid", "SMin-223-fallback-sid");
+  expect(rows).toHaveLength(1);
+  expect(rows![0].org_id).toBe(orgBId);
+  expect(rows![0].customer_id).toBe(custB!.id);
 });
 
 test("recordInboundMessage matches inventory SID stored with surrounding whitespace", async () => {

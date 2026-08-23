@@ -246,8 +246,17 @@ async function resolveInboundOrgId(service: SupabaseClient, args: {
   }
 
   if (fromNorm.length < 10) return null;
+  // From-number overlap: require from_number_norm = To so another org's
+  // Messaging Service rows (from_number_norm null) cannot steal the reply.
+  // SID overlap: those same null-from rows ARE the production history — do
+  // not apply the From-number filter or fallback-SID replies become orphans.
   const historyOrg = toNorm.length >= 10
-    ? await uniqueOutboundOrg(service, fromNorm, toNorm, overlapsFallback)
+    ? await uniqueOutboundOrg(
+      service,
+      fromNorm,
+      toNorm,
+      overlapsFallbackFrom && !overlapsFallbackSid,
+    )
     : null;
   if (historyOrg) return historyOrg;
   if (overlapsFallback) return null;
