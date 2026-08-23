@@ -220,7 +220,7 @@ function RevokeInviteToast({ fetcher }: { fetcher: ReturnType<typeof useFetcher>
     if (fetcher.state === "idle" && submitting.current) {
       submitting.current = false;
       const err = new URL(window.location.href).searchParams.get("error");
-      if (err !== "revoke") toast("Invite revoked.");
+      if (!err) toast("Invite revoked.");
     }
   }, [fetcher.state, toast]);
   return null;
