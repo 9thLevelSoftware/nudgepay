@@ -6,6 +6,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { sendSms, type TwilioConfig, type TwilioSender, type TwilioSendResult } from "./twilio-client.server";
 import { sendEmail, type EmailConfig } from "./email-client.server";
+import { fromAddressAllowed, parseAllowedFromList } from "./email-settings";
 import { resolveSender } from "./twilio-messaging.server";
 
 // ---------------------------------------------------------------------------
@@ -61,7 +62,7 @@ export type TestEmailDeps = {
   email: EmailConfig;
 };
 
-export type TestEmailResult = { ok: true; id: string } | { ok: false; error: "nofrom" };
+export type TestEmailResult = { ok: true; id: string } | { ok: false; error: "nofrom" | "from_allowlist" };
 
 /**
  * Send a test email to verify the org's email configuration. Uses the org's
@@ -82,6 +83,9 @@ export async function sendTestEmail(
 
   const fromAddress = ((ecfg?.from_address as string) ?? "").trim();
   if (!fromAddress) return { ok: false, error: "nofrom" };
+  if (!fromAddressAllowed(fromAddress, parseAllowedFromList(deps.email.allowedFrom))) {
+    return { ok: false, error: "from_allowlist" };
+  }
   const fromName = ((ecfg?.from_name as string) ?? "").trim();
   const from = fromName ? `${fromName} <${fromAddress}>` : fromAddress;
 

@@ -132,7 +132,7 @@ describe("sendBrokenPromiseAlerts operator gate (NP-AUD-2026-049)", () => {
     const fetchFn = mockFetch(200, { id: "re_1" });
     const { service, emailConfig } = serviceForAlerts({ fromAddress: "alerts@x.com", fromName: "Ops" });
     await sendBrokenPromiseAlerts(
-      { fetchFn: fetchFn as any, service, email: { apiKey: "key" }, appUrl: "https://app.nudgepay.test" },
+      { fetchFn: fetchFn as any, service, email: { apiKey: "key", allowedFrom: "alerts@x.com" }, appUrl: "https://app.nudgepay.test" },
       "org-1",
       broken,
       "2026-07-02",
@@ -149,7 +149,7 @@ describe("sendBrokenPromiseAlerts operator gate (NP-AUD-2026-049)", () => {
     const fetchFn = mockFetch(200, { id: "re_1" });
     const { service } = serviceForAlerts({ fromAddress: null });
     await sendBrokenPromiseAlerts(
-      { fetchFn: fetchFn as any, service, email: { apiKey: "key" }, appUrl: "https://app.nudgepay.test" },
+      { fetchFn: fetchFn as any, service, email: { apiKey: "key", allowedFrom: "alerts@x.com" }, appUrl: "https://app.nudgepay.test" },
       "org-1",
       broken,
       "2026-07-02",
@@ -165,7 +165,7 @@ describe("runDailyDigest operator gate (NP-AUD-2026-049)", () => {
     const fetchFn = mockFetch(200, { id: "re_d" });
     const { service, emailConfig } = serviceForDigest({ fromAddress: "alerts@x.com" });
     await runDailyDigest(
-      { fetchFn: fetchFn as any, service, email: { apiKey: "key" }, appUrl: "https://app.nudgepay.test" },
+      { fetchFn: fetchFn as any, service, email: { apiKey: "key", allowedFrom: "alerts@x.com" }, appUrl: "https://app.nudgepay.test" },
       "org-1",
       "2026-07-02",
     );
@@ -180,7 +180,7 @@ describe("runDailyDigest operator gate (NP-AUD-2026-049)", () => {
     const fetchFn = mockFetch(200, { id: "re_d" });
     const { service } = serviceForDigest({ fromAddress: null });
     await runDailyDigest(
-      { fetchFn: fetchFn as any, service, email: { apiKey: "key" }, appUrl: "https://app.nudgepay.test" },
+      { fetchFn: fetchFn as any, service, email: { apiKey: "key", allowedFrom: "alerts@x.com" }, appUrl: "https://app.nudgepay.test" },
       "org-1",
       "2026-07-02",
     );

@@ -2,7 +2,7 @@
 // configuration. Skips customer pipeline + ledger. Never 500s on missing env.
 
 import { redirect, type ActionFunctionArgs } from "react-router";
-import { getEnv, getTwilioEnvOrNull, getEmailEnvOrNull } from "../lib/env.server";
+import { getEnv, getTwilioEnvOrNull, getEmailEnvOrNull, resendTransport } from "../lib/env.server";
 import { createSupabaseServiceClient } from "../lib/supabase.server";
 import { requireUser, resolveOrg } from "../lib/session.server";
 import { parseTestSmsDestination } from "../lib/provider-status";
@@ -90,7 +90,7 @@ export async function action({ request, context }: ActionFunctionArgs) {
     try {
       await assertTestBudget(service, "email_messages", { orgId: org.org_id });
       const result = await sendTestEmail(
-        { fetchFn: fetch, service, email: { apiKey: emailEnv.RESEND_API_KEY } },
+        { fetchFn: fetch, service, email: resendTransport(emailEnv) },
         { orgId: org.org_id, to, userId: user.id },
       );
       if (!result.ok) return redirect(flag(returnTo, "test_email", result.error), { headers });

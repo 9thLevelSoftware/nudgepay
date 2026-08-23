@@ -10,6 +10,7 @@ import type { BrokenPromiseDetail } from "./promise-evaluation.server";
 import { isCaseSuppressed } from "./exceptions";
 import type { ExceptionReason } from "./contact-log";
 import { shouldSkipBrokenPromiseSend } from "./alert-retry";
+import { fromAddressAllowed, parseAllowedFromList } from "./email-settings";
 
 // ---------------------------------------------------------------------------
 // Deps
@@ -41,6 +42,7 @@ export async function sendBrokenPromiseAlerts(
     .maybeSingle();
   const fromAddress = ((ecfg?.from_address as string) ?? "").trim();
   if (!fromAddress) return;
+  if (!fromAddressAllowed(fromAddress, parseAllowedFromList(deps.email.allowedFrom))) return;
   const fromName = ((ecfg?.from_name as string) ?? "").trim();
   const from = fromName ? `${fromName} <${fromAddress}>` : fromAddress;
 
@@ -162,6 +164,7 @@ export async function runDailyDigest(
     .maybeSingle();
   const fromAddress = ((ecfg?.from_address as string) ?? "").trim();
   if (!fromAddress) return;
+  if (!fromAddressAllowed(fromAddress, parseAllowedFromList(deps.email.allowedFrom))) return;
   const fromName = ((ecfg?.from_name as string) ?? "").trim();
   const from = fromName ? `${fromName} <${fromAddress}>` : fromAddress;
 

@@ -56,7 +56,12 @@ export type EmailEnv = {
   APP_PUBLIC_BASE_URL: string | null; // public origin for unsubscribe links
   UNSUBSCRIBE_SECRET: string;
   RESEND_WEBHOOK_SECRET: string;
+  RESEND_ALLOWED_FROM: string | null;
 };
+
+export function resendTransport(e: EmailEnv): { apiKey: string; allowedFrom: string | null } {
+  return { apiKey: e.RESEND_API_KEY, allowedFrom: e.RESEND_ALLOWED_FROM };
+}
 
 export function getEmailEnv(context: { cloudflare: { env: Record<string, string> } }): EmailEnv {
   const e = context.cloudflare.env;
@@ -68,6 +73,7 @@ export function getEmailEnv(context: { cloudflare: { env: Record<string, string>
     APP_PUBLIC_BASE_URL: e.APP_PUBLIC_BASE_URL || null,
     UNSUBSCRIBE_SECRET: e.UNSUBSCRIBE_SECRET,
     RESEND_WEBHOOK_SECRET: e.RESEND_WEBHOOK_SECRET,
+    RESEND_ALLOWED_FROM: e.RESEND_ALLOWED_FROM || null,
   };
 }
 
@@ -86,6 +92,7 @@ export function getEmailEnvOrNull(
     APP_PUBLIC_BASE_URL: e.APP_PUBLIC_BASE_URL || null,
     UNSUBSCRIBE_SECRET: e.UNSUBSCRIBE_SECRET,
     RESEND_WEBHOOK_SECRET: e.RESEND_WEBHOOK_SECRET,
+    RESEND_ALLOWED_FROM: e.RESEND_ALLOWED_FROM || null,
   };
 }
 

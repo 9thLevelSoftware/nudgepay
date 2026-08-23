@@ -1,5 +1,5 @@
 import { redirect, type ActionFunctionArgs } from "react-router";
-import { getEnv, getQboEnvOrNull, getEmailEnvOrNull } from "../lib/env.server";
+import { getEnv, getQboEnvOrNull, getEmailEnvOrNull, resendTransport } from "../lib/env.server";
 import { createSupabaseServiceClient } from "../lib/supabase.server";
 import { requireUser, resolveOrg } from "../lib/session.server";
 import { qboApiBaseUrl } from "../lib/qbo-api.server";
@@ -28,7 +28,7 @@ export async function action({ request, context }: ActionFunctionArgs) {
   const notify = emailEnv
     ? (orgId: string, brokenDetails: any[], today: string) =>
         sendBrokenPromiseAlerts(
-          { fetchFn: fetch, service, email: { apiKey: emailEnv.RESEND_API_KEY }, appUrl: emailEnv.APP_PUBLIC_BASE_URL ?? "" },
+          { fetchFn: fetch, service, email: resendTransport(emailEnv), appUrl: emailEnv.APP_PUBLIC_BASE_URL ?? "" },
           orgId, brokenDetails, today,
         )
     : undefined;

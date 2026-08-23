@@ -1,5 +1,5 @@
 import { redirect, type ActionFunctionArgs } from "react-router";
-import { getEnv, getPublicBaseUrls, getEmailEnvOrNull } from "../lib/env.server";
+import { getEnv, getPublicBaseUrls, getEmailEnvOrNull, resendTransport } from "../lib/env.server";
 import { requireUser, resolveOrg } from "../lib/session.server";
 import { createSupabaseServiceClient } from "../lib/supabase.server";
 import { safeReturnTo } from "../lib/return-to";
@@ -40,7 +40,7 @@ export async function action({ request, context }: ActionFunctionArgs) {
         {
           fetchFn: fetch,
           service,
-          email: emailEnv ? { apiKey: emailEnv.RESEND_API_KEY } : null,
+          email: emailEnv ? resendTransport(emailEnv) : null,
         },
         {
           orgId: org.org_id,

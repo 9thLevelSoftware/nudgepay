@@ -6,7 +6,7 @@ import {
   type ActionFunctionArgs,
   type LoaderFunctionArgs,
 } from "react-router";
-import { getEnv, getEmailEnvOrNull, getPublicBaseUrls } from "../lib/env.server";
+import { getEnv, getEmailEnvOrNull, getPublicBaseUrls, resendTransport } from "../lib/env.server";
 import { createSupabaseServiceClient } from "../lib/supabase.server";
 import { requireUser, resolveOrg } from "../lib/session.server";
 import { trySendInviteEmail } from "../lib/invite-email.server";
@@ -50,7 +50,7 @@ export async function action({ request, context }: ActionFunctionArgs) {
       {
         fetchFn: fetch,
         service,
-        email: emailEnv ? { apiKey: emailEnv.RESEND_API_KEY } : null,
+        email: emailEnv ? resendTransport(emailEnv) : null,
       },
       {
         orgId: org.org_id,

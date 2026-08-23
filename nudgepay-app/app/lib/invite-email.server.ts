@@ -3,6 +3,7 @@
 
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { sendEmail, type EmailConfig } from "./email-client.server";
+import { fromAddressAllowed, parseAllowedFromList } from "./email-settings";
 
 export type InviteEmailDeps = {
   fetchFn: typeof fetch;
@@ -26,6 +27,7 @@ export async function trySendInviteEmail(
       .maybeSingle();
     const fromAddress = ((ecfg?.from_address as string) ?? "").trim();
     if (!fromAddress) return "skipped";
+    if (!fromAddressAllowed(fromAddress, parseAllowedFromList(deps.email.allowedFrom))) return "failed";
     const fromName = ((ecfg?.from_name as string) ?? "").trim();
     const from = fromName ? `${fromName} <${fromAddress}>` : fromAddress;
     const orgName = args.orgName.trim() || "a workspace";

@@ -43,6 +43,15 @@ export function fromAddressAllowed(fromAddress: string, allowlist: string[]): bo
   return allowlist.includes(fromAddress.trim().toLowerCase());
 }
 
+export function assertFromAddressAllowed(
+  fromAddress: string,
+  allowedFromRaw: string | null | undefined,
+): void {
+  if (!fromAddressAllowed(fromAddress, parseAllowedFromList(allowedFromRaw))) {
+    throw new Error("From address is not on the Resend allowlist");
+  }
+}
+
 export function parseEmailSettingsUpdate(
   form: FormData,
   allowlist: string[] = [],

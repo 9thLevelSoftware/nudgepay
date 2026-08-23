@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { resolveEmailSettings, parseEmailSettingsUpdate, emailConfigUpsertRow } from "../app/lib/email-settings";
+import { resolveEmailSettings, parseEmailSettingsUpdate, emailConfigUpsertRow, assertFromAddressAllowed } from "../app/lib/email-settings";
 
 function fd(entries: Record<string, string>): FormData {
   const f = new FormData();
@@ -49,6 +49,11 @@ describe("email settings", () => {
     );
     expect(r.ok).toBe(false);
     if (!r.ok) expect(r.error).toBe("from_allowlist");
+  });
+  it("assertFromAddressAllowed throws when the allowlist is empty or the address is missing", () => {
+    expect(() => assertFromAddressAllowed("billing@x.com", undefined)).toThrow(/allowlist/i);
+    expect(() => assertFromAddressAllowed("other@x.com", "billing@x.com")).toThrow(/allowlist/i);
+    expect(() => assertFromAddressAllowed("billing@x.com", "billing@x.com")).not.toThrow();
   });
   it("rejects enable when the From allowlist is empty", () => {
     const r = parseEmailSettingsUpdate(
