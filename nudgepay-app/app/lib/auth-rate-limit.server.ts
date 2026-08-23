@@ -34,18 +34,9 @@ export function resetMemoryAuthRateLimit(): void {
   memoryHits.clear();
 }
 
-function pruneMemoryHits(now: number): void {
-  const cutoff = now - MEMORY_WINDOW_MS;
-  for (const [k, times] of memoryHits) {
-    const keep = times.filter((t) => t > cutoff);
-    if (keep.length === 0) memoryHits.delete(k);
-    else memoryHits.set(k, keep);
-  }
-  while (memoryHits.size >= MEMORY_MAX_KEYS) {
-    const first = memoryHits.keys().next().value;
-    if (first === undefined) break;
-    memoryHits.delete(first);
-  }
+function evictOldest(): void {
+  const first = memoryHits.keys().next().value;
+  if (first !== undefined) memoryHits.delete(first);
 }
 
 /** In-process limiter for Node/Render (no Cloudflare ratelimit binding). */
@@ -56,11 +47,10 @@ export function memoryAuthRateLimited(key: string, now = Date.now()): boolean {
     memoryHits.set(key, prev);
     return true;
   }
-  // Evict only when inserting a previously unseen key. Updating an existing
-  // Map entry does not refresh insertion order, so pruning on a known key
-  // could delete the bucket currently being evaluated.
+  // Evict only when inserting a previously unseen key, and only the oldest
+  // Map entry (O(1)). Do not rewrite every bucket on the hot path.
   if (!memoryHits.has(key) && memoryHits.size >= MEMORY_MAX_KEYS) {
-    pruneMemoryHits(now);
+    evictOldest();
   }
   prev.push(now);
   memoryHits.set(key, prev);
