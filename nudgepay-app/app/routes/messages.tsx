@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useLoaderData, useFetcher, useRevalidator, data, type LoaderFunctionArgs } from "react-router";
 import { useToast } from "../components/Toasts";
 import { useFlashCleanup } from "../lib/use-flash-cleanup";
@@ -30,6 +30,11 @@ import { MessagesInbox } from "../components/MessagesInbox";
 import { MessageThreadPanel } from "../components/MessageThreadPanel";
 import { DrawerShell } from "../components/DrawerShell";
 import { pageTitle } from "../lib/meta";
+import {
+  inboundFingerprintIsNewer,
+  shouldToastInbound,
+  subscribeMessageEvents,
+} from "../lib/messages-realtime";
 import { chunkIds, honestListState, orderPage, pageAllChunkedHonest, pageAllHonest, PAGE_ALL_MAX_ROWS } from "../lib/page-all";
 import { LoadErrorBanner, TruncationBanner } from "../components/TruncationBanner";
 import type { Route } from "./+types/messages";
@@ -353,6 +358,9 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
       timeZone: orgConfig.companyProfile.timezone,
       truncated,
       loadError,
+      orgId: org.org_id,
+      supabaseUrl: env.SUPABASE_URL,
+      supabaseAnonKey: env.SUPABASE_ANON_KEY,
     },
     { headers },
   );
@@ -366,6 +374,13 @@ export default function Messages() {
   const activityFetcher = useFetcher<{ lastInboundAt: string | null }>();
   const toast = useToast();
   const lastInboundRef = useRef<string | null>(d.lastInboundAt ?? null);
+  // Dedup: realtime and the 20s poll can notice the same inbound message.
+  const lastToastAtRef = useRef(0);
+  const toastNewInbound = useCallback(() => {
+    if (Date.now() - lastToastAtRef.current < 8000) return;
+    lastToastAtRef.current = Date.now();
+    toast("New inbound message", "info");
+  }, [toast]);
   const [isDesktop, setIsDesktop] = useState(false);
 
   useEffect(() => {
@@ -375,6 +390,27 @@ export default function Messages() {
     query.addEventListener("change", update);
     return () => query.removeEventListener("change", update);
   }, []);
+
+  // Instant path: Supabase Realtime broadcast. Toast inbound-only; omit/unknown
+  // direction is silent (poll is the toast fallback). Complements — not replaces —
+  // the fingerprint poll: if the socket can't subscribe, poll still catches mail.
+  useEffect(() => {
+    if (!d.orgId || !d.supabaseUrl || !d.supabaseAnonKey) return;
+    const unsubscribe = subscribeMessageEvents({
+      supabaseUrl: d.supabaseUrl,
+      supabaseAnonKey: d.supabaseAnonKey,
+      orgId: d.orgId,
+      onEvent: (payload) => {
+        if (revalidator.state !== "idle") return;
+        const active = document.activeElement as HTMLElement | null;
+        if (active && ["TEXTAREA", "INPUT", "SELECT"].includes(active.tagName)) return;
+        if (shouldToastInbound(payload)) toastNewInbound();
+        revalidator.revalidate();
+      },
+    });
+    return unsubscribe;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [d.orgId, d.supabaseUrl, d.supabaseAnonKey]);
 
   // Poll only a latest-inbound fingerprint. A full route revalidation happens
   // after a new reply is detected, not on every interval.
@@ -400,12 +436,12 @@ export default function Messages() {
   useEffect(() => {
     const current = activityFetcher.data?.lastInboundAt ?? null;
     const previous = lastInboundRef.current;
-    if (current && current !== previous && (previous == null || current > previous)) {
+    if (inboundFingerprintIsNewer(previous, current)) {
       lastInboundRef.current = current;
-      toast("New inbound message", "info");
+      toastNewInbound();
       revalidator.revalidate();
     }
-  }, [activityFetcher.data, revalidator, toast]);
+  }, [activityFetcher.data, revalidator, toastNewInbound]);
   useEffect(() => {
     if (!d.selected) return;
     const fd = new FormData();
