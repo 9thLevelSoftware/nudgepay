@@ -9,7 +9,7 @@ const CHANNEL_OPTIONS: { value: "" | Channel; label: string }[] = [
 ];
 
 export function CommPrefsDrawer({
-  customerName, caseId, repInvoiceId, prefs, returnTo, closeHref,
+  customerName, caseId, repInvoiceId, prefs, returnTo, closeHref, smsConsentSource,
 }: {
   customerName: string;
   caseId: string;
@@ -17,7 +17,9 @@ export function CommPrefsDrawer({
   prefs: CommPrefs;
   returnTo: string;
   closeHref: string;
+  smsConsentSource?: "inbound_stop" | "inbound_start" | "staff" | "import" | "unknown" | null;
 }) {
+  const stopLocked = smsConsentSource === "inbound_stop";
   const navigation = useNavigation();
   const formBusy = navigation.state !== "idle" && navigation.formAction === "/api/comm-prefs";
 
@@ -54,10 +56,12 @@ export function CommPrefsDrawer({
               Do not call
             </label>
             <label className="flex items-center gap-2 text-sm text-text">
-              <input type="checkbox" name="do_not_text" value="true" defaultChecked={prefs.doNotText} className="h-4 w-4 rounded border-border text-copper" />
+              <input type="checkbox" name="do_not_text" value="true" defaultChecked={prefs.doNotText || stopLocked} disabled={stopLocked} className="h-4 w-4 rounded border-border text-copper" />
               Do not text <span className="text-[11px] text-muted">(blocks SMS sending)</span>
             </label>
-            {prefs.doNotText ? (
+            {stopLocked ? (
+              <p className="text-xs text-hot">Stopped by inbound STOP. Owner override required.</p>
+            ) : prefs.doNotText ? (
               <label className="flex items-center gap-2 text-sm text-text">
                 <input type="checkbox" name="confirm_resubscribe_sms" value="true" className="h-4 w-4 rounded border-border text-copper" />
                 Confirm re-enable texts (customer asked to receive texts again)

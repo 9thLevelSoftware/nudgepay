@@ -1,7 +1,7 @@
 import { redirect, type ActionFunctionArgs } from "react-router";
 import { getEnv } from "../lib/env.server";
 import { requireUser, resolveOrg } from "../lib/session.server";
-import { safeReturnTo } from "../lib/return-to";
+import { safeReturnTo, withSms } from "../lib/return-to";
 import { parseCommPrefsUpdate } from "../lib/comm-prefs";
 
 export { parseCommPrefsUpdate };
@@ -52,6 +52,7 @@ export async function action({ request, context }: ActionFunctionArgs) {
   if (!customerId) return redirect(returnTo, { headers });
 
   const patch = parseCommPrefsUpdate(form);
+  let stopLocked = false;
   if (patch.do_not_text === false) {
     const { data: current, error: srcErr } = await supabase
       .from("customers")
@@ -60,16 +61,24 @@ export async function action({ request, context }: ActionFunctionArgs) {
       .eq("id", customerId)
       .maybeSingle();
     if (srcErr) throw new Error(`Failed to read communication preferences: ${srcErr.message}`);
-    if (current?.sms_consent_source === "inbound_stop" && form.get("confirm_resubscribe_sms") !== "true") {
+    // STOP undo is the owner+reason restore on /api/sms-consent. Prefs confirm
+    // is for collector DNT only — posting it on inbound_stop must not 500
+    // against prevent_inbound_stop_unlock (0047).
+    if (current?.sms_consent_source === "inbound_stop") {
       delete patch.do_not_text;
+      stopLocked = true;
     }
   }
 
   const { error } = await supabase.from("customers")
     .update(patch).eq("org_id", org.org_id).eq("id", customerId);
-  // Fail loud on a write error (matches api.assign / api.account-notes) — a silent
-  // redirect would imply the preferences saved when they didn't.
-  if (error) throw new Error(`Failed to save communication preferences: ${error.message}`);
+  if (error) {
+    if (error.code === "42501" || /inbound STOP|STOP-sourced/i.test(error.message)) {
+      return redirect(withSms(returnTo, "consent_locked"), { headers });
+    }
+    throw new Error(`Failed to save communication preferences: ${error.message}`);
+  }
+  if (stopLocked) return redirect(withSms(returnTo, "consent_locked"), { headers });
 
   return redirect(returnTo, { headers });
 }

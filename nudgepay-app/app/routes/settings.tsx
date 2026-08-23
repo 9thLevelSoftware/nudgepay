@@ -156,7 +156,7 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
       brokenPromiseEmail: notifPrefs?.broken_promise_email ?? true,
       dailyDigestEmail: notifPrefs?.daily_digest_email ?? true,
     },
-    unmatchedStops: isOwner ? await listRecentUnmatchedStops(service) : [],
+    unmatchedStops: isOwner ? await listRecentUnmatchedStops(service) : { rows: [], loadError: null },
     providerStatus: {
       twilioConfigured,
       resendConfigured,
@@ -655,7 +655,7 @@ export default function Settings() {
           {/* ── Channels tab ─────────────────────────────────────── */}
           {tab === "channels" && (
             <>
-              {d.isOwner ? <UnmatchedStopList stops={d.unmatchedStops} /> : null}
+              {d.isOwner ? <UnmatchedStopList stops={d.unmatchedStops.rows} loadError={d.unmatchedStops.loadError} /> : null}
               <SmsSettingsSection
                 key={d.orgId}
                 isOwner={d.isOwner}

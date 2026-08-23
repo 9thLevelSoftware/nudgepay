@@ -1,9 +1,25 @@
 import { readFileSync } from "node:fs";
 import { expect, test } from "vitest";
+import { unmatchedStopsFromQuery, UNMATCHED_STOP_LOAD_ERROR } from "../app/lib/inbound-orphans.server";
 
 function read(rel: string): string {
   return readFileSync(new URL(rel, import.meta.url), "utf8");
 }
+
+test("unmatched STOP list error is not a healthy empty", () => {
+  expect(unmatchedStopsFromQuery({ data: null, error: { message: "db down" } })).toEqual({
+    rows: [],
+    loadError: UNMATCHED_STOP_LOAD_ERROR,
+  });
+  expect(unmatchedStopsFromQuery({ data: [], error: null })).toEqual({ rows: [], loadError: null });
+  expect(unmatchedStopsFromQuery({
+    data: [{ id: "1", from_number: "+15551212", to_number: "+15550000", created_at: "2026-06-01T00:00:00Z" }],
+    error: null,
+  }).rows).toHaveLength(1);
+  const ui = read("../app/components/UnmatchedStopList.tsx");
+  expect(ui).toContain("loadError");
+  expect(ui).toContain('role="alert"');
+});
 
 test("owner unmatched STOP chrome and shared-sender warning are wired", () => {
   const copy = "STOP received from an unknown number — not applied to a customer.";
@@ -31,7 +47,8 @@ test("prefs re-read STOP source before clearing do_not_text", () => {
   const src = read("../app/routes/api.comm-prefs.tsx");
   expect(src).toContain("sms_consent_source");
   expect(src).toContain("inbound_stop");
-  expect(src).toContain("confirm_resubscribe_sms");
+  expect(src).toContain('withSms(returnTo, "consent_locked")');
+  expect(src).not.toMatch(/confirm_resubscribe_sms"\) !== "true"/);
 });
 
 test("sendInvoiceEmail re-checks allowlist and quiet hours", () => {

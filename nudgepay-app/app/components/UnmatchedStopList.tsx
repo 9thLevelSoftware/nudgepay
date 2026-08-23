@@ -3,7 +3,21 @@ export type UnmatchedStopRow = {
   fromNumber: string;
 };
 
-export function UnmatchedStopList({ stops }: { stops: UnmatchedStopRow[] }) {
+export function UnmatchedStopList({
+  stops,
+  loadError,
+}: {
+  stops: UnmatchedStopRow[];
+  loadError?: string | null;
+}) {
+  if (loadError) {
+    return (
+      <section className="rounded-lg border border-hot/30 bg-hot/5 p-4" role="alert">
+        <h2 className="font-display text-sm font-semibold text-text">Unmatched STOP</h2>
+        <p className="mt-1 text-xs text-hot">{loadError}</p>
+      </section>
+    );
+  }
   if (stops.length === 0) return null;
   return (
     <section className="rounded-lg border border-warm/30 bg-warm/5 p-4" role="status">

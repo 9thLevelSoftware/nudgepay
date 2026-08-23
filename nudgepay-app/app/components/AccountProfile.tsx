@@ -26,6 +26,7 @@ interface Props {
   email: string | null;
   phone: string | null;
   smsConsent: boolean;
+  smsConsentSource?: "inbound_stop" | "inbound_start" | "staff" | "import" | "unknown" | null;
   commPrefs: { preferredChannel: string | null; doNotCall: boolean; doNotText: boolean; doNotEmail: boolean };
   notes: string | null;
   openBalance: number;
@@ -140,9 +141,11 @@ export function AccountProfile(p: Props) {
             <input type="checkbox" name="do_not_call" value="true" defaultChecked={p.commPrefs.doNotCall} /> Do not call
           </label>
           <label className="flex items-center gap-1.5 text-sm">
-            <input type="checkbox" name="do_not_text" value="true" defaultChecked={p.commPrefs.doNotText} /> Do not text
+            <input type="checkbox" name="do_not_text" value="true" defaultChecked={p.commPrefs.doNotText || p.smsConsentSource === "inbound_stop"} disabled={p.smsConsentSource === "inbound_stop"} /> Do not text
           </label>
-          {p.commPrefs.doNotText ? (
+          {p.smsConsentSource === "inbound_stop" ? (
+            <span className="text-xs text-hot">Stopped by inbound STOP. Owner override required.</span>
+          ) : p.commPrefs.doNotText ? (
             <label className="flex items-center gap-1.5 text-sm">
               <input type="checkbox" name="confirm_resubscribe_sms" value="true" /> Confirm re-enable texts
             </label>

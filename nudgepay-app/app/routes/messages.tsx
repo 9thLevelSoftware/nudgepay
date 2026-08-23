@@ -347,7 +347,9 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
   if (ecfgErr) throw ecfgErr;
   const emailEnabled = resolveEmailSettings(ecfg as any).emailEnabled;
 
-  const unmatchedStops = isOwner ? await listRecentUnmatchedStops(service) : [];
+  const unmatchedStops = isOwner
+    ? await listRecentUnmatchedStops(service)
+    : { rows: [], loadError: null };
 
   return data(
     {
@@ -497,7 +499,7 @@ export default function Messages() {
             All workspaces share this sender. STOP applies to every customer with this phone.
           </p>
         ) : null}
-        {d.isOwner ? <UnmatchedStopList stops={d.unmatchedStops} /> : null}
+        {d.isOwner ? <UnmatchedStopList stops={d.unmatchedStops.rows} loadError={d.unmatchedStops.loadError} /> : null}
         <MessagesMetrics metrics={d.metrics} truncated={d.truncated || !!d.loadError} />
         {(() => {
           const threadPanel = (
