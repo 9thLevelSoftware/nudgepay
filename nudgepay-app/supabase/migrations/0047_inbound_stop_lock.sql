@@ -11,6 +11,13 @@ begin
   if auth.role() = 'service_role' then
     return new;
   end if;
+  if TG_OP = 'INSERT' then
+    if new.sms_consent_source is not distinct from 'inbound_stop' then
+      raise exception 'inbound STOP can only be set by the inbound webhook'
+        using errcode = '42501';
+    end if;
+    return new;
+  end if;
   if new.sms_consent_source is not distinct from 'inbound_stop'
      and old.sms_consent_source is distinct from 'inbound_stop' then
     raise exception 'inbound STOP can only be set by the inbound webhook'
@@ -43,5 +50,5 @@ $$;
 
 drop trigger if exists prevent_inbound_stop_unlock on customers;
 create trigger prevent_inbound_stop_unlock
-before update on customers
+before insert or update on customers
 for each row execute function public.prevent_inbound_stop_unlock();
