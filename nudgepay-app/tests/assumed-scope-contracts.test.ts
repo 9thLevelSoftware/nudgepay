@@ -190,10 +190,12 @@ test("sms_sender_inventory uniqueness is on trimmed messaging_service_sid", () =
 test("inbound history filters by any webhook SID and keeps pre-migration null-SID fallback", () => {
   const src = read("../app/lib/twilio-messaging.server.ts");
   expect(src).toContain("messagingServiceSid: sid || undefined");
+  expect(src).toContain("allowLegacyNullSid: overlapsFallbackSid");
   expect(src).toContain('.is("messaging_service_sid_norm", null)');
   expect(src).toContain('.is("from_number_norm", null)');
-  expect(src).toContain("histOrgs");
-  expect(src).toContain('.eq("messaging_service_sid_norm", sid)');
+  expect(src).toContain("uniqueSidHistoryOrg");
+  expect(src).toContain('.neq("org_id", orgId)');
+  expect(src).toContain(".limit(1)");
 });
 
 test("RESEND_ALLOWED_FROM is documented in production deploy config", () => {

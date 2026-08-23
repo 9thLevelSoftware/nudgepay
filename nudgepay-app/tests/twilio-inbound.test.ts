@@ -728,6 +728,39 @@ test("retired inventory SID still routes via persisted outbound history", async 
   expect(rows![0].customer_id).toBe(custA!.id);
 });
 
+test("unused non-fallback SID does not steal another org's pre-migration history", async () => {
+  const phone = "+13105550230";
+  const inboundTo = "+15005552230";
+  const unusedSid = "MG" + "1".repeat(32);
+  const { data: orgA } = await svc.from("organizations").insert({ name: "Unused SID Org" }).select("id").single();
+  const orgAId = orgA!.id as string;
+  const { data: orgB } = await svc.from("organizations").insert({ name: "Legacy Other Org" }).select("id").single();
+  const orgBId = orgB!.id as string;
+
+  await svc.from("customers")
+    .insert({ org_id: orgAId, qbo_id: "c-unused-a", name: "Unused A", phone, sms_consent: true });
+  const { data: custB } = await svc.from("customers")
+    .insert({ org_id: orgBId, qbo_id: "c-unused-b", name: "Legacy B", phone, sms_consent: true }).select("id").single();
+
+  await svc.from("text_messages").insert({
+    org_id: orgBId, customer_id: custB!.id, direction: "outbound",
+    twilio_message_sid: "SMout-230-legacy", from_number: null, to_number: phone, body: "ping",
+  });
+
+  const out = await recordInboundMessage(svc, {
+    from: phone,
+    to: inboundTo,
+    body: "hello",
+    messageSid: "SMin-230-unused-sid",
+    messagingServiceSid: unusedSid,
+    fallbackMessagingServiceSid: "MG" + "2".repeat(32),
+  });
+  expect(out.matched).toBe(false);
+  const { data: rows } = await svc.from("text_messages")
+    .select("id").eq("twilio_message_sid", "SMin-230-unused-sid");
+  expect(rows ?? []).toHaveLength(0);
+});
+
 test("recordInboundMessage treats replayed MessageSid as idempotent", async () => {
   const { inboundTo } = await seedCustomerWithOutbound("+13105550209", "SMout-209", true);
   const args = { from: "+13105550209", to: inboundTo, body: "hello", messageSid: "SMin-209-idempotent" };

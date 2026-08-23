@@ -175,19 +175,62 @@ export async function sendInvoiceText(
   return { id: row!.id as string, sid: result.sid, status: result.status };
 }
 
+/** Distinct org for this phone+SID without paging past PostgREST max_rows. */
+async function uniqueSidHistoryOrg(
+  service: SupabaseClient,
+  fromNorm: string,
+  sid: string,
+): Promise<string | null> {
+  const { data: first, error } = await service.from("text_messages")
+    .select("org_id")
+    .eq("direction", "outbound")
+    .eq("to_number_norm", fromNorm)
+    .eq("messaging_service_sid_norm", sid)
+    .limit(1)
+    .maybeSingle();
+  if (error) throw error;
+  if (!first) return null;
+  const orgId = first.org_id as string;
+  const { data: other, error: otherErr } = await service.from("text_messages")
+    .select("org_id")
+    .eq("direction", "outbound")
+    .eq("to_number_norm", fromNorm)
+    .eq("messaging_service_sid_norm", sid)
+    .neq("org_id", orgId)
+    .limit(1)
+    .maybeSingle();
+  if (otherErr) throw otherErr;
+  return other ? null : orgId;
+}
+
 async function uniqueOutboundOrg(
   service: SupabaseClient,
   fromNorm: string,
   toNorm: string,
-  opts: { requireFromMatch?: boolean; messagingServiceSid?: string } = {},
+  opts: { requireFromMatch?: boolean; messagingServiceSid?: string; allowLegacyNullSid?: boolean } = {},
 ): Promise<string | null> {
+  if (opts.messagingServiceSid) {
+    const sidOrg = await uniqueSidHistoryOrg(service, fromNorm, opts.messagingServiceSid);
+    if (sidOrg) return sidOrg;
+    // Pre-0048 Messaging Service sends stored from_number and SID as null.
+    // Only the env fallback SID may use that history; a retired/unused
+    // inventory SID must not steal another workspace's legacy rows.
+    if (!opts.allowLegacyNullSid) return null;
+    const { data: legacy, error: legacyErr } = await service.from("text_messages")
+      .select("org_id")
+      .eq("direction", "outbound")
+      .eq("to_number_norm", fromNorm)
+      .is("from_number_norm", null)
+      .is("messaging_service_sid_norm", null);
+    if (legacyErr) throw legacyErr;
+    const legacyIds = new Set((legacy ?? []).map((msg) => msg.org_id as string));
+    return legacyIds.size === 1 ? [...legacyIds][0]! : null;
+  }
   let q = service.from("text_messages")
     .select("org_id")
     .eq("direction", "outbound")
     .eq("to_number_norm", fromNorm);
-  if (opts.messagingServiceSid) {
-    q = q.eq("messaging_service_sid_norm", opts.messagingServiceSid);
-  } else if (opts.requireFromMatch) {
+  if (opts.requireFromMatch) {
     q = q.eq("from_number_norm", toNorm);
   } else {
     q = q.or(`from_number_norm.is.null,from_number_norm.eq."${toNorm}"`);
@@ -195,21 +238,7 @@ async function uniqueOutboundOrg(
   const { data: outbound, error: outboundErr } = await q;
   if (outboundErr) throw outboundErr;
   const orgIds = new Set((outbound ?? []).map((msg) => msg.org_id as string));
-  if (orgIds.size === 1) return [...orgIds][0]!;
-  if (orgIds.size > 1) return null;
-  if (!opts.messagingServiceSid) return null;
-  // Pre-0048 Messaging Service sends stored from_number and SID as null.
-  // Env fallback SID is not in Postgres, so backfill cannot stamp those
-  // rows; unique null-from/null-SID history is the safe rollout fallback.
-  const { data: legacy, error: legacyErr } = await service.from("text_messages")
-    .select("org_id")
-    .eq("direction", "outbound")
-    .eq("to_number_norm", fromNorm)
-    .is("from_number_norm", null)
-    .is("messaging_service_sid_norm", null);
-  if (legacyErr) throw legacyErr;
-  const legacyIds = new Set((legacy ?? []).map((msg) => msg.org_id as string));
-  return legacyIds.size === 1 ? [...legacyIds][0]! : null;
+  return orgIds.size === 1 ? [...orgIds][0]! : null;
 }
 
 function canonicalSid(value: string | null | undefined): string {
@@ -244,16 +273,8 @@ async function resolveInboundOrgId(service: SupabaseClient, args: {
       // Exact SID history wins if the service was reassigned: an old
       // conversation must stay on the org that actually sent it.
       if (fromNorm.length >= 10) {
-        const { data: sidHist, error: sidHistErr } = await service
-          .from("text_messages")
-          .select("org_id")
-          .eq("direction", "outbound")
-          .eq("to_number_norm", fromNorm)
-          .eq("messaging_service_sid_norm", sid);
-        if (sidHistErr) throw sidHistErr;
-        const histOrgs = [...new Set((sidHist ?? []).map((row) => row.org_id as string))];
-        if (histOrgs.length > 1) return null;
-        if (histOrgs.length === 1) return histOrgs[0];
+        const histOrg = await uniqueSidHistoryOrg(service, fromNorm, sid);
+        if (histOrg) return histOrg;
       }
       return sidOrgs[0];
     }
@@ -286,6 +307,7 @@ async function resolveInboundOrgId(service: SupabaseClient, args: {
     ? await uniqueOutboundOrg(service, fromNorm, toNorm, {
       requireFromMatch: overlapsFallbackFrom && !sid,
       messagingServiceSid: sid || undefined,
+      allowLegacyNullSid: overlapsFallbackSid,
     })
     : null;
   if (historyOrg) return historyOrg;
