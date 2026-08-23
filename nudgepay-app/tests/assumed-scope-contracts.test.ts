@@ -28,6 +28,33 @@ test("pending invites unique per org+email (NP-AUD-2026-130)", () => {
   expect(sql).toMatch(/accepted_at is null/i);
 });
 
+test("acceptInvite claims the invite via a single accept_invite RPC", () => {
+  const src = read("../app/lib/orgs.server.ts");
+  const accept = src.slice(
+    src.indexOf("export async function acceptInvite"),
+    src.indexOf("export async function createOrgForUser"),
+  );
+  expect(accept).toContain('.rpc("accept_invite"');
+  const sql = read("../supabase/migrations/0045_accept_invite.sql");
+  expect(sql).toMatch(/for update/i);
+  expect(sql).toMatch(/insert into public\.memberships/i);
+});
+
+test("revoke controls use the shared Button primitive", () => {
+  const src = read("../app/routes/settings.tsx");
+  const revoke = src.slice(
+    src.indexOf("function RevokeInviteButton"),
+    src.indexOf("function InviteLinkStatus"),
+  );
+  expect(revoke).toContain("<Button");
+  expect(revoke).toContain('variant="destructive"');
+  expect(src).toContain("useToast");
+  expect(src).toContain("Invite revoked.");
+  expect(src).toContain("RevokeInviteToast");
+  expect(src).toContain("revokeFetcher");
+  expect(revoke).not.toMatch(/<button\b/);
+});
+
 test("dashboard scoring uses cases.ts not worklist.priorityOf (NP-AUD-2026-124)", () => {
   const dash = read("../app/routes/dashboard.tsx");
   expect(dash).toContain("buildCaseItems");

@@ -64,3 +64,4 @@ test("humanInviteError does not leak raw database errors", () => {
     "Could not accept that invite. Try again or ask for a new link.",
   );
 });
+

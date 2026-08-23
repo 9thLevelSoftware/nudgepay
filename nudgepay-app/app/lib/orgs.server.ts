@@ -24,38 +24,26 @@ export async function acceptInvite(
   userId: string,
   userEmail: string
 ): Promise<string> {
-  const { data: inv, error } = await service
-    .from("invites").select("id, org_id, email, accepted_at, expires_at").eq("token", token).maybeSingle();
-  if (error) throw error;
-  if (!inv) throw new Error("Invite not found");
-  if (!inv.email || !userEmail) throw new Error("Invite email missing");
-  if (inv.email.toLowerCase() !== userEmail.toLowerCase())
-    throw new Error("This invite was sent to a different email address");
-  if (inv.accepted_at) throw new Error("Invite already accepted");
-  if (inv.expires_at && new Date(inv.expires_at as string).getTime() <= Date.now()) {
-    throw new Error("Invite expired");
-  }
-
-  const targetOrgId = inv.org_id as string;
-  const decision = canJoinOrg(await existingOrgId(service, userId), targetOrgId);
-  if (decision === "already_in_workspace") throw new AlreadyInWorkspaceError();
-  if (decision === "join") {
-    const { error: memErr } = await service
-      .from("memberships").insert({ org_id: targetOrgId, user_id: userId, role: "member" });
-    if (memErr) {
-      // 23505: same-org race → success; different-org unique(user_id) → reject.
-      if (!isUniqueViolation(memErr)) throw memErr;
-      const again = await existingOrgId(service, userId);
-      if (canJoinOrg(again, targetOrgId) !== "already_member") {
-        throw new AlreadyInWorkspaceError();
-      }
+  const { data: orgId, error: rpcErr } = await service.rpc("accept_invite", {
+    p_token: token,
+    p_user_id: userId,
+    p_email: userEmail,
+  });
+  if (rpcErr) {
+    const msg = rpcErr.message ?? "";
+    if (msg.includes("already in a workspace")) throw new AlreadyInWorkspaceError();
+    if (msg.includes("Invite not found")) throw new Error("Invite not found");
+    if (msg.includes("Invite email missing")) throw new Error("Invite email missing");
+    if (msg.includes("different email address")) {
+      throw new Error("This invite was sent to a different email address");
     }
+    if (msg.includes("already been used") || msg.includes("already accepted")) {
+      throw new Error("Invite already accepted");
+    }
+    if (msg.includes("Invite expired")) throw new Error("Invite expired");
+    throw rpcErr;
   }
-
-  const { error: stampErr } = await service.from("invites")
-    .update({ accepted_at: new Date().toISOString() }).eq("id", inv.id).is("accepted_at", null);
-  if (stampErr) throw stampErr;
-  return targetOrgId;
+  return orgId as string;
 }
 
 export async function createOrgForUser(

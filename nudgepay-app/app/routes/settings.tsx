@@ -1,5 +1,5 @@
-import { useRef, useState } from "react";
-import { useLoaderData, useNavigation, useSearchParams, Form, data, type LoaderFunctionArgs } from "react-router";
+import { useEffect, useRef, useState } from "react";
+import { useFetcher, useLoaderData, useNavigation, useSearchParams, Form, data, type LoaderFunctionArgs } from "react-router";
 import { useFlashCleanup } from "../lib/use-flash-cleanup";
 import { useDialog } from "../lib/use-dialog";
 import { orgNameMatches } from "../lib/qbo-disconnect";
@@ -23,6 +23,9 @@ import { QuietHoursForm } from "../components/QuietHoursForm";
 import { NotificationPrefsForm } from "../components/NotificationPrefsForm";
 import { CompanyProfileForm } from "../components/CompanyProfileForm";
 import { TemplateEditor } from "../components/TemplateEditor";
+import { useTwoStep } from "../components/TwoStepConfirm";
+import { Button } from "../components/ui";
+import { useToast } from "../components/Toasts";
 import { resolveChannelSettings, resolveSmsSenderSettings } from "../lib/channel-settings";
 import { resolveEmailSettings } from "../lib/email-settings";
 import { deriveWebhookUrls } from "../lib/provider-status";
@@ -170,6 +173,59 @@ function relTime(iso: string | null): string {
   return hr < 24 ? `${hr}h ago` : `${Math.floor(hr / 24)}d ago`;
 }
 
+function RevokeInviteButton({
+  inviteId,
+  returnTo,
+  busy,
+  fetcher,
+}: {
+  inviteId: string;
+  returnTo: string;
+  busy: boolean;
+  fetcher: ReturnType<typeof useFetcher>;
+}) {
+  const { confirming, arm, disarm } = useTwoStep(5000);
+  const pending = busy || fetcher.state !== "idle";
+  return (
+    <fetcher.Form method="post" action="/api/members" className="inline-flex items-center gap-2">
+      <input type="hidden" name="intent" value="revoke" />
+      <input type="hidden" name="inviteId" value={inviteId} />
+      <input type="hidden" name="returnTo" value={returnTo} />
+      {confirming ? (
+        <>
+          <span className="text-xs text-hot" role="alert">
+            Revoke this invite?
+          </span>
+          <Button type="submit" variant="destructive" size="sm" disabled={pending}>
+            {pending ? "Revoking…" : "Confirm revoke"}
+          </Button>
+          <Button type="button" variant="ghost" size="sm" onClick={disarm}>
+            Cancel
+          </Button>
+        </>
+      ) : (
+        <Button type="button" variant="ghost" size="sm" onClick={arm} disabled={pending}>
+          Revoke
+        </Button>
+      )}
+    </fetcher.Form>
+  );
+}
+
+function RevokeInviteToast({ fetcher }: { fetcher: ReturnType<typeof useFetcher> }) {
+  const toast = useToast();
+  const submitting = useRef(false);
+  useEffect(() => {
+    if (fetcher.state === "submitting") submitting.current = true;
+    if (fetcher.state === "idle" && submitting.current) {
+      submitting.current = false;
+      const err = new URL(window.location.href).searchParams.get("error");
+      if (!err) toast("Invite revoked.");
+    }
+  }, [fetcher.state, toast]);
+  return null;
+}
+
 function InviteLinkStatus({ link, sent }: { link: string; sent: boolean }) {
   const [copied, setCopied] = useState(false);
   const copy = async () => {
@@ -208,6 +264,7 @@ export default function Settings() {
     navigation.state !== "idle" &&
     navigation.formAction === "/api/profile" &&
     navigation.formData?.get("intent") === intent;
+  const revokeFetcher = useFetcher();
 
   useFlashCleanup();
 
@@ -230,6 +287,7 @@ export default function Settings() {
       activeNav="settings"
       syncIssues={<SyncIssues issues={d.syncIssues} returnTo={returnTo} />}
     >
+      <RevokeInviteToast fetcher={revokeFetcher} />
       {d.qboFlash && QBO_FLASH[d.qboFlash] ? (
         <FlashBanner tone={QBO_FLASH[d.qboFlash].tone} text={QBO_FLASH[d.qboFlash].text} />
       ) : null}
@@ -425,9 +483,19 @@ export default function Settings() {
                     <h3 className="text-xs font-semibold uppercase tracking-wide text-muted">Pending invites</h3>
                     <ul className="mt-1 flex flex-col gap-1" role="list">
                       {d.pendingInvites.map((inv) => (
-                        <li key={inv.id} className="text-xs text-muted">
-                          {inv.email}
-                          {inv.expiresAt ? ` · expires ${inv.expiresAt.slice(0, 10)}` : ""}
+                        <li key={inv.id} className="flex flex-wrap items-center gap-2 text-xs text-muted">
+                          <span>
+                            {inv.email}
+                            {inv.expiresAt ? ` · expires ${inv.expiresAt.slice(0, 10)}` : ""}
+                          </span>
+                          {d.isOwner ? (
+                            <RevokeInviteButton
+                              inviteId={inv.id}
+                              returnTo={returnTo}
+                              busy={formBusy("/api/members")}
+                              fetcher={revokeFetcher}
+                            />
+                          ) : null}
                         </li>
                       ))}
                     </ul>
@@ -467,6 +535,9 @@ export default function Settings() {
                 ) : null}
                 {memberError === "invite" ? (
                   <p className="mt-2 text-xs text-hot" role="alert">Could not create that invite. Check the email and try again.</p>
+                ) : null}
+                {memberError === "revoke" ? (
+                  <p className="mt-2 text-xs text-hot" role="alert">Could not revoke that invite.</p>
                 ) : null}
                 {memberError === "member" ? (
                   <p className="mt-2 text-xs text-hot" role="alert">Could not change membership. The last owner cannot be removed or demoted.</p>
