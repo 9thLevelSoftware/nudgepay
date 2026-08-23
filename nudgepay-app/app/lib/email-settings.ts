@@ -53,10 +53,6 @@ export function parseAllowedFromEntries(raw: string | null | undefined): Allowed
   return out;
 }
 
-export function parseAllowedFromList(raw: string | null | undefined): string[] {
-  return [...new Set(parseAllowedFromEntries(raw).map((e) => e.email))];
-}
-
 function allowlistEntries(allowlist: string[] | string | null | undefined): AllowedFromEntry[] {
   if (Array.isArray(allowlist)) {
     return allowlist

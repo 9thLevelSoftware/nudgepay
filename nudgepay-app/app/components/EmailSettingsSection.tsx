@@ -71,6 +71,9 @@ export function EmailSettingsSection(d: EmailSettingsProps) {
             {errorCode === "email" && (
               <p className="text-xs text-hot" role="alert">Enter a valid from address</p>
             )}
+            {errorCode === "from_allowlist" && (
+              <p className="text-xs text-hot" role="alert">That from address is not on the operator allowlist (RESEND_ALLOWED_FROM).</p>
+            )}
           </div>
           <div className="flex flex-col gap-1">
             <label htmlFor="from-name" className="text-xs font-medium text-muted">From name</label>

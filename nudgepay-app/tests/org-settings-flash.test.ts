@@ -124,6 +124,12 @@ describe("settings forms check only their own saved key (NP-AUD-2026-115)", () =
     const email = readComponent("EmailSettingsSection.tsx");
     expect(email).toContain('sp.get("email_saved") === "1"');
     expect(email).toContain('testResult === "from_allowlist"');
+    expect(email).toContain('errorCode === "from_allowlist"');
     expect(savedEquals(email)).toEqual([]);
+  });
+
+  it("save_email preserves from_allowlist instead of collapsing to error=email", () => {
+    expect(actionSrc).toContain('parsed.error === "from_allowlist"');
+    expect(actionSrc).toContain('"from_allowlist" : "email"');
   });
 });

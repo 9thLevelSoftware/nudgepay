@@ -129,7 +129,12 @@ export async function action({ request, context }: ActionFunctionArgs) {
     const allowlist = (context as { cloudflare?: { env?: Record<string, string> } })
       .cloudflare?.env?.RESEND_ALLOWED_FROM;
     const parsed = parseEmailSettingsUpdate(form, allowlist, org.org_id);
-    if (!parsed.ok) return redirect(flag(returnTo, "error", "email"), { headers });
+    if (!parsed.ok) {
+      return redirect(
+        flag(returnTo, "error", parsed.error === "from_allowlist" ? "from_allowlist" : "email"),
+        { headers },
+      );
+    }
     const { error } = await supabase.from("email_config")
       .upsert(emailConfigUpsertRow(org.org_id, parsed.value, new Date().toISOString()), { onConflict: "org_id" });
     if (error) return redirect(flag(returnTo, "error", "save"), { headers });
