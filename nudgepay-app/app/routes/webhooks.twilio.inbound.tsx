@@ -31,6 +31,7 @@ export async function action({ request, context }: ActionFunctionArgs) {
       messageSid: params.MessageSid ?? "",
       messagingServiceSid: params.MessagingServiceSid ?? "",
       fallbackFrom: twilio.TWILIO_FROM_NUMBER ?? "",
+      fallbackMessagingServiceSid: twilio.TWILIO_MESSAGING_SERVICE_SID ?? "",
     });
     const xml = result.twiml ?? "<Response></Response>";
     return new Response(xml, { status: 200, headers: { "Content-Type": "text/xml" } });

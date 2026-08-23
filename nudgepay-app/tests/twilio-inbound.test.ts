@@ -444,6 +444,75 @@ test("inventory From overlapping the fallback sender defers to unique outbound h
   expect(rows![0].customer_id).toBe(custB!.id);
 });
 
+test("inventory SID overlapping the fallback SID defers to unique outbound history", async () => {
+  const phone = "+13105550223";
+  const inboundTo = "+15005552223";
+  const sharedSid = "MG" + "b".repeat(32);
+  const { data: orgA } = await svc.from("organizations").insert({ name: "Fallback SID Inventory Org" }).select("id").single();
+  const orgAId = orgA!.id as string;
+  const { data: orgB } = await svc.from("organizations").insert({ name: "Fallback SID History Org" }).select("id").single();
+  const orgBId = orgB!.id as string;
+
+  const { error: invErr } = await svc.from("sms_sender_inventory").insert({
+    org_id: orgAId, messaging_service_sid: `  ${sharedSid}  `, status: "active",
+  });
+  expect(invErr).toBeNull();
+
+  const { data: custA } = await svc.from("customers")
+    .insert({ org_id: orgAId, qbo_id: "c-fbsid-a", name: "Acme FB SID A", phone, sms_consent: true }).select("id").single();
+  const { data: custB } = await svc.from("customers")
+    .insert({ org_id: orgBId, qbo_id: "c-fbsid-b", name: "Acme FB SID B", phone, sms_consent: true }).select("id").single();
+  expect(custA).toBeTruthy();
+
+  await svc.from("text_messages").insert({
+    org_id: orgBId, customer_id: custB!.id, direction: "outbound",
+    twilio_message_sid: "SMout-223-hist", from_number: null, to_number: phone, body: "ping",
+  });
+
+  const out = await recordInboundMessage(svc, {
+    from: phone,
+    to: inboundTo,
+    body: "hello",
+    messageSid: "SMin-223-fallback-sid",
+    messagingServiceSid: sharedSid,
+    fallbackMessagingServiceSid: sharedSid,
+  });
+  expect(out.matched).toBe(true);
+  const { data: rows } = await svc.from("text_messages")
+    .select("org_id, customer_id").eq("twilio_message_sid", "SMin-223-fallback-sid");
+  expect(rows).toHaveLength(1);
+  expect(rows![0].org_id).toBe(orgBId);
+  expect(rows![0].customer_id).toBe(custB!.id);
+});
+
+test("recordInboundMessage matches inventory SID stored with surrounding whitespace", async () => {
+  const phone = "+13105550224";
+  const inboundTo = "+15005552224";
+  const sid = "MG" + "c".repeat(32);
+  const { data: org } = await svc.from("organizations").insert({ name: "Padded SID Org" }).select("id").single();
+  const orgId = org!.id as string;
+  const { error: invErr } = await svc.from("sms_sender_inventory").insert({
+    org_id: orgId, messaging_service_sid: ` ${sid} `, status: "active",
+  });
+  expect(invErr).toBeNull();
+  const { data: cust } = await svc.from("customers")
+    .insert({ org_id: orgId, qbo_id: "c-pad-sid", name: "Padded SID Co", phone, sms_consent: true }).select("id").single();
+
+  const out = await recordInboundMessage(svc, {
+    from: phone,
+    to: inboundTo,
+    body: "hello",
+    messageSid: "SMin-224-padded-sid",
+    messagingServiceSid: sid,
+  });
+  expect(out.matched).toBe(true);
+  const { data: rows } = await svc.from("text_messages")
+    .select("org_id, customer_id").eq("twilio_message_sid", "SMin-224-padded-sid");
+  expect(rows).toHaveLength(1);
+  expect(rows![0].org_id).toBe(orgId);
+  expect(rows![0].customer_id).toBe(cust!.id);
+});
+
 test("recordInboundMessage treats replayed MessageSid as idempotent", async () => {
   const { inboundTo } = await seedCustomerWithOutbound("+13105550209", "SMout-209", true);
   const args = { from: "+13105550209", to: inboundTo, body: "hello", messageSid: "SMin-209-idempotent" };

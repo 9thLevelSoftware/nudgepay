@@ -189,30 +189,43 @@ async function uniqueOutboundOrg(
   return orgIds.size === 1 ? [...orgIds][0]! : null;
 }
 
+function canonicalSid(value: string | null | undefined): string {
+  return (value ?? "").trim().toLowerCase();
+}
+
 async function resolveInboundOrgId(service: SupabaseClient, args: {
   from: string;
   to: string;
   messagingServiceSid?: string;
   fallbackFrom?: string;
+  fallbackMessagingServiceSid?: string;
 }): Promise<string | null> {
-  const sid = (args.messagingServiceSid ?? "").trim();
+  const sid = canonicalSid(args.messagingServiceSid);
+  const fallbackSid = canonicalSid(args.fallbackMessagingServiceSid);
+  const overlapsFallbackSid = Boolean(sid && fallbackSid && sid === fallbackSid);
+
+  let sidOrgs: string[] = [];
   if (sid) {
     const { data: sidHits, error: sidErr } = await service
       .from("sms_sender_inventory")
-      .select("org_id")
+      .select("org_id, messaging_service_sid")
       .eq("status", "active")
-      .ilike("messaging_service_sid", sid.replace(/[%_]/g, ""))
-      .limit(2);
+      .not("messaging_service_sid", "is", null);
     if (sidErr) throw sidErr;
-    const sidOrgs = [...new Set((sidHits ?? []).map((row) => row.org_id as string))];
-    if (sidOrgs.length === 1) return sidOrgs[0];
+    sidOrgs = [...new Set(
+      (sidHits ?? [])
+        .filter((row) => canonicalSid(row.messaging_service_sid as string) === sid)
+        .map((row) => row.org_id as string),
+    )];
     if (sidOrgs.length > 1) return null;
+    if (sidOrgs.length === 1 && !overlapsFallbackSid) return sidOrgs[0];
   }
 
   const toNorm = normalizePhone(args.to);
   const fromNorm = normalizePhone(args.from);
   const fallbackNorm = args.fallbackFrom ? normalizePhone(args.fallbackFrom) : "";
-  const overlapsFallback = fallbackNorm.length >= 10 && fallbackNorm === toNorm;
+  const overlapsFallbackFrom = fallbackNorm.length >= 10 && fallbackNorm === toNorm;
+  const overlapsFallback = overlapsFallbackFrom || overlapsFallbackSid;
 
   let invOrgs: string[] = [];
   if (toNorm.length >= 10) {
@@ -231,7 +244,8 @@ async function resolveInboundOrgId(service: SupabaseClient, args: {
   if (fromNorm.length < 10) return null;
   const historyOrg = toNorm.length >= 10 ? await uniqueOutboundOrg(service, fromNorm, toNorm) : null;
   if (historyOrg) return historyOrg;
-  return overlapsFallback ? null : (invOrgs[0] ?? null);
+  if (overlapsFallback) return null;
+  return invOrgs[0] ?? sidOrgs[0] ?? null;
 }
 
 export type InboundResult = {
@@ -339,6 +353,7 @@ export async function recordInboundMessage(
     messageSid: string;
     messagingServiceSid?: string;
     fallbackFrom?: string;
+    fallbackMessagingServiceSid?: string;
     onOrphanStop?: (info: OrphanStopInfo) => void;
   },
 ): Promise<InboundResult> {
@@ -359,6 +374,7 @@ export async function recordInboundMessage(
     to: args.to,
     messagingServiceSid: args.messagingServiceSid,
     fallbackFrom: args.fallbackFrom,
+    fallbackMessagingServiceSid: args.fallbackMessagingServiceSid,
   });
   const name = await loadOrgName(service, orgId);
   const twiml = twimlForKeyword(keyword, name);
