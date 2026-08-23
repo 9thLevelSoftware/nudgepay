@@ -54,6 +54,12 @@ describe("authRateLimited", () => {
     await expect(authRateLimited({}, "1.1.1.1")).resolves.toBe(false);
   });
 
+  it("Cloudflare production without a binding fails closed", async () => {
+    await expect(
+      authRateLimited({ AUTH_RATE_LIMIT_REQUIRED: "true" }, "203.0.113.1"),
+    ).resolves.toBe(true);
+  });
+
   it("missing limiter + AUTH_RATE_LIMIT_WAF=true allows", async () => {
     await expect(
       authRateLimited({ NODE_ENV: "production", AUTH_RATE_LIMIT_WAF: "true" }, "1.1.1.1"),
