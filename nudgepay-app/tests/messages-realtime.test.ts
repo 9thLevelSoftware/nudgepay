@@ -99,7 +99,7 @@ describe("content-free realtime payload", () => {
   });
 
   it("SQL json_build_object only sends table, org_id, direction", () => {
-    const sql = read("../supabase/migrations/0049_message_events_direction.sql");
+    const sql = read("../supabase/migrations/0051_message_events_direction.sql");
     expect(sql).toMatch(/json_build_object\([\s\S]*'table'[\s\S]*'org_id'[\s\S]*'direction'/);
     expect(sql).not.toMatch(/NEW\.body/);
     expect(sql).not.toMatch(/NEW\.from/);
@@ -213,7 +213,7 @@ describe("loader remains source of thread bodies", () => {
 
 describe("INSERT-safety wrapper", () => {
   it("CREATE OR REPLACE keeps search_path='' and WARNING so a ping never fails INSERT", () => {
-    const sql = read("../supabase/migrations/0049_message_events_direction.sql");
+    const sql = read("../supabase/migrations/0051_message_events_direction.sql");
     expect(sql).toMatch(/create or replace function public\.notify_message_event\(\)/);
     expect(sql).toMatch(/set search_path = ''/);
     expect(sql).toMatch(/exception when others then/);

@@ -1,7 +1,7 @@
 // subscribeMessageEvents — instant inbox updates via Supabase Realtime.
 //
 // Listens to the per-org public broadcast channel populated by
-// `notify_message_event` (migration 0049). The payload is content-free:
+// `notify_message_event` (migration 0051). The payload is content-free:
 // { table, org_id, direction } — no body / from / to / customer_id. Treat
 // the channel as public worst-case (A-005): orgId in the topic is a
 // timing/volume oracle if it leaks; real thread bodies still flow through
