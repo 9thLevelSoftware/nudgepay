@@ -40,7 +40,7 @@ jobs:
           cache-dependency-path: nudgepay-app/package-lock.json
       - run: npm ci
       - name: Raise GoTrue sign-in limit for the suite
-        run: python -c "from pathlib import Path; p=Path('supabase/config.toml'); p.write_text(p.read_text().replace('sign_in_sign_ups = 200', 'sign_in_sign_ups = 10000'))"
+        run: sed -i 's/^sign_in_sign_ups = .*/sign_in_sign_ups = 10000/' supabase/config.toml && grep -q '^sign_in_sign_ups = 10000$' supabase/config.toml
       - run: npx supabase start
       - run: cp .env.test.example .env.test
       - run: npx vitest run
