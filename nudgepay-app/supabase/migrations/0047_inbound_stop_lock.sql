@@ -26,7 +26,8 @@ begin
      or new.sms_consent_source is distinct from old.sms_consent_source
      or new.do_not_text is distinct from old.do_not_text
      or new.sms_consent_reason is distinct from old.sms_consent_reason
-     or new.sms_consent_actor is distinct from old.sms_consent_actor then
+     or new.sms_consent_actor is distinct from old.sms_consent_actor
+     or new.sms_consent_at is distinct from old.sms_consent_at then
     raise exception 'inbound STOP can only be overridden by an owner with a reason'
       using errcode = '42501';
   end if;

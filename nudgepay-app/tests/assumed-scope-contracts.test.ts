@@ -53,6 +53,7 @@ test("inbound STOP lock is enforced by a BEFORE UPDATE trigger", () => {
   const sql = read("../supabase/migrations/0047_inbound_stop_lock.sql");
   expect(sql).toContain("prevent_inbound_stop_unlock");
   expect(sql).toMatch(/sms_consent_source is distinct from 'inbound_stop'/);
+  expect(sql).toMatch(/sms_consent_at is distinct from old.sms_consent_at/);
   expect(sql).toMatch(/is_org_owner/);
 });
 
