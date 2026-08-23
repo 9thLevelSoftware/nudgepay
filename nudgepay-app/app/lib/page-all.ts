@@ -147,8 +147,15 @@ export async function pageAllKeyset<T extends KeysetCursor>(
     const hitCap = rows.length >= maxRows;
     const moreInDb = count != null && count > rows.length;
     if (hitCap) {
-      const truncated = moreInDb || !exhausted;
-      return { rows: rows.slice(0, maxRows), truncated };
+      const capped = rows.slice(0, maxRows);
+      if (moreInDb) return { rows: capped, truncated: true };
+      if (!exhausted && capped.length > 0) {
+        const last = capped[capped.length - 1];
+        const probe = await run({ created_at: last.created_at, id: last.id }, 0, 0);
+        if (probe.error) throw probe.error;
+        return { rows: capped, truncated: (probe.data ?? []).length > 0 };
+      }
+      return { rows: capped, truncated: false };
     }
     if (exhausted) return { rows, truncated: moreInDb };
     const last = page[page.length - 1];

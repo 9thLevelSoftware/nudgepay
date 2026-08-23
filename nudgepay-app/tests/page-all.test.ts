@@ -279,6 +279,26 @@ test("pageAllKeyset flags truncated at maxRows when more rows remain", async () 
   expect(truncated).toBe(true);
 });
 
+test("pageAllKeyset is not truncated when the set is exactly maxRows", async () => {
+  const all = Array.from({ length: 4 }, (_, i) => ({
+    created_at: `2026-01-0${4 - i}T00:00:00.000Z`,
+    id: `id-${i}`,
+  }));
+  let probes = 0;
+  const run = async (cursor: { created_at: string; id: string } | null, from: number, to: number) => {
+    const start = cursor
+      ? all.findIndex((r) => r.created_at === cursor.created_at && r.id === cursor.id) + 1
+      : 0;
+    if (cursor) probes += 1;
+    const page = all.slice(start, start + (to - from + 1));
+    return { data: page, count: all.length, error: null };
+  };
+  const { rows, truncated } = await pageAllKeyset(run, { pageSize: 2, maxRows: 4 });
+  expect(rows).toHaveLength(4);
+  expect(truncated).toBe(false);
+  expect(probes).toBeGreaterThanOrEqual(1);
+});
+
 test("pageAllChunked returns empty and not truncated for no chunks", async () => {
   const { rows, truncated } = await pageAllChunked([], async () => {
     throw new Error("should not run");
