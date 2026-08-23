@@ -31,6 +31,12 @@ begin
      and new.sms_consent is true
      and new.sms_consent_reason is not null
      and length(btrim(new.sms_consent_reason)) >= 3 then
+    new.sms_consent := true;
+    new.do_not_text := false;
+    new.sms_consent_source := 'staff';
+    new.sms_consent_actor := auth.uid();
+    new.sms_consent_at := now();
+    new.sms_consent_reason := btrim(new.sms_consent_reason);
     return new;
   end if;
 
