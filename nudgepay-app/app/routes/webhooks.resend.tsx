@@ -5,6 +5,7 @@ import { verifyResendSignature } from "../lib/resend-webhook.server";
 import { mapResendEvent } from "../lib/email-events";
 import { fetchReceivingEmail } from "../lib/email-client.server";
 import { alreadyRecordedInboundEmail, updateEmailStatus, recordInboundEmail } from "../lib/email-messaging.server";
+import { inboundEmailBody } from "../lib/html-plain-text";
 
 export async function action({ request, context }: ActionFunctionArgs) {
   const emailEnv = getEmailEnv(context as any);
@@ -39,7 +40,7 @@ export async function action({ request, context }: ActionFunctionArgs) {
             { apiKey: emailEnv.RESEND_API_KEY },
             mapped.providerMessageId,
           );
-          if (fetched) body = fetched.text || fetched.html || mapped.body;
+          if (fetched) body = inboundEmailBody(fetched.text, fetched.html) || mapped.body;
         }
         await recordInboundEmail(service, { ...mapped, body });
       }
