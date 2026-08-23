@@ -212,9 +212,23 @@ async function alreadyRecordedInbound(service: SupabaseClient, messageSid: strin
   return Boolean(orphan);
 }
 
+export type OrphanStopInfo = {
+  event: "inbound_orphan_stop";
+  from: string;
+  to: string;
+  sid: string;
+};
+
 async function persistOrphan(
   service: SupabaseClient,
-  args: { from: string; to: string; body: string; messageSid: string; keyword: InboundKeyword },
+  args: {
+    from: string;
+    to: string;
+    body: string;
+    messageSid: string;
+    keyword: InboundKeyword;
+    onOrphanStop?: (info: OrphanStopInfo) => void;
+  },
 ): Promise<void> {
   const { error } = await service.from("inbound_orphans").insert({
     from_number: args.from,
@@ -224,6 +238,14 @@ async function persistOrphan(
     keyword: args.keyword,
   });
   if (error && (error as { code?: string }).code !== "23505") throw error;
+  if (!error && args.keyword === "stop") {
+    (args.onOrphanStop ?? console.error)({
+      event: "inbound_orphan_stop",
+      from: args.from,
+      to: args.to,
+      sid: args.messageSid,
+    });
+  }
 }
 
 async function applyKeywordByPhone(
@@ -261,7 +283,13 @@ async function loadOrgName(service: SupabaseClient, orgId: string | null): Promi
 
 export async function recordInboundMessage(
   service: SupabaseClient,
-  args: { from: string; to: string; body: string; messageSid: string },
+  args: {
+    from: string;
+    to: string;
+    body: string;
+    messageSid: string;
+    onOrphanStop?: (info: OrphanStopInfo) => void;
+  },
 ): Promise<InboundResult> {
   const keyword = classifyInboundSms(args.body);
   const optOut = keyword === "stop";

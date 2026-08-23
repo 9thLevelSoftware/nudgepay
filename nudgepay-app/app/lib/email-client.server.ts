@@ -38,3 +38,44 @@ export async function sendEmail(
   const json = text ? JSON.parse(text) : {};
   return { id: (json.id as string) ?? "" };
 }
+
+function str(v: unknown): string {
+  return typeof v === "string" ? v : "";
+}
+
+function firstAddr(v: unknown): string {
+  if (typeof v === "string") return v;
+  if (Array.isArray(v)) return firstAddr(v[0]);
+  if (v && typeof v === "object") {
+    const rec = v as Record<string, unknown>;
+    if (typeof rec.address === "string") return rec.address;
+    if (typeof rec.email === "string") return rec.email;
+  }
+  return "";
+}
+
+export async function fetchReceivingEmail(
+  fetchFn: typeof fetch,
+  cfg: EmailConfig,
+  receivingId: string,
+  signal?: AbortSignal,
+): Promise<{ text: string; html: string; from: string; to: string; subject: string } | null> {
+  const res = await fetchFn(`https://api.resend.com/emails/receiving/${encodeURIComponent(receivingId)}`, {
+    method: "GET",
+    headers: { Authorization: `Bearer ${cfg.apiKey}` },
+    signal: signal ?? AbortSignal.timeout(5000),
+  });
+  if (res.status === 404) return null;
+  const body = await res.text();
+  if (!res.ok) {
+    throw new Error(`Resend receiving fetch failed (${res.status}): ${body}`);
+  }
+  const json = body ? JSON.parse(body) : {};
+  return {
+    text: str(json.text),
+    html: str(json.html),
+    from: firstAddr(json.from),
+    to: firstAddr(json.to),
+    subject: str(json.subject),
+  };
+}

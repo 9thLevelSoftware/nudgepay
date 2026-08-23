@@ -1,6 +1,6 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import { serviceClient } from "./helpers";
-import { updateEmailStatus, recordInboundEmail } from "../app/lib/email-messaging.server";
+import { alreadyRecordedInboundEmail, updateEmailStatus, recordInboundEmail } from "../app/lib/email-messaging.server";
 
 const svc = serviceClient();
 
@@ -122,20 +122,132 @@ describe("email inbound + status", () => {
     expect(rows![0].body).toBe("ok");
   });
 
-  it("unmatched sender => no row, matched:false", async () => {
+  it("recordInboundEmail matches a stored display-name customer email", async () => {
+    const addr = `cust-display-${Math.random()}@x.com`;
+    const { customerId, invoiceId, orgFromAddress } = await seedWithOutbound(
+      `Acme AR <${addr}>`,
+      `re_out_disp_${Math.random()}`,
+      `billing-disp-${Math.random()}@chancey.test`,
+    );
     const r = await recordInboundEmail(svc, {
-      from: "stranger@nowhere-es.com",
-      to: "billing@us.com",
+      from: addr,
+      to: orgFromAddress,
+      subject: "Re",
+      body: "ok",
+      providerMessageId: `in_disp_${Math.random()}`,
+    });
+    expect(r.matched).toBe(true);
+    const { data: row } = await svc.from("customers").select("email_norm").eq("id", customerId).single();
+    expect(row!.email_norm).toBe(addr);
+    const { data: inbound } = await svc
+      .from("email_messages")
+      .select("customer_id, invoice_id")
+      .eq("customer_id", customerId)
+      .eq("direction", "inbound");
+    expect(inbound!.some((m) => m.invoice_id === invoiceId)).toBe(true);
+  });
+
+  it("unmatched sender persists inbound_orphans and returns matched:false", async () => {
+    const orgFrom = `billing-unmatched-${Math.random()}@chancey.test`;
+    await seedWithOutbound("cust-known-unm@x.com", `re_out_unm_${Math.random()}`, orgFrom);
+    const pid = `in_es_stranger_${Math.random()}`;
+    const spy = vi.spyOn(console, "error").mockImplementation(() => {});
+    try {
+      const r = await recordInboundEmail(svc, {
+        from: "stranger@nowhere-es.com",
+        to: orgFrom,
+        subject: "x",
+        body: "y",
+        providerMessageId: pid,
+      });
+      expect(r.matched).toBe(false);
+      const { data: rows } = await svc
+        .from("email_messages")
+        .select("id")
+        .eq("provider_message_id", pid);
+      expect(rows ?? []).toHaveLength(0);
+      const { data: orphan } = await svc
+        .from("inbound_orphans")
+        .select("channel, from_address, to_address, from_number, to_number, provider_message_id, subject, body")
+        .eq("provider_message_id", pid)
+        .single();
+      expect(orphan).toMatchObject({
+        channel: "email",
+        from_address: "stranger@nowhere-es.com",
+        to_address: orgFrom,
+        from_number: null,
+        to_number: null,
+        provider_message_id: pid,
+        subject: "x",
+        body: "y",
+      });
+      expect(spy).toHaveBeenCalledWith({
+        event: "inbound_orphan_email",
+        from: "stranger@nowhere-es.com",
+        to: orgFrom,
+        sid: pid,
+      });
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
+  it("unmatched inbound unique violation is matched:false (webhook still 204)", async () => {
+    const orgFrom = `billing-dup-${Math.random()}@chancey.test`;
+    await seedWithOutbound("cust-dup@x.com", `re_out_dup_${Math.random()}`, orgFrom);
+    const pid = `in_es_dup_${Math.random()}`;
+    const args = {
+      from: "ghost@nowhere-es.com",
+      to: orgFrom,
       subject: "x",
       body: "y",
-      providerMessageId: "in_es_stranger",
-    });
-    expect(r.matched).toBe(false);
-    const { data: rows } = await svc
-      .from("email_messages")
-      .select("id")
-      .eq("provider_message_id", "in_es_stranger");
-    expect(rows ?? []).toHaveLength(0);
+      providerMessageId: pid,
+    };
+    const spy = vi.spyOn(console, "error").mockImplementation(() => {});
+    try {
+      const first = await recordInboundEmail(svc, args);
+      const second = await recordInboundEmail(svc, args);
+      expect(first.matched).toBe(false);
+      expect(second.matched).toBe(false);
+      expect(await alreadyRecordedInboundEmail(svc, pid)).toEqual({ matched: false });
+      const { data: orphans } = await svc
+        .from("inbound_orphans")
+        .select("id")
+        .eq("provider_message_id", pid);
+      expect(orphans).toHaveLength(1);
+      expect(spy).toHaveBeenCalledTimes(1);
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
+  it("ambiguous customer email is unmatched and persisted as orphan", async () => {
+    const orgFrom = `billing-amb-${Math.random()}@chancey.test`;
+    const shared = `same-amb-${Math.random()}@x.com`;
+    const { orgId } = await seedWithOutbound(shared, `re_out_amb_${Math.random()}`, orgFrom);
+    await svc.from("customers").insert({ org_id: orgId, name: "Twin", email: shared });
+    const pid = `in_amb_${Math.random()}`;
+    const spy = vi.spyOn(console, "error").mockImplementation(() => {});
+    try {
+      const r = await recordInboundEmail(svc, {
+        from: shared,
+        to: orgFrom,
+        subject: "Re",
+        body: "hi",
+        providerMessageId: pid,
+      });
+      expect(r.matched).toBe(false);
+      const { data: msgs } = await svc.from("email_messages").select("id").eq("provider_message_id", pid);
+      expect(msgs ?? []).toHaveLength(0);
+      const { data: orphans } = await svc
+        .from("inbound_orphans")
+        .select("channel")
+        .eq("provider_message_id", pid);
+      expect(orphans).toHaveLength(1);
+      expect(orphans![0].channel).toBe("email");
+    } finally {
+      spy.mockRestore();
+    }
   });
 
   it("cross-tenant: inbound routes only to the org that owns the recipient address", async () => {
@@ -214,6 +326,7 @@ describe("email inbound + status", () => {
     const second = await recordInboundEmail(svc, args); // replay/retry
     expect(first.matched).toBe(true);
     expect(second.matched).toBe(true);
+    expect(await alreadyRecordedInboundEmail(svc, pid)).toEqual({ matched: true });
     const { data: rows } = await svc
       .from("email_messages")
       .select("id")
@@ -224,28 +337,49 @@ describe("email inbound + status", () => {
   it("cross-tenant: unknown recipient address returns matched:false (not a DB leak)", async () => {
     // An inbound email whose To: address is not registered in any org's
     // email_config must be silently dropped, never attributed to a random org.
-    const r = await recordInboundEmail(svc, {
-      from: "anyone@external.example",
-      to: "unknown-domain@nobody.example",
-      subject: "Spam",
-      body: "Hello",
-      providerMessageId: `ct-unknown-${Math.random()}`,
-    });
-    expect(r.matched).toBe(false);
+    const pid = `ct-unknown-${Math.random()}`;
+    const spy = vi.spyOn(console, "error").mockImplementation(() => {});
+    try {
+      const r = await recordInboundEmail(svc, {
+        from: "anyone@external.example",
+        to: "unknown-domain@nobody.example",
+        subject: "Spam",
+        body: "Hello",
+        providerMessageId: pid,
+      });
+      expect(r.matched).toBe(false);
+      const { data: orphans } = await svc
+        .from("inbound_orphans")
+        .select("channel, from_address, to_address")
+        .eq("provider_message_id", pid);
+      expect(orphans).toHaveLength(1);
+      expect(orphans![0]).toMatchObject({
+        channel: "email",
+        from_address: "anyone@external.example",
+        to_address: "unknown-domain@nobody.example",
+      });
+    } finally {
+      spy.mockRestore();
+    }
   });
 
   it("treats the inbound recipient as a literal address, not an ILIKE pattern", async () => {
     const fromAddress = `billing-wild-${Math.random()}@chancey.test`;
     await seedWithOutbound("wildcard-sender@x.com", `re_wild_${Math.random()}`, fromAddress);
 
-    const r = await recordInboundEmail(svc, {
-      from: "wildcard-sender@x.com",
-      to: "%",
-      subject: "Pattern attempt",
-      body: "This must not route.",
-      providerMessageId: `in_wild_${Math.random()}`,
-    });
+    const spy = vi.spyOn(console, "error").mockImplementation(() => {});
+    try {
+      const r = await recordInboundEmail(svc, {
+        from: "wildcard-sender@x.com",
+        to: "%",
+        subject: "Pattern attempt",
+        body: "This must not route.",
+        providerMessageId: `in_wild_${Math.random()}`,
+      });
 
-    expect(r.matched).toBe(false);
+      expect(r.matched).toBe(false);
+    } finally {
+      spy.mockRestore();
+    }
   });
 });

@@ -1,6 +1,8 @@
 // Pure mapper: Resend webhook event -> normalized DB intent. Isolates Resend's
 // taxonomy from the data layer. No I/O.
 
+import { inboundEmailBody } from "./html-plain-text";
+
 export type ResendEvent = { type: string; data: Record<string, any> };
 
 export type MappedStatus = {
@@ -63,7 +65,7 @@ export function mapResendEvent(evt: ResendEvent): MappedEvent {
     case "inbound.email.received":
     case "email.inbound":
       return { kind: "inbound", from: firstAddr(d.from), to: firstAddr(d.to), subject: str(d.subject),
-        body: str(d.text) || str(d.html), providerMessageId: str(d.email_id) };
+        body: inboundEmailBody(str(d.text), str(d.html)), providerMessageId: str(d.email_id) };
     default:
       return { kind: "ignore" };
   }

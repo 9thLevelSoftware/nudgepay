@@ -175,3 +175,24 @@ test("sync pages Intuit queries and does not advance truncated CDC (NP-AUD-2026-
   expect(src).toContain("qboQueryAll");
   expect(src).toContain("CDC truncated");
 });
+
+test("inbound email routing includes disabled from-addresses and treats multiples as ambiguous", () => {
+  const src = read("../app/lib/email-messaging.server.ts");
+  const inbound = src.slice(
+    src.indexOf("export async function recordInboundEmail"),
+    src.indexOf("async function persistEmailOrphan"),
+  );
+  expect(inbound).toContain("from_address_norm");
+  expect(inbound).toContain("length !== 1");
+  expect(inbound).not.toContain('.eq("email_enabled", true)');
+});
+
+test("orphan STOP alerts only after the inbound_orphans insert succeeds", () => {
+  const src = read("../app/lib/twilio-messaging.server.ts");
+  const persist = src.slice(
+    src.indexOf("async function persistOrphan"),
+    src.indexOf("async function applyKeywordByPhone"),
+  );
+  expect(persist).toMatch(/if \(error &&[\s\S]*23505[\s\S]*throw error/);
+  expect(persist).toMatch(/if \(!error && args\.keyword === "stop"\)/);
+});

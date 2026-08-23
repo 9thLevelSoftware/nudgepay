@@ -117,6 +117,29 @@ export async function updateEmailStatus(
   }
 }
 
+export async function alreadyRecordedInboundEmail(
+  service: SupabaseClient,
+  providerMessageId: string,
+): Promise<{ matched: boolean } | null> {
+  if (!providerMessageId) return null;
+  const { data: dup, error: dupErr } = await service
+    .from("email_messages")
+    .select("id")
+    .eq("provider_message_id", providerMessageId)
+    .limit(1)
+    .maybeSingle();
+  if (dupErr) throw dupErr;
+  if (dup) return { matched: true };
+  const { data: orphanDup, error: orphanErr } = await service
+    .from("inbound_orphans")
+    .select("id")
+    .eq("provider_message_id", providerMessageId)
+    .maybeSingle();
+  if (orphanErr) throw orphanErr;
+  if (orphanDup) return { matched: false };
+  return null;
+}
+
 export async function recordInboundEmail(
   service: SupabaseClient,
   args: { from: string; to: string; subject: string; body: string; providerMessageId: string },
@@ -130,43 +153,37 @@ export async function recordInboundEmail(
   // Idempotency: Resend retries an event it does not see 2xx'd, and a signed
   // payload can be replayed within the ±5min window. Skip if we already recorded
   // this provider event (the unique index on provider_message_id is the backstop).
-  if (args.providerMessageId) {
-    const { data: dup, error: dupErr } = await service
-      .from("email_messages")
-      .select("id")
-      .eq("provider_message_id", args.providerMessageId)
-      .limit(1)
-      .maybeSingle();
-    if (dupErr) throw dupErr;
-    if (dup) return { matched: true };
-  }
+  const recorded = await alreadyRecordedInboundEmail(service, args.providerMessageId);
+  if (recorded) return recorded;
 
-  // Resolve the org that owns the recipient (args.to) address. This is the
-  // org's configured outbound from_address and identifies the tenant uniquely.
-  // Compare normalized strings in process instead of passing user-controlled
-  // input to an ILIKE pattern operator; zero or multiple matches are ambiguous.
+  // Ambiguous (2) is unmatched, same as none. Include disabled configs so a
+  // later reply to a previously sent message still routes, and so two orgs
+  // sharing an address (one disabled) stay ambiguous rather than flipping
+  // attribution when outbound is toggled.
   const { data: configs, error: configErr } = await service
     .from("email_config")
     .select("org_id, from_address")
-    .not("from_address", "is", null);
+    .eq("from_address_norm", toNorm)
+    .limit(2);
   if (configErr) throw configErr;
-  const matchingConfigs = (configs ?? []).filter(
-    (cfg) => normalizeEmail(cfg.from_address as string) === toNorm,
-  );
-  if (matchingConfigs.length !== 1) return { matched: false };
-  const orgId = matchingConfigs[0].org_id as string;
+  if ((configs ?? []).length !== 1) {
+    await persistEmailOrphan(service, args);
+    return { matched: false };
+  }
+  const orgId = configs![0].org_id as string;
 
-  // Scope the sender lookup to the resolved org only — never query across tenants.
-  const { data: candidates, error: candErr } = await service
+  const { data: matches, error: candErr } = await service
     .from("customers")
-    .select("id, org_id, email")
+    .select("id, org_id")
     .eq("org_id", orgId)
-    .not("email", "is", null);
+    .eq("email_norm", fromNorm)
+    .limit(2);
   if (candErr) throw candErr;
-  const match = (candidates ?? []).find(
-    (c) => normalizeEmail(c.email as string) === fromNorm,
-  );
-  if (!match) return { matched: false };
+  if ((matches ?? []).length !== 1) {
+    await persistEmailOrphan(service, args);
+    return { matched: false };
+  }
+  const match = matches![0];
 
   // Thread to the customer's most recent outbound invoice, if any.
   const { data: lastOut, error: lastOutErr } = await service
@@ -204,4 +221,29 @@ export async function recordInboundEmail(
   }
 
   return { matched: true };
+}
+
+async function persistEmailOrphan(
+  service: SupabaseClient,
+  args: { from: string; to: string; subject: string; body: string; providerMessageId: string },
+): Promise<void> {
+  const { error } = await service.from("inbound_orphans").insert({
+    channel: "email",
+    from_address: args.from,
+    to_address: args.to,
+    subject: args.subject,
+    body: args.body,
+    provider_message_id: args.providerMessageId || null,
+    from_number: null,
+    to_number: null,
+  });
+  if (error && (error as { code?: string }).code !== "23505") throw error;
+  if (!error) {
+    console.error({
+      event: "inbound_orphan_email",
+      from: args.from,
+      to: args.to,
+      sid: args.providerMessageId,
+    });
+  }
 }

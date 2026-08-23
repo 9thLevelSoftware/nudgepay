@@ -1,4 +1,4 @@
-import { expect, test } from "vitest";
+import { expect, test, vi } from "vitest";
 import { serviceClient } from "./helpers";
 import { recordInboundMessage, updateMessageStatus } from "../app/lib/twilio-messaging.server";
 
@@ -59,7 +59,14 @@ test("recordInboundMessage START re-enables sms_consent", async () => {
 });
 
 test("recordInboundMessage persists unmatched inbound including STOP (NP-AUD-2026-004)", async () => {
-  const out = await recordInboundMessage(svc, { from: "+13105559999", to: "+15005550006", body: "STOP", messageSid: "SMin4-9999" });
+  const onOrphanStop = vi.fn();
+  const out = await recordInboundMessage(svc, {
+    from: "+13105559999",
+    to: "+15005550006",
+    body: "STOP",
+    messageSid: "SMin4-9999",
+    onOrphanStop,
+  });
   expect(out.matched).toBe(false);
   expect(out.optOut).toBe(true);
   const { data } = await svc.from("text_messages").select("id").eq("twilio_message_sid", "SMin4-9999");
@@ -67,6 +74,48 @@ test("recordInboundMessage persists unmatched inbound including STOP (NP-AUD-202
   const { data: orphan } = await svc.from("inbound_orphans").select("keyword, body").eq("twilio_message_sid", "SMin4-9999").single();
   expect(orphan!.keyword).toBe("stop");
   expect(orphan!.body).toBe("STOP");
+  expect(onOrphanStop).toHaveBeenCalledWith({
+    event: "inbound_orphan_stop",
+    from: "+13105559999",
+    to: "+15005550006",
+    sid: "SMin4-9999",
+  });
+});
+
+test("recordInboundMessage logs inbound_orphan_stop via console.error by default", async () => {
+  const spy = vi.spyOn(console, "error").mockImplementation(() => {});
+  try {
+    await recordInboundMessage(svc, {
+      from: "+13105559995",
+      to: "+15005550010",
+      body: "STOP",
+      messageSid: "SMin-orphan-console",
+    });
+    expect(spy).toHaveBeenCalledWith({
+      event: "inbound_orphan_stop",
+      from: "+13105559995",
+      to: "+15005550010",
+      sid: "SMin-orphan-console",
+    });
+  } finally {
+    spy.mockRestore();
+  }
+});
+
+test("recordInboundMessage does not re-alert STOP on MessageSid replay", async () => {
+  const onOrphanStop = vi.fn();
+  const args = {
+    from: "+13105559996",
+    to: "+15005550009",
+    body: "STOP",
+    messageSid: "SMin-orphan-replay",
+    onOrphanStop,
+  };
+  const first = await recordInboundMessage(svc, args);
+  const second = await recordInboundMessage(svc, args);
+  expect(first.matched).toBe(false);
+  expect(second.matched).toBe(true);
+  expect(onOrphanStop).toHaveBeenCalledTimes(1);
 });
 
 test("updateMessageStatus updates status and error_code by sid", async () => {

@@ -3,7 +3,9 @@ import { getEnv, getEmailEnv } from "../lib/env.server";
 import { createSupabaseServiceClient } from "../lib/supabase.server";
 import { verifyResendSignature } from "../lib/resend-webhook.server";
 import { mapResendEvent } from "../lib/email-events";
-import { updateEmailStatus, recordInboundEmail } from "../lib/email-messaging.server";
+import { fetchReceivingEmail } from "../lib/email-client.server";
+import { alreadyRecordedInboundEmail, updateEmailStatus, recordInboundEmail } from "../lib/email-messaging.server";
+import { inboundEmailBody } from "../lib/html-plain-text";
 
 export async function action({ request, context }: ActionFunctionArgs) {
   const emailEnv = getEmailEnv(context as any);
@@ -27,7 +29,21 @@ export async function action({ request, context }: ActionFunctionArgs) {
     if (mapped.kind === "status") {
       await updateEmailStatus(service, mapped);
     } else if (mapped.kind === "inbound") {
-      await recordInboundEmail(service, mapped);
+      // Receiving webhooks omit body. Skip the GET on replay so a later
+      // receiving 5xx cannot 500 an already-persisted event.
+      const recorded = await alreadyRecordedInboundEmail(service, mapped.providerMessageId);
+      if (!recorded) {
+        let body = mapped.body;
+        if (mapped.providerMessageId) {
+          const fetched = await fetchReceivingEmail(
+            fetch,
+            { apiKey: emailEnv.RESEND_API_KEY },
+            mapped.providerMessageId,
+          );
+          if (fetched) body = inboundEmailBody(fetched.text, fetched.html) || mapped.body;
+        }
+        await recordInboundEmail(service, { ...mapped, body });
+      }
     }
   } catch (err) {
     console.error("Resend webhook processing failed", err);
