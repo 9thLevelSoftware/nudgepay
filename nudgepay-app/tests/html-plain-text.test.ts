@@ -8,6 +8,8 @@ test("htmlToPlainText strips tags, scripts, and decodes entities", () => {
   expect(htmlToPlainText("<p>Hi</p><p>I'll pay Friday</p>")).toBe("Hi\nI'll pay Friday");
   expect(htmlToPlainText("<script>alert(1)</script><p>ok</p>")).toBe("ok");
   expect(htmlToPlainText("A&nbsp;B &amp; C")).toBe("A B & C");
+  expect(htmlToPlainText("&#128512;")).toBe("😀");
+  expect(htmlToPlainText("&#x1F600;")).toBe("😀");
   expect(htmlToPlainText("<br>line")).toBe("line");
 });
 

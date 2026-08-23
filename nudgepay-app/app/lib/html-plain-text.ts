@@ -17,13 +17,16 @@ function decodeEntities(s: string): string {
   return s.replace(/&(#x[0-9a-f]+|#\d+|[a-z]+);/gi, (full, ent: string) => {
     const key = ent.toLowerCase();
     if (key in NAMED) return NAMED[key];
-    if (key.startsWith("#x")) {
-      const n = Number.parseInt(key.slice(2), 16);
-      return Number.isFinite(n) ? String.fromCharCode(n) : full;
-    }
-    if (key.startsWith("#")) {
-      const n = Number.parseInt(key.slice(1), 10);
-      return Number.isFinite(n) ? String.fromCharCode(n) : full;
+    if (key.startsWith("#x") || key.startsWith("#")) {
+      const n = key.startsWith("#x")
+        ? Number.parseInt(key.slice(2), 16)
+        : Number.parseInt(key.slice(1), 10);
+      if (!Number.isFinite(n) || n < 0 || n > 0x10ffff) return full;
+      try {
+        return String.fromCodePoint(n);
+      } catch {
+        return full;
+      }
     }
     return full;
   });
