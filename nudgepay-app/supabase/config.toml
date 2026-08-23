@@ -204,8 +204,9 @@ anonymous_users = 30
 # Number of sessions that can be refreshed in a 5 minute interval per IP address.
 token_refresh = 150
 # Number of sign up and sign-in requests that can be made in a 5 minute interval per IP address (excludes anonymous users).
-# Local/CI: makeUserClient() signInWithPassword per integration test; 30/5min 429s the suite.
-sign_in_sign_ups = 10000
+# Local: keep a realistic GoTrue cap so rate-limit work is not silently disabled.
+# CI raises this before `supabase start` (see .github/workflows/ci.yml).
+sign_in_sign_ups = 200
 # Number of OTP / Magic link verifications that can be made in a 5 minute interval per IP address.
 token_verifications = 30
 # Number of Web3 logins that can be made in a 5 minute interval per IP address.
