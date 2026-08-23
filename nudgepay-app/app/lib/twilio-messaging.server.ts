@@ -238,7 +238,7 @@ async function persistOrphan(
     keyword: args.keyword,
   });
   if (error && (error as { code?: string }).code !== "23505") throw error;
-  if (args.keyword === "stop") {
+  if (!error && args.keyword === "stop") {
     (args.onOrphanStop ?? console.error)({
       event: "inbound_orphan_stop",
       from: args.from,

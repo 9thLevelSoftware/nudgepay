@@ -156,12 +156,14 @@ export async function recordInboundEmail(
   const recorded = await alreadyRecordedInboundEmail(service, args.providerMessageId);
   if (recorded) return recorded;
 
-  // Ambiguous (2) is unmatched, same as none.
+  // Ambiguous (2) is unmatched, same as none. Include disabled configs so a
+  // later reply to a previously sent message still routes, and so two orgs
+  // sharing an address (one disabled) stay ambiguous rather than flipping
+  // attribution when outbound is toggled.
   const { data: configs, error: configErr } = await service
     .from("email_config")
     .select("org_id, from_address")
     .eq("from_address_norm", toNorm)
-    .eq("email_enabled", true)
     .limit(2);
   if (configErr) throw configErr;
   if ((configs ?? []).length !== 1) {
