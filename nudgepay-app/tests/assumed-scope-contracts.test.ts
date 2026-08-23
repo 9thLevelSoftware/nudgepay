@@ -178,6 +178,12 @@ test("app README is NudgePay not the starter (NP-AUD-2026-132-README)", () => {
   expect(readme).not.toMatch(/Welcome to Remix/i);
 });
 
+test("sms_sender_inventory uniqueness is on trimmed messaging_service_sid", () => {
+  const sql = read("../supabase/migrations/0045_sms_sender_inventory.sql");
+  expect(sql).toContain("sms_sender_inventory_messaging_service_sid_key");
+  expect(sql).toMatch(/lower\(btrim\(messaging_service_sid\)\)/);
+});
+
 test("RESEND_ALLOWED_FROM is documented in production deploy config", () => {
   const wrangler = read("../wrangler.toml");
   expect(wrangler).toMatch(/RESEND_ALLOWED_FROM/);

@@ -21,9 +21,11 @@ create unique index sms_sender_inventory_from_number_last10_key
   on sms_sender_inventory (from_number_last10)
   where from_number_last10 is not null;
 
+-- Unique on the trimmed SID so "MG… " and "MG…" cannot provision two orgs
+-- onto the same Twilio sender (resolveSender trims before send).
 create unique index sms_sender_inventory_messaging_service_sid_key
-  on sms_sender_inventory (messaging_service_sid)
-  where messaging_service_sid is not null;
+  on sms_sender_inventory (lower(btrim(messaging_service_sid)))
+  where messaging_service_sid is not null and btrim(messaging_service_sid) <> '';
 
 create trigger sms_sender_inventory_set_updated_at
   before update on sms_sender_inventory
