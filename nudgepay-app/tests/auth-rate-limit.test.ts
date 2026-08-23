@@ -86,6 +86,19 @@ describe("authRateLimited", () => {
     expect(memoryAuthRateLimited(blocked, now)).toBe(true);
   });
 
+  it("refreshes a blocked bucket to LRU so a new key does not evict it", () => {
+    const blocked = "203.0.113.51";
+    const now = Date.now();
+    for (let i = 0; i < 20; i++) expect(memoryAuthRateLimited(blocked, now)).toBe(false);
+    expect(memoryAuthRateLimited(blocked, now)).toBe(true);
+    for (let i = 0; i < 9_999; i++) {
+      expect(memoryAuthRateLimited(`fill-${i}`, now)).toBe(false);
+    }
+    expect(memoryAuthRateLimited(blocked, now)).toBe(true);
+    expect(memoryAuthRateLimited("203.0.113.52", now)).toBe(false);
+    expect(memoryAuthRateLimited(blocked, now)).toBe(true);
+  });
+
   it("NODE_ENV=production without a CF binding uses the in-memory limiter", async () => {
     const env = { NODE_ENV: "production" };
     for (let i = 0; i < 20; i++) {

@@ -40,12 +40,18 @@ function evictOldest(): void {
   if (first !== undefined) memoryHits.delete(first);
 }
 
+/** Reinsert so Map iteration order is LRU. `set` on an existing key does not. */
+function touch(key: string, timestamps: number[]): void {
+  memoryHits.delete(key);
+  memoryHits.set(key, timestamps);
+}
+
 /** In-process limiter for Node/Render (no Cloudflare ratelimit binding). */
 export function memoryAuthRateLimited(key: string, now = Date.now()): boolean {
   const cutoff = now - MEMORY_WINDOW_MS;
   const prev = (memoryHits.get(key) ?? []).filter((t) => t > cutoff);
   if (prev.length >= MEMORY_LIMIT) {
-    memoryHits.set(key, prev);
+    touch(key, prev);
     return true;
   }
   // Evict only when inserting a previously unseen key, and only the oldest
@@ -54,7 +60,7 @@ export function memoryAuthRateLimited(key: string, now = Date.now()): boolean {
     evictOldest();
   }
   prev.push(now);
-  memoryHits.set(key, prev);
+  touch(key, prev);
   return false;
 }
 
