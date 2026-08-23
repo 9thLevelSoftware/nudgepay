@@ -1,6 +1,6 @@
 import type { SupabaseClient, PostgrestError } from "@supabase/supabase-js";
 import { reconcileCases } from "./cases";
-import { keysetAfter, orderPage, pageAllKeyset, PAGE_ALL_MAX_ROWS } from "./page-all";
+import { chunkIds, keysetAfter, orderPage, pageAllKeyset, PAGE_ALL_MAX_ROWS } from "./page-all";
 
 // Reconcile collection_cases for one org against the current overdue set.
 // Org-scoped on every query. Idempotent: the partial unique index makes a
@@ -52,6 +52,42 @@ export async function applyCaseReconciliation(
 
   const ops = reconcileCases(overdueCustomerIds, openCases, today);
 
+  // Keyset cannot see an older invoice that entered the overdue predicate after
+  // its (created_at, id) cursor passed. Recheck close candidates before resolving.
+  const resolveOps = ops.filter((op): op is { kind: "resolve"; caseId: string } => op.kind === "resolve");
+  const stillOverdue = new Set<string>();
+  if (resolveOps.length > 0) {
+    const resolveCaseIds = new Set(resolveOps.map((op) => op.caseId));
+    const candidateIds = openCases
+      .filter((c) => resolveCaseIds.has(c.id))
+      .map((c) => c.customerId);
+    for (const chunk of chunkIds(candidateIds)) {
+      const recheck = await pageAllKeyset<{ customer_id: string | null; created_at: string; id: string }>(
+        (cursor, from, to) =>
+          keysetAfter(
+            orderPage(
+              client
+                .from("invoices")
+                .select("customer_id, created_at, id", { count: "exact" })
+                .eq("org_id", orgId)
+                .gt("balance", 0)
+                .lt("due_date", today)
+                .not("customer_id", "is", null)
+                .in("customer_id", chunk),
+            ),
+            cursor,
+          ).range(from, to),
+        { maxRows: PAGE_ALL_MAX_ROWS },
+      );
+      if (recheck.truncated) {
+        throw new Error("reconciliation truncated: overdue recheck page is incomplete");
+      }
+      for (const row of recheck.rows) {
+        if (row.customer_id) stillOverdue.add(row.customer_id);
+      }
+    }
+  }
+
   let opened = 0;
   let resolved = 0;
   for (const op of ops) {
@@ -64,6 +100,8 @@ export async function applyCaseReconciliation(
       if (error && (error as PostgrestError).code !== "23505") throw error;
       if (!error) opened += 1;
     } else {
+      const customerId = openCases.find((c) => c.id === op.caseId)?.customerId;
+      if (customerId && stillOverdue.has(customerId)) continue;
       const { data: updated, error } = await client.from("collection_cases")
         .update({ status: "resolved", closed_at: new Date().toISOString(), next_action_at: null })
         .eq("id", op.caseId)

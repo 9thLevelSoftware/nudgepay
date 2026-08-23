@@ -354,9 +354,10 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
   // Destructure the shared queue source
   const {
     cases, invoicesInput, comingDueInvoices, customersInput,
-    lastContactsInput, lastContactTruncated, promisesInput, recentByCase, presenceRows,
+    lastContactsInput, lastContactTruncated: lastContactTruncatedSrc, promisesInput, recentByCase, presenceRows,
     roster, ownerLabels, orgConfig, smsEnabled, smsQuietNow, quietHoursLabel, templates,
   } = src;
+  let lastContactTruncated = lastContactTruncatedSrc;
 
   const orgCompany = orgRow?.name ?? "";
   const orgPhone = orgConfig.companyProfile.phone ?? "";
@@ -516,6 +517,9 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
     ]);
     if (custErr) throw custErr;
     if (apErr) throw apErr;
+    if (actPage.truncated || msgPage.truncated || emailPage.truncated) {
+      lastContactTruncated = true;
+    }
 
     // Activity: contact logs for the case (timeline input).
     const logInputs: TimelineLogInput[] = actPage.rows.map((r) => ({

@@ -111,6 +111,55 @@ test("applyCaseReconciliation throws when overdue paging hits the cap", async ()
     .rejects.toThrow(/reconciliation truncated: overdue invoice page is incomplete/);
 });
 
+test("applyCaseReconciliation does not close a case when a recheck finds an overdue invoice", async () => {
+  let invoicePasses = 0;
+  const overdue = { customer_id: "cust-1", created_at: "2026-01-01T00:00:00.000Z", id: "inv-1" };
+  const updates: string[] = [];
+  const client = {
+    from(table: string) {
+      const q: Record<string, unknown> = {
+        select() { return q; },
+        eq() { return q; },
+        gt() { return q; },
+        lt() { return q; },
+        not() { return q; },
+        is() { return q; },
+        in() { return q; },
+        order() { return q; },
+        or() { return q; },
+        range() { return q; },
+        insert: async () => ({ error: null }),
+        update() {
+          return {
+            eq(col: string, val: string) {
+              if (col === "id") updates.push(val);
+              return { select: async () => ({ data: [{ id: val }], error: null }) };
+            },
+          };
+        },
+        then(resolve: (v: unknown) => unknown, reject?: (e: unknown) => unknown) {
+          if (table === "invoices") {
+            invoicePasses += 1;
+            const rows = invoicePasses === 1 ? [] : [overdue];
+            return Promise.resolve({ data: rows, count: rows.length, error: null }).then(resolve, reject);
+          }
+          return Promise.resolve({
+            data: [{ id: "case-1", customer_id: "cust-1", created_at: "2026-01-01T00:00:00.000Z" }],
+            count: 1,
+            error: null,
+          }).then(resolve, reject);
+        },
+      };
+      return q;
+    },
+  };
+  const result = await applyCaseReconciliation(client as any, "org-1", "2026-06-22");
+  expect(result.resolved).toBe(0);
+  expect(result.opened).toBe(0);
+  expect(updates).toEqual([]);
+  expect(invoicePasses).toBeGreaterThanOrEqual(2);
+});
+
 test("applyPaymentsAndEvaluate records a recon error and rethrows so CDC cannot stamp last_cdc_time", async () => {
   const recorded: Record<string, unknown>[] = [];
   const { client } = makeClient({
