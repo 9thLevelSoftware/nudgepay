@@ -86,6 +86,14 @@ describe("authRateLimitKey", () => {
     expect(authRateLimitKey(request)).toBe("203.0.113.9");
   });
 
+  it("uses the last X-Forwarded-For hop on Node/Render (trusted proxy)", () => {
+    const request = post("/login", {
+      "CF-Connecting-IP": "203.0.113.9",
+      "x-forwarded-for": "198.51.100.1, 10.0.0.1",
+    });
+    expect(authRateLimitKey(request, { BUILD_TARGET: "node" })).toBe("10.0.0.1");
+  });
+
   it("uses the first X-Forwarded-For hop when CF-Connecting-IP is absent", () => {
     const request = post("/login", { "x-forwarded-for": "198.51.100.2, 10.0.0.1" });
     expect(authRateLimitKey(request)).toBe("198.51.100.2");

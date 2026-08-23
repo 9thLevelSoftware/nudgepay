@@ -6,30 +6,54 @@ export type AuthRateLimitEnv = {
   NODE_ENV?: string;
 };
 
-/** CF-Connecting-IP, else first X-Forwarded-For hop. */
-export function authRateLimitKey(request: Request): string {
-  const cf = request.headers.get("CF-Connecting-IP")?.trim();
-  if (cf) return cf;
+/**
+ * Cloudflare: CF-Connecting-IP (authenticated by the edge).
+ * Node/Render: last X-Forwarded-For hop (the one the trusted proxy appended).
+ * Never trust CF-Connecting-IP on Node — Render does not set or authenticate it.
+ */
+export function authRateLimitKey(request: Request, env: AuthRateLimitEnv = {}): string {
+  const node = env.BUILD_TARGET === "node";
+  if (!node) {
+    const cf = request.headers.get("CF-Connecting-IP")?.trim();
+    if (cf) return cf;
+  }
   const forwarded = request.headers.get("x-forwarded-for");
   if (forwarded) {
-    const first = forwarded.split(",")[0]?.trim();
-    if (first) return first;
+    const hops = forwarded.split(",").map((s) => s.trim()).filter(Boolean);
+    if (hops.length) return node ? hops[hops.length - 1]! : hops[0]!;
   }
   return "unknown";
 }
 
 const MEMORY_LIMIT = 20;
 const MEMORY_WINDOW_MS = 60_000;
+const MEMORY_MAX_KEYS = 10_000;
 const memoryHits = new Map<string, number[]>();
 
 export function resetMemoryAuthRateLimit(): void {
   memoryHits.clear();
 }
 
+function pruneMemoryHits(now: number): void {
+  const cutoff = now - MEMORY_WINDOW_MS;
+  for (const [k, times] of memoryHits) {
+    const keep = times.filter((t) => t > cutoff);
+    if (keep.length === 0) memoryHits.delete(k);
+    else memoryHits.set(k, keep);
+  }
+  while (memoryHits.size >= MEMORY_MAX_KEYS) {
+    const first = memoryHits.keys().next().value;
+    if (first === undefined) break;
+    memoryHits.delete(first);
+  }
+}
+
 /** In-process limiter for Node/Render (no Cloudflare ratelimit binding). */
 export function memoryAuthRateLimited(key: string, now = Date.now()): boolean {
+  if (memoryHits.size >= MEMORY_MAX_KEYS) pruneMemoryHits(now);
   const cutoff = now - MEMORY_WINDOW_MS;
   const prev = (memoryHits.get(key) ?? []).filter((t) => t > cutoff);
+  if (prev.length === 0) memoryHits.delete(key);
   if (prev.length >= MEMORY_LIMIT) {
     memoryHits.set(key, prev);
     return true;

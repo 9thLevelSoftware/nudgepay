@@ -31,7 +31,8 @@ function publicOrigin(request: Request, env: Record<string, string>): string {
 
 export async function action({ request, context }: ActionFunctionArgs) {
   requireSameOrigin(request);
-  if (await authRateLimited((context as any).cloudflare?.env ?? {}, authRateLimitKey(request))) {
+  const rateEnv = (context as any).cloudflare?.env ?? {};
+  if (await authRateLimited(rateEnv, authRateLimitKey(request, rateEnv))) {
     return data(
       { error: humanAuthError("email rate limit exceeded") },
       { status: 429 },
