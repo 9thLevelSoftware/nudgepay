@@ -15,6 +15,7 @@ import { formatInstant } from "../lib/dates";
 import { emailFailureLabel, isHardBounce } from "../lib/labels";
 import { smsFlash } from "../lib/flash-copy";
 import { Icon } from "./Icons";
+import { Input } from "./ui";
 
 const EMAIL_BANNER: Record<string, { text: string; tone: string }> = {
   sent: { text: "Email sent.", tone: "text-cool" },
@@ -123,7 +124,7 @@ export function MessageThreadPanel({
           </span>
         </div>
       ) : (
-        <div className="flex items-center justify-between gap-2 px-4 py-2.5 border-b border-border">
+        <div className="flex flex-wrap items-center justify-between gap-2 px-4 py-2.5 border-b border-border">
           <span className="text-xs text-muted">
             SMS consent:{" "}
             <span className={consent ? "font-semibold text-cool" : "font-semibold text-hot"}>{consent ? "yes" : "no"}</span>
@@ -132,18 +133,18 @@ export function MessageThreadPanel({
           {!consent && smsConsentSource === "inbound_stop" && !isOwner ? (
             <p className="text-xs text-hot">Stopped by inbound STOP. Owner override required.</p>
           ) : (
-            <Form method="post" action="/api/sms-consent" className="flex items-center gap-2">
+            <Form method="post" action="/api/sms-consent" className="flex flex-wrap items-center gap-2">
               <input type="hidden" name="invoiceId" value={thread.anchorInvoiceId ?? ""} />
               <input type="hidden" name="customerId" value={thread.customerId} />
               <input type="hidden" name="returnTo" value={returnTo} />
               <input type="hidden" name="consent" value={consent ? "false" : "true"} />
               {!consent && smsConsentSource === "inbound_stop" ? (
-                <input
+                <Input
                   name="reason"
                   required
                   minLength={3}
                   placeholder="Override reason"
-                  className="h-7 w-40 rounded border border-border bg-surface px-2 text-xs"
+                  className="h-7 w-40 max-w-full min-w-0 px-2 py-0 text-xs"
                   aria-label="Consent override reason"
                 />
               ) : null}

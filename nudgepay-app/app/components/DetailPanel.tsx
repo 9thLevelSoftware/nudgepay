@@ -219,7 +219,7 @@ function MessagesTab({
       className="flex flex-1 flex-col min-h-0"
     >
       {/* Consent row */}
-      <div className="flex items-center justify-between gap-2 px-5 py-3 border-b border-border">
+      <div className="flex flex-wrap items-center justify-between gap-2 px-5 py-3 border-b border-border">
         <span className="text-xs font-sans text-muted">
           SMS consent:{" "}
           <span className={consent ? "font-semibold text-cool" : "font-semibold text-hot"}>
@@ -227,7 +227,7 @@ function MessagesTab({
           </span>
           {phone ? <span className="text-muted"> · {phone}</span> : null}
         </span>
-        <div className="flex items-center gap-3">
+        <div className="flex flex-wrap items-center gap-3">
           <Link
             to={prefsHref}
             className="text-xs font-medium text-copper hover:underline"
@@ -238,7 +238,7 @@ function MessagesTab({
             <p className="text-xs font-sans text-hot">Stopped by inbound STOP. Owner override required.</p>
           ) : (
             <form method="post" action="/api/sms-consent">
-              <div className="flex items-center gap-2">
+              <div className="flex flex-wrap items-center gap-2">
                 <input type="hidden" name="invoiceId" value={repInvoiceId ?? ""} />
                 <input type="hidden" name="customerId" value={selected.customerId} />
                 <input type="hidden" name="returnTo" value={returnTo} />
@@ -249,7 +249,7 @@ function MessagesTab({
                     required
                     minLength={3}
                     placeholder="Override reason"
-                    className="h-7 w-40 px-2 py-0 text-xs"
+                    className="h-7 w-40 max-w-full min-w-0 px-2 py-0 text-xs"
                     aria-label="Consent override reason"
                   />
                 ) : null}

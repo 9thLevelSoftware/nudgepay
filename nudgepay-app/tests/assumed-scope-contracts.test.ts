@@ -36,6 +36,24 @@ test("owner STOP override clears do_not_text with consent", () => {
   const src = read("../app/routes/api.sms-consent.tsx");
   expect(src).toContain("overrideStop");
   expect(src).toContain("do_not_text: false");
+  expect(src).toContain("stopLocked");
+  expect(src).toContain("rewrite inbound_stop");
+});
+
+test("inbox STOP override uses shared Input and wraps on narrow panes", () => {
+  const inbox = read("../app/components/MessageThreadPanel.tsx");
+  expect(inbox).toContain('from "./ui"');
+  expect(inbox).toContain("<Input");
+  expect(inbox).toContain("flex-wrap");
+  const dash = read("../app/components/DetailPanel.tsx");
+  expect(dash).toContain("flex-wrap");
+});
+
+test("inbound STOP lock is enforced by a BEFORE UPDATE trigger", () => {
+  const sql = read("../supabase/migrations/0047_inbound_stop_lock.sql");
+  expect(sql).toContain("prevent_inbound_stop_unlock");
+  expect(sql).toMatch(/sms_consent_source is distinct from 'inbound_stop'/);
+  expect(sql).toMatch(/is_org_owner/);
 });
 
 test("invite flash is generic, not raw DB (NP-AUD-2026-126)", () => {
