@@ -123,6 +123,7 @@ describe("settings forms check only their own saved key (NP-AUD-2026-115)", () =
   it("email panel keeps email_saved and does not read saved", () => {
     const email = readComponent("EmailSettingsSection.tsx");
     expect(email).toContain('sp.get("email_saved") === "1"');
+    expect(email).toContain('testResult === "from_allowlist"');
     expect(savedEquals(email)).toEqual([]);
   });
 });

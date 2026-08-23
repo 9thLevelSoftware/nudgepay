@@ -123,6 +123,7 @@ export function EmailSettingsSection(d: EmailSettingsProps) {
           {testResult === "sent" && <p className="text-xs text-cool" role="status">Test email sent.</p>}
           {testResult === "env" && <p className="text-xs text-hot" role="alert">Resend isn't configured on the server yet — set the RESEND_* secrets.</p>}
           {testResult === "nofrom" && <p className="text-xs text-hot" role="alert">Configure a from address above before testing.</p>}
+          {testResult === "from_allowlist" && <p className="text-xs text-hot" role="alert">That from address is not on the operator allowlist (RESEND_ALLOWED_FROM).</p>}
           {testResult === "limited" && <p className="text-xs text-hot" role="alert">Test send limit reached. Try again later.</p>}
           {testResult === "error" && <p className="text-xs text-hot" role="alert">Test email failed — check the server logs.</p>}
         </Form>

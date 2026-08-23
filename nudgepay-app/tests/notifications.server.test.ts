@@ -186,4 +186,15 @@ describe("runDailyDigest operator gate (NP-AUD-2026-049)", () => {
     );
     expect(fetchFn).not.toHaveBeenCalled();
   });
+
+  it("throws when the from address is off the allowlist so the cron can release the claim", async () => {
+    const fetchFn = mockFetch(200, { id: "re_d" });
+    const { service } = serviceForDigest({ fromAddress: "alerts@x.com" });
+    await expect(runDailyDigest(
+      { fetchFn: fetchFn as any, service, email: { apiKey: "key", allowedFrom: "other@x.com" }, appUrl: "https://app.nudgepay.test" },
+      "org-1",
+      "2026-07-02",
+    )).rejects.toThrow(/RESEND_ALLOWED_FROM/);
+    expect(fetchFn).not.toHaveBeenCalled();
+  });
 });
