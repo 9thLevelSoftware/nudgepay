@@ -7,6 +7,11 @@ import {
   inboxListCopy,
 } from "../app/lib/message-inbox";
 import { honestListState, honestPage } from "../app/lib/page-all";
+import {
+  applyCaseView, buildCaseItems, computeCaseMetrics, queueTruncationMessage,
+} from "../app/lib/cases";
+import { DEFAULT_ORG_CONFIG } from "../app/lib/org-config";
+import { whyNow } from "../app/lib/next-best-action";
 
 const read = (rel: string) =>
   readFileSync(fileURLToPath(new URL(rel, import.meta.url)), "utf8");
@@ -99,3 +104,74 @@ test("messages empty copy distinguishes loadError from no threads", () => {
   const inbox = read("../app/components/MessagesInbox.tsx");
   expect(inbox).toContain("inboxListCopy");
 });
+
+test("Stage-2 incomplete last-contact does not classify every case as never-contacted", () => {
+  const cases = [{
+    id: "case-1", customerId: "c1", status: "working" as const,
+    nextActionType: "contact" as const, nextActionAt: null,
+    exceptionReason: null, exceptionNote: null,
+  }];
+  const invoices = [{
+    id: "i1", qbo_doc_number: "1001", customer_id: "c1", balance: 100,
+    due_date: "2026-03-01", amount: 100, invoice_date: "2026-02-01", status: "overdue", paid_date: null,
+  }];
+  const customers = [{
+    id: "c1", name: "Acme", phone: null, email: null, owner: null,
+  }];
+  const incomplete = buildCaseItems(
+    cases, invoices, customers, [], [], "2026-06-22", new Map(), DEFAULT_ORG_CONFIG,
+    { lastContactIncomplete: true },
+  );
+  expect(incomplete[0].lastContact).toBeNull();
+  expect(incomplete[0].lastContactUnknown).toBe(true);
+  expect(applyCaseView(incomplete, "never-contacted", "2026-06-22", null)).toEqual([]);
+  expect(computeCaseMetrics(incomplete, "2026-06-22").neverContacted.count).toBe(0);
+  expect(incomplete[0].factors.some((f) => f.key === "silence")).toBe(false);
+  expect(whyNow(incomplete[0]).reason).toContain("Contact history unknown");
+  expect(whyNow(incomplete[0]).reason).not.toContain("Never contacted");
+
+  const knownEmpty = buildCaseItems(
+    cases, invoices, customers, [], [], "2026-06-22", new Map(), DEFAULT_ORG_CONFIG,
+  );
+  expect(knownEmpty[0].lastContactUnknown).toBe(false);
+  expect(applyCaseView(knownEmpty, "never-contacted", "2026-06-22", null)).toHaveLength(1);
+});
+
+test("queue truncation banner names the truncated Stage-1 page", () => {
+  expect(queueTruncationMessage({
+    overdue: false, comingDue: true, cases: false, customers: false,
+  })).toBe("Showing a partial coming-due invoices list — list may be incomplete");
+  expect(queueTruncationMessage({
+    overdue: true, comingDue: false, cases: true, customers: false,
+  })).toBe("Showing a partial overdue invoices / open cases list — list may be incomplete");
+  expect(queueTruncationMessage({
+    overdue: false, comingDue: false, cases: false, customers: false,
+  })).toBeNull();
+});
+
+test("team and AR CSV 503 on loadError; 409 only when truncated", () => {
+  const csv = read("../app/routes/reports.csv.tsx");
+  const arBranch = csv.slice(csv.indexOf('sheet === "ar"'), csv.indexOf("} else {"));
+  const teamBranch = csv.slice(csv.indexOf("} else {"));
+  expect(arBranch).toContain("arKpis.loadError");
+  expect(arBranch).toContain("status: 503");
+  expect(arBranch.indexOf("loadError")).toBeLessThan(arBranch.indexOf("truncated"));
+  expect(teamBranch).toContain("report.loadError");
+  expect(teamBranch).toContain("status: 503");
+  expect(teamBranch.indexOf("loadError")).toBeLessThan(teamBranch.indexOf("truncated"));
+});
+
+test("queue.csv fails closed on lastContactLoadError and truncation", () => {
+  const src = read("../app/routes/queue.csv.tsx");
+  expect(src).toContain("lastContactLoadError");
+  expect(src).toContain("status: 503");
+  expect(src).toContain("queueTruncated");
+  expect(src).toContain("status: 409");
+});
+
+test("dashboard AR contactRate is truncated when Stage-1 cases are truncated", () => {
+  const src = read("../app/routes/dashboard.tsx");
+  expect(src).toContain("queueTruncation.cases");
+  expect(src).toContain("lastContactLoadError");
+});
+

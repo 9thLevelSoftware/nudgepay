@@ -23,6 +23,15 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
   const src = await loadCaseQueueSource({
     supabase, service, orgId: org.org_id, today, includePresence: false, orgConfig,
   });
+  if (src.lastContactLoadError) {
+    return new Response(src.lastContactLoadError, { status: 503, headers });
+  }
+  if (src.queueTruncated || src.lastContactTruncated) {
+    return new Response(
+      "This list is incomplete (over 5,000 rows). Totals may under-count.",
+      { status: 409, headers },
+    );
+  }
   const url = new URL(request.url);
   const view = (url.searchParams.get("view") ?? "all-open") as ViewId;
   const sort = parseSort(url.searchParams.get("sort"));
@@ -57,6 +66,7 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
   const allItems = buildCaseItems(
     src.cases, src.invoicesInput, src.customersInput, src.lastContactsInput,
     src.promisesInput, today, src.ownerLabels, src.orgConfig,
+    { lastContactIncomplete: !!(src.lastContactTruncated || src.lastContactLoadError) },
   ).map((i) => ({ ...i, payer: payerByCustomer.get(i.customerId) ?? null }));
   const searched = q === "" ? allItems : allItems.filter((i) => i.searchText.includes(q));
   const items = sortCaseItems(applyCaseView(searched, view, today, user.id, highValue), sort);
@@ -65,7 +75,8 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
   if (invoiceMode) {
     const casesByCustomer = new Map(
       allItems.map((i) => [i.customerId, {
-        caseId: i.caseId, lastContact: i.lastContact, peeks: i.peeks, suppressed: i.suppressed,
+        caseId: i.caseId, lastContact: i.lastContact, lastContactUnknown: i.lastContactUnknown,
+        peeks: i.peeks, suppressed: i.suppressed,
       }]),
     );
     const built = buildInvoiceQueue({

@@ -24,6 +24,7 @@ export type InvoiceQueueItem = {
   owner: string;
   ownerId: string | null;
   lastContact: LastContact;
+  lastContactUnknown: boolean;
   peeks: ActivityPeek[];
   payer: PayerStats | null;
   suppressed: boolean;
@@ -32,7 +33,7 @@ export type InvoiceQueueItem = {
 
 export function buildInvoiceQueue(args: {
   invoices: InvoiceInput[];
-  casesByCustomer: Map<string, { caseId: string; lastContact: LastContact; peeks: ActivityPeek[]; suppressed?: boolean }>;
+  casesByCustomer: Map<string, { caseId: string; lastContact: LastContact; lastContactUnknown?: boolean; peeks: ActivityPeek[]; suppressed?: boolean }>;
   customers: CustomerInput[];
   ownerLabels: Map<string, string>;
   payerByCustomer: Map<string, PayerStats>;
@@ -68,6 +69,7 @@ export function buildInvoiceQueue(args: {
       owner: ownerLabel,
       ownerId,
       lastContact: caseId ? (cse?.lastContact ?? null) : null,
+      lastContactUnknown: caseId ? (cse?.lastContactUnknown ?? false) : false,
       peeks: caseId ? (cse?.peeks ?? []) : [],
       payer: inv.customer_id ? args.payerByCustomer.get(inv.customer_id) ?? null : null,
       suppressed: caseId ? (cse?.suppressed ?? false) : false,
@@ -115,7 +117,7 @@ export function applyInvoiceView(
     case "high-value":
       return items.filter((i) => i.balance >= highValue && !i.suppressed);
     case "never-contacted":
-      return items.filter((i) => i.lastContact === null && !i.suppressed);
+      return items.filter((i) => i.lastContact === null && !i.lastContactUnknown && !i.suppressed);
     case "follow-ups-due":
     case "broken-promises":
     case "waiting":

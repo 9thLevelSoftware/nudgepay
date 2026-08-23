@@ -203,7 +203,7 @@ export async function loadReportArKpis(args: {
   supabase: SupabaseClient;
   orgId: string;
   range: ReportRange;
-}): Promise<ArKpis> {
+}): Promise<ArKpis & { loadError: string | null }> {
   const { supabase, orgId, range } = args;
   const orgConfig = await loadOrgConfig(supabase, orgId);
   const tz = orgConfig.companyProfile.timezone;
@@ -235,9 +235,13 @@ export async function loadReportArKpis(args: {
       openCaseIds: [],
       contactedCaseIdsInWindow: [],
       promisesCreatedInWindow: 0,
-      truncated: { ...arSrc.truncated, contact: true },
+      truncated: { ...arSrc.truncated, contact: false },
     });
-    return { ...kpis, agingBuckets: buildArAgingBuckets(arSrc.open, today) };
+    return {
+      ...kpis,
+      agingBuckets: buildArAgingBuckets(arSrc.open, today),
+      loadError: "Could not load report",
+    };
   }
 
   const openCaseIds = openCases.rows
@@ -264,5 +268,5 @@ export async function loadReportArKpis(args: {
     promisesCreatedInWindow: rates.promisesCreated,
     truncated: { ...arSrc.truncated, contact: rates.truncated || openCases.truncated },
   });
-  return { ...kpis, agingBuckets: buildArAgingBuckets(arSrc.open, today) };
+  return { ...kpis, agingBuckets: buildArAgingBuckets(arSrc.open, today), loadError: null };
 }

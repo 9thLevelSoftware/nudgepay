@@ -24,7 +24,9 @@ export function whyNow(item: CaseItem, timeZone?: string | null): WhyNow {
     parts.push(`Follow-up due ${formatDate(item.nextActionAt)}`);
   }
 
-  if (item.lastContact == null) {
+  if (item.lastContactUnknown) {
+    parts.push("Contact history unknown");
+  } else if (item.lastContact == null) {
     parts.push("Never contacted");
   } else if (item.lastContact.date) {
     parts.push(`Last contact: ${item.lastContact.channel.toLowerCase()} · ${formatInstant(item.lastContact.date, timeZone)}`);

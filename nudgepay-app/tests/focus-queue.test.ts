@@ -24,6 +24,7 @@ function stub(overrides: Partial<CaseItem> & { caseId: string }): CaseItem {
     priorAttempts: overrides.priorAttempts ?? 0,
     override: overrides.override ?? null,
     lastContact: overrides.lastContact ?? null,
+    lastContactUnknown: overrides.lastContactUnknown ?? false,
     phone: overrides.phone ?? null,
     smsConsent: overrides.smsConsent ?? false,
     commPrefs: overrides.commPrefs ?? { preferredChannel: null, doNotCall: false, doNotText: false, doNotEmail: false },

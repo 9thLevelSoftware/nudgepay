@@ -29,7 +29,7 @@ import {
 } from "../lib/worklist";
 import {
   buildCaseItems, applyCaseView, sortCaseItems, computeCaseMetrics,
-  mergeWorkspaceInvoices,
+  mergeWorkspaceInvoices, queueTruncationMessage,
   type CaseItem, type CaseInvoice, type CaseRow, type CaseStatus, type NextActionType,
   type CasePromiseInput, type CaseLastContactInput,
 } from "../lib/cases";
@@ -108,10 +108,14 @@ export function buildCaseData(
   comingDueInvoices: InvoiceInput[] = [],
   peeksByCase: Map<string, ActivityPeek[]> = new Map(),
   payerByCustomer: Map<string, PayerStats> = new Map(),
+  lastContactIncomplete = false,
 ): DashboardData {
   const { view, sort, q, caseId } = params;
   const highValue = config.priority.highValue;
-  const base = buildCaseItems(cases, invoices, customers, lastContacts, promises, today, ownerLabels, config);
+  const base = buildCaseItems(
+    cases, invoices, customers, lastContacts, promises, today, ownerLabels, config,
+    { lastContactIncomplete },
+  );
   const allItems = base.map((i) => ({
     ...i,
     peeks: peeksByCase.get(i.caseId) ?? [],
@@ -144,7 +148,8 @@ export function buildCaseData(
   const selected = caseId != null ? (searched.find((i) => i.caseId === caseId) ?? null) : null;
   const casesByCustomer = new Map(
     allItems.map((i) => [i.customerId, {
-      caseId: i.caseId, lastContact: i.lastContact, peeks: i.peeks, suppressed: i.suppressed,
+      caseId: i.caseId, lastContact: i.lastContact, lastContactUnknown: i.lastContactUnknown,
+      peeks: i.peeks, suppressed: i.suppressed,
     }]),
   );
   const builtInvoices = buildInvoiceQueue({
@@ -356,7 +361,8 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
   // Destructure the shared queue source
   const {
     cases, invoicesInput, comingDueInvoices, customersInput,
-    lastContactsInput, queueTruncated, lastContactTruncated: lastContactTruncatedSrc,
+    lastContactsInput, queueTruncated, queueTruncation,
+    lastContactTruncated: lastContactTruncatedSrc,
     lastContactLoadError, promisesInput, recentByCase, presenceRows,
     roster, ownerLabels, orgConfig, smsEnabled, smsQuietNow, quietHoursLabel, templates,
   } = src;
@@ -447,13 +453,17 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
     openCaseIds,
     contactedCaseIdsInWindow: rates.contactedOpenCaseIds,
     promisesCreatedInWindow: rates.promisesCreated,
-    truncated: { ...arSrc.truncated, contact: rates.truncated },
+    truncated: {
+      ...arSrc.truncated,
+      contact: rates.truncated || lastContactTruncatedSrc || !!lastContactLoadError || queueTruncation.cases,
+    },
   });
 
   const dashboardData: DashboardData = buildCaseData(
     cases, invoicesInput, customersInput, lastContactsInput, promisesInput,
     { view, sort, q, caseId, invoice, tab }, today, ownerLabels, user.id, orgConfig,
     comingDueInvoices, peekSrc.peeksByCase, payerByCustomer,
+    !!(lastContactTruncatedSrc || lastContactLoadError),
   );
 
   const sel = dashboardData.selected;
@@ -645,9 +655,7 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
       arKpis,
       lastContactTruncated,
       queueTruncated,
-      queueTruncatedMessage: queueTruncated
-        ? `Showing the first ${invoicesInput.length} overdue invoices / ${cases.length} cases — list may be incomplete`
-        : null,
+      queueTruncatedMessage: queueTruncationMessage(queueTruncation),
       loadError,
       workspaceInvoices,
       ...dashboardData,
@@ -904,6 +912,7 @@ export default function Dashboard() {
                   orgPaymentLink={orgPaymentLink}
                   today={today}
                   timeZone={timeZone}
+                  loadError={loadError}
                 />
               </div>
             ) : null}

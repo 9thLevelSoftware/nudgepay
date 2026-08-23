@@ -9,8 +9,9 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import type { InvoiceInput, CustomerInput } from "./worklist";
 import type {
   CaseRow, CaseStatus, NextActionType,
-  CasePromiseInput, CaseLastContactInput,
+  CasePromiseInput, CaseLastContactInput, QueueTruncation,
 } from "./cases";
+import { isQueueTruncated } from "./cases";
 import type { PriorityOverrideLevel } from "./priority";
 import type { ExceptionReason } from "./contact-log";
 import type { OrgConfig } from "./org-config";
@@ -86,6 +87,7 @@ export type CaseQueueSource = {
   lastContactsInput: CaseLastContactInput[];
   /** True when Stage-1 overdue / coming-due / open-case / customer pages hit PAGE_ALL_MAX_ROWS. */
   queueTruncated: boolean;
+  queueTruncation: QueueTruncation;
   /** True when Stage-2 last-contact / promise pages hit PAGE_ALL_MAX_ROWS. */
   lastContactTruncated: boolean;
   /** Stage-2 list query failed. Empty last-contact is not "never contacted". */
@@ -231,8 +233,13 @@ export async function loadCaseQueueSource(args: LoadCaseQueueArgs): Promise<Case
           ).range(from, to),
         { maxRows: PAGE_ALL_MAX_ROWS },
       );
-  const queueTruncated = overduePage.truncated || comingDuePage.truncated
-    || casePage.truncated || custPage.truncated;
+  const queueTruncation: QueueTruncation = {
+    overdue: overduePage.truncated,
+    comingDue: comingDuePage.truncated,
+    cases: casePage.truncated,
+    customers: custPage.truncated,
+  };
+  const queueTruncated = isQueueTruncated(queueTruncation);
 
   const customerMap = new Map<string, CustomerInput>();
   for (const c of custPage.rows) {
@@ -410,6 +417,7 @@ export async function loadCaseQueueSource(args: LoadCaseQueueArgs): Promise<Case
     customersInput,
     lastContactsInput,
     queueTruncated,
+    queueTruncation,
     lastContactTruncated,
     lastContactLoadError,
     promisesInput,

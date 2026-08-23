@@ -138,7 +138,7 @@ const CHASE_CHANNEL_LABEL: Record<"sms" | "email" | "call", string> = {
 function MessagesTab({
   selected, invoices, repInvoiceId, messages, consent, smsConsentSource, isOwner, prefs, phone, sms, smsEnabled, smsQuietNow, quietHoursLabel,
   view, sort, q, density, entity, invoice, collision,
-  smsTemplates, orgCompany, orgPhone, orgPaymentLink, timeZone, composerRef,
+  smsTemplates, orgCompany, orgPhone, orgPaymentLink, timeZone, composerRef, loadError,
 }: {
   selected: CaseItem;
   invoices: CaseInvoice[];
@@ -166,6 +166,7 @@ function MessagesTab({
   orgPaymentLink: string;
   timeZone?: string | null;
   composerRef: React.RefObject<HTMLDivElement | null>;
+  loadError?: string | null;
 }) {
   const returnTo = `/dashboard${panelHref(view, sort, q, density, { case: selected.caseId, tab: "messages", entity, invoice })}`;
   const prefsHref = panelHref(view, sort, q, density, { case: selected.caseId, tab: "messages", prefs: "1", entity, invoice });
@@ -281,8 +282,8 @@ function MessagesTab({
         {messages.length === 0 ? (
           <div className="flex flex-col items-center justify-center gap-2 py-10 text-center">
             <Icon name="message" size={24} className="text-border" aria-hidden />
-            <p className="text-sm font-sans font-semibold text-text">No messages yet.</p>
-            <p className="text-xs text-muted max-w-xs">Pick a template or write a message below.</p>
+            <p className="text-sm font-sans font-semibold text-text">{loadError ?? "No messages yet."}</p>
+            <p className="text-xs text-muted max-w-xs">{loadError ? "Message history could not be loaded." : "Pick a template or write a message below."}</p>
           </div>
         ) : (
           <MessageBubbles messages={messages} timeZone={timeZone} />
@@ -379,7 +380,7 @@ function MessagesTab({
 
 function EmailTab({
   selected, invoices, repInvoiceId, emailMessages, prefs, customerEmail, emailEnabled,
-  view, sort, q, density, entity, invoice, emailTemplates, orgCompany, orgPhone, orgPaymentLink, timeZone, composerRef,
+  view, sort, q, density, entity, invoice, emailTemplates, orgCompany, orgPhone, orgPaymentLink, timeZone, composerRef, loadError,
 }: {
   selected: CaseItem;
   invoices: CaseInvoice[];
@@ -400,6 +401,7 @@ function EmailTab({
   orgPaymentLink: string;
   timeZone?: string | null;
   composerRef: React.RefObject<HTMLDivElement | null>;
+  loadError?: string | null;
 }) {
   const [searchParams] = useSearchParams();
   const emailResult = searchParams.get("email");
@@ -475,8 +477,8 @@ function EmailTab({
         {emailMessages.length === 0 ? (
           <div className="flex flex-col items-center justify-center gap-2 py-10 text-center">
             <Icon name="mail" size={24} className="text-border" aria-hidden />
-            <p className="text-sm font-sans font-semibold text-text">No emails yet.</p>
-            <p className="text-xs text-muted max-w-xs">Pick a template or write an email below.</p>
+            <p className="text-sm font-sans font-semibold text-text">{loadError ?? "No emails yet."}</p>
+            <p className="text-xs text-muted max-w-xs">{loadError ? "Email history could not be loaded." : "Pick a template or write an email below."}</p>
           </div>
         ) : (
           <ul className="flex flex-col gap-3">
@@ -638,6 +640,7 @@ export function DetailPanel({
   orgPaymentLink,
   today,
   timeZone,
+  loadError = null,
 }: {
   selected: CaseItem | null;
   repInvoiceId: string | null;
@@ -675,6 +678,7 @@ export function DetailPanel({
   /** Org-local calendar day (YYYY-MM-DD) from todayInTz — never UTC. */
   today: string;
   timeZone?: string | null;
+  loadError?: string | null;
 }) {
   // ── Hooks (must be unconditional, before any early return) ─────────────────
   // Presence: beat immediately on customer change, then every HEARTBEAT_INTERVAL_MS.
@@ -1153,7 +1157,7 @@ export function DetailPanel({
           <div id="history" className="mt-4 scroll-mt-4">
             <span className="text-xs font-sans font-medium uppercase tracking-wider text-muted">History</span>
             {timeline.length === 0 ? (
-              <p className="mt-2 text-xs text-muted">No activity yet.</p>
+              <p className="mt-2 text-xs text-muted">{loadError ?? "No activity yet."}</p>
             ) : (
               <TimelineList entries={visibleTimeline} today={today} timeZone={timeZone} />
             )}
@@ -1290,11 +1294,12 @@ export function DetailPanel({
           orgPaymentLink={orgPaymentLink}
           timeZone={timeZone}
           composerRef={composerRef}
+          loadError={loadError}
         />
       ) : null}
 
       {tab === "email" ? (
-        <EmailTab
+        <EmailTab>
           key={selected.caseId}
           selected={selected}
           invoices={invoices}
@@ -1315,6 +1320,7 @@ export function DetailPanel({
           orgPaymentLink={orgPaymentLink}
           timeZone={timeZone}
           composerRef={composerRef}
+          loadError={loadError}
         />
       ) : null}
     </aside>

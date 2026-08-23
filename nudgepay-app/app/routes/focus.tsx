@@ -83,6 +83,7 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
   const allItems = buildCaseItems(
     src.cases, src.invoicesInput, src.customersInput,
     src.lastContactsInput, src.promisesInput, today, src.ownerLabels, src.orgConfig,
+    { lastContactIncomplete: !!(src.lastContactTruncated || src.lastContactLoadError) },
   );
 
   const built = buildFocusQueue(allItems, today, user.id);
@@ -563,7 +564,7 @@ export default function FocusMode() {
                 Recent activity
               </p>
               {currentTimeline.length === 0 ? (
-                <p className="text-xs text-muted">No activity yet</p>
+                <p className="text-xs text-muted">{historyLoadError ?? "No activity yet"}</p>
               ) : (
                 <div className="space-y-2">
                   {currentTimeline.map((entry) => (

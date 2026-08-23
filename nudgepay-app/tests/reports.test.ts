@@ -318,7 +318,8 @@ test("reports page renders ArKpiBand for the selected range and stays owner-only
   expect(page).toContain("loadTeamReport");
   expect(page).toContain("<ArKpiBand");
   expect(page).toContain("sheet=ar");
-  expect(page).toContain("loadError || report.truncated");
+  expect(page).toContain("hideTeam");
+  expect(page).toContain("Could not load report");
   expect(page).toContain("!report.truncated");
   expect(page).toContain("!arKpis.truncated");
   expect(page).not.toContain("lastContactsInput");
@@ -358,8 +359,11 @@ test("reports.csv sheet=ar uses arKpisToCsv; default team skips AR queries", () 
   expect(teamBranch).toContain("loadTeamReport");
   expect(teamBranch).not.toContain("loadReportArKpis");
   expect(csvRoute).toContain("status: 409");
+  expect(csvRoute).toContain("status: 503");
   expect(csvRoute).toContain("report.truncated");
   expect(csvRoute).toContain("arKpis.truncated");
+  expect(csvRoute).toContain("arKpis.loadError");
+  expect(csvRoute).toContain("report.loadError");
 });
 
 // ── loadReportArKpis open-case paging ────────────────────────────────────────
@@ -523,5 +527,6 @@ test("loadReportArKpis query error does not throw and does not paint 0% rates", 
   const kpis = await loadReportArKpis({ supabase: client, orgId: "org-1", range: 30 });
   expect(kpis.contactRate).toBeNull();
   expect(kpis.promiseRate).toBeNull();
-  expect(kpis.truncated).toBe(true);
+  expect(kpis.loadError).toBe("Could not load report");
+  expect(kpis.truncated).toBe(false);
 });

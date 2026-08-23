@@ -13,6 +13,8 @@ export type PriorityFactorInput = {
   balance: number;
   brokenPromise: boolean;
   daysSinceContact: number | null; // null = never contacted (treated as max silence)
+  /** Incomplete last-contact read — do not treat missing as never contacted. */
+  contactUnknown?: boolean;
   followUpDue: boolean;
 };
 
@@ -46,7 +48,8 @@ function balancePoints(balance: number, highValueThreshold: number = HIGH_VALUE_
   return 0;
 }
 const BROKEN_PROMISE_POINTS = 25;
-function silencePoints(daysSinceContact: number | null): number {
+function silencePoints(daysSinceContact: number | null, contactUnknown?: boolean): number {
+  if (contactUnknown) return 0;
   if (daysSinceContact === null) return 15; // never contacted = max silence
   if (daysSinceContact >= 30) return 15;
   if (daysSinceContact >= 14) return 10;
@@ -105,7 +108,7 @@ export function scorePriority(input: PriorityFactorInput, opts: ScorePriorityOpt
 
   if (input.brokenPromise) factors.push({ key: "broken", label: "Broken promise", points: BROKEN_PROMISE_POINTS });
 
-  const silP = silencePoints(input.daysSinceContact);
+  const silP = silencePoints(input.daysSinceContact, input.contactUnknown);
   if (silP > 0) factors.push({
     key: "silence",
     label: input.daysSinceContact === null ? "Never contacted" : `${input.daysSinceContact} days since contact`,
