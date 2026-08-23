@@ -4,11 +4,15 @@ import {
   assertNotTruncated,
   chunkIds,
   isTruncatedPage,
+  keysetAfter,
+  keysetDescFilter,
   orderPage,
   pageAll,
   pageAllChunked,
+  pageAllKeyset,
   PAGE_ALL_MAX_ROWS,
   POSTGREST_MAX_ROWS,
+  quotePostgrestValue,
 } from "../app/lib/page-all";
 
 test("isTruncatedPage is true when returned rows are fewer than exact count", () => {
@@ -189,6 +193,90 @@ test("orderPage applies created_at desc then id desc", () => {
     { column: "created_at", ascending: false },
     { column: "id", ascending: false },
   ]);
+});
+
+test("quotePostgrestValue double-quotes and escapes reserved characters", () => {
+  expect(quotePostgrestValue("2026-01-01T00:00:00.000Z")).toBe('"2026-01-01T00:00:00.000Z"');
+  expect(quotePostgrestValue('a"b\\c')).toBe('"a\\"b\\\\c"');
+});
+
+test("keysetDescFilter encodes created_at desc, id desc continuation", () => {
+  expect(keysetDescFilter({ created_at: "2026-01-01T00:00:00.000Z", id: "inv-1" }))
+    .toBe('created_at.lt."2026-01-01T00:00:00.000Z",and(created_at.eq."2026-01-01T00:00:00.000Z",id.lt."inv-1")');
+});
+
+test("keysetAfter is a no-op without a cursor and applies or() with one", () => {
+  const filters: string[] = [];
+  const q = { or(filter: string) { filters.push(filter); return q; } };
+  expect(keysetAfter(q, null)).toBe(q);
+  expect(filters).toEqual([]);
+  const cursor = { created_at: "2026-01-01T00:00:00.000Z", id: "inv-1" };
+  expect(keysetAfter(q, cursor)).toBe(q);
+  expect(filters).toEqual([keysetDescFilter(cursor)]);
+});
+
+test("pageAllKeyset walks (created_at, id) cursors instead of offsets", async () => {
+  const all = [
+    { created_at: "2026-01-03T00:00:00.000Z", id: "c" },
+    { created_at: "2026-01-02T00:00:00.000Z", id: "b" },
+    { created_at: "2026-01-01T00:00:00.000Z", id: "a" },
+  ];
+  const cursors: Array<{ created_at: string; id: string } | null> = [];
+  const run = async (cursor: { created_at: string; id: string } | null, from: number, to: number) => {
+    cursors.push(cursor);
+    const start = cursor
+      ? all.findIndex((r) => r.created_at === cursor.created_at && r.id === cursor.id) + 1
+      : 0;
+    const page = all.slice(start, start + (to - from + 1));
+    return { data: page, count: all.length, error: null };
+  };
+  const { rows, truncated } = await pageAllKeyset(run, { pageSize: 2, maxRows: 50 });
+  expect(rows).toEqual(all);
+  expect(truncated).toBe(false);
+  expect(cursors).toEqual([null, { created_at: "2026-01-02T00:00:00.000Z", id: "b" }]);
+});
+
+test("pageAllKeyset still returns a skipped later row after a newer insert between pages", async () => {
+  const original = [
+    { created_at: "2026-01-03T00:00:00.000Z", id: "c", customer_id: "keep" },
+    { created_at: "2026-01-02T00:00:00.000Z", id: "b", customer_id: "keep" },
+    { created_at: "2026-01-01T00:00:00.000Z", id: "a", customer_id: "must-keep" },
+  ];
+  let live = [...original];
+  const run = async (cursor: { created_at: string; id: string } | null, from: number, to: number) => {
+    const start = cursor
+      ? live.findIndex((r) => r.created_at === cursor.created_at && r.id === cursor.id) + 1
+      : 0;
+    const page = live.slice(start, start + (to - from + 1));
+    if (!cursor) {
+      live = [
+        { created_at: "2026-01-04T00:00:00.000Z", id: "d", customer_id: "new" },
+        ...original,
+      ];
+    }
+    return { data: page, count: original.length, error: null };
+  };
+  const { rows, truncated } = await pageAllKeyset(run, { pageSize: 2, maxRows: 50 });
+  expect(truncated).toBe(false);
+  expect(rows.map((r) => r.id)).toEqual(["c", "b", "a"]);
+  expect(rows.some((r) => r.customer_id === "must-keep")).toBe(true);
+});
+
+test("pageAllKeyset flags truncated at maxRows when more rows remain", async () => {
+  const all = Array.from({ length: 6 }, (_, i) => ({
+    created_at: `2026-01-0${6 - i}T00:00:00.000Z`,
+    id: `id-${i}`,
+  }));
+  const run = async (cursor: { created_at: string; id: string } | null, from: number, to: number) => {
+    const start = cursor
+      ? all.findIndex((r) => r.created_at === cursor.created_at && r.id === cursor.id) + 1
+      : 0;
+    const page = all.slice(start, start + (to - from + 1));
+    return { data: page, count: all.length, error: null };
+  };
+  const { rows, truncated } = await pageAllKeyset(run, { pageSize: 2, maxRows: 4 });
+  expect(rows).toHaveLength(4);
+  expect(truncated).toBe(true);
 });
 
 test("pageAllChunked returns empty and not truncated for no chunks", async () => {

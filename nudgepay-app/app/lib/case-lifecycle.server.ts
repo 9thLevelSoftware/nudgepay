@@ -1,6 +1,6 @@
 import type { SupabaseClient, PostgrestError } from "@supabase/supabase-js";
 import { reconcileCases } from "./cases";
-import { orderPage, pageAll, PAGE_ALL_MAX_ROWS } from "./page-all";
+import { keysetAfter, orderPage, pageAllKeyset, PAGE_ALL_MAX_ROWS } from "./page-all";
 
 // Reconcile collection_cases for one org against the current overdue set.
 // Org-scoped on every query. Idempotent: the partial unique index makes a
@@ -8,16 +8,19 @@ import { orderPage, pageAll, PAGE_ALL_MAX_ROWS } from "./page-all";
 export async function applyCaseReconciliation(
   client: SupabaseClient, orgId: string, today: string,
 ): Promise<{ opened: number; resolved: number }> {
-  const overduePage = await pageAll<{ customer_id: string | null }>(
-    (from, to) =>
-      orderPage(
-        client
-          .from("invoices")
-          .select("customer_id", { count: "exact" })
-          .eq("org_id", orgId)
-          .gt("balance", 0)
-          .lt("due_date", today)
-          .not("customer_id", "is", null),
+  const overduePage = await pageAllKeyset<{ customer_id: string | null; created_at: string; id: string }>(
+    (cursor, from, to) =>
+      keysetAfter(
+        orderPage(
+          client
+            .from("invoices")
+            .select("customer_id, created_at, id", { count: "exact" })
+            .eq("org_id", orgId)
+            .gt("balance", 0)
+            .lt("due_date", today)
+            .not("customer_id", "is", null),
+        ),
+        cursor,
       ).range(from, to),
     { maxRows: PAGE_ALL_MAX_ROWS },
   );
@@ -28,14 +31,17 @@ export async function applyCaseReconciliation(
     overduePage.rows.map((r) => r.customer_id as string).filter(Boolean),
   );
 
-  const openPage = await pageAll<{ id: string; customer_id: string }>(
-    (from, to) =>
-      orderPage(
-        client
-          .from("collection_cases")
-          .select("id, customer_id", { count: "exact" })
-          .eq("org_id", orgId)
-          .is("closed_at", null),
+  const openPage = await pageAllKeyset<{ id: string; customer_id: string; created_at: string }>(
+    (cursor, from, to) =>
+      keysetAfter(
+        orderPage(
+          client
+            .from("collection_cases")
+            .select("id, customer_id, created_at", { count: "exact" })
+            .eq("org_id", orgId)
+            .is("closed_at", null),
+        ),
+        cursor,
       ).range(from, to),
     { maxRows: PAGE_ALL_MAX_ROWS },
   );

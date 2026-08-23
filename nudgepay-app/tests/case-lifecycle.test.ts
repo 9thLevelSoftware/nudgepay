@@ -4,13 +4,38 @@ import { applyPaymentsAndEvaluate, type SyncDeps } from "../app/lib/qbo-sync.ser
 
 type TableRows = { rows: Record<string, unknown>[]; count?: number; error?: { message: string } | null };
 
+function parseKeysetCursor(filter: string | null): { created_at: string; id: string } | null {
+  if (!filter) return null;
+  const m = filter.match(/created_at\.lt\."([^"]+)",and\(created_at\.eq\."([^"]+)",id\.lt\."([^"]+)"\)/);
+  if (!m) return null;
+  return { created_at: m[1], id: m[3] };
+}
+
+function keysetSlice(rows: Record<string, unknown>[], cursor: { created_at: string; id: string } | null) {
+  const sorted = [...rows].sort((a, b) => {
+    const ac = String(a.created_at ?? "");
+    const bc = String(b.created_at ?? "");
+    if (ac !== bc) return ac < bc ? 1 : -1;
+    const ai = String(a.id ?? "");
+    const bi = String(b.id ?? "");
+    if (ai === bi) return 0;
+    return ai < bi ? 1 : -1;
+  });
+  if (!cursor) return sorted;
+  return sorted.filter((r) => {
+    const created = String(r.created_at ?? "");
+    const id = String(r.id ?? "");
+    return created < cursor.created_at || (created === cursor.created_at && id < cursor.id);
+  });
+}
+
 function makeClient(tables: Record<string, TableRows>) {
-  const calls: { table: string; from: number; to: number }[] = [];
+  const calls: { table: string; from: number; to: number; or: string | null }[] = [];
   const inserts: { table: string; row: unknown }[] = [];
   const client = {
     from(table: string) {
       const src = tables[table] ?? { rows: [] };
-      const state = { from: 0, to: Number.POSITIVE_INFINITY };
+      const state = { from: 0, to: Number.POSITIVE_INFINITY, or: null as string | null };
       const q: Record<string, unknown> = {
         select() { return q; },
         eq() { return q; },
@@ -20,6 +45,7 @@ function makeClient(tables: Record<string, TableRows>) {
         is() { return q; },
         in() { return q; },
         order() { return q; },
+        or(filter: string) { state.or = filter; return q; },
         range(from: number, to: number) { state.from = from; state.to = to; return q; },
         insert: async (row: unknown) => {
           inserts.push({ table, row });
@@ -33,12 +59,13 @@ function makeClient(tables: Record<string, TableRows>) {
           };
         },
         then(resolve: (v: unknown) => unknown, reject?: (e: unknown) => unknown) {
-          calls.push({ table, from: state.from, to: state.to });
+          calls.push({ table, from: state.from, to: state.to, or: state.or });
           if (src.error) {
             return Promise.resolve({ data: null, count: null, error: src.error }).then(resolve, reject);
           }
+          const remaining = keysetSlice(src.rows, parseKeysetCursor(state.or));
           return Promise.resolve({
-            data: src.rows.slice(state.from, state.to + 1),
+            data: remaining.slice(state.from, state.to + 1),
             count: src.count ?? src.rows.length,
             error: null,
           }).then(resolve, reject);
@@ -62,9 +89,11 @@ test("applyCaseReconciliation pages 1001 overdue invoices instead of throwing on
   });
   const result = await applyCaseReconciliation(client, "org-1", "2026-06-22");
   expect(result.opened).toBe(1);
-  expect(calls.filter((c) => c.table === "invoices").length).toBeGreaterThanOrEqual(2);
-  expect(calls.some((c) => c.table === "invoices" && c.from === 0 && c.to === 999)).toBe(true);
-  expect(calls.some((c) => c.table === "invoices" && c.from === 1000)).toBe(true);
+  const invoiceCalls = calls.filter((c) => c.table === "invoices");
+  expect(invoiceCalls.length).toBeGreaterThanOrEqual(2);
+  expect(invoiceCalls[0]?.or).toBeNull();
+  expect(invoiceCalls.slice(1).some((c) => c.or && c.or.includes("created_at.lt."))).toBe(true);
+  expect(invoiceCalls.every((c) => c.from === 0 && c.to === 999)).toBe(true);
   expect(inserts.filter((i) => i.table === "collection_cases")).toHaveLength(1);
 });
 
