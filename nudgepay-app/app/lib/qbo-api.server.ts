@@ -139,8 +139,8 @@ export async function qboReadEntity(
     headers: qboGetHeaders(accessToken),
   }, clock);
   if (res.ok) {
-    const data = await res.json();
-    return data?.[entityName] ?? null;
+    const data = (await res.json()) as Record<string, unknown>;
+    return data[entityName] ?? null;
   }
   const body = await res.json().catch(() => null);
   if (isQboObjectNotFound(res.status, body)) return null;
