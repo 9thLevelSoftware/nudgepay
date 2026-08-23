@@ -48,7 +48,9 @@ test("revoke controls use the shared Button primitive", () => {
   );
   expect(revoke).toContain("<Button");
   expect(revoke).toContain('variant="destructive"');
-  expect(revoke).toContain("useToast");
+  expect(src).toContain("useToast");
+  expect(src).toContain("Invite revoked.");
+  expect(src).toContain("revokeFetcher");
   expect(revoke).not.toMatch(/<button\b/);
 });
 

@@ -24,22 +24,6 @@ export async function acceptInvite(
   userId: string,
   userEmail: string
 ): Promise<string> {
-  const { data: inv, error } = await service
-    .from("invites").select("id, org_id, email, accepted_at, expires_at").eq("token", token).maybeSingle();
-  if (error) throw error;
-  if (!inv) throw new Error("Invite not found");
-  if (!inv.email || !userEmail) throw new Error("Invite email missing");
-  if (inv.email.toLowerCase() !== userEmail.toLowerCase())
-    throw new Error("This invite was sent to a different email address");
-  if (inv.accepted_at) throw new Error("Invite already accepted");
-  if (inv.expires_at && new Date(inv.expires_at as string).getTime() <= Date.now()) {
-    throw new Error("Invite expired");
-  }
-
-  const targetOrgId = inv.org_id as string;
-  const decision = canJoinOrg(await existingOrgId(service, userId), targetOrgId);
-  if (decision === "already_in_workspace") throw new AlreadyInWorkspaceError();
-
   const { data: orgId, error: rpcErr } = await service.rpc("accept_invite", {
     p_token: token,
     p_user_id: userId,
@@ -59,7 +43,8 @@ export async function acceptInvite(
     if (msg.includes("Invite expired")) throw new Error("Invite expired");
     throw rpcErr;
   }
-  return (orgId as string) ?? targetOrgId;
+  if (!orgId) throw new Error("Invite not found");
+  return orgId as string;
 }
 
 export async function createOrgForUser(

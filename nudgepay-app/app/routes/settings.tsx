@@ -177,23 +177,14 @@ function RevokeInviteButton({
   inviteId,
   returnTo,
   busy,
+  fetcher,
 }: {
   inviteId: string;
   returnTo: string;
   busy: boolean;
+  fetcher: ReturnType<typeof useFetcher>;
 }) {
   const { confirming, arm, disarm } = useTwoStep(5000);
-  const fetcher = useFetcher();
-  const toast = useToast();
-  const submitting = useRef(false);
-  useEffect(() => {
-    if (fetcher.state === "submitting") submitting.current = true;
-    if (fetcher.state === "idle" && submitting.current) {
-      submitting.current = false;
-      const err = new URL(window.location.href).searchParams.get("error");
-      if (err !== "revoke") toast("Invite revoked.");
-    }
-  }, [fetcher.state, toast]);
   const pending = busy || fetcher.state !== "idle";
   return (
     <fetcher.Form method="post" action="/api/members" className="inline-flex items-center gap-2">
@@ -259,6 +250,17 @@ export default function Settings() {
     navigation.state !== "idle" &&
     navigation.formAction === "/api/profile" &&
     navigation.formData?.get("intent") === intent;
+  const revokeFetcher = useFetcher();
+  const toast = useToast();
+  const revokeSubmitting = useRef(false);
+  useEffect(() => {
+    if (revokeFetcher.state === "submitting") revokeSubmitting.current = true;
+    if (revokeFetcher.state === "idle" && revokeSubmitting.current) {
+      revokeSubmitting.current = false;
+      const err = new URL(window.location.href).searchParams.get("error");
+      if (err !== "revoke") toast("Invite revoked.");
+    }
+  }, [revokeFetcher.state, toast]);
 
   useFlashCleanup();
 
@@ -486,6 +488,7 @@ export default function Settings() {
                               inviteId={inv.id}
                               returnTo={returnTo}
                               busy={formBusy("/api/members")}
+                              fetcher={revokeFetcher}
                             />
                           ) : null}
                         </li>
