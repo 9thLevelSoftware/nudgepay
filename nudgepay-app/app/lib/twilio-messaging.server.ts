@@ -277,6 +277,12 @@ async function uniqueOutboundOrg(
     // Only the env fallback SID may use that history; a retired/unused
     // inventory SID must not steal another workspace's legacy rows.
     if (!opts.allowLegacyNullSid) return null;
+    // Direct From sends on a number also attached to the env fallback
+    // Messaging Service: Twilio may stamp the fallback SID on the inbound
+    // callback while outbound rows stored from_number and a null SID.
+    const fromHist = await uniqueFromHistoryOrg(service, fromNorm, toNorm);
+    if (fromHist.status === "unique") return fromHist.orgId;
+    if (fromHist.status === "ambiguous") return null;
     const legacy = await uniqueLegacyNullSidOrg(service, fromNorm);
     return legacy.status === "unique" ? legacy.orgId : null;
   }

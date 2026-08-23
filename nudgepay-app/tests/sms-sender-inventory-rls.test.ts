@@ -80,3 +80,40 @@ test("JWT cannot stamp outbound SID history used for inbound routing", async () 
   const { data: rows } = await svc.from("text_messages").select("id").eq("twilio_message_sid", "SMspoof-sid");
   expect(rows ?? []).toHaveLength(0);
 });
+
+test("JWT cannot relabel or delete outbound SID history used for inbound routing", async () => {
+  const svc = serviceClient();
+  const { data: orgA } = await svc.from("organizations").insert({ name: `SSI-sid-own-a ${Math.random()}` }).select("id").single();
+  const orgAId = orgA!.id as string;
+  const { data: orgB } = await svc.from("organizations").insert({ name: `SSI-sid-own-b ${Math.random()}` }).select("id").single();
+  const orgBId = orgB!.id as string;
+  const owner = await makeUserClient(`ssi-sid-own-${Math.random()}@example.com`);
+  await svc.from("memberships").insert([
+    { org_id: orgAId, user_id: owner.userId, role: "owner" },
+    { org_id: orgBId, user_id: owner.userId, role: "owner" },
+  ]);
+  const { data: custA } = await svc.from("customers")
+    .insert({ org_id: orgAId, qbo_id: `c-sid-own-${Math.random()}`, name: "SID Owner", phone: "+13105550998", sms_consent: true })
+    .select("id").single();
+  const { data: seeded } = await svc.from("text_messages").insert({
+    org_id: orgAId,
+    customer_id: custA!.id,
+    direction: "outbound",
+    twilio_message_sid: "SMout-sid-own",
+    messaging_service_sid: "MG" + "e".repeat(32),
+    to_number: "+13105550998",
+    body: "sent",
+  }).select("id").single();
+
+  const moved = await owner.client.from("text_messages")
+    .update({ org_id: orgBId, customer_id: null, invoice_id: null, case_id: null })
+    .eq("id", seeded!.id);
+  expect(moved.error).not.toBeNull();
+  const { data: afterMove } = await svc.from("text_messages").select("org_id").eq("id", seeded!.id).single();
+  expect(afterMove!.org_id).toBe(orgAId);
+
+  const del = await owner.client.from("text_messages").delete().eq("id", seeded!.id);
+  expect(del.error).not.toBeNull();
+  const { data: still } = await svc.from("text_messages").select("id").eq("id", seeded!.id);
+  expect(still).toHaveLength(1);
+});

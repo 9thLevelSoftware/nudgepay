@@ -195,6 +195,7 @@ test("inbound history filters by any webhook SID and keeps pre-migration null-SI
   expect(src).toContain('.is("from_number_norm", null)');
   expect(src).toContain("uniqueSidHistoryOrg");
   expect(src).toContain("uniqueFromHistoryOrg");
+  expect(src).toContain("uniqueFromHistoryOrg(service, fromNorm, toNorm)");
   expect(src).toContain("uniqueLegacyNullSidOrg");
   expect(src).toContain('.neq("org_id", orgId)');
   expect(src).toContain(".limit(1)");
@@ -211,6 +212,9 @@ test("JWT cannot stamp text_messages sender identity used for inbound routing", 
   expect(sql).toMatch(/auth\.role\(\) = 'service_role'/);
   expect(sql).toMatch(/new\.messaging_service_sid := null/);
   expect(sql).toMatch(/new\.twilio_message_sid := null/);
+  expect(sql).toMatch(/new\.org_id is distinct from old\.org_id/);
+  expect(sql).toMatch(/TG_OP = 'DELETE'/);
+  expect(sql).toMatch(/before insert or update or delete on text_messages/);
 });
 
 test("RESEND_ALLOWED_FROM is documented in production deploy config", () => {

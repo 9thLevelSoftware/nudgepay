@@ -437,6 +437,48 @@ test("reassigned From with history in both orgs is treated as ambiguous", async 
   expect(rows ?? []).toHaveLength(0);
 });
 
+test("fallback SID inbound still matches unique direct-From history", async () => {
+  const phone = "+13105550234";
+  const inboundTo = "+15005552234";
+  const fallbackSid = "MG" + "3".repeat(32);
+  const { data: orgA } = await svc.from("organizations").insert({ name: "Fallback SID Inv Org" }).select("id").single();
+  const orgAId = orgA!.id as string;
+  const { data: orgB } = await svc.from("organizations").insert({ name: "Direct From Hist Org" }).select("id").single();
+  const orgBId = orgB!.id as string;
+
+  expect((await svc.from("sms_sender_inventory").insert({
+    org_id: orgAId, messaging_service_sid: fallbackSid, status: "active",
+  })).error).toBeNull();
+  expect((await svc.from("sms_sender_inventory").insert({
+    org_id: orgBId, from_number: inboundTo, status: "active",
+  })).error).toBeNull();
+
+  await svc.from("customers")
+    .insert({ org_id: orgAId, qbo_id: "c-fbsid-from-a", name: "FB SID A", phone, sms_consent: true });
+  const { data: custB } = await svc.from("customers")
+    .insert({ org_id: orgBId, qbo_id: "c-fbsid-from-b", name: "Direct From B", phone, sms_consent: true }).select("id").single();
+
+  await svc.from("text_messages").insert({
+    org_id: orgBId, customer_id: custB!.id, direction: "outbound",
+    twilio_message_sid: "SMout-234-from", from_number: inboundTo, to_number: phone, body: "ping",
+  });
+
+  const out = await recordInboundMessage(svc, {
+    from: phone,
+    to: inboundTo,
+    body: "hello",
+    messageSid: "SMin-234-fallback-sid-from",
+    messagingServiceSid: fallbackSid,
+    fallbackMessagingServiceSid: fallbackSid,
+  });
+  expect(out.matched).toBe(true);
+  const { data: rows } = await svc.from("text_messages")
+    .select("org_id, customer_id").eq("twilio_message_sid", "SMin-234-fallback-sid-from");
+  expect(rows).toHaveLength(1);
+  expect(rows![0].org_id).toBe(orgBId);
+  expect(rows![0].customer_id).toBe(custB!.id);
+});
+
 test("recordInboundMessage routes by inventory MessagingServiceSid before history", async () => {
   const phone = "+13105550221";
   const inboundTo = "+15005552221";
