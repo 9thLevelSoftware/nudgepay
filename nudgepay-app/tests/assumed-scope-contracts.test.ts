@@ -38,6 +38,9 @@ test("owner STOP override clears do_not_text with consent", () => {
   expect(src).toContain("do_not_text: false");
   expect(src).toContain("stopLocked");
   expect(src).toContain("rewrite inbound_stop");
+  expect(src).toContain('select("sms_consent, sms_consent_source, sms_consent_at")');
+  expect(src).toContain('.eq("sms_consent_source", "inbound_stop")');
+  expect(src).toContain('.eq("sms_consent_at", observedAt)');
 });
 
 test("inbox STOP override uses shared Input and wraps on narrow panes", () => {
@@ -61,6 +64,7 @@ test("inbound STOP lock is enforced by a BEFORE INSERT OR UPDATE trigger", () =>
   expect(sql).toMatch(/sms_consent_source := 'staff'/);
   expect(sql).toMatch(/sms_consent_actor := auth\.uid\(\)/);
   expect(sql).toMatch(/sms_consent_at := now\(\)/);
+  expect(sql).toMatch(/new\.sms_consent_at is not distinct from old\.sms_consent_at/);
 });
 
 test("invite flash is generic, not raw DB (NP-AUD-2026-126)", () => {

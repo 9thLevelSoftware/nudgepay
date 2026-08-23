@@ -43,7 +43,7 @@ export async function action({ request, context }: ActionFunctionArgs) {
 
   const { data: current, error: curErr } = await supabase
     .from("customers")
-    .select("sms_consent, sms_consent_source")
+    .select("sms_consent, sms_consent_source, sms_consent_at")
     .eq("org_id", org.org_id)
     .eq("id", customerId)
     .maybeSingle();
@@ -60,12 +60,16 @@ export async function action({ request, context }: ActionFunctionArgs) {
     return redirect(returnTo, { headers });
   }
 
-  const { error } = await supabase
+  const observedAt = (current.sms_consent_at as string | null) ?? null;
+  // Echo the observed STOP timestamp so a newer inbound STOP (which advances
+  // sms_consent_at) makes this update match 0 rows. The trigger then stamps
+  // now() only when NEW.sms_consent_at matches OLD.
+  let update = supabase
     .from("customers")
     .update({
       sms_consent: consent,
       sms_consent_source: "staff",
-      sms_consent_at: new Date().toISOString(),
+      sms_consent_at: overrideStop ? observedAt : new Date().toISOString(),
       sms_consent_actor: user.id,
       sms_consent_reason: overrideStop ? reason : null,
       // Inbound STOP also sets do_not_text; the SMS gate and inbox canReply
@@ -74,7 +78,17 @@ export async function action({ request, context }: ActionFunctionArgs) {
     })
     .eq("org_id", org.org_id)
     .eq("id", customerId);
+  if (overrideStop) {
+    update = update.eq("sms_consent_source", "inbound_stop");
+    update = observedAt
+      ? update.eq("sms_consent_at", observedAt)
+      : update.is("sms_consent_at", null);
+  }
+  const { data: updated, error } = await update.select("id");
   if (error) return redirect(withSms(returnTo, "error"), { headers });
+  if (overrideStop && (!updated || updated.length === 0)) {
+    return redirect(withSms(returnTo, "consent_locked"), { headers });
+  }
 
   return redirect(returnTo, { headers });
 }

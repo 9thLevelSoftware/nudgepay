@@ -30,7 +30,8 @@ begin
   if public.is_org_owner(new.org_id)
      and new.sms_consent is true
      and new.sms_consent_reason is not null
-     and length(btrim(new.sms_consent_reason)) >= 3 then
+     and length(btrim(new.sms_consent_reason)) >= 3
+     and new.sms_consent_at is not distinct from old.sms_consent_at then
     new.sms_consent := true;
     new.do_not_text := false;
     new.sms_consent_source := 'staff';
