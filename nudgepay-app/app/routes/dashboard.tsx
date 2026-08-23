@@ -531,12 +531,11 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
         { maxRows: PAGE_ALL_MAX_ROWS },
       ),
     ]);
-    if (custErr) throw custErr;
-    if (apErr) throw apErr;
     const batchC = honestListState([actPage, msgPage, emailPage]);
-    if (batchC.loadError) {
+    if (custErr || apErr || batchC.loadError) {
       detailLoadError = "Could not load thread";
-    } else {
+    }
+    if (!batchC.loadError) {
       // Activity: contact logs for the case (timeline input).
       const logInputs: TimelineLogInput[] = actPage.rows.map((r) => ({
         id: r.id, at: r.created_at, method: r.method, outcome: r.outcome, notes: r.notes,
@@ -576,16 +575,17 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
         }));
     }
 
-    // Consent + phone + email prefs from the customer.
-    selectedConsent = (custRow as any)?.sms_consent ?? false;
-    selectedSmsConsentSource = (custRow as any)?.sms_consent_source ?? null;
-    selectedPhone = (custRow as any)?.phone ?? null;
-    selectedPrefs = resolveCommPrefs(custRow as any);
-    selectedCustomerEmail = (custRow as any)?.email ?? null;
     selectedRepInvoiceId = repInvoiceId;
-
-    // Active pending promise id for the cancel form
-    selectedPromiseId = ap?.id ?? null;
+    if (!custErr) {
+      selectedConsent = (custRow as any)?.sms_consent ?? false;
+      selectedSmsConsentSource = (custRow as any)?.sms_consent_source ?? null;
+      selectedPhone = (custRow as any)?.phone ?? null;
+      selectedPrefs = resolveCommPrefs(custRow as any);
+      selectedCustomerEmail = (custRow as any)?.email ?? null;
+    }
+    if (!apErr) {
+      selectedPromiseId = ap?.id ?? null;
+    }
   }
 
   return data(

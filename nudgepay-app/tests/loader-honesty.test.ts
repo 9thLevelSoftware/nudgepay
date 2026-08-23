@@ -194,6 +194,9 @@ test("Batch C detail errors do not fold into queue KPI chrome", () => {
   expect(src).toContain("lastContactTruncated={lastContactTruncated || !!loadError}");
   expect(src).toContain("loadError={detailLoadError}");
   expect(src).not.toMatch(/lastContactTruncated = true/);
+  expect(src).not.toMatch(/if \(custErr\) throw/);
+  expect(src).not.toMatch(/if \(apErr\) throw/);
+  expect(src).toContain("custErr || apErr || batchC.loadError");
 });
 
 test("selected-promise detail error does not blank the ledger", () => {
@@ -202,6 +205,8 @@ test("selected-promise detail error does not blank the ledger", () => {
   const listState = src.slice(src.indexOf("const listState = honestListState"), src.indexOf("const loadError"));
   expect(listState).not.toContain("selectedError");
   expect(src).toContain("loadError={d.selectedLoadError}");
+  expect(src).toContain("truncated={d.selectedTruncated}");
+  expect(src).not.toMatch(/if \(logErr\) throw/);
 });
 
 test("ArKpiBand hides 0/0 open cases on loadError", () => {

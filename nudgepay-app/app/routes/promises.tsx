@@ -212,6 +212,7 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
   let selectedNote: string | null = null;
   let selectedTruncated = false;
   let selectedError: { message: string } | null = null;
+  let invoiceDetailFailed = false;
   if (selected) {
     const selectedPi = await pageAllHonest<{ invoice_id: string }>(
       (from, to) =>
@@ -242,6 +243,7 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
           { maxRows: PAGE_ALL_MAX_ROWS },
         );
     selectedTruncated = selectedTruncated || selInvPage.truncated;
+    invoiceDetailFailed = !!(selectedPi.error || selInvPage.error);
     selectedError = selectedPi.error ?? selInvPage.error;
     const invById = new Map(selInvPage.rows.map((r) => [r.id, r]));
     selectedInvoices = invIds.map((id) => ({
@@ -254,8 +256,11 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
     if (contactLogId) {
       const { data: log, error: logErr } = await supabase
         .from("contact_logs").select("notes").eq("org_id", org.org_id).eq("id", contactLogId).maybeSingle();
-      if (logErr) throw logErr;
-      selectedNote = (log as { notes?: string | null } | null)?.notes ?? null;
+      if (logErr) {
+        selectedError = selectedError ?? { message: logErr.message };
+      } else {
+        selectedNote = (log as { notes?: string | null } | null)?.notes ?? null;
+      }
     }
   }
 
@@ -271,12 +276,13 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
       rows: loadError ? [] : rows,
       metrics, counts, tab, sort, q, returnTo,
       selected: loadError ? null : selected,
-      selectedInvoices: loadError || selectedLoadError ? [] : selectedInvoices,
-      selectedNote: loadError ? null : selectedNote,
+      selectedInvoices: loadError || invoiceDetailFailed ? [] : selectedInvoices,
+      selectedNote: loadError || selectedLoadError ? null : selectedNote,
       promiseError,
       truncated,
       loadError,
       selectedLoadError,
+      selectedTruncated,
     },
     { headers },
   );
@@ -301,6 +307,7 @@ export default function Promises() {
       returnTo={d.returnTo}
       promiseError={d.promiseError}
       loadError={d.selectedLoadError}
+      truncated={d.selectedTruncated}
     />
   );
   return (
