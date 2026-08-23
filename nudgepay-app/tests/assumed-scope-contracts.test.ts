@@ -178,6 +178,59 @@ test("app README is NudgePay not the starter (NP-AUD-2026-132-README)", () => {
   expect(readme).not.toMatch(/Welcome to Remix/i);
 });
 
+test("sms_sender_inventory uniqueness is on trimmed messaging_service_sid", () => {
+  const sql = read("../supabase/migrations/0048_sms_sender_inventory.sql");
+  expect(sql).toContain("sms_sender_inventory_messaging_service_sid_key");
+  expect(sql).toContain("messaging_service_sid_norm");
+  expect(sql).toMatch(/nullif\(lower\(btrim\(messaging_service_sid\)\), ''\)/);
+  expect(sql).toMatch(/btrim\(messaging_service_sid\) <> ''/);
+  expect(sql).toMatch(/btrim\(from_number\) <> ''/);
+});
+
+test("inbound history filters by any webhook SID and keeps pre-migration null-SID fallback", () => {
+  const src = read("../app/lib/twilio-messaging.server.ts");
+  expect(src).toContain("messagingServiceSid: sid || undefined");
+  expect(src).toContain("allowLegacyNullSid: overlapsFallbackSid");
+  expect(src).toContain("allowFromHistory: overlapsFallbackFrom");
+  expect(src).toContain("!overlapsFallbackSid && !overlapsFallbackFrom");
+  expect(src).toContain('.is("messaging_service_sid_norm", null)');
+  expect(src).toContain('.is("from_number_norm", null)');
+  expect(src).toContain("uniqueSidHistoryOrg");
+  expect(src).toContain("uniqueFromHistoryOrg");
+  expect(src).toContain("uniqueFromHistoryOrg(service, fromNorm, toNorm)");
+  expect(src).toContain("uniqueLegacyNullSidOrg");
+  expect(src).toContain('.neq("org_id", orgId)');
+  expect(src).toContain(".limit(1)");
+  expect(src).toContain('.eq("from_number_norm", toNorm)');
+  expect(src).toContain('status: "ambiguous"');
+  expect(src).toContain('if (histOrg.status === "ambiguous") return null');
+  expect(src).toContain("sidOrg.orgId === fromHist.orgId");
+  expect(src).toContain("if (opts.requireFromMatch) return null");
+});
+
+test("SMS settings labels unprovisioned when inventory is required", () => {
+  const ui = read("../app/components/SmsSettingsSection.tsx");
+  expect(ui).toContain("requireInventory");
+  expect(ui).toContain("Unprovisioned");
+  expect(ui).toContain("Outbound texts are blocked until NudgePay assigns one");
+  const settings = read("../app/routes/settings.tsx");
+  expect(settings).toContain("smsRequireInventory");
+  expect(settings).toContain("requireInventory={d.messaging.requireInventory}");
+});
+
+test("JWT cannot stamp text_messages sender identity used for inbound routing", () => {
+  const sql = read("../supabase/migrations/0048_sms_sender_inventory.sql");
+  expect(sql).toContain("protect_text_message_sender_identity");
+  expect(sql).toContain("outbound SMS is service-written");
+  expect(sql).toContain("SMS sender identity is service-written");
+  expect(sql).toMatch(/auth\.role\(\) = 'service_role'/);
+  expect(sql).toMatch(/new\.messaging_service_sid := null/);
+  expect(sql).toMatch(/new\.twilio_message_sid := null/);
+  expect(sql).toMatch(/new\.org_id is distinct from old\.org_id/);
+  expect(sql).toMatch(/TG_OP = 'DELETE'/);
+  expect(sql).toMatch(/before insert or update or delete on text_messages/);
+});
+
 test("RESEND_ALLOWED_FROM is documented in production deploy config", () => {
   const wrangler = read("../wrangler.toml");
   expect(wrangler).toMatch(/RESEND_ALLOWED_FROM/);

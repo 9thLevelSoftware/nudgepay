@@ -169,3 +169,8 @@ export function getTwilioEnv(context: { cloudflare: { env: Record<string, string
     TWILIO_PUBLIC_BASE_URL: e.TWILIO_PUBLIC_BASE_URL || null,
   };
 }
+
+// Unset or any value other than the exact string "true" keeps env-default fallback.
+export function smsRequireInventory(env: Record<string, string | undefined>): boolean {
+  return env.SMS_REQUIRE_INVENTORY === "true";
+}

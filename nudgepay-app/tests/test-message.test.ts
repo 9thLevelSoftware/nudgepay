@@ -22,6 +22,14 @@ function mockService(overrides: Record<string, any> = {}) {
   };
   return {
     from: vi.fn((table: string) => {
+      if (table === "sms_sender_inventory") {
+        const inventory = {
+          select: vi.fn().mockReturnThis(),
+          eq: vi.fn().mockReturnThis(),
+          maybeSingle: vi.fn().mockResolvedValue({ data: overrides.inventory ?? null, error: null }),
+        };
+        return inventory;
+      }
       if (table === "messaging_config") {
         return {
           select: vi.fn().mockReturnValue({
@@ -102,6 +110,42 @@ test("sendTestSms: passes null statusCallback (no ledger pollution)", async () =
   );
   const body = (fetchFn as any).mock.calls[0][1].body as string;
   expect(body).not.toContain("StatusCallback");
+});
+
+test("sendTestSms: requireInventory throws when no active inventory", async () => {
+  const fetchFn = mockFetch({ sid: "SM999", status: "queued" });
+  const service = mockService({ inventory: null });
+  await expect(sendTestSms(
+    {
+      fetchFn,
+      service,
+      twilio: { accountSid: "AC123", authToken: "tok" },
+      defaultSender: { from: "+15550001111" },
+      requireInventory: true,
+    },
+    { orgId: "org1", to: "+15551234567" },
+  )).rejects.toThrow(/SMS sender not provisioned/);
+  expect(fetchFn).not.toHaveBeenCalled();
+});
+
+test("sendTestSms: inventory SID wins over messaging_config and env default", async () => {
+  const fetchFn = mockFetch({ sid: "SM-INV", status: "queued" });
+  const service = mockService({
+    inventory: { messaging_service_sid: "MG" + "c".repeat(32), from_number: "+15557770000" },
+    messagingConfig: { messaging_service_sid: "MG" + "a".repeat(32), sender: "+15559990000" },
+  });
+  await sendTestSms(
+    {
+      fetchFn,
+      service,
+      twilio: { accountSid: "AC123", authToken: "tok" },
+      defaultSender: { from: "+15550001111" },
+    },
+    { orgId: "org1", to: "+15551234567" },
+  );
+  const body = (fetchFn as any).mock.calls[0][1].body as string;
+  expect(body).toContain("MessagingServiceSid=" + "MG" + "c".repeat(32));
+  expect(body).not.toContain("From=");
 });
 
 // ---------------------------------------------------------------------------

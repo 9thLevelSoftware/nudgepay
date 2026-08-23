@@ -4,7 +4,7 @@ import { useFlashCleanup } from "../lib/use-flash-cleanup";
 import { useDialog } from "../lib/use-dialog";
 import { orgNameMatches } from "../lib/qbo-disconnect";
 import { DELETE_CONFIRM_TOKEN, deletionConfirmMatches, isLastOwnerMember } from "../lib/account-deletion";
-import { getEnv, getTwilioEnvOrNull, getEmailEnvOrNull, getPublicBaseUrls, getQboEnvOrNull } from "../lib/env.server";
+import { getEnv, getTwilioEnvOrNull, getEmailEnvOrNull, getPublicBaseUrls, getQboEnvOrNull, smsRequireInventory } from "../lib/env.server";
 import { loadWorkspaceChrome } from "../lib/workspace.server";
 import { listOrgMembers } from "../lib/orgs.server";
 import { loadOrgConfig } from "../lib/org-config.server";
@@ -47,8 +47,12 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
 
   const { data: msg } = await supabase.from("messaging_config")
     .select("sender, messaging_service_sid, sms_enabled").eq("org_id", org.org_id).maybeSingle();
+  const { data: inventory } = await supabase.from("sms_sender_inventory")
+    .select("from_number, messaging_service_sid, status").eq("org_id", org.org_id).maybeSingle();
   const senderSettings = resolveSmsSenderSettings(msg as any);
-  const messagingConfigured = Boolean(msg?.messaging_service_sid || msg?.sender);
+  const messagingConfigured = Boolean(
+    inventory?.messaging_service_sid || inventory?.from_number || msg?.messaging_service_sid || msg?.sender,
+  );
   const smsEnabled = resolveChannelSettings(msg as { sms_enabled?: boolean | null } | null).smsEnabled;
 
   const { data: emailConfigRow } = await supabase.from("email_config")
@@ -125,6 +129,10 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
       messagingServiceSid: senderSettings.messagingServiceSid,
       configured: messagingConfigured,
       smsEnabled,
+      inventoryFrom: (inventory?.from_number as string | null) ?? "",
+      inventoryMessagingServiceSid: (inventory?.messaging_service_sid as string | null) ?? "",
+      inventoryStatus: (inventory?.status as string | null) ?? "",
+      requireInventory: smsRequireInventory((context as any).cloudflare.env),
     },
     emailSettings,
     rules: {
@@ -651,6 +659,10 @@ export default function Settings() {
                 sender={d.messaging.sender}
                 messagingServiceSid={d.messaging.messagingServiceSid}
                 configured={d.messaging.configured}
+                inventoryFrom={d.messaging.inventoryFrom}
+                inventoryMessagingServiceSid={d.messaging.inventoryMessagingServiceSid}
+                inventoryStatus={d.messaging.inventoryStatus}
+                requireInventory={d.messaging.requireInventory}
                 twilioConfigured={ps.twilioConfigured}
                 lastSentAt={relTime(ps.sms.lastSentAt)}
                 lastStatus={ps.sms.lastStatus}

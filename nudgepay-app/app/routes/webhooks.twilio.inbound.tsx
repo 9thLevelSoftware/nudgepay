@@ -25,7 +25,13 @@ export async function action({ request, context }: ActionFunctionArgs) {
     const env = getEnv(context as any);
     const service = createSupabaseServiceClient(env);
     const result = await recordInboundMessage(service, {
-      from: params.From ?? "", to: params.To ?? "", body: params.Body ?? "", messageSid: params.MessageSid ?? "",
+      from: params.From ?? "",
+      to: params.To ?? "",
+      body: params.Body ?? "",
+      messageSid: params.MessageSid ?? "",
+      messagingServiceSid: params.MessagingServiceSid ?? "",
+      fallbackFrom: twilio.TWILIO_FROM_NUMBER ?? "",
+      fallbackMessagingServiceSid: twilio.TWILIO_MESSAGING_SERVICE_SID ?? "",
     });
     const xml = result.twiml ?? "<Response></Response>";
     return new Response(xml, { status: 200, headers: { "Content-Type": "text/xml" } });

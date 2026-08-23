@@ -2,7 +2,7 @@
 // configuration. Skips customer pipeline + ledger. Never 500s on missing env.
 
 import { redirect, type ActionFunctionArgs } from "react-router";
-import { getEnv, getTwilioEnvOrNull, getEmailEnvOrNull, resendTransport } from "../lib/env.server";
+import { getEnv, getTwilioEnvOrNull, getEmailEnvOrNull, resendTransport, smsRequireInventory } from "../lib/env.server";
 import { createSupabaseServiceClient } from "../lib/supabase.server";
 import { requireUser, resolveOrg } from "../lib/session.server";
 import { parseTestSmsDestination } from "../lib/provider-status";
@@ -66,6 +66,7 @@ export async function action({ request, context }: ActionFunctionArgs) {
           service,
           twilio: { accountSid: twilio.TWILIO_ACCOUNT_SID, authToken: twilio.TWILIO_AUTH_TOKEN },
           defaultSender: envSender(twilio),
+          requireInventory: smsRequireInventory((context as any).cloudflare.env),
         },
         { orgId: org.org_id, to, userId: user.id },
       );

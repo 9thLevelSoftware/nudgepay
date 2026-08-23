@@ -1,5 +1,5 @@
 import { redirect, type ActionFunctionArgs } from "react-router";
-import { getEnv, getTwilioEnv } from "../lib/env.server";
+import { getEnv, getTwilioEnv, smsRequireInventory } from "../lib/env.server";
 import { createSupabaseServiceClient } from "../lib/supabase.server";
 import { requireUser, resolveOrg } from "../lib/session.server";
 import type { MessagingDeps } from "../lib/twilio-messaging.server";
@@ -80,6 +80,7 @@ export async function action({ request, context }: ActionFunctionArgs) {
     defaultSender: envSender(twilio),
     statusCallback,
     quietHoursWindow,
+    requireInventory: smsRequireInventory((context as any).cloudflare.env),
   };
   const today = todayInTz(orgConfig.companyProfile.timezone);
   const { sent, failed, skipped, failures } = await runBulkSms(deps, {

@@ -18,18 +18,21 @@ export type TestSmsDeps = {
   service: SupabaseClient;
   twilio: TwilioConfig;
   defaultSender: TwilioSender;
+  requireInventory?: boolean;
 };
 
 /**
  * Send a test SMS to verify the org's sender configuration. Resolves the
- * per-org sender override (exercises the exact same precedence as the real
- * pipeline), then calls sendSms with no StatusCallback and no ledger insert.
+ * operator-provisioned inventory (same precedence as the real pipeline),
+ * then calls sendSms with no StatusCallback.
  */
 export async function sendTestSms(
   deps: TestSmsDeps,
   args: { orgId: string; to: string; userId?: string },
 ): Promise<TwilioSendResult> {
-  const sender = await resolveSender(deps.service, args.orgId, deps.defaultSender);
+  const sender = await resolveSender(deps.service, args.orgId, deps.defaultSender, {
+    requireInventory: deps.requireInventory,
+  });
   const body = "NudgePay test message — your SMS sender configuration works.";
   const result = await sendSms(deps.fetchFn, deps.twilio, {
     to: args.to,
@@ -45,6 +48,7 @@ export async function sendTestSms(
     twilio_message_sid: result.sid,
     status: result.status,
     from_number: "from" in sender ? sender.from : null,
+    messaging_service_sid: "messagingServiceSid" in sender ? sender.messagingServiceSid : null,
     to_number: args.to,
     body,
   });

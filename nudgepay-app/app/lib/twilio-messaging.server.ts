@@ -27,6 +27,8 @@ export type MessagingDeps = {
   quietHoursWindow?: QuietHoursWindow;
   /** Injectable "now" for the quiet-hours check — defaults to `new Date()`. Test-only override. */
   now?: Date;
+  /** When true, send fails closed unless the org has an active inventory row. */
+  requireInventory?: boolean;
 };
 
 async function loadQuietHoursWindow(service: SupabaseClient, orgId: string): Promise<QuietHoursWindow> {
@@ -48,14 +50,23 @@ export function normalizePhone(s: string | null | undefined): string {
 }
 
 export async function resolveSender(
-  _service: SupabaseClient, _orgId: string, defaultSender: TwilioSender,
+  service: SupabaseClient,
+  orgId: string,
+  defaultSender: TwilioSender,
+  opts?: { requireInventory?: boolean },
 ): Promise<TwilioSender> {
-  // Tenant-managed sender overrides are intentionally ignored. In a shared
-  // Twilio-account deployment, accepting caller-supplied From numbers or
-  // Messaging Service SIDs would let one workspace impersonate another sender
-  // owned by the global Twilio account. Until senders are validated against a
-  // server-side, org-bound inventory, all outbound SMS uses the operator-owned
-  // default sender from the Worker environment.
+  const { data, error } = await service
+    .from("sms_sender_inventory")
+    .select("messaging_service_sid, from_number")
+    .eq("org_id", orgId)
+    .eq("status", "active")
+    .maybeSingle();
+  if (error) throw error;
+  const sid = typeof data?.messaging_service_sid === "string" ? data.messaging_service_sid.trim() : "";
+  if (sid) return { messagingServiceSid: sid };
+  const from = typeof data?.from_number === "string" ? data.from_number.trim() : "";
+  if (from) return { from };
+  if (opts?.requireInventory) throw new Error("SMS sender not provisioned");
   return defaultSender;
 }
 
@@ -134,7 +145,9 @@ export async function sendInvoiceText(
   }
   if (cust.do_not_text) throw new Error("Customer has opted out of SMS");
 
-  const sender = await resolveSender(deps.service, args.orgId, deps.defaultSender);
+  const sender = await resolveSender(deps.service, args.orgId, deps.defaultSender, {
+    requireInventory: deps.requireInventory,
+  });
   const caseId = activeCase.id;
   const body = ensureStopLanguage(args.body);
   await assertSmsBudget(deps.service, { orgId: args.orgId, customerId: cust.id as string, now });
@@ -153,6 +166,7 @@ export async function sendInvoiceText(
     twilio_message_sid: result.sid,
     status: result.status,
     from_number: "from" in sender ? sender.from : null,
+    messaging_service_sid: "messagingServiceSid" in sender ? sender.messagingServiceSid : null,
     to_number: cust.phone as string,
     body,
   }).select("id").single();
@@ -161,28 +175,218 @@ export async function sendInvoiceText(
   return { id: row!.id as string, sid: result.sid, status: result.status };
 }
 
-async function resolveInboundOrgId(service: SupabaseClient, args: { from: string; to: string }): Promise<string | null> {
-  const toNorm = normalizePhone(args.to);
-  if (toNorm.length < 10) return null;
+/** Distinct-org probe that does not page past PostgREST max_rows=1000. */
+type UniqueOrgLookup =
+  | { status: "unique"; orgId: string }
+  | { status: "none" }
+  | { status: "ambiguous" };
 
-  // Inbound routing must stay aligned with resolveSender. messaging_config.sender
-  // is tenant-managed legacy state and is not trusted for outbound sends, so it
-  // cannot be authoritative for inbound replies either. Route by the outbound
-  // ledger instead: match the replying customer phone to a prior outbound text,
-  // and require any stored from_number to match Twilio's inbound To number.
-  // Messaging Service sends store from_number as null, so they are accepted only
-  // when the outbound history resolves to one org unambiguously.
-  const fromNorm = normalizePhone(args.from);
-  if (fromNorm.length < 10) return null;
-  const { data: outbound, error: outboundErr } = await service.from("text_messages")
+async function uniqueSidHistoryOrg(
+  service: SupabaseClient,
+  fromNorm: string,
+  sid: string,
+): Promise<UniqueOrgLookup> {
+  const { data: first, error } = await service.from("text_messages")
     .select("org_id")
     .eq("direction", "outbound")
     .eq("to_number_norm", fromNorm)
-    .or(`from_number_norm.is.null,from_number_norm.eq."${toNorm}"`);
-  if (outboundErr) throw outboundErr;
+    .eq("messaging_service_sid_norm", sid)
+    .limit(1)
+    .maybeSingle();
+  if (error) throw error;
+  if (!first) return { status: "none" };
+  const orgId = first.org_id as string;
+  const { data: other, error: otherErr } = await service.from("text_messages")
+    .select("org_id")
+    .eq("direction", "outbound")
+    .eq("to_number_norm", fromNorm)
+    .eq("messaging_service_sid_norm", sid)
+    .neq("org_id", orgId)
+    .limit(1)
+    .maybeSingle();
+  if (otherErr) throw otherErr;
+  return other ? { status: "ambiguous" } : { status: "unique", orgId };
+}
 
-  const orgIds = new Set((outbound ?? []).map((msg) => msg.org_id as string));
-  return orgIds.size === 1 ? [...orgIds][0] : null;
+async function uniqueFromHistoryOrg(
+  service: SupabaseClient,
+  fromNorm: string,
+  toNorm: string,
+): Promise<UniqueOrgLookup> {
+  const { data: first, error } = await service.from("text_messages")
+    .select("org_id")
+    .eq("direction", "outbound")
+    .eq("to_number_norm", fromNorm)
+    .eq("from_number_norm", toNorm)
+    .limit(1)
+    .maybeSingle();
+  if (error) throw error;
+  if (!first) return { status: "none" };
+  const orgId = first.org_id as string;
+  const { data: other, error: otherErr } = await service.from("text_messages")
+    .select("org_id")
+    .eq("direction", "outbound")
+    .eq("to_number_norm", fromNorm)
+    .eq("from_number_norm", toNorm)
+    .neq("org_id", orgId)
+    .limit(1)
+    .maybeSingle();
+  if (otherErr) throw otherErr;
+  return other ? { status: "ambiguous" } : { status: "unique", orgId };
+}
+
+async function uniqueLegacyNullSidOrg(
+  service: SupabaseClient,
+  fromNorm: string,
+): Promise<UniqueOrgLookup> {
+  const { data: first, error } = await service.from("text_messages")
+    .select("org_id")
+    .eq("direction", "outbound")
+    .eq("to_number_norm", fromNorm)
+    .is("from_number_norm", null)
+    .is("messaging_service_sid_norm", null)
+    .limit(1)
+    .maybeSingle();
+  if (error) throw error;
+  if (!first) return { status: "none" };
+  const orgId = first.org_id as string;
+  const { data: other, error: otherErr } = await service.from("text_messages")
+    .select("org_id")
+    .eq("direction", "outbound")
+    .eq("to_number_norm", fromNorm)
+    .is("from_number_norm", null)
+    .is("messaging_service_sid_norm", null)
+    .neq("org_id", orgId)
+    .limit(1)
+    .maybeSingle();
+  if (otherErr) throw otherErr;
+  return other ? { status: "ambiguous" } : { status: "unique", orgId };
+}
+
+async function uniqueOutboundOrg(
+  service: SupabaseClient,
+  fromNorm: string,
+  toNorm: string,
+  opts: { requireFromMatch?: boolean; messagingServiceSid?: string; allowLegacyNullSid?: boolean; allowFromHistory?: boolean } = {},
+): Promise<string | null> {
+  if (opts.messagingServiceSid) {
+    const sidOrg = await uniqueSidHistoryOrg(service, fromNorm, opts.messagingServiceSid);
+    // Retired/unused inventory SID: exact SID history only. Do not consult
+    // From or pre-0048 null-SID rows unless the inbound To is the env
+    // fallback From (Twilio may stamp a workspace SID on that number).
+    const consultFrom = Boolean(opts.allowLegacyNullSid || opts.allowFromHistory);
+    if (!consultFrom) {
+      if (sidOrg.status === "unique") return sidOrg.orgId;
+      return null;
+    }
+    // Env fallback SID/From may share a number with a provisioned sender.
+    // Compare SID and exact-From histories; disagreeing uniques orphan.
+    const fromHist = await uniqueFromHistoryOrg(service, fromNorm, toNorm);
+    if (sidOrg.status === "ambiguous" || fromHist.status === "ambiguous") return null;
+    if (sidOrg.status === "unique" && fromHist.status === "unique") {
+      return sidOrg.orgId === fromHist.orgId ? sidOrg.orgId : null;
+    }
+    if (sidOrg.status === "unique") return sidOrg.orgId;
+    if (fromHist.status === "unique") return fromHist.orgId;
+    if (!opts.allowLegacyNullSid) return null;
+    const legacy = await uniqueLegacyNullSidOrg(service, fromNorm);
+    return legacy.status === "unique" ? legacy.orgId : null;
+  }
+  // No webhook SID: exact From history first so a retired/disabled From
+  // still owns replies instead of mixing with another org's null-From MS rows.
+  const fromHist = await uniqueFromHistoryOrg(service, fromNorm, toNorm);
+  if (fromHist.status === "unique") return fromHist.orgId;
+  if (fromHist.status === "ambiguous") return null;
+  if (opts.requireFromMatch) return null;
+  const legacy = await uniqueLegacyNullSidOrg(service, fromNorm);
+  return legacy.status === "unique" ? legacy.orgId : null;
+}
+
+function canonicalSid(value: string | null | undefined): string {
+  return (value ?? "").trim().toLowerCase();
+}
+
+async function resolveInboundOrgId(service: SupabaseClient, args: {
+  from: string;
+  to: string;
+  messagingServiceSid?: string;
+  fallbackFrom?: string;
+  fallbackMessagingServiceSid?: string;
+}): Promise<string | null> {
+  const sid = canonicalSid(args.messagingServiceSid);
+  const fallbackSid = canonicalSid(args.fallbackMessagingServiceSid);
+  const overlapsFallbackSid = Boolean(sid && fallbackSid && sid === fallbackSid);
+  const toNorm = normalizePhone(args.to);
+  const fromNorm = normalizePhone(args.from);
+  const fallbackNorm = args.fallbackFrom ? normalizePhone(args.fallbackFrom) : "";
+  const overlapsFallbackFrom = fallbackNorm.length >= 10 && fallbackNorm === toNorm;
+  const overlapsFallback = overlapsFallbackFrom || overlapsFallbackSid;
+
+  let sidOrgs: string[] = [];
+  if (sid) {
+    const { data: sidHits, error: sidErr } = await service
+      .from("sms_sender_inventory")
+      .select("org_id")
+      .eq("status", "active")
+      .eq("messaging_service_sid_norm", sid)
+      .limit(2);
+    if (sidErr) throw sidErr;
+    sidOrgs = [...new Set((sidHits ?? []).map((row) => row.org_id as string))];
+    if (sidOrgs.length > 1) return null;
+    if (sidOrgs.length === 1 && !overlapsFallbackSid && !overlapsFallbackFrom) {
+      // Exact SID history wins if the service was reassigned: an old
+      // conversation must stay on the org that actually sent it.
+      if (fromNorm.length >= 10) {
+        const histOrg = await uniqueSidHistoryOrg(service, fromNorm, sid);
+        if (histOrg.status === "unique") return histOrg.orgId;
+        // Both former and current workspaces sent on this SID: do not
+        // fall through to the active inventory owner.
+        if (histOrg.status === "ambiguous") return null;
+      }
+      return sidOrgs[0];
+    }
+  }
+
+  let invOrgs: string[] = [];
+  if (toNorm.length >= 10) {
+    const { data: inventoryHits, error: invErr } = await service
+      .from("sms_sender_inventory")
+      .select("org_id")
+      .eq("status", "active")
+      .eq("from_number_last10", toNorm)
+      .limit(2);
+    if (invErr) throw invErr;
+    invOrgs = [...new Set((inventoryHits ?? []).map((row) => row.org_id as string))];
+    if (invOrgs.length > 1) return null;
+    if (invOrgs.length === 1 && !overlapsFallback) {
+      // Exact From history wins if the number was reassigned: an old
+      // conversation must stay on the org that actually sent it.
+      if (fromNorm.length >= 10) {
+        const histOrg = await uniqueFromHistoryOrg(service, fromNorm, toNorm);
+        if (histOrg.status === "unique") return histOrg.orgId;
+        if (histOrg.status === "ambiguous") return null;
+      }
+      return invOrgs[0];
+    }
+  }
+
+  if (fromNorm.length < 10) return null;
+  // From-number overlap with no webhook SID: require from_number_norm = To
+  // so another org's Messaging Service rows (from_number_norm null) cannot
+  // steal the reply. Any nonempty webhook SID (fallback or a retired
+  // inventory service) is passed through so history can filter to that
+  // sender instead of treating every null-from send as a match.
+  const historyOrg = toNorm.length >= 10
+    ? await uniqueOutboundOrg(service, fromNorm, toNorm, {
+      requireFromMatch: overlapsFallbackFrom && !sid,
+      messagingServiceSid: sid || undefined,
+      allowLegacyNullSid: overlapsFallbackSid,
+      allowFromHistory: overlapsFallbackFrom,
+    })
+    : null;
+  if (historyOrg) return historyOrg;
+  if (overlapsFallback) return null;
+  return invOrgs[0] ?? sidOrgs[0] ?? null;
 }
 
 export type InboundResult = {
@@ -288,6 +492,9 @@ export async function recordInboundMessage(
     to: string;
     body: string;
     messageSid: string;
+    messagingServiceSid?: string;
+    fallbackFrom?: string;
+    fallbackMessagingServiceSid?: string;
     onOrphanStop?: (info: OrphanStopInfo) => void;
   },
 ): Promise<InboundResult> {
@@ -303,7 +510,13 @@ export async function recordInboundMessage(
     await applyKeywordByPhone(service, fromNorm, keyword);
   }
 
-  const orgId = await resolveInboundOrgId(service, { from: args.from, to: args.to });
+  const orgId = await resolveInboundOrgId(service, {
+    from: args.from,
+    to: args.to,
+    messagingServiceSid: args.messagingServiceSid,
+    fallbackFrom: args.fallbackFrom,
+    fallbackMessagingServiceSid: args.fallbackMessagingServiceSid,
+  });
   const name = await loadOrgName(service, orgId);
   const twiml = twimlForKeyword(keyword, name);
 

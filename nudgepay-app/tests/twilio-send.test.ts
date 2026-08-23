@@ -34,11 +34,57 @@ test("normalizePhone reduces to the last 10 digits", () => {
   expect(normalizePhone(null)).toBe("");
 });
 
-test("resolveSender ignores tenant-managed overrides and uses env default", async () => {
+test("resolveSender ignores tenant-managed messaging_config and uses env default", async () => {
   const { orgId } = await seed(true, "+12295550101");
   expect(await resolveSender(svc, orgId, { from: "+1999" })).toEqual({ from: "+1999" });
   await svc.from("messaging_config").insert({ org_id: orgId, messaging_service_sid: "MG7" });
   expect(await resolveSender(svc, orgId, { from: "+1999" })).toEqual({ from: "+1999" });
+});
+
+test("resolveSender prefers active inventory SID over from_number, messaging_config, and env default", async () => {
+  const { orgId } = await seed(true, "+12295550301");
+  await svc.from("messaging_config").insert({
+    org_id: orgId, messaging_service_sid: "MGstale00301", sender: "+15550000000",
+  });
+  const { error } = await svc.from("sms_sender_inventory").insert({
+    org_id: orgId,
+    messaging_service_sid: "MGinv" + "0".repeat(27),
+    from_number: "+15551230001",
+    status: "active",
+  });
+  expect(error).toBeNull();
+  expect(await resolveSender(svc, orgId, { from: "+1999" })).toEqual({
+    messagingServiceSid: "MGinv" + "0".repeat(27),
+  });
+});
+
+test("resolveSender uses inventory from_number when no SID is provisioned", async () => {
+  const { orgId } = await seed(true, "+12295550302");
+  const { error } = await svc.from("sms_sender_inventory").insert({
+    org_id: orgId,
+    from_number: "+15551230002",
+    status: "active",
+  });
+  expect(error).toBeNull();
+  expect(await resolveSender(svc, orgId, { from: "+1999" })).toEqual({ from: "+15551230002" });
+});
+
+test("resolveSender throws when requireInventory and no active inventory", async () => {
+  const { orgId } = await seed(true, "+12295550303");
+  await expect(resolveSender(svc, orgId, { from: "+1999" }, { requireInventory: true }))
+    .rejects.toThrow(/SMS sender not provisioned/);
+});
+
+test("sendInvoiceText requireInventory refuses without inventory (no Twilio call)", async () => {
+  const { orgId, invoiceId, customerId } = await seed(true, "+12295550304");
+  const fetchFn = vi.fn();
+  await expect(sendInvoiceText(
+    { ...deps(fetchFn), requireInventory: true },
+    { orgId, invoiceId, userId, body: "x" },
+  )).rejects.toThrow(/SMS sender not provisioned/);
+  expect(fetchFn).not.toHaveBeenCalled();
+  const { data: rows } = await svc.from("text_messages").select("id").eq("customer_id", customerId);
+  expect(rows ?? []).toHaveLength(0);
 });
 
 test("sendInvoiceText sends and inserts an outbound row when the customer consented", async () => {

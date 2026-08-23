@@ -1,5 +1,5 @@
 import { expect, test } from "vitest";
-import { getQboEnv, getQboEnvOrNull } from "../app/lib/env.server";
+import { getQboEnv, getQboEnvOrNull, smsRequireInventory } from "../app/lib/env.server";
 
 function ctx(env: Record<string, string>) {
   return { cloudflare: { env } };
@@ -33,4 +33,13 @@ test("getQboEnvOrNull defaults sandbox to true unless QBO_SANDBOX is 'false'", (
 
 test("getQboEnv throws when unconfigured", () => {
   expect(() => getQboEnv(ctx({}))).toThrow(/Missing required QBO/);
+});
+
+test("smsRequireInventory is true only for the exact string true", () => {
+  expect(smsRequireInventory({})).toBe(false);
+  expect(smsRequireInventory({ SMS_REQUIRE_INVENTORY: undefined })).toBe(false);
+  expect(smsRequireInventory({ SMS_REQUIRE_INVENTORY: "" })).toBe(false);
+  expect(smsRequireInventory({ SMS_REQUIRE_INVENTORY: "1" })).toBe(false);
+  expect(smsRequireInventory({ SMS_REQUIRE_INVENTORY: "TRUE" })).toBe(false);
+  expect(smsRequireInventory({ SMS_REQUIRE_INVENTORY: "true" })).toBe(true);
 });

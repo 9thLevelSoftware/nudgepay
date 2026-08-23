@@ -40,6 +40,7 @@ export async function setup() {
   await svc.from("collection_cases").delete().neq("id", "00000000-0000-0000-0000-000000000000");
   await svc.from("qbo_connections").delete().neq("id", "00000000-0000-0000-0000-000000000000");
   await svc.from("messaging_config").delete().neq("id", "00000000-0000-0000-0000-000000000000");
+  await svc.from("sms_sender_inventory").delete().neq("org_id", "00000000-0000-0000-0000-000000000000");
   await svc.from("invoices").delete().neq("id", "00000000-0000-0000-0000-000000000000");
   await svc.from("customers").delete().neq("id", "00000000-0000-0000-0000-000000000000");
   await svc.from("memberships").delete().neq("id", "00000000-0000-0000-0000-000000000000");

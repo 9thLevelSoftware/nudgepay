@@ -1,5 +1,5 @@
 import { data, redirect, type ActionFunctionArgs } from "react-router";
-import { getEnv, getTwilioEnv } from "../lib/env.server";
+import { getEnv, getTwilioEnv, smsRequireInventory } from "../lib/env.server";
 import { createSupabaseServiceClient } from "../lib/supabase.server";
 import { requireUser, resolveOrg } from "../lib/session.server";
 import { sendInvoiceText, type MessagingDeps } from "../lib/twilio-messaging.server";
@@ -44,6 +44,7 @@ export async function action({ request, context }: ActionFunctionArgs) {
     twilio: { accountSid: twilio.TWILIO_ACCOUNT_SID, authToken: twilio.TWILIO_AUTH_TOKEN },
     defaultSender: envSender(twilio),
     statusCallback,
+    requireInventory: smsRequireInventory((context as any).cloudflare.env),
   };
   try {
     await sendInvoiceText(deps, { orgId: org.org_id, invoiceId, userId: user.id, body });
