@@ -1,5 +1,5 @@
 import { Link } from "react-router";
-import type { ArKpis } from "../lib/ar-kpis";
+import { arKpiEmptySub, type ArKpis } from "../lib/ar-kpis";
 import { formatUSD } from "../lib/format";
 import { MetricTile } from "./MetricTile";
 
@@ -23,21 +23,17 @@ function formatShare(n: number | null): string {
 }
 
 export function ArKpiBand({
-  kpis, isOwner, loadError = null, connected = false, needsReconnect = false,
+  kpis, isOwner, loadError = null, connected, needsReconnect = false,
 }: {
   kpis: ArKpis;
   isOwner: boolean;
   loadError?: string | null;
-  connected?: boolean;
+  connected: boolean;
   needsReconnect?: boolean;
 }) {
   const empty = kpis.coverage === "empty";
   const partial = kpis.truncated;
-  const emptySub = needsReconnect
-    ? "Needs reconnect"
-    : connected
-      ? "No overdue history in this window"
-      : "Connect QuickBooks";
+  const emptySub = arKpiEmptySub({ connected, needsReconnect });
   const historyPrefix = partial ? "Partial history · " : "";
   const heading = `Receivables (${kpis.rangeDays}d)`;
   const unknownRates = !!loadError;

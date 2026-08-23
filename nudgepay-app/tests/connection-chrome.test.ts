@@ -116,7 +116,7 @@ describe("inboxListCopy distinguishability", () => {
 describe("comingDueEmptyCopy distinguishability", () => {
   it("does not claim none-coming-due when disconnected", () => {
     expect(comingDueEmptyCopy(7, { connected: false }))
-      .toBe("Connect QuickBooks to load overdue invoices.");
+      .toBe("Connect QuickBooks to load invoices.");
     expect(comingDueEmptyCopy(7, { connected: false }))
       .not.toMatch(/No invoices coming due/);
   });

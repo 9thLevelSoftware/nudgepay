@@ -317,6 +317,7 @@ test("reports page renders ArKpiBand for the selected range and stays owner-only
   expect(page).toContain("loadReportArKpis");
   expect(page).toContain("loadTeamReport");
   expect(page).toContain("<ArKpiBand");
+  expect(page).toMatch(/<ArKpiBand[\s\S]*connected=\{connected\}/);
   expect(page).toContain("sheet=ar");
   expect(page).toContain("hideTeam");
   expect(page).toContain("Could not load report");
