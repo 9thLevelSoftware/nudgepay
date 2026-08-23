@@ -44,7 +44,7 @@ describe("trySendInviteEmail", () => {
   it("skips when from_address is missing even if a send key exists", async () => {
     const fetchFn = mockFetch(200, { id: "re_1" });
     const result = await trySendInviteEmail(
-      { fetchFn: fetchFn as any, service: emailConfigService({ from_address: "", from_name: "Ops" }), email: { apiKey: "key" } },
+      { fetchFn: fetchFn as any, service: emailConfigService({ from_address: "", from_name: "Ops" }), email: { apiKey: "key", allowedFrom: "ops@x.com" } },
       args,
     );
     expect(result).toBe("skipped");
@@ -57,7 +57,7 @@ describe("trySendInviteEmail", () => {
       {
         fetchFn: fetchFn as any,
         service: emailConfigService({ from_address: "ops@x.com", from_name: "Acme" }),
-        email: { apiKey: "key" },
+        email: { apiKey: "key", allowedFrom: "ops@x.com" },
       },
       args,
     );
@@ -76,7 +76,7 @@ describe("trySendInviteEmail", () => {
       {
         fetchFn: fetchFn as any,
         service: emailConfigService({ from_address: "ops@x.com" }),
-        email: { apiKey: "key" },
+        email: { apiKey: "key", allowedFrom: "ops@x.com" },
       },
       args,
     );
@@ -87,7 +87,7 @@ describe("trySendInviteEmail", () => {
     const fetchFn = mockFetch(200, { id: "re_1" });
     const service = { from: vi.fn(() => { throw new Error("db down"); }) } as any;
     const result = await trySendInviteEmail(
-      { fetchFn: fetchFn as any, service, email: { apiKey: "key" } },
+      { fetchFn: fetchFn as any, service, email: { apiKey: "key", allowedFrom: "ops@x.com" } },
       args,
     );
     expect(result).toBe("failed");

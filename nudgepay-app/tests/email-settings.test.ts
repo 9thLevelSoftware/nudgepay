@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { resolveEmailSettings, parseEmailSettingsUpdate, emailConfigUpsertRow } from "../app/lib/email-settings";
+import { resolveEmailSettings, parseEmailSettingsUpdate, emailConfigUpsertRow, assertFromAddressAllowed } from "../app/lib/email-settings";
 
 function fd(entries: Record<string, string>): FormData {
   const f = new FormData();
@@ -16,7 +16,10 @@ describe("email settings", () => {
       .toEqual({ emailEnabled: true, fromAddress: "a@x.com", fromName: "A", postalAddress: "1 Main St" });
   });
   it("accepts a valid from address", () => {
-    const r = parseEmailSettingsUpdate(fd({ email_enabled: "true", from_address: "billing@x.com", from_name: "Chancey", postal_address: "1 Main St" }));
+    const r = parseEmailSettingsUpdate(
+      fd({ email_enabled: "true", from_address: "billing@x.com", from_name: "Chancey", postal_address: "1 Main St" }),
+      ["billing@x.com"],
+    );
     expect(r).toEqual({ ok: true, value: { email_enabled: true, from_address: "billing@x.com", from_name: "Chancey", postal_address: "1 Main St" } });
   });
   it("requires postal when email is enabled (NP-AUD-2026-033-POSTAL)", () => {
@@ -25,7 +28,10 @@ describe("email settings", () => {
     if (!r.ok) expect(r.error).toBe("postal");
   });
   it("trims postal when enabled", () => {
-    const r = parseEmailSettingsUpdate(fd({ email_enabled: "true", from_address: "billing@x.com", from_name: "", postal_address: "  1 Main St  " }));
+    const r = parseEmailSettingsUpdate(
+      fd({ email_enabled: "true", from_address: "billing@x.com", from_name: "", postal_address: "  1 Main St  " }),
+      ["billing@x.com"],
+    );
     expect(r.ok && r.value.postal_address).toBe("1 Main St");
   });
   it("rejects a malformed from address", () => {
@@ -44,10 +50,39 @@ describe("email settings", () => {
     expect(r.ok).toBe(false);
     if (!r.ok) expect(r.error).toBe("from_allowlist");
   });
+  it("assertFromAddressAllowed throws when the allowlist is empty or the address is missing", () => {
+    expect(() => assertFromAddressAllowed("billing@x.com", undefined)).toThrow(/allowlist/i);
+    expect(() => assertFromAddressAllowed("other@x.com", "billing@x.com")).toThrow(/allowlist/i);
+    expect(() => assertFromAddressAllowed("billing@x.com", "billing@x.com")).not.toThrow();
+  });
+  it("org-scoped allowlist entries are not interchangeable across workspaces", () => {
+    const orgA = "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa";
+    const orgB = "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb";
+    const raw = `${orgA}:billing@a.test,${orgB}:billing@b.test`;
+    expect(() => assertFromAddressAllowed("billing@a.test", raw, orgA)).not.toThrow();
+    expect(() => assertFromAddressAllowed("billing@a.test", raw, orgB)).toThrow(/allowlist/i);
+    expect(() => assertFromAddressAllowed("billing@b.test", raw, orgA)).toThrow(/allowlist/i);
+    const mixed = `${orgA}:billing@a.test,billing@a.test`;
+    expect(() => assertFromAddressAllowed("billing@a.test", mixed, orgB)).toThrow(/allowlist/i);
+    const r = parseEmailSettingsUpdate(
+      fd({ email_enabled: "true", from_address: "billing@a.test", postal_address: "1 Main" }),
+      raw,
+      orgB,
+    );
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.error).toBe("from_allowlist");
+  });
+  it("rejects enable when the From allowlist is empty", () => {
+    const r = parseEmailSettingsUpdate(
+      fd({ email_enabled: "true", from_address: "billing@x.com", postal_address: "1 Main" }),
+      [],
+    );
+    expect(r).toEqual({ ok: false, error: "from_allowlist" });
+  });
   it("emailConfigUpsertRow always stamps updated_at", () => {
     const parsed = parseEmailSettingsUpdate(fd({
       email_enabled: "true", from_address: "billing@x.com", from_name: "A", postal_address: "1 Main",
-    }));
+    }), ["billing@x.com"]);
     expect(parsed.ok).toBe(true);
     if (!parsed.ok) return;
     const row = emailConfigUpsertRow("org-1", parsed.value, "2026-08-21T00:00:00.000Z");

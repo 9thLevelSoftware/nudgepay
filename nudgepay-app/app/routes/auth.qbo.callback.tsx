@@ -1,5 +1,5 @@
 import { redirect, type LoaderFunctionArgs } from "react-router";
-import { getEnv, getQboEnv, getEmailEnvOrNull } from "../lib/env.server";
+import { getEnv, getQboEnv, getEmailEnvOrNull, resendTransport } from "../lib/env.server";
 import { createSupabaseServiceClient } from "../lib/supabase.server";
 import { requireUser, resolveOrg } from "../lib/session.server";
 import { consumeOAuthState } from "../lib/oauth-state.server";
@@ -55,7 +55,7 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
     const notify = emailEnv
       ? (orgId: string, brokenDetails: any[], today: string) =>
           sendBrokenPromiseAlerts(
-            { fetchFn: fetch, service, email: { apiKey: emailEnv.RESEND_API_KEY }, appUrl: emailEnv.APP_PUBLIC_BASE_URL ?? "" },
+            { fetchFn: fetch, service, email: resendTransport(emailEnv), appUrl: emailEnv.APP_PUBLIC_BASE_URL ?? "" },
             orgId, brokenDetails, today,
           )
       : undefined;

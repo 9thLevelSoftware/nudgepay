@@ -101,6 +101,8 @@ services:
         sync: false
       - key: RESEND_WEBHOOK_SECRET
         sync: false
+      - key: RESEND_ALLOWED_FROM
+        sync: false
       - key: UNSUBSCRIBE_SECRET
         sync: false
       - key: APP_PUBLIC_BASE_URL

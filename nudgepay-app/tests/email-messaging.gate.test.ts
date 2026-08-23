@@ -37,7 +37,7 @@ function deps(fetchFn: any): EmailDeps {
   return {
     fetchFn,
     service: svc,
-    email: { apiKey: "test-key" },
+    email: { apiKey: "test-key", allowedFrom: "billing@chancey.test" },
     unsubscribeBaseUrl: "https://app.example.com",
     unsubscribeSecret: "test-secret",
   };

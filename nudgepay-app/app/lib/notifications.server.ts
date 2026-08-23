@@ -10,6 +10,7 @@ import type { BrokenPromiseDetail } from "./promise-evaluation.server";
 import { isCaseSuppressed } from "./exceptions";
 import type { ExceptionReason } from "./contact-log";
 import { shouldSkipBrokenPromiseSend } from "./alert-retry";
+import { fromAddressAllowed } from "./email-settings";
 
 // ---------------------------------------------------------------------------
 // Deps
@@ -41,6 +42,7 @@ export async function sendBrokenPromiseAlerts(
     .maybeSingle();
   const fromAddress = ((ecfg?.from_address as string) ?? "").trim();
   if (!fromAddress) return;
+  if (!fromAddressAllowed(fromAddress, deps.email.allowedFrom, orgId)) return;
   const fromName = ((ecfg?.from_name as string) ?? "").trim();
   const from = fromName ? `${fromName} <${fromAddress}>` : fromAddress;
 
@@ -273,6 +275,10 @@ export async function runDailyDigest(
       .eq("kind", "daily_digest")
       .eq("dedupe_key", dedupeKey);
     if ((count ?? 0) > 0) continue; // already sent today
+
+    if (!fromAddressAllowed(fromAddress, deps.email.allowedFrom, orgId)) {
+      throw new Error("from address not on RESEND_ALLOWED_FROM");
+    }
 
     const emailContent = digestEmail({
       recipientName: member.label,

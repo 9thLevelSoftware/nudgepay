@@ -2,7 +2,7 @@
 // `scheduled` handler. Uses the global fetch (top of the call stack); all
 // lower layers stay injectable for tests.
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { getEnv, getQboEnv, getEmailEnvOrNull } from "./env.server";
+import { getEnv, getQboEnv, getEmailEnvOrNull, resendTransport } from "./env.server";
 import { createSupabaseServiceClient } from "./supabase.server";
 import { qboApiBaseUrl } from "./qbo-api.server";
 import { runCdcCatchup, type SyncDeps } from "./qbo-sync.server";
@@ -79,7 +79,7 @@ export async function runScheduledCdc(
   const notify = emailEnv
     ? (orgId: string, brokenDetails: any[], today: string) =>
         sendBrokenPromiseAlerts(
-          { fetchFn: fetch, service, email: { apiKey: emailEnv.RESEND_API_KEY }, appUrl: emailEnv.APP_PUBLIC_BASE_URL ?? "" },
+          { fetchFn: fetch, service, email: resendTransport(emailEnv), appUrl: emailEnv.APP_PUBLIC_BASE_URL ?? "" },
           orgId, brokenDetails, today,
         )
     : undefined;

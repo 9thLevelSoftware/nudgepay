@@ -135,7 +135,7 @@ test("sendTestEmail: sends with org from_address and from_name", async () => {
     emailConfig: { from_address: "ar@example.com", from_name: "AR Team" },
   });
   const result = await sendTestEmail(
-    { fetchFn, service, email: { apiKey: "re_test" } },
+    { fetchFn, service, email: { apiKey: "re_test", allowedFrom: "ar@example.com" } },
     { orgId: "org1", to: "owner@example.com" },
   );
   expect(result).toEqual({ ok: true, id: "msg_2" });
@@ -151,10 +151,23 @@ test("sendTestEmail: uses bare address when from_name is empty", async () => {
     emailConfig: { from_address: "noreply@example.com", from_name: "" },
   });
   const result = await sendTestEmail(
-    { fetchFn, service, email: { apiKey: "re_test" } },
+    { fetchFn, service, email: { apiKey: "re_test", allowedFrom: "noreply@example.com" } },
     { orgId: "org1", to: "owner@example.com" },
   );
   expect(result).toEqual({ ok: true, id: "msg_3" });
   const payload = JSON.parse((fetchFn as any).mock.calls[0][1].body);
   expect(payload.from).toBe("noreply@example.com");
+});
+
+test("sendTestEmail: returns from_allowlist when the stored sender is not allowed", async () => {
+  const fetchFn = mockFetch({ id: "msg_4" });
+  const service = mockService({
+    emailConfig: { from_address: "ar@example.com", from_name: "AR" },
+  });
+  const result = await sendTestEmail(
+    { fetchFn, service, email: { apiKey: "re_test", allowedFrom: "other@example.com" } },
+    { orgId: "org1", to: "owner@example.com" },
+  );
+  expect(result).toEqual({ ok: false, error: "from_allowlist" });
+  expect(fetchFn).not.toHaveBeenCalled();
 });

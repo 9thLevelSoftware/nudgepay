@@ -4,7 +4,7 @@ import { requireUser, resolveOrg } from "../lib/session.server";
 import { safeReturnTo } from "../lib/return-to";
 import { parseOrgSettingsUpdate, parseHolidayDate, parseHolidayLabel, parseLateFeeSettingsUpdate, parsePriorityThresholdsUpdate, parseWorkflowKnobsUpdate } from "../lib/org-settings";
 import { parseChannelSettingsUpdate, parseQuietHoursUpdate } from "../lib/channel-settings";
-import { parseAllowedFromList, parseEmailSettingsUpdate, emailConfigUpsertRow } from "../lib/email-settings";
+import { parseEmailSettingsUpdate, emailConfigUpsertRow } from "../lib/email-settings";
 import { parseCompanyProfileUpdate } from "../lib/org-profile";
 import { parseTemplateUpsert, parseTemplateDelete } from "../lib/message-templates";
 import { DEFAULT_SMS_TEMPLATES } from "../lib/sms-templates";
@@ -126,10 +126,15 @@ export async function action({ request, context }: ActionFunctionArgs) {
   }
 
   if (intent === "save_email") {
-    const allowlist = parseAllowedFromList((context as { cloudflare?: { env?: Record<string, string> } })
-      .cloudflare?.env?.RESEND_ALLOWED_FROM);
-    const parsed = parseEmailSettingsUpdate(form, allowlist);
-    if (!parsed.ok) return redirect(flag(returnTo, "error", "email"), { headers });
+    const allowlist = (context as { cloudflare?: { env?: Record<string, string> } })
+      .cloudflare?.env?.RESEND_ALLOWED_FROM;
+    const parsed = parseEmailSettingsUpdate(form, allowlist, org.org_id);
+    if (!parsed.ok) {
+      return redirect(
+        flag(returnTo, "error", parsed.error === "from_allowlist" ? "from_allowlist" : "email"),
+        { headers },
+      );
+    }
     const { error } = await supabase.from("email_config")
       .upsert(emailConfigUpsertRow(org.org_id, parsed.value, new Date().toISOString()), { onConflict: "org_id" });
     if (error) return redirect(flag(returnTo, "error", "save"), { headers });

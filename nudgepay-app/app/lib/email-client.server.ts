@@ -1,7 +1,7 @@
 // Resend REST client. Workers-friendly (fetch-only, no SDK). Fetch injected for
 // testability, mirroring twilio-client.server.ts.
 
-export type EmailConfig = { apiKey: string };
+export type EmailConfig = { apiKey: string; allowedFrom?: string | null };
 export type SendEmailArgs = {
   from: string;
   to: string;

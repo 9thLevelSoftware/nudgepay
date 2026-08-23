@@ -68,7 +68,7 @@ function serviceForAlerts(opts: {
   };
 }
 
-function serviceForDigest(opts: { fromAddress: string | null; fromName?: string }) {
+function serviceForDigest(opts: { fromAddress: string | null; fromName?: string; cases?: unknown[] }) {
   const emailConfig = qb({
     data: opts.fromAddress
       ? { from_address: opts.fromAddress, from_name: opts.fromName ?? "NudgePay" }
@@ -84,7 +84,7 @@ function serviceForDigest(opts: { fromAddress: string | null; fromName?: string 
             return emailConfig;
           case "collection_cases":
             return qb({
-              data: [{
+              data: opts.cases ?? [{
                 id: "case-1",
                 customer_id: "cust-1",
                 status: "working",
@@ -132,7 +132,7 @@ describe("sendBrokenPromiseAlerts operator gate (NP-AUD-2026-049)", () => {
     const fetchFn = mockFetch(200, { id: "re_1" });
     const { service, emailConfig } = serviceForAlerts({ fromAddress: "alerts@x.com", fromName: "Ops" });
     await sendBrokenPromiseAlerts(
-      { fetchFn: fetchFn as any, service, email: { apiKey: "key" }, appUrl: "https://app.nudgepay.test" },
+      { fetchFn: fetchFn as any, service, email: { apiKey: "key", allowedFrom: "alerts@x.com" }, appUrl: "https://app.nudgepay.test" },
       "org-1",
       broken,
       "2026-07-02",
@@ -149,7 +149,7 @@ describe("sendBrokenPromiseAlerts operator gate (NP-AUD-2026-049)", () => {
     const fetchFn = mockFetch(200, { id: "re_1" });
     const { service } = serviceForAlerts({ fromAddress: null });
     await sendBrokenPromiseAlerts(
-      { fetchFn: fetchFn as any, service, email: { apiKey: "key" }, appUrl: "https://app.nudgepay.test" },
+      { fetchFn: fetchFn as any, service, email: { apiKey: "key", allowedFrom: "alerts@x.com" }, appUrl: "https://app.nudgepay.test" },
       "org-1",
       broken,
       "2026-07-02",
@@ -165,7 +165,7 @@ describe("runDailyDigest operator gate (NP-AUD-2026-049)", () => {
     const fetchFn = mockFetch(200, { id: "re_d" });
     const { service, emailConfig } = serviceForDigest({ fromAddress: "alerts@x.com" });
     await runDailyDigest(
-      { fetchFn: fetchFn as any, service, email: { apiKey: "key" }, appUrl: "https://app.nudgepay.test" },
+      { fetchFn: fetchFn as any, service, email: { apiKey: "key", allowedFrom: "alerts@x.com" }, appUrl: "https://app.nudgepay.test" },
       "org-1",
       "2026-07-02",
     );
@@ -180,10 +180,32 @@ describe("runDailyDigest operator gate (NP-AUD-2026-049)", () => {
     const fetchFn = mockFetch(200, { id: "re_d" });
     const { service } = serviceForDigest({ fromAddress: null });
     await runDailyDigest(
-      { fetchFn: fetchFn as any, service, email: { apiKey: "key" }, appUrl: "https://app.nudgepay.test" },
+      { fetchFn: fetchFn as any, service, email: { apiKey: "key", allowedFrom: "alerts@x.com" }, appUrl: "https://app.nudgepay.test" },
       "org-1",
       "2026-07-02",
     );
+    expect(fetchFn).not.toHaveBeenCalled();
+  });
+
+  it("throws when the from address is off the allowlist so the cron can release the claim", async () => {
+    const fetchFn = mockFetch(200, { id: "re_d" });
+    const { service } = serviceForDigest({ fromAddress: "alerts@x.com" });
+    await expect(runDailyDigest(
+      { fetchFn: fetchFn as any, service, email: { apiKey: "key", allowedFrom: "other@x.com" }, appUrl: "https://app.nudgepay.test" },
+      "org-1",
+      "2026-07-02",
+    )).rejects.toThrow(/RESEND_ALLOWED_FROM/);
+    expect(fetchFn).not.toHaveBeenCalled();
+  });
+
+  it("does not throw on an off-allowlist sender when there is nothing to send", async () => {
+    const fetchFn = mockFetch(200, { id: "re_d" });
+    const { service } = serviceForDigest({ fromAddress: "alerts@x.com", cases: [] });
+    await expect(runDailyDigest(
+      { fetchFn: fetchFn as any, service, email: { apiKey: "key", allowedFrom: "other@x.com" }, appUrl: "https://app.nudgepay.test" },
+      "org-1",
+      "2026-07-02",
+    )).resolves.toBeUndefined();
     expect(fetchFn).not.toHaveBeenCalled();
   });
 });

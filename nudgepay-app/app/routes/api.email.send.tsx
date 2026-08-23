@@ -1,5 +1,5 @@
 import { redirect, type ActionFunctionArgs } from "react-router";
-import { getEnv, getEmailEnv } from "../lib/env.server";
+import { getEnv, getEmailEnv, resendTransport } from "../lib/env.server";
 import { createSupabaseServiceClient } from "../lib/supabase.server";
 import { requireUser, resolveOrg } from "../lib/session.server";
 import { sendInvoiceEmail, type EmailDeps } from "../lib/email-messaging.server";
@@ -24,7 +24,7 @@ export async function action({ request, context }: ActionFunctionArgs) {
   const deps: EmailDeps = {
     fetchFn: fetch,
     service,
-    email: { apiKey: emailEnv.RESEND_API_KEY },
+    email: resendTransport(emailEnv),
     unsubscribeBaseUrl: emailEnv.APP_PUBLIC_BASE_URL,
     unsubscribeSecret: emailEnv.UNSUBSCRIBE_SECRET,
   };

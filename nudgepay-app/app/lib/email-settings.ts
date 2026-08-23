@@ -1,6 +1,12 @@
 // Pure module — no I/O, no .server. Per-org email config derivation + form
 // parsing, mirroring channel-settings.ts. Absent row => disabled (email defaults
-// OFF). Address is format-validated; domain verification is an operator concern.
+// OFF). Address is format-validated.
+//
+// RESEND_ALLOWED_FROM is a comma-separated list of verified From addresses.
+// Entries may be `email` (any workspace) or `orgId:email` (that workspace only).
+// An address bound to one org is not usable by another, even if also listed
+// unscoped. An empty allowlist rejects enable so tenants cannot pick a
+// free-text From on the shared Resend key.
 
 export type EmailSettings = { emailEnabled: boolean; fromAddress: string; fromName: string; postalAddress: string };
 
@@ -27,21 +33,64 @@ export type EmailSettingsUpdate =
   | { ok: true; value: { email_enabled: boolean; from_address: string; from_name: string; postal_address: string } }
   | { ok: false; error: string };
 
-export function parseAllowedFromList(raw: string | null | undefined): string[] {
-  return (raw ?? "")
-    .split(",")
-    .map((s) => s.trim().toLowerCase())
-    .filter(Boolean);
+const ORG_SCOPED_FROM = /^([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}):(.+)$/i;
+
+export type AllowedFromEntry = { email: string; orgId: string | null };
+
+export function parseAllowedFromEntries(raw: string | null | undefined): AllowedFromEntry[] {
+  const out: AllowedFromEntry[] = [];
+  for (const token of (raw ?? "").split(",")) {
+    const trimmed = token.trim();
+    if (!trimmed) continue;
+    const scoped = trimmed.match(ORG_SCOPED_FROM);
+    if (scoped) {
+      const email = scoped[2]!.trim().toLowerCase();
+      if (email) out.push({ email, orgId: scoped[1]!.toLowerCase() });
+      continue;
+    }
+    out.push({ email: trimmed.toLowerCase(), orgId: null });
+  }
+  return out;
 }
 
-export function fromAddressAllowed(fromAddress: string, allowlist: string[]): boolean {
-  if (allowlist.length === 0) return true;
-  return allowlist.includes(fromAddress.trim().toLowerCase());
+function allowlistEntries(allowlist: string[] | string | null | undefined): AllowedFromEntry[] {
+  if (Array.isArray(allowlist)) {
+    return allowlist
+      .map((s) => s.trim().toLowerCase())
+      .filter(Boolean)
+      .map((email) => ({ email, orgId: null as string | null }));
+  }
+  return parseAllowedFromEntries(allowlist);
+}
+
+export function fromAddressAllowed(
+  fromAddress: string,
+  allowlist: string[] | string | null | undefined,
+  orgId?: string | null,
+): boolean {
+  const from = fromAddress.trim().toLowerCase();
+  const entries = allowlistEntries(allowlist);
+  if (!from || entries.length === 0) return false;
+  const org = orgId?.trim().toLowerCase() || null;
+  if (org && entries.some((e) => e.email === from && e.orgId === org)) return true;
+  if (entries.some((e) => e.email === from && e.orgId && e.orgId !== org)) return false;
+  return entries.some((e) => e.email === from && e.orgId === null);
+}
+
+export function assertFromAddressAllowed(
+  fromAddress: string,
+  allowedFromRaw: string | null | undefined,
+  orgId?: string | null,
+): void {
+  if (!fromAddressAllowed(fromAddress, allowedFromRaw, orgId)) {
+    throw new Error("From address is not on the Resend allowlist");
+  }
 }
 
 export function parseEmailSettingsUpdate(
   form: FormData,
-  allowlist: string[] = [],
+  allowlist: string[] | string | null | undefined = [],
+  orgId?: string | null,
 ): EmailSettingsUpdate {
   const email_enabled = form.get("email_enabled") === "true";
   const from_address = (typeof form.get("from_address") === "string" ? (form.get("from_address") as string) : "").trim();
@@ -53,7 +102,7 @@ export function parseEmailSettingsUpdate(
   if (email_enabled) {
     if (!from_address) return { ok: false, error: "address" };
     if (!postal_address) return { ok: false, error: "postal" };
-    if (!fromAddressAllowed(from_address, allowlist)) return { ok: false, error: "from_allowlist" };
+    if (!fromAddressAllowed(from_address, allowlist, orgId)) return { ok: false, error: "from_allowlist" };
   }
   return { ok: true, value: { email_enabled, from_address, from_name, postal_address } };
 }

@@ -46,6 +46,8 @@ npx wrangler secret put <NAME> --env production
 npm run deploy
 ```
 
+Enabling workspace email also requires `RESEND_ALLOWED_FROM` (comma-separated verified From addresses; `email` or `orgId:email` to bind a sender to one workspace). Enabling email fails closed if it is unset or empty.
+
 Render (`render.yaml`) is a secondary Node target. It is not a production webhook failover on the free plan.
 
 ## Layout

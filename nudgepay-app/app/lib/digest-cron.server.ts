@@ -3,7 +3,7 @@
 // digest_hour_local, at most once per org-local calendar day (last_digest_date).
 // Mirrors runScheduledCdc's per-org try/catch pattern.
 
-import { getEnv, getEmailEnvOrNull } from "./env.server";
+import { getEnv, getEmailEnvOrNull, resendTransport } from "./env.server";
 import { createSupabaseServiceClient } from "./supabase.server";
 import { runDailyDigest, retryUnsentBrokenPromiseAlerts } from "./notifications.server";
 import { recordSyncError } from "./sync-errors.server";
@@ -59,7 +59,7 @@ export async function runScheduledDigest(
       const todayForRetry = todayInTz(tz, now);
       try {
         await retryUnsentBrokenPromiseAlerts(
-          { fetchFn: fetch, service, email: { apiKey: emailEnv.RESEND_API_KEY }, appUrl: emailEnv.APP_PUBLIC_BASE_URL ?? "" },
+          { fetchFn: fetch, service, email: resendTransport(emailEnv), appUrl: emailEnv.APP_PUBLIC_BASE_URL ?? "" },
           orgId,
           todayForRetry,
         );
@@ -113,7 +113,7 @@ export async function runScheduledDigest(
 
       try {
         await runDailyDigest(
-          { fetchFn: fetch, service, email: { apiKey: emailEnv.RESEND_API_KEY }, appUrl: emailEnv.APP_PUBLIC_BASE_URL ?? "" },
+          { fetchFn: fetch, service, email: resendTransport(emailEnv), appUrl: emailEnv.APP_PUBLIC_BASE_URL ?? "" },
           orgId,
           today,
         );
