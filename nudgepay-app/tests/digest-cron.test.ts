@@ -13,6 +13,7 @@ const DIGEST_ENV: Record<string, string> = {
   UNSUBSCRIBE_SECRET: "test-unsub-secret",
   RESEND_WEBHOOK_SECRET: "test-resend-webhook-secret",
   APP_PUBLIC_BASE_URL: "https://app.nudgepay.test",
+  RESEND_ALLOWED_FROM: "alerts@nudgepay.test",
 };
 
 async function setUpOrg(email: string, opts: { digestHourLocal: number; timezone: string; nextActionAt: string }) {
