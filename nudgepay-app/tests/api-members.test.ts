@@ -59,7 +59,8 @@ test("owner revokes a pending invite", async () => {
   });
 
   expect(res.status).toBe(302);
-  expect(res.headers.get("Location") ?? "").toContain("saved=invite_revoked");
+  expect(res.headers.get("Location") ?? "").toMatch(/\/settings/);
+  expect(res.headers.get("Location") ?? "").not.toContain("saved=invite_revoked");
   const { data: rows } = await svc.from("invites").select("id").eq("id", inv!.id);
   expect(rows ?? []).toHaveLength(0);
 });

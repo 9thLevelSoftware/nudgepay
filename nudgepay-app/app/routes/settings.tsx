@@ -1,5 +1,5 @@
-import { useRef, useState } from "react";
-import { useLoaderData, useNavigation, useSearchParams, Form, data, type LoaderFunctionArgs } from "react-router";
+import { useEffect, useRef, useState } from "react";
+import { useFetcher, useLoaderData, useNavigation, useSearchParams, Form, data, type LoaderFunctionArgs } from "react-router";
 import { useFlashCleanup } from "../lib/use-flash-cleanup";
 import { useDialog } from "../lib/use-dialog";
 import { orgNameMatches } from "../lib/qbo-disconnect";
@@ -25,6 +25,7 @@ import { CompanyProfileForm } from "../components/CompanyProfileForm";
 import { TemplateEditor } from "../components/TemplateEditor";
 import { useTwoStep } from "../components/TwoStepConfirm";
 import { Button } from "../components/ui";
+import { useToast } from "../components/Toasts";
 import { resolveChannelSettings, resolveSmsSenderSettings } from "../lib/channel-settings";
 import { resolveEmailSettings } from "../lib/email-settings";
 import { deriveWebhookUrls } from "../lib/provider-status";
@@ -182,8 +183,20 @@ function RevokeInviteButton({
   busy: boolean;
 }) {
   const { confirming, arm, disarm } = useTwoStep(5000);
+  const fetcher = useFetcher();
+  const toast = useToast();
+  const submitting = useRef(false);
+  useEffect(() => {
+    if (fetcher.state === "submitting") submitting.current = true;
+    if (fetcher.state === "idle" && submitting.current) {
+      submitting.current = false;
+      const err = new URL(window.location.href).searchParams.get("error");
+      if (err !== "revoke") toast("Invite revoked.");
+    }
+  }, [fetcher.state, toast]);
+  const pending = busy || fetcher.state !== "idle";
   return (
-    <Form method="post" action="/api/members" className="inline-flex items-center gap-2">
+    <fetcher.Form method="post" action="/api/members" className="inline-flex items-center gap-2">
       <input type="hidden" name="intent" value="revoke" />
       <input type="hidden" name="inviteId" value={inviteId} />
       <input type="hidden" name="returnTo" value={returnTo} />
@@ -192,19 +205,19 @@ function RevokeInviteButton({
           <span className="text-xs text-hot" role="alert">
             Revoke this invite?
           </span>
-          <Button type="submit" variant="destructive" size="sm" disabled={busy}>
-            {busy ? "Revoking…" : "Confirm revoke"}
+          <Button type="submit" variant="destructive" size="sm" disabled={pending}>
+            {pending ? "Revoking…" : "Confirm revoke"}
           </Button>
           <Button type="button" variant="ghost" size="sm" onClick={disarm}>
             Cancel
           </Button>
         </>
       ) : (
-        <Button type="button" variant="ghost" size="sm" onClick={arm} disabled={busy}>
+        <Button type="button" variant="ghost" size="sm" onClick={arm} disabled={pending}>
           Revoke
         </Button>
       )}
-    </Form>
+    </fetcher.Form>
   );
 }
 
@@ -508,9 +521,6 @@ export default function Settings() {
                 ) : null}
                 {sp.get("saved") === "member" ? (
                   <p className="mt-2 text-xs text-cool" role="status">Member updated.</p>
-                ) : null}
-                {sp.get("saved") === "invite_revoked" ? (
-                  <p className="mt-2 text-xs text-cool" role="status">Invite revoked.</p>
                 ) : null}
                 {memberError === "forbidden" ? (
                   <p className="mt-2 text-xs text-hot" role="alert">Only owners can manage members.</p>

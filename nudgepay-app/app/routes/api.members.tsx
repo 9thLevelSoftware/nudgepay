@@ -87,7 +87,7 @@ export async function action({ request, context }: ActionFunctionArgs) {
     const { data, error } = await service.from("invites")
       .delete().eq("org_id", org.org_id).eq("id", inviteId).is("accepted_at", null).select("id");
     if (error || !data?.length) return redirect(flag(returnTo, "error", "revoke"), { headers });
-    return redirect(flag(returnTo, "saved", "invite_revoked"), { headers });
+    return redirect(returnTo, { headers });
   }
 
   if (intent === "leave") {

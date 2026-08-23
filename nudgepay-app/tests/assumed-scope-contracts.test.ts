@@ -28,18 +28,16 @@ test("pending invites unique per org+email (NP-AUD-2026-130)", () => {
   expect(sql).toMatch(/accepted_at is null/i);
 });
 
-test("acceptInvite claims the invite before inserting membership", () => {
+test("acceptInvite claims the invite via a single accept_invite RPC", () => {
   const src = read("../app/lib/orgs.server.ts");
   const accept = src.slice(
     src.indexOf("export async function acceptInvite"),
     src.indexOf("export async function createOrgForUser"),
   );
-  const claimAt = accept.indexOf(".update({ accepted_at:");
-  const insertAt = accept.indexOf('.from("memberships").insert');
-  expect(claimAt).toBeGreaterThan(-1);
-  expect(insertAt).toBeGreaterThan(claimAt);
-  expect(accept).toContain(".select(\"id\")");
-  expect(accept).toContain("!claimed?.length");
+  expect(accept).toContain('.rpc("accept_invite"');
+  const sql = read("../supabase/migrations/0045_accept_invite.sql");
+  expect(sql).toMatch(/for update/i);
+  expect(sql).toMatch(/insert into public\.memberships/i);
 });
 
 test("revoke controls use the shared Button primitive", () => {
@@ -50,6 +48,7 @@ test("revoke controls use the shared Button primitive", () => {
   );
   expect(revoke).toContain("<Button");
   expect(revoke).toContain('variant="destructive"');
+  expect(revoke).toContain("useToast");
   expect(revoke).not.toMatch(/<button\b/);
 });
 

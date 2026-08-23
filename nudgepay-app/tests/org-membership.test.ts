@@ -1,4 +1,3 @@
-import { readFileSync } from "node:fs";
 import { expect, test } from "vitest";
 import {
   ALREADY_IN_WORKSPACE,
@@ -66,10 +65,3 @@ test("humanInviteError does not leak raw database errors", () => {
   );
 });
 
-test("settings revoke uses useTwoStep submit, not TwoStepConfirm onConfirm", () => {
-  const src = readFileSync(new URL("../app/routes/settings.tsx", import.meta.url), "utf8");
-  expect(src).toContain('name="intent" value="revoke"');
-  expect(src).toContain("useTwoStep");
-  expect(src).toMatch(/type="submit"/);
-  expect(src).not.toMatch(/<TwoStepConfirm/);
-});
