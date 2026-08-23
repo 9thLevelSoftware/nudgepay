@@ -126,3 +126,37 @@ test("F: five invoices / one payment — promise kept on the aggregated linked b
   expect(pr!.status).toBe("kept");
   expect(Number(pr!.amount_received)).toBe(2000);
 });
+
+test("RLS: a member cannot DELETE a promise or promise_invoices row", async () => {
+  const svc = serviceClient();
+  const member = await makeUserClient(`promises-rls-mem-${Math.random()}@example.com`);
+  const { data: org } = await svc.from("organizations").insert({ name: `PromMem ${member.userId}` }).select("id").single();
+  const orgId = org!.id as string;
+  await svc.from("memberships").insert({ org_id: orgId, user_id: member.userId, role: "member" });
+  const { data: cust } = await svc.from("customers")
+    .insert({ org_id: orgId, qbo_id: `prm-${member.userId}`, name: "Acme" }).select("id").single();
+  const { data: inv } = await svc.from("invoices").insert({
+    org_id: orgId, qbo_id: `prm-i-${member.userId}`, qbo_doc_number: "P1", customer_id: cust!.id,
+    amount: 500, balance: 500, due_date: "2026-03-01", status: "overdue",
+  }).select("id").single();
+  const { data: cse } = await svc.from("collection_cases")
+    .insert({ org_id: orgId, customer_id: cust!.id, status: "promised" }).select("id").single();
+  const { data: prom } = await svc.from("promises").insert({
+    org_id: orgId, case_id: cse!.id, customer_id: cust!.id,
+    status: "pending", promised_amount: 500, promised_date: "2026-07-01",
+    grace_until: "2026-07-03", baseline_balance: 500,
+  }).select("id").single();
+  await svc.from("promise_invoices").insert({
+    promise_id: prom!.id, invoice_id: inv!.id, org_id: orgId, baseline_balance: 500,
+  });
+
+  await member.client.from("promises").delete().eq("id", prom!.id);
+  const { data: stillProm } = await svc.from("promises").select("id").eq("id", prom!.id);
+  expect(stillProm).toHaveLength(1);
+
+  await member.client.from("promise_invoices").delete()
+    .eq("promise_id", prom!.id).eq("invoice_id", inv!.id);
+  const { data: stillLink } = await svc.from("promise_invoices")
+    .select("promise_id").eq("promise_id", prom!.id).eq("invoice_id", inv!.id);
+  expect(stillLink).toHaveLength(1);
+});

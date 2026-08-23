@@ -28,6 +28,18 @@ test("pending invites unique per org+email (NP-AUD-2026-130)", () => {
   expect(sql).toMatch(/accepted_at is null/i);
 });
 
+test("audit-ledger FKs restrict parent deletes so CASCADE cannot bypass child RLS", () => {
+  const sql = read("../supabase/migrations/0046_audit_ledger_rls.sql");
+  expect(sql).toMatch(/collection_cases_customer_id_fkey[\s\S]*on delete restrict/i);
+  expect(sql).toMatch(/promises_customer_id_fkey[\s\S]*on delete restrict/i);
+  expect(sql).toMatch(/promise_invoices_invoice_id_fkey[\s\S]*on delete restrict/i);
+  expect(sql).toMatch(/email_messages_invoice_id_fkey[\s\S]*on delete restrict/i);
+  expect(sql).toMatch(/collection_cases_org_customer_fk[\s\S]*on delete restrict/i);
+  expect(sql).toMatch(/promises_org_customer_fk[\s\S]*on delete restrict/i);
+  expect(sql).toMatch(/promise_invoices_org_invoice_fk[\s\S]*on delete restrict/i);
+  expect(sql).toMatch(/email_messages_org_invoice_fk[\s\S]*on delete restrict/i);
+});
+
 test("acceptInvite claims the invite via a single accept_invite RPC", () => {
   const src = read("../app/lib/orgs.server.ts");
   const accept = src.slice(
