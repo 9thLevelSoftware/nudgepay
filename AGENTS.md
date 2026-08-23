@@ -5,8 +5,8 @@
 All active development is in **`nudgepay-app/`** — a React Router 7 SSR app on
 Cloudflare Workers backed by Supabase (Postgres + Auth + RLS).
 
-`nudgepay-frontend/` and `nudgepay-backend/` are **deprecated** legacy
-prototypes. Do not deploy or develop in them.
+Legacy `nudgepay-frontend/` and `nudgepay-backend/` prototypes are **not**
+in this tree. Do not recreate or deploy them.
 
 ## Layout
 
@@ -19,7 +19,7 @@ nudgepay-app/
 ├── workers/
 │   └── app.ts            # Cloudflare Worker entry (fetch + scheduled handlers)
 ├── supabase/
-│   └── migrations/       # 0001..0041 — sequential SQL migrations
+│   └── migrations/       # 0001..0051 — sequential SQL migrations
 ├── tests/                # Vitest test files
 ├── wrangler.toml         # Worker config + cron + env vars
 └── package.json
@@ -54,15 +54,23 @@ docs/                     # Gap analysis, Intuit checklist
 | `qbo-cron.server.ts`     | Scheduled CDC catch-up                   |
 | `digest-cron.server.ts`  | Scheduled daily digest                   |
 
-### Migrations (0001–0041)
+### Migrations (0001–0051)
 
-Supabase migrations in `supabase/migrations/`. Key tables: `orgs`, `memberships`,
-`qbo_connections`, `invoices`, `customers`, `collection_cases`, `contact_logs`,
+Supabase migrations in `supabase/migrations/`, sequential through
+`0051_message_events_direction.sql`. After `0048_sms_sender_inventory.sql`:
+`0049_cases_and_consent_rls.sql`, `0050_promises_rls.sql`,
+`0051_message_events_direction.sql`.
+
+Key tables: `organizations`, `memberships`, `qbo_connections`, `invoices`
+(including `paid_date`), `customers`, `collection_cases`, `contact_logs`,
 `promises`, `text_messages`, `email_messages`, `org_settings`, `email_config`,
-`messaging_config`, `sync_errors`, `user_notification_prefs`, `notification_log`.
+`messaging_config`, `sync_errors`, `user_notification_prefs`,
+`notification_log`, `inbound_orphans`, `cron_checkpoints`. Messages Realtime
+broadcasts a content-free `{ table, org_id, direction }` ping (no body).
 
-RLS is the security boundary — all user-facing queries use the user client;
-service-role client only in sync/cron/admin paths.
+RLS is the user-data boundary — all user-facing queries use the user client.
+The service-role client is used for roster, sync, cron, webhooks, send, and
+invites, always pinned to `org_id`. Never use service-role in user loaders.
 
 ## Commands
 
@@ -70,15 +78,20 @@ Run from `nudgepay-app/`:
 
 ```bash
 npm run dev          # Local dev server (Workers + Supabase)
-npm run typecheck    # tsc --noEmit
+npm run typecheck    # wrangler types + react-router typegen + tsc -b
 npm run check        # tsc + build + wrangler deploy --dry-run
-npx vitest run       # Full test suite
+npm run test:unit    # PR CI — no Docker; does not run RLS/QBO/Twilio
+npx vitest run       # Full suite (needs local Supabase) — RLS proof
 npx vitest run tests/names.test.ts  # Single file
 
 # Supabase local
 npx supabase start
 npx supabase db reset   # Applies all migrations fresh
 ```
+
+GitHub Actions PR CI is the `typecheck + unit tests` job. A green PR does
+**not** mean RLS, QBO, or Twilio ran. No coverage thresholds. No auth rate
+limits.
 
 ## Conventions
 

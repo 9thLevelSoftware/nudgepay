@@ -1,5 +1,11 @@
 name: CI
 
+# PR gate is `typecheck + unit tests` (`npm run test:unit`). A green PR
+# does not prove RLS, QBO, or Twilio — those suites import `./helpers`
+# and are excluded from unit CI. Full `npm test` against local Supabase
+# (or the non-PR `supabase integration` job) is the RLS proof. No
+# coverage thresholds. No auth rate-limit job.
+
 on:
   pull_request:
   push:

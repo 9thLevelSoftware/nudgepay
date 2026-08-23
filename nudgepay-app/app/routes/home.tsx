@@ -24,9 +24,9 @@ export default function Home() {
           Get paid faster, without the awkward follow-up.
         </h1>
         <p className="mt-4 text-base text-muted">
-          NudgePay sends polite, automatic payment reminders for your QuickBooks invoices,
-          so you spend less time chasing and more time working. It is collections software
-          for trades and small businesses, not a payment processor.
+          {PAGE_DESCRIPTION} Work a human follow-up queue on your QuickBooks
+          invoices — log contact and track promises so you spend less time chasing.
+          It is not a payment processor.
         </p>
         <div className="mt-8 flex items-center justify-center gap-3">
           <Link to="/signup" className={primaryLinkClass}>Sign up</Link>
