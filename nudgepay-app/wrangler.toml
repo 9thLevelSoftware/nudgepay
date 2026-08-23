@@ -42,7 +42,7 @@ invocation_logs = true
 persist = true
 
 # Auth POST limiter (login / signup / forgot-password). 20 / 60s / IP.
-# namespace_id is a positive integer unique per account (Cloudflare examples use 1001).
+# namespace_id is a string up to 32 chars, unique per account (Cloudflare examples use "1001").
 # Ratelimits are NOT inherited by named environments — duplicate under production.
 [[ratelimits]]
 name = "AUTH_RATE_LIMIT"

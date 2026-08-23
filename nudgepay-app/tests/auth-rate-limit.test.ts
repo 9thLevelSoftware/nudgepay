@@ -106,6 +106,15 @@ describe("authRateLimited", () => {
     }
     await expect(authRateLimited(env, "198.51.100.8")).resolves.toBe(true);
   });
+
+  it("AUTH_RATE_LIMIT_REQUIRED fails closed even when NODE_ENV=production", async () => {
+    await expect(
+      authRateLimited(
+        { NODE_ENV: "production", AUTH_RATE_LIMIT_REQUIRED: "true" },
+        "203.0.113.1",
+      ),
+    ).resolves.toBe(true);
+  });
 });
 
 describe("authRateLimitKey", () => {

@@ -81,11 +81,12 @@ export async function authRateLimited(env: AuthRateLimitEnv, key: string): Promi
   }
   // WAF substitute: set AUTH_RATE_LIMIT_WAF=true after runbook evidence.
   if (env.AUTH_RATE_LIMIT_WAF === "true") return false;
+  // Cloudflare production: wrangler [env.production.vars] sets this so a
+  // missing AUTH_RATE_LIMIT binding cannot silently unlimited-allow — even
+  // if NODE_ENV=production would otherwise select the per-isolate memory map.
+  if (env.AUTH_RATE_LIMIT_REQUIRED === "true") return true;
   // Node/Render has no CF binding. Do not use QBO_SANDBOX as a production probe
   // (Render sets it false for the Intuit API URL and would 429 every login).
   if (useMemoryLimiter(env)) return memoryAuthRateLimited(key);
-  // Cloudflare production: wrangler [env.production.vars] sets this so a
-  // missing AUTH_RATE_LIMIT binding cannot silently unlimited-allow.
-  if (env.AUTH_RATE_LIMIT_REQUIRED === "true") return true;
   return false; // local/dev
 }
