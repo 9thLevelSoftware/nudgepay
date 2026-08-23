@@ -30,7 +30,9 @@ security definer
 set search_path = public
 as $$
 begin
-  if auth.role() = 'service_role' or public.is_org_owner(new.org_id) then
+  -- Gate on OLD org so a dual-org JWT cannot skip STOP/consent checks
+  -- by PATCHing org_id to an org they own (USING/CHECK is is_org_member).
+  if auth.role() = 'service_role' or public.is_org_owner(old.org_id) then
     return new;
   end if;
 
