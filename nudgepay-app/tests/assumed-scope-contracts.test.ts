@@ -37,6 +37,7 @@ test("audit-ledger FKs restrict parent deletes so CASCADE cannot bypass child RL
   expect(sql).toMatch(/collection_cases_org_customer_fk[\s\S]*on delete restrict/i);
   expect(sql).toMatch(/promises_org_customer_fk[\s\S]*on delete restrict/i);
   expect(sql).toMatch(/promise_invoices_org_invoice_fk[\s\S]*on delete restrict/i);
+  expect(sql).toMatch(/email_messages_org_invoice_fk[\s\S]*on delete restrict/i);
 });
 
 test("acceptInvite claims the invite via a single accept_invite RPC", () => {

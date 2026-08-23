@@ -75,3 +75,9 @@ alter table promise_invoices
   add constraint promise_invoices_org_invoice_fk
     foreign key (org_id, invoice_id) references invoices (org_id, id)
     on delete restrict;
+
+alter table email_messages
+  drop constraint email_messages_org_invoice_fk,
+  add constraint email_messages_org_invoice_fk
+    foreign key (org_id, invoice_id) references invoices (org_id, id)
+    on delete restrict;
