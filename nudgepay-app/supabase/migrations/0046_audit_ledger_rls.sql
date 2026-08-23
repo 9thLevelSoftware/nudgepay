@@ -81,3 +81,25 @@ alter table email_messages
   add constraint email_messages_org_invoice_fk
     foreign key (org_id, invoice_id) references invoices (org_id, id)
     on delete restrict;
+
+alter table email_messages
+  drop constraint email_messages_customer_id_fkey,
+  add constraint email_messages_customer_id_fkey
+    foreign key (customer_id) references customers(id) on delete restrict;
+
+alter table email_messages
+  drop constraint email_messages_case_id_fkey,
+  add constraint email_messages_case_id_fkey
+    foreign key (case_id) references collection_cases(id) on delete restrict;
+
+alter table email_messages
+  drop constraint email_messages_org_customer_fk,
+  add constraint email_messages_org_customer_fk
+    foreign key (org_id, customer_id) references customers (org_id, id)
+    on delete restrict;
+
+alter table email_messages
+  drop constraint email_messages_org_case_fk,
+  add constraint email_messages_org_case_fk
+    foreign key (org_id, case_id) references collection_cases (org_id, id)
+    on delete restrict;
