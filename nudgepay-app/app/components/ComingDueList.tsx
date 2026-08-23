@@ -22,9 +22,13 @@ function dueTone(daysUntilDue: number): string {
 export function ComingDueList({
   groups,
   comingDueDays,
+  connected = true,
+  needsReconnect = false,
 }: {
   groups: ComingDueGroup[];
   comingDueDays: number;
+  connected?: boolean;
+  needsReconnect?: boolean;
 }) {
   if (groups.length === 0) {
     return (
@@ -32,7 +36,7 @@ export function ComingDueList({
         <div className="w-10 h-10 rounded-full bg-paper flex items-center justify-center">
           <Icon name="check" size={20} className="text-cool" />
         </div>
-        <p className="font-sans text-text font-medium">{comingDueEmptyCopy(comingDueDays)}</p>
+        <p className="font-sans text-text font-medium">{comingDueEmptyCopy(comingDueDays, { connected, needsReconnect })}</p>
         <p className="font-sans text-sm text-muted max-w-xs">
           Check back later, or switch to another view.
         </p>

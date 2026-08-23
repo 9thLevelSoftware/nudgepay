@@ -274,6 +274,8 @@ interface WorkQueueProps {
   maxBatch: number;
   /** QBO connection — empty-state copy branches on first-run vs filter-miss. */
   connected: boolean;
+  needsReconnect?: boolean;
+  queueTruncated?: boolean;
   timeZone?: string | null;
 }
 
@@ -867,6 +869,8 @@ export function WorkQueue({
   orgPaymentLink,
   maxBatch,
   connected,
+  needsReconnect = false,
+  queueTruncated = false,
   timeZone,
 }: WorkQueueProps) {
   const [selected, setSelected] = useState<Set<string>>(new Set());
@@ -1061,7 +1065,9 @@ export function WorkQueue({
     else if (rowBottom > viewBottom) el.scrollTop = Math.max(0, rowBottom - el.clientHeight);
   }, [selectedCaseId, selectedInvoiceId, items, invoiceItems, invoiceMode, scrollerRef, density]);
 
-  const emptyCopy = emptyQueueCopy({ connected, view, q: search });
+  const emptyCopy = emptyQueueCopy({
+    connected, view, q: search, truncated: queueTruncated, needsReconnect,
+  });
 
   return (
     <section className="flex flex-col min-h-0" aria-labelledby="work-queue-title">
@@ -1312,7 +1318,7 @@ export function WorkQueue({
           </div>
         ) : null}
         {view === "coming-due" ? (
-          <ComingDueList groups={comingDueGroups} comingDueDays={comingDueDays} />
+          <ComingDueList groups={comingDueGroups} comingDueDays={comingDueDays} connected={connected} needsReconnect={needsReconnect} />
         ) : listCount === 0 ? (
           /* Empty state */
           <div className="flex flex-col items-center justify-center gap-3 py-16 px-6 text-center">

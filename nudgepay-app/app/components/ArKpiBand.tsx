@@ -22,10 +22,22 @@ function formatShare(n: number | null): string {
   return `${Math.round(n * 100)}%`;
 }
 
-export function ArKpiBand({ kpis, isOwner, loadError = null }: { kpis: ArKpis; isOwner: boolean; loadError?: string | null }) {
+export function ArKpiBand({
+  kpis, isOwner, loadError = null, connected = false, needsReconnect = false,
+}: {
+  kpis: ArKpis;
+  isOwner: boolean;
+  loadError?: string | null;
+  connected?: boolean;
+  needsReconnect?: boolean;
+}) {
   const empty = kpis.coverage === "empty";
   const partial = kpis.truncated;
-  const emptySub = "Connect QuickBooks";
+  const emptySub = needsReconnect
+    ? "Needs reconnect"
+    : connected
+      ? "No overdue history in this window"
+      : "Connect QuickBooks";
   const historyPrefix = partial ? "Partial history · " : "";
   const heading = `Receivables (${kpis.rangeDays}d)`;
   const unknownRates = !!loadError;

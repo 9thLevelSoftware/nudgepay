@@ -7,12 +7,13 @@ import { Link, useFetcher, useLoaderData, data, redirect, type LoaderFunctionArg
 import { getEnv } from "../lib/env.server";
 import { requireOrgUser } from "../lib/session.server";
 import { getConnectionStatus } from "../lib/qbo-connection.server";
+import { connectionChrome } from "../lib/connection-chrome";
 import { createSupabaseServiceClient } from "../lib/supabase.server";
 import { loadCaseQueueSource } from "../lib/case-queue.server";
 import { loadOrgConfig } from "../lib/org-config.server";
-import { DEFAULT_ORG_CONFIG } from "../lib/org-config";
+import { focusEmptyBody } from "../lib/empty-queue-copy";
 import { todayInTz } from "../lib/tz";
-import { buildCaseItems, type CaseItem } from "../lib/cases";
+import { buildCaseItems, queueTruncationMessage, type CaseItem } from "../lib/cases";
 import { collisionState, type Collision } from "../lib/collision";
 import { buildFocusQueue, dropLivePresenceCases, type FocusScope } from "../lib/focus-queue";
 import {
@@ -66,9 +67,12 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
   // QBO-connected guard
   const service = createSupabaseServiceClient(env);
   const conn = await getConnectionStatus(service, org.org_id);
+  const chrome = connectionChrome(conn?.status ?? null, null);
+  const connected = chrome.kind === "connected";
+  const needsReconnect = chrome.kind === "needs_reconnect";
   // Disconnected orgs can open Focus and see an empty deck instead of a bounce.
 
-  const orgConfigForToday = await loadOrgConfig(supabase, org.org_id).catch(() => DEFAULT_ORG_CONFIG);
+  const orgConfigForToday = await loadOrgConfig(supabase, org.org_id);
   const today = todayInTz(orgConfigForToday.companyProfile.timezone);
 
   const [src, { data: orgRow, error: orgErr }] = await Promise.all([
@@ -119,8 +123,9 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
   // Build timelines for every case in the queue (sliced to 5 recent entries).
   const caseIds = queue.map((c) => c.caseId);
   const timelines: Record<string, TimelineEntry[]> = {};
-  let historyTruncated = src.lastContactTruncated || src.queueTruncated;
+  let historyTruncated = src.lastContactTruncated;
   let historyLoadError = src.lastContactLoadError;
+  const queueTruncatedMessage = queueTruncationMessage(src.queueTruncation);
 
   if (caseIds.length > 0) {
     type FocusLogRow = {
@@ -219,6 +224,9 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
     quietHoursLabel: src.quietHoursLabel,
     lastContactTruncated: historyTruncated,
     historyLoadError,
+    queueTruncatedMessage,
+    connected,
+    needsReconnect,
     currentUserId: user.id,
     today,
     smsTemplates: src.templates.sms,
@@ -237,6 +245,7 @@ export default function FocusMode() {
   const {
     queue, scope, heldLabels, collisions, timelines, smsEnabled, smsQuietNow, quietHoursLabel, today,
     smsTemplates, orgCompany, orgPhone, orgPaymentLink, timeZone, lastContactTruncated, historyLoadError,
+    queueTruncatedMessage, connected, needsReconnect,
   } = useLoaderData<typeof loader>();
 
   // Session state
@@ -456,7 +465,15 @@ export default function FocusMode() {
             {historyLoadError}
           </span>
         </div>
-      ) : lastContactTruncated ? (
+      ) : null}
+      {queueTruncatedMessage ? (
+        <div className="border-b border-white/10 bg-warm/10 px-4 py-2 text-center">
+          <span className="inline-flex items-center rounded-md border border-warm/20 px-2 py-0.5 text-[10px] font-sans font-medium text-warm">
+            {queueTruncatedMessage}
+          </span>
+        </div>
+      ) : null}
+      {!historyLoadError && lastContactTruncated ? (
         <div className="border-b border-white/10 bg-copper/10 px-4 py-2 text-center">
           <span
             className="inline-flex items-center rounded-md border border-copper/20 px-2 py-0.5 text-[10px] font-sans font-medium text-copper"
@@ -498,9 +515,14 @@ export default function FocusMode() {
           <div className="mx-auto max-w-md text-center mt-16">
             <h2 className="text-xl font-display font-bold text-surface mb-2">Nothing to triage</h2>
             <p className="text-sm text-on-ink mb-4">
-              {heldLabels.length > 0
-                ? `A teammate is already working ${heldLabels.length === 1 ? "this account" : "these accounts"} (${heldLabels.flatMap((h) => h.viewers).join(", ")}).`
-                : "All cases are handled or on hold."}
+              {focusEmptyBody({
+                connected,
+                needsReconnect,
+                heldCount: heldLabels.length,
+                heldSummary: heldLabels.length > 0
+                  ? `A teammate is already working ${heldLabels.length === 1 ? "this account" : "these accounts"} (${heldLabels.flatMap((h) => h.viewers).join(", ")}).`
+                  : undefined,
+              })}
             </p>
             <Link
               to="/dashboard"

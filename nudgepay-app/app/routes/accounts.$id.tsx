@@ -6,6 +6,7 @@ import { mapSyncIssues } from "../lib/workspace.server";
 import { getEnv } from "../lib/env.server";
 import { requireUser, resolveOrg } from "../lib/session.server";
 import { getConnectionStatus } from "../lib/qbo-connection.server";
+import { connectionChrome, connectionSyncLabel } from "../lib/connection-chrome";
 import { createSupabaseServiceClient } from "../lib/supabase.server";
 import { listOrgMembers } from "../lib/orgs.server";
 import { loadOrgConfig } from "../lib/org-config.server";
@@ -103,30 +104,18 @@ export async function loader({ request, params, context }: LoaderFunctionArgs) {
   // Connection status — service client only (no RLS needed for own org's connection)
   const service = createSupabaseServiceClient(env);
   const conn = await getConnectionStatus(service, org.org_id);
-  const connected = conn?.status === "connected";
 
-  const [{ data: connMeta }, { data: syncErrorRows }] = await Promise.all([
+  const [{ data: connMeta, error: connMetaErr }, { data: syncErrorRows }] = await Promise.all([
     service.from("qbo_connections").select("last_sync_at").eq("org_id", org.org_id).maybeSingle(),
     supabase.from("sync_errors")
       .select("id, source, scope, message, occurred_at").eq("org_id", org.org_id)
       .is("resolved_at", null).order("occurred_at", { ascending: false }).limit(20),
   ]);
+  if (connMetaErr) throw connMetaErr;
   const lastSyncAt = (connMeta?.last_sync_at as string | null) ?? null;
-  let syncLabel: string;
-  if (!connected) {
-    syncLabel = conn?.status === "error" ? "Needs reconnect" : "Not connected";
-  } else if (lastSyncAt) {
-    const diffMs = Date.now() - new Date(lastSyncAt).getTime();
-    const diffMin = Math.floor(diffMs / 60_000);
-    const diffHr = Math.floor(diffMin / 60);
-    const diffDay = Math.floor(diffHr / 24);
-    if (diffMin < 2) syncLabel = "Synced just now";
-    else if (diffMin < 60) syncLabel = `Synced ${diffMin}m ago`;
-    else if (diffHr < 24) syncLabel = `Synced ${diffHr}h ago`;
-    else syncLabel = `Synced ${diffDay}d ago`;
-  } else {
-    syncLabel = "Connected";
-  }
+  const chrome = connectionChrome(conn?.status ?? null, lastSyncAt);
+  const connected = chrome.kind === "connected";
+  const syncLabel = connectionSyncLabel(chrome);
   const syncIssues = mapSyncIssues(syncErrorRows as {
     id: string; source: string; scope: string; message: string; occurred_at: string;
   }[] | null);

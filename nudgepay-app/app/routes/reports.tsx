@@ -21,7 +21,7 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
   const env = getEnv(context as any);
   const {
     supabase, service, headers, org,
-    orgName, initials, userLabel, connected, syncLabel, syncIssues,
+    orgName, initials, userLabel, connected, needsReconnect, syncLabel, syncIssues,
   } = await loadWorkspaceChrome(request, env, { requireQbo: false, requireOwner: true });
   // Owner-only surface gate is enforced inside the helper
   // (redirects to /dashboard?denied=reports for non-owners).
@@ -33,7 +33,7 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
   ]);
 
   return data(
-    { report, arKpis, orgName, initials, userLabel, connected, syncLabel, syncIssues },
+    { report, arKpis, orgName, initials, userLabel, connected, needsReconnect, syncLabel, syncIssues },
     { headers },
   );
 }
@@ -49,7 +49,7 @@ function fmtHours(x: number | null): string {
 }
 
 export default function Reports() {
-  const { report, arKpis, orgName, initials, userLabel, connected, syncLabel, syncIssues } = useLoaderData<typeof loader>();
+  const { report, arKpis, orgName, initials, userLabel, connected, needsReconnect, syncLabel, syncIssues } = useLoaderData<typeof loader>();
   const loadError = report.loadError || arKpis.loadError;
   const truncated = report.truncated || arKpis.truncated;
   const hideTeam = !!report.loadError || report.truncated;
@@ -112,7 +112,7 @@ export default function Reports() {
         {loadError ? <LoadErrorBanner message={loadError} /> : truncated ? <TruncationBanner /> : null}
 
         <section>
-          <ArKpiBand kpis={arKpis} isOwner={false} loadError={arKpis.loadError} />
+          <ArKpiBand kpis={arKpis} isOwner={false} loadError={arKpis.loadError} connected={connected} needsReconnect={needsReconnect} />
         </section>
 
         {/* Summary strip */}

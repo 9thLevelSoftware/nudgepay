@@ -11,6 +11,7 @@ import { PEEK_WINDOW_DAYS, type ActivityPeek } from "../lib/activity-peek";
 import { loadBrokenPromiseCustomers, loadPayerSource } from "../lib/payer-behavior.server";
 import type { PayerStats } from "../lib/payer-behavior";
 import { dashboardHref, parseDensity, parseEntityMode, parseSort } from "../lib/queue-chrome";
+import { connectionChrome, connectionSyncLabel } from "../lib/connection-chrome";
 import { applyInvoiceView, buildInvoiceQueue, sortInvoiceItems, type InvoiceQueueItem } from "../lib/invoice-queue";
 import { loadArKpiSource } from "../lib/ar-kpis.server";
 import { buildArKpis, DASHBOARD_AR_RANGE_DAYS } from "../lib/ar-kpis";
@@ -52,7 +53,6 @@ import { buildTimeline, type TimelineEntry, type TimelineLogInput, type Timeline
 import { collisionState, type Collision } from "../lib/collision";
 import { resolveCommPrefs, DEFAULT_COMM_PREFS, type CommPrefs } from "../lib/comm-prefs";
 import type { OrgConfig } from "../lib/org-config";
-import { DEFAULT_ORG_CONFIG } from "../lib/org-config";
 import { resolveEmailSettings } from "../lib/email-settings";
 import { plural } from "../lib/labels";
 import { pageTitle } from "../lib/meta";
@@ -251,7 +251,7 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
   // Org config loaded up front so "today" is the org's local calendar day
   // (not UTC's) — passed into loadCaseQueueSource below to avoid a second
   // org_settings read.
-  const orgConfigForToday = await loadOrgConfig(supabase, org.org_id).catch(() => DEFAULT_ORG_CONFIG);
+  const orgConfigForToday = await loadOrgConfig(supabase, org.org_id);
   const today = todayInTz(orgConfigForToday.companyProfile.timezone);
 
   // Batch A: shared queue source + dashboard-only queries in parallel.
@@ -283,25 +283,12 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
   if (ecfgErr) throw ecfgErr;
   if (syncErr) throw syncErr;
 
-  const connected = conn?.status === "connected";
-  const qboConfigured = getQboEnvOrNull(context as any) !== null;
-
   const lastSyncAt = (connMeta?.last_sync_at as string | null) ?? null;
-  let syncLabel: string;
-  if (!connected) {
-    syncLabel = conn?.status === "error" ? "Needs reconnect" : "Not connected";
-  } else if (lastSyncAt) {
-    const diffMs = Date.now() - new Date(lastSyncAt).getTime();
-    const diffMin = Math.floor(diffMs / 60_000);
-    const diffHr = Math.floor(diffMin / 60);
-    const diffDay = Math.floor(diffHr / 24);
-    if (diffMin < 2) syncLabel = "Synced just now";
-    else if (diffMin < 60) syncLabel = `Synced ${diffMin}m ago`;
-    else if (diffHr < 24) syncLabel = `Synced ${diffHr}h ago`;
-    else syncLabel = `Synced ${diffDay}d ago`;
-  } else {
-    syncLabel = "Connected";
-  }
+  const chrome = connectionChrome(conn?.status ?? null, lastSyncAt);
+  const connected = chrome.kind === "connected";
+  const needsReconnect = chrome.kind === "needs_reconnect";
+  const syncLabel = connectionSyncLabel(chrome);
+  const qboConfigured = getQboEnvOrNull(context as any) !== null;
 
   // Parse URL params
   const url = new URL(request.url);
@@ -595,6 +582,7 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
       userLabel,
       isOwner: org.role === "owner",
       connected,
+      needsReconnect,
       syncIssues: mapSyncIssues(syncErrorRows as {
         id: string; source: string; scope: string; message: string; occurred_at: string;
       }[] | null),
@@ -676,6 +664,7 @@ export default function Dashboard() {
     userLabel,
     isOwner,
     connected,
+    needsReconnect,
     syncIssues,
     qboConfigured,
     qboFlash,
@@ -730,6 +719,7 @@ export default function Dashboard() {
     today,
     arKpis,
     lastContactTruncated,
+    queueTruncated,
     queueTruncatedMessage,
     loadError,
     detailLoadError,
@@ -789,7 +779,13 @@ export default function Dashboard() {
       {syncFlash && SYNC_FLASH[syncFlash] ? (
         <FlashBanner tone={SYNC_FLASH[syncFlash].tone} text={SYNC_FLASH[syncFlash].text} />
       ) : null}
-      {!connected ? <FirstRunBanner isOwner={isOwner} qboConfigured={qboConfigured} /> : null}
+      {!connected ? (
+        <FirstRunBanner
+          isOwner={isOwner}
+          qboConfigured={qboConfigured}
+          kind={needsReconnect ? "needs_reconnect" : "not_connected"}
+        />
+      ) : null}
       {saved ? (
         <div className="px-6 py-2 bg-cool/10 border-b border-cool/30 text-sm font-sans font-medium text-cool" role="status">
           Contact logged successfully.
@@ -831,7 +827,7 @@ export default function Dashboard() {
           <div className="px-6 py-3 border-b border-border bg-panel shrink-0 space-y-3">
             {loadError ? <LoadErrorBanner message={loadError} /> : null}
             {queueTruncatedMessage ? <TruncationBanner message={queueTruncatedMessage} /> : null}
-            <ArKpiBand kpis={arKpis} isOwner={isOwner} />
+            <ArKpiBand kpis={arKpis} isOwner={isOwner} connected={connected} needsReconnect={needsReconnect} />
             <KpiBand metrics={metrics} view={view} sort={sort} search={q} entity={hrefEntity} density={hrefDensity} scopeLabel={scopeLabel} clearHref={clearHref} lastContactTruncated={lastContactTruncated || !!loadError} />
           </div>
 
@@ -871,6 +867,8 @@ export default function Dashboard() {
                 orgPaymentLink={orgPaymentLink}
                 maxBatch={maxBatch}
                 connected={connected}
+                needsReconnect={needsReconnect}
+                queueTruncated={queueTruncated}
                 timeZone={timeZone}
               />
             </div>

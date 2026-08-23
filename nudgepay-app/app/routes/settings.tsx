@@ -41,7 +41,7 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
   const env = getEnv(context as any);
   const {
     supabase, service, headers, isOwner, org, user,
-    orgName, initials, userLabel, connected, lastSyncAt, syncIssues,
+    orgName, initials, userLabel, connected, needsReconnect, lastSyncAt, syncLabel: chromeSyncLabel, syncIssues,
   } = await loadWorkspaceChrome(request, env, { requireQbo: false });
 
   const qboConfigured = getQboEnvOrNull(context as any) !== null;
@@ -116,7 +116,7 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
     currentUserId: user.id,
     displayName,
     ownerEmail: user.email ?? "",
-    initials, userLabel, isOwner, connected, lastSyncAt, syncIssues,
+    initials, userLabel, isOwner, connected, needsReconnect, lastSyncAt, chromeSyncLabel, syncIssues,
     qboConfigured,
     qboRedirectHint: appBaseUrl
       ? `${appBaseUrl.replace(/\/$/, "")}/auth/qbo/callback`
@@ -268,7 +268,7 @@ export default function Settings() {
   const [sp] = useSearchParams();
   const tab = resolveSettingsTab(sp.get("tab"));
   const returnTo = settingsReturnTo(tab);
-  const syncLabel = d.connected ? `Synced ${relTime(d.lastSyncAt)}` : "Not connected";
+  const syncLabel = d.chromeSyncLabel;
   const navigation = useNavigation();
   const formBusy = (action: string) => navigation.state !== "idle" && navigation.formAction === action;
   const profileBusy = (intent: string) =>
@@ -575,8 +575,8 @@ export default function Settings() {
               <section className="rounded-lg border border-border bg-surface p-5">
                 <div className="flex items-center justify-between">
                   <h2 className="font-display text-base font-semibold text-text">QuickBooks</h2>
-                  <span className={`text-xs font-medium ${d.connected ? "text-cool" : "text-muted"}`} suppressHydrationWarning>
-                    {d.connected ? `Connected · ${syncLabel}` : "Not connected"}
+                  <span className={`text-xs font-medium ${d.connected ? "text-cool" : d.needsReconnect ? "text-warm" : "text-muted"}`} suppressHydrationWarning>
+                    {d.connected ? `Connected · ${syncLabel}` : d.needsReconnect ? "Needs reconnect" : "Not connected"}
                   </span>
                 </div>
                 <p className="mt-0.5 text-xs text-muted">US companies billed in USD only.</p>
@@ -614,6 +614,12 @@ export default function Settings() {
                         </>
                       ) : null}
                     </>
+                  ) : d.needsReconnect && d.qboConfigured && d.isOwner ? (
+                    <Form method="post" action="/api/qbo/connect">
+                      <button type="submit" disabled={formBusy("/api/qbo/connect")} className="rounded-md bg-copper px-3 py-1.5 text-xs font-semibold text-ink hover:bg-copper/90 disabled:opacity-60 disabled:cursor-not-allowed">
+                        {formBusy("/api/qbo/connect") ? "Reconnecting…" : "Reconnect QuickBooks"}
+                      </button>
+                    </Form>
                   ) : !d.qboConfigured ? null : d.isOwner ? (
                     <Form method="post" action="/api/qbo/connect">
                       <button type="submit" disabled={formBusy("/api/qbo/connect")} className="rounded-md bg-copper px-3 py-1.5 text-xs font-semibold text-ink hover:bg-copper/90 disabled:opacity-60 disabled:cursor-not-allowed">
@@ -621,7 +627,7 @@ export default function Settings() {
                       </button>
                     </Form>
                   ) : (
-                    <p className="text-sm text-muted">Not connected — ask an owner to connect QuickBooks.</p>
+                    <p className="text-sm text-muted">{d.needsReconnect ? "Needs reconnect — ask an owner to reconnect QuickBooks." : "Not connected — ask an owner to connect QuickBooks."}</p>
                   )}
                 </div>
               </section>
