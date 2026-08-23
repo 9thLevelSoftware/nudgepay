@@ -181,7 +181,8 @@ test("app README is NudgePay not the starter (NP-AUD-2026-132-README)", () => {
 test("sms_sender_inventory uniqueness is on trimmed messaging_service_sid", () => {
   const sql = read("../supabase/migrations/0048_sms_sender_inventory.sql");
   expect(sql).toContain("sms_sender_inventory_messaging_service_sid_key");
-  expect(sql).toMatch(/lower\(btrim\(messaging_service_sid\)\)/);
+  expect(sql).toContain("messaging_service_sid_norm");
+  expect(sql).toMatch(/nullif\(lower\(btrim\(messaging_service_sid\)\), ''\)/);
   expect(sql).toMatch(/btrim\(messaging_service_sid\) <> ''/);
   expect(sql).toMatch(/btrim\(from_number\) <> ''/);
 });

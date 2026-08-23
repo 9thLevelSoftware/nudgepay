@@ -212,15 +212,12 @@ async function resolveInboundOrgId(service: SupabaseClient, args: {
   if (sid) {
     const { data: sidHits, error: sidErr } = await service
       .from("sms_sender_inventory")
-      .select("org_id, messaging_service_sid")
+      .select("org_id")
       .eq("status", "active")
-      .not("messaging_service_sid", "is", null);
+      .eq("messaging_service_sid_norm", sid)
+      .limit(2);
     if (sidErr) throw sidErr;
-    sidOrgs = [...new Set(
-      (sidHits ?? [])
-        .filter((row) => canonicalSid(row.messaging_service_sid as string) === sid)
-        .map((row) => row.org_id as string),
-    )];
+    sidOrgs = [...new Set((sidHits ?? []).map((row) => row.org_id as string))];
     if (sidOrgs.length > 1) return null;
     if (sidOrgs.length === 1 && !overlapsFallbackSid) return sidOrgs[0];
   }
