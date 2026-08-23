@@ -55,3 +55,23 @@ alter table email_messages
   drop constraint email_messages_invoice_id_fkey,
   add constraint email_messages_invoice_id_fkey
     foreign key (invoice_id) references invoices(id) on delete restrict;
+
+-- 0032 composite tenant FKs still CASCADE; drop/recreate so parent deletes
+-- cannot fire those cascades ahead of the single-column RESTRICT constraints.
+alter table collection_cases
+  drop constraint collection_cases_org_customer_fk,
+  add constraint collection_cases_org_customer_fk
+    foreign key (org_id, customer_id) references customers (org_id, id)
+    on delete restrict;
+
+alter table promises
+  drop constraint promises_org_customer_fk,
+  add constraint promises_org_customer_fk
+    foreign key (org_id, customer_id) references customers (org_id, id)
+    on delete restrict;
+
+alter table promise_invoices
+  drop constraint promise_invoices_org_invoice_fk,
+  add constraint promise_invoices_org_invoice_fk
+    foreign key (org_id, invoice_id) references invoices (org_id, id)
+    on delete restrict;
