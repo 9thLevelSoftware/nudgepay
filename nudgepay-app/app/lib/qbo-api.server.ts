@@ -63,10 +63,28 @@ async function getJson(
 ): Promise<any> {
   const res = await fetchWithIntuitRetry(fetchFn, url, {
     method: "GET",
-    headers: { Authorization: `Bearer ${accessToken}`, Accept: "application/json" },
+    headers: qboGetHeaders(accessToken),
   }, clock);
   if (!res.ok) throw new Error(`QBO API request failed: ${res.status}`);
   return res.json();
+}
+
+function qboFaultCodes(body: unknown): string[] {
+  if (body == null || typeof body !== "object") return [];
+  const err = (body as { Fault?: { Error?: unknown } }).Fault?.Error;
+  const list = Array.isArray(err) ? err : err != null ? [err] : [];
+  return list.map((e) => String((e as { code?: unknown })?.code ?? "")).filter(Boolean);
+}
+
+/** HTTP 404, or HTTP 400 Fault 610 (Intuit "object not found" / deleted). */
+export function isQboObjectNotFound(status: number, body: unknown): boolean {
+  if (status === 404) return true;
+  if (status !== 400) return false;
+  return qboFaultCodes(body).includes("610");
+}
+
+function qboGetHeaders(accessToken: string): HeadersInit {
+  return { Authorization: `Bearer ${accessToken}`, Accept: "application/json" };
 }
 
 export async function qboQuery(
@@ -116,8 +134,17 @@ export async function qboReadEntity(
 ): Promise<any | null> {
   const url = `${api.baseUrl}/v3/company/${realmId}/${entityName.toLowerCase()}/${id}`
     + `?minorversion=${MINOR_VERSION}`;
-  const data = await getJson(fetchFn, url, accessToken, clock);
-  return data?.[entityName] ?? null;
+  const res = await fetchWithIntuitRetry(fetchFn, url, {
+    method: "GET",
+    headers: qboGetHeaders(accessToken),
+  }, clock);
+  if (res.ok) {
+    const data = await res.json();
+    return data?.[entityName] ?? null;
+  }
+  const body = await res.json().catch(() => null);
+  if (isQboObjectNotFound(res.status, body)) return null;
+  throw new Error(`QBO API request failed: ${res.status}`);
 }
 
 /** CompanyInfo is a singleton; Intuit uses id `"1"`. */

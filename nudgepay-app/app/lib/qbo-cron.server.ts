@@ -124,7 +124,9 @@ export async function runScheduledCdc(
     }
     try {
       await runCdcCatchup(deps, orgId);
-      await resolveSyncErrors(service, { orgId }); // CDC catch-up heals all prior errors
+      // Heal prior cdc/recon/webhook holes. Leave scope "customer" — a same-pass
+      // CustomerRef 404 is still a hole even though the watermark advanced.
+      await resolveSyncErrors(service, { orgId, exceptScopes: ["customer"] });
     } catch (err) {
       // Isolate per-org failures so one bad connection doesn't abort the batch,
       // and record it so the org's dashboard surfaces the failed sync.

@@ -18,12 +18,20 @@ export async function recordSyncError(
 // webhook apply is narrow).
 export async function resolveSyncErrors(
   service: SupabaseClient,
-  args: { orgId: string; scope?: string; resolvedBy?: string | null },
+  args: {
+    orgId: string;
+    scope?: string;
+    exceptScopes?: string[];
+    resolvedBy?: string | null;
+  },
 ): Promise<void> {
   let q = service.from("sync_errors")
     .update({ resolved_at: new Date().toISOString(), resolved_by: args.resolvedBy ?? null })
     .eq("org_id", args.orgId).is("resolved_at", null);
   if (args.scope !== undefined) q = q.eq("scope", args.scope);
+  if (args.exceptScopes && args.exceptScopes.length > 0) {
+    q = q.not("scope", "in", `(${args.exceptScopes.join(",")})`);
+  }
   const { error } = await q;
   if (error) throw error;
 }

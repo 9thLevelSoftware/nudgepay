@@ -49,3 +49,17 @@ test("resolveSyncErrors with a scope resolves only matching unresolved rows", as
   expect(byScope["invoice:9"]).not.toBe(null);
   expect(byScope["customer:9"]).toBe(null);
 });
+
+test("resolveSyncErrors exceptScopes leaves matching rows unresolved", async () => {
+  const svc = serviceClient();
+  const orgId = await newOrg("Rec Org D");
+  await recordSyncError(svc, { orgId, source: "cron", scope: "cdc", message: "a" });
+  await recordSyncError(svc, { orgId, source: "cron", scope: "customer", message: "b" });
+
+  await resolveSyncErrors(svc, { orgId, exceptScopes: ["customer"] });
+
+  const { data } = await svc.from("sync_errors").select("scope, resolved_at").eq("org_id", orgId);
+  const byScope = Object.fromEntries(data!.map((r) => [r.scope, r.resolved_at]));
+  expect(byScope["cdc"]).not.toBe(null);
+  expect(byScope["customer"]).toBe(null);
+});

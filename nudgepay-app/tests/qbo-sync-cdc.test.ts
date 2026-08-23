@@ -179,6 +179,45 @@ test("applyInvoiceWebhook delete-missing path reconciles instead of returning ea
   expect(cse!.closed_at).not.toBeNull();
 });
 
+test("applyInvoiceWebhook Fault 610 zeros the invoice and reconciles", async () => {
+  const org = await freshOrg();
+  await storeConnection(svc, KEY, org, "realm-w6b", { accessToken: "AT", refreshToken: "RT", expiresIn: 3600 });
+  const { data: cust } = await svc.from("customers")
+    .insert({ org_id: org, qbo_id: "71", name: "Fault 610 Co" }).select("id").single();
+  const { data: opened } = await svc.from("collection_cases")
+    .insert({ org_id: org, customer_id: cust!.id, status: "new", next_action_type: "contact", next_action_at: "2026-01-01" })
+    .select("id").single();
+  await svc.from("invoices").insert({
+    org_id: org, qbo_id: "710", customer_id: cust!.id, amount: 80, balance: 80, status: "overdue",
+    paid_date: null, due_date: "2026-01-01",
+  });
+
+  const fetchFn = vi.fn(async (url: string) => {
+    if (String(url).includes("/invoice/710")) {
+      return jsonResponse({
+        Fault: {
+          Error: [{
+            Message: "Object Not Found",
+            Detail: "Object Not Found : Another user has deleted this transaction",
+            code: "610",
+          }],
+          type: "ValidationFault",
+        },
+      }, 400);
+    }
+    throw new Error(`unexpected ${url}`);
+  });
+
+  await applyInvoiceWebhook(deps(fetchFn), org, "710");
+
+  const { data: inv } = await svc.from("invoices").select("balance, status").eq("org_id", org).eq("qbo_id", "710").single();
+  expect(Number(inv!.balance)).toBe(0);
+  expect(inv!.status).toBe("paid");
+  const { data: cse } = await svc.from("collection_cases").select("status, closed_at").eq("id", opened!.id).single();
+  expect(cse!.status).toBe("resolved");
+  expect(cse!.closed_at).not.toBeNull();
+});
+
 test("runCdcCatchup throws on last_cdc_time read error and does not stamp", async () => {
   const org = await freshOrg();
   await storeConnection(svc, KEY, org, "realm-w7", { accessToken: "AT", refreshToken: "RT", expiresIn: 3600 });

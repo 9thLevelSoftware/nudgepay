@@ -108,12 +108,8 @@ export async function customerIdMap(
   return map;
 }
 
-function isQboNotFound(e: unknown): boolean {
-  return e instanceof Error && e.message.includes("QBO API request failed: 404");
-}
-
-// Fill holes in customerIdMap via QBO. Intuit 404 / unnamed Customer leave
-// customer_id null and record a narrow sync error — they must not block a stamp.
+// Fill holes in customerIdMap via QBO. Intuit 404 / Fault 610 / unnamed Customer
+// leave customer_id null and record a narrow sync error — they must not block a stamp.
 async function hydrateCustomerIdMap(
   deps: SyncDeps, orgId: string, accessToken: string, realmId: string, qboCustomerIds: string[],
 ): Promise<Map<string, string>> {
@@ -122,19 +118,7 @@ async function hydrateCustomerIdMap(
   if (missing.length === 0) return map;
   const fetched: CustomerUpsert[] = [];
   for (const qboId of missing) {
-    let raw: any = null;
-    try {
-      raw = await qboReadEntity(deps.fetchFn, deps.api, accessToken, realmId, "Customer", qboId);
-    } catch (e) {
-      if (isQboNotFound(e)) {
-        await recordSyncError(deps.service, {
-          orgId, source: deps.errorSource ?? "cron", scope: "customer",
-          message: `QBO customer ${qboId} not found`,
-        }).catch((err) => console.error("[6b] recordSyncError customer 404 failed", err));
-        continue;
-      }
-      throw e;
-    }
+    const raw = await qboReadEntity(deps.fetchFn, deps.api, accessToken, realmId, "Customer", qboId);
     if (!raw || qboCustomerName(raw).length === 0) {
       await recordSyncError(deps.service, {
         orgId, source: deps.errorSource ?? "cron", scope: "customer",
