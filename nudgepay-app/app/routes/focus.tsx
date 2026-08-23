@@ -32,7 +32,7 @@ import { SendTextMiniForm } from "../components/focus/SendTextMiniForm";
 import { formatDate, formatInstant } from "../lib/dates";
 import { pageTitle } from "../lib/meta";
 import { smsFlashCopy } from "../lib/flash-copy";
-import { chunkIds, orderPage, pageAllChunked, PAGE_ALL_MAX_ROWS } from "../lib/page-all";
+import { chunkIds, honestListState, orderPage, pageAllChunkedHonest, PAGE_ALL_MAX_ROWS } from "../lib/page-all";
 import type { Route } from "./+types/focus";
 
 export const meta: Route.MetaFunction = () => pageTitle("Focus Mode");
@@ -118,7 +118,8 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
   // Build timelines for every case in the queue (sliced to 5 recent entries).
   const caseIds = queue.map((c) => c.caseId);
   const timelines: Record<string, TimelineEntry[]> = {};
-  let historyTruncated = src.lastContactTruncated;
+  let historyTruncated = src.lastContactTruncated || src.queueTruncated;
+  let historyLoadError = src.lastContactLoadError;
 
   if (caseIds.length > 0) {
     type FocusLogRow = {
@@ -132,7 +133,7 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
     };
     const chunks = chunkIds(caseIds, 100);
     const [logs, texts] = await Promise.all([
-      pageAllChunked<FocusLogRow>(
+      pageAllChunkedHonest<FocusLogRow>(
         chunks,
         (ids, from, to) =>
           orderPage(
@@ -144,7 +145,7 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
           ).range(from, to),
         { maxRows: PAGE_ALL_MAX_ROWS },
       ),
-      pageAllChunked<FocusMsgRow>(
+      pageAllChunkedHonest<FocusMsgRow>(
         chunks,
         (ids, from, to) =>
           orderPage(
@@ -157,12 +158,17 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
         { maxRows: PAGE_ALL_MAX_ROWS },
       ),
     ]);
-    historyTruncated = historyTruncated || logs.truncated || texts.truncated;
+    const history = honestListState([logs, texts]);
+    if (history.loadError) {
+      historyLoadError = historyLoadError ?? "Could not load history";
+    } else {
+      historyTruncated = historyTruncated || history.truncated;
+    }
 
     const logsByCase = new Map<string, TimelineLogInput[]>();
     const smsByCase = new Map<string, TimelineSmsInput[]>();
 
-    for (const r of logs.rows) {
+    for (const r of history.loadError ? [] : logs.rows) {
       if (!r.case_id) continue;
       const list = logsByCase.get(r.case_id) ?? [];
       list.push({
@@ -179,7 +185,7 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
       logsByCase.set(r.case_id, list);
     }
 
-    for (const r of texts.rows) {
+    for (const r of history.loadError ? [] : texts.rows) {
       if (!r.case_id) continue;
       const list = smsByCase.get(r.case_id) ?? [];
       list.push({
@@ -211,6 +217,7 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
     smsQuietNow: src.smsQuietNow,
     quietHoursLabel: src.quietHoursLabel,
     lastContactTruncated: historyTruncated,
+    historyLoadError,
     currentUserId: user.id,
     today,
     smsTemplates: src.templates.sms,
@@ -228,7 +235,7 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
 export default function FocusMode() {
   const {
     queue, scope, heldLabels, collisions, timelines, smsEnabled, smsQuietNow, quietHoursLabel, today,
-    smsTemplates, orgCompany, orgPhone, orgPaymentLink, timeZone, lastContactTruncated,
+    smsTemplates, orgCompany, orgPhone, orgPaymentLink, timeZone, lastContactTruncated, historyLoadError,
   } = useLoaderData<typeof loader>();
 
   // Session state
@@ -442,7 +449,13 @@ export default function FocusMode() {
           You own no cases — working the full open queue
         </div>
       )}
-      {lastContactTruncated ? (
+      {historyLoadError ? (
+        <div className="border-b border-white/10 bg-hot/10 px-4 py-2 text-center">
+          <span className="inline-flex items-center rounded-md border border-hot/20 px-2 py-0.5 text-[10px] font-sans font-medium text-hot">
+            {historyLoadError}
+          </span>
+        </div>
+      ) : lastContactTruncated ? (
         <div className="border-b border-white/10 bg-copper/10 px-4 py-2 text-center">
           <span
             className="inline-flex items-center rounded-md border border-copper/20 px-2 py-0.5 text-[10px] font-sans font-medium text-copper"

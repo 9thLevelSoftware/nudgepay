@@ -3,12 +3,16 @@ import { readFileSync } from "node:fs";
 import {
   assertNotTruncated,
   chunkIds,
+  honestListState,
+  honestPage,
   isTruncatedPage,
   keysetAfter,
   keysetDescFilter,
   orderPage,
   pageAll,
   pageAllChunked,
+  pageAllChunkedHonest,
+  pageAllHonest,
   pageAllKeyset,
   PAGE_ALL_MAX_ROWS,
   POSTGREST_MAX_ROWS,
@@ -111,6 +115,44 @@ test("pageAll defaults pageSize and maxRows to PostgREST / 5k caps", async () =>
 test("pageAll throws when the page reports an error", async () => {
   const { run } = fakeRun([], { error: { message: "boom" } });
   await expect(pageAll(run, { pageSize: 10, maxRows: 20 })).rejects.toEqual({ message: "boom" });
+});
+
+test("honestPage branches on error first and never treats failure as truncated", () => {
+  const failed = honestPage({
+    data: [{ id: 1 }], count: 1, error: { message: "boom" }, askedExact: true,
+  });
+  expect(failed).toEqual({ rows: [], truncated: false, error: { message: "boom" } });
+});
+
+test("honestPage flags length < count and unknown exact count as truncated", () => {
+  expect(honestPage({ data: [1, 2], count: 3, error: null, askedExact: true }).truncated).toBe(true);
+  expect(honestPage({ data: [1, 2], count: null, error: null, askedExact: true }).truncated).toBe(true);
+  expect(honestPage({ data: [1, 2], count: 2, error: null, askedExact: true }).truncated).toBe(false);
+  expect(honestPage({ data: [1], count: 9, error: null, askedExact: false }).truncated).toBe(false);
+  expect(honestPage({ data: null, count: 0, error: null, askedExact: true }).rows).toEqual([]);
+});
+
+test("honestListState prefers error over truncated so a failure is not a complete empty", () => {
+  const state = honestListState([
+    { error: { message: "boom" }, truncated: false },
+    { error: null, truncated: true },
+  ]);
+  expect(state).toEqual({ loadError: "boom", truncated: false });
+  expect(honestListState([{ error: null, truncated: true }])).toEqual({
+    loadError: null, truncated: true,
+  });
+});
+
+test("pageAllHonest returns loadError instead of throwing", async () => {
+  const { run } = fakeRun([], { error: { message: "boom" } });
+  const page = await pageAllHonest(run, { pageSize: 10, maxRows: 20 });
+  expect(page).toEqual({ rows: [], truncated: false, error: { message: "boom" } });
+});
+
+test("pageAllChunkedHonest returns loadError instead of throwing", async () => {
+  const runChunk = async () => ({ data: null, count: null, error: { message: "chunk-fail" } });
+  const page = await pageAllChunkedHonest([["a"]], runChunk, { pageSize: 10, maxRows: 20 });
+  expect(page).toEqual({ rows: [], truncated: false, error: { message: "chunk-fail" } });
 });
 
 test("pageAll treats null data as an empty page", async () => {
@@ -316,6 +358,12 @@ test("Stage 1 of loadCaseQueueSource uses pageAll on non-embedded queries", () =
   expect(queue).toContain("pageAll<InvoiceRow>");
   expect(queue).toContain("pageAllChunked");
   expect(queue).toContain("lastContactTruncated");
+  expect(queue).toContain("queueTruncated");
+  expect(queue).toContain('.lt("due_date", today)');
+  expect(queue).toContain('.gte("due_date", today)');
+  expect(queue).toContain("pageAll<CaseRowRaw>");
+  expect(queue).not.toMatch(/throw new Error\("invoices truncated/);
+  expect(queue).not.toMatch(/throw new Error\("cases truncated/);
 });
 
 test("focus pages timeline lists and uses Partial history not TruncationBanner", () => {

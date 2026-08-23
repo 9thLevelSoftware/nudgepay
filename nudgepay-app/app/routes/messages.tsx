@@ -30,8 +30,8 @@ import { MessagesInbox } from "../components/MessagesInbox";
 import { MessageThreadPanel } from "../components/MessageThreadPanel";
 import { DrawerShell } from "../components/DrawerShell";
 import { pageTitle } from "../lib/meta";
-import { chunkIds, orderPage, pageAll, pageAllChunked, PAGE_ALL_MAX_ROWS } from "../lib/page-all";
-import { TruncationBanner } from "../components/TruncationBanner";
+import { chunkIds, honestListState, orderPage, pageAllChunkedHonest, pageAllHonest, PAGE_ALL_MAX_ROWS } from "../lib/page-all";
+import { LoadErrorBanner, TruncationBanner } from "../components/TruncationBanner";
 import type { Route } from "./+types/messages";
 
 export const meta: Route.MetaFunction = () => pageTitle("Messages");
@@ -76,7 +76,7 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
   };
   type EmailRow = SmsRow & { subject: string | null };
   const [msgPage, emailPage] = await Promise.all([
-    pageAll<SmsRow>(
+    pageAllHonest<SmsRow>(
       (from, to) =>
         orderPage(
           supabase
@@ -87,7 +87,7 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
         ).range(from, to),
       { maxRows: PAGE_ALL_MAX_ROWS },
     ),
-    pageAll<EmailRow>(
+    pageAllHonest<EmailRow>(
       (from, to) =>
         orderPage(
           supabase
@@ -131,14 +131,15 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
   type InvLookupRow = {
     id: string; customer_id: string | null; qbo_doc_number: string | null; balance: number | string | null; due_date: string | null;
   };
+  const emptyHonest = { rows: [] as never[], truncated: false, error: null };
   const [custPage, casePage, invPage] = customerIds.length === 0
     ? [
-        { rows: [] as CustRow[], truncated: false },
-        { rows: [] as CaseLookupRow[], truncated: false },
-        { rows: [] as InvLookupRow[], truncated: false },
+        { ...emptyHonest, rows: [] as CustRow[] },
+        { ...emptyHonest, rows: [] as CaseLookupRow[] },
+        { ...emptyHonest, rows: [] as InvLookupRow[] },
       ]
     : await Promise.all([
-        pageAllChunked<CustRow>(
+        pageAllChunkedHonest<CustRow>(
           custChunks,
           (ids, from, to) =>
             orderPage(
@@ -150,7 +151,7 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
             ).range(from, to),
           { maxRows: PAGE_ALL_MAX_ROWS },
         ),
-        pageAllChunked<CaseLookupRow>(
+        pageAllChunkedHonest<CaseLookupRow>(
           custChunks,
           (ids, from, to) =>
             orderPage(
@@ -163,7 +164,7 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
             ).range(from, to),
           { maxRows: PAGE_ALL_MAX_ROWS },
         ),
-        pageAllChunked<InvLookupRow>(
+        pageAllChunkedHonest<InvLookupRow>(
           custChunks,
           (ids, from, to) =>
             orderPage(
@@ -227,7 +228,7 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
   };
 
   const lastReadByKey = new Map<string, string>();
-  const readPage = await pageAll<{ customer_id: string; channel: "sms" | "email"; last_read_at: string }>(
+  const readPage = await pageAllHonest<{ customer_id: string; channel: "sms" | "email"; last_read_at: string }>(
     (from, to) =>
       supabase
         .from("thread_reads")
@@ -239,11 +240,16 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
         .range(from, to),
     { maxRows: PAGE_ALL_MAX_ROWS },
   );
-  for (const r of readPage.rows) {
-    lastReadByKey.set(threadReadKey(r.customer_id, r.channel), r.last_read_at);
+  const listState = honestListState([msgPage, emailPage, custPage, casePage, invPage, readPage]);
+  const loadError = listState.loadError ? "Could not load inbox" : null;
+  const truncated = listState.truncated;
+  if (!loadError) {
+    for (const r of readPage.rows) {
+      lastReadByKey.set(threadReadKey(r.customer_id, r.channel), r.last_read_at);
+    }
   }
 
-  const allRows = buildThreadRows(customersInput, messagesInput, ownerLabels, lastReadByKey);
+  const allRows = loadError ? [] : buildThreadRows(customersInput, messagesInput, ownerLabels, lastReadByKey);
   const query = q.trim().toLowerCase();
   const searched = query === "" ? allRows : allRows.filter((r) => r.searchText.includes(query));
 
@@ -333,9 +339,6 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
   if (ecfgErr) throw ecfgErr;
   const emailEnabled = resolveEmailSettings(ecfg as any).emailEnabled;
 
-  const truncated = msgPage.truncated || emailPage.truncated || custPage.truncated
-    || casePage.truncated || invPage.truncated || readPage.truncated;
-
   return data(
     {
       orgName,
@@ -349,6 +352,7 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
       emailTemplates: templates.email,
       timeZone: orgConfig.companyProfile.timezone,
       truncated,
+      loadError,
     },
     { headers },
   );
@@ -423,8 +427,8 @@ export default function Messages() {
       syncIssues={<SyncIssues issues={d.syncIssues} returnTo="/messages" />}
     >
       <div className="p-4 sm:p-6 space-y-4 sm:space-y-6">
-        {d.truncated ? <TruncationBanner /> : null}
-        <MessagesMetrics metrics={d.metrics} truncated={d.truncated} />
+        {d.loadError ? <LoadErrorBanner message={d.loadError} /> : d.truncated ? <TruncationBanner /> : null}
+        <MessagesMetrics metrics={d.metrics} truncated={d.truncated || !!d.loadError} />
         {(() => {
           const threadPanel = (
             <MessageThreadPanel
@@ -457,6 +461,8 @@ export default function Messages() {
               <div className="grid gap-4 lg:grid-cols-[1fr_380px]">
                 <MessagesInbox
                   rows={d.rows}
+                  loadError={d.loadError}
+                  truncated={d.truncated}
                   tab={d.tab}
                   sort={d.sort}
                   search={d.q}

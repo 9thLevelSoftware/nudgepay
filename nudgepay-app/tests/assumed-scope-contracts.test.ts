@@ -243,13 +243,19 @@ test("email_config upsert stamps updated_at (NP-AUD-2026-128)", () => {
   expect(src).toContain("emailConfigUpsertRow");
 });
 
-test("case-queue throws on truncated PostgREST pages (NP-AUD-2026-007-TRUNCATION)", () => {
+test("case-queue pages Stage-1 invoices and cases with truncated chrome (NP-AUD-2026-007-TRUNCATION)", () => {
   const src = read("../app/lib/case-queue.server.ts");
   expect(src).toContain("pageAll");
   expect(src).toContain("pageAllChunked");
   expect(src).toContain('count: "exact"');
-  expect(src).toContain("invoices truncated");
+  expect(src).toContain("queueTruncated");
   expect(src).toContain("lastContactTruncated");
+  expect(src).toContain('.lt("due_date", today)');
+  expect(src).toContain('.gte("due_date", today)');
+  expect(src).toContain("pageAll<CaseRowRaw>");
+  expect(src).not.toContain("assertNotTruncated");
+  expect(src).not.toMatch(/throw new Error\("invoices truncated/);
+  expect(src).not.toMatch(/throw new Error\("cases truncated/);
 });
 
 function dataDestructuresWithoutError(src: string): string[] {

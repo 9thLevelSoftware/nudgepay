@@ -29,6 +29,9 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
     filename = `nudgepay-ar-${range}d.csv`;
   } else {
     const report = await loadTeamReport({ supabase, service, orgId: org.org_id, range });
+    if (report.loadError) {
+      return new Response(report.loadError, { status: 503, headers });
+    }
     if (report.truncated) {
       return new Response(
         "This list is incomplete (over 5,000 rows). Totals may under-count.",

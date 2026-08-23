@@ -56,7 +56,8 @@ import { DEFAULT_ORG_CONFIG } from "../lib/org-config";
 import { resolveEmailSettings } from "../lib/email-settings";
 import { plural } from "../lib/labels";
 import { pageTitle } from "../lib/meta";
-import { orderPage, pageAll, PAGE_ALL_MAX_ROWS } from "../lib/page-all";
+import { honestListState, orderPage, pageAllHonest, PAGE_ALL_MAX_ROWS } from "../lib/page-all";
+import { LoadErrorBanner, TruncationBanner } from "../components/TruncationBanner";
 import { displayLabel, initialsFrom } from "../lib/names";
 import { buildComingDueGroups, comingDueMetric, type ComingDueGroup } from "../lib/coming-due";
 import type { Route } from "./+types/dashboard";
@@ -355,10 +356,12 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
   // Destructure the shared queue source
   const {
     cases, invoicesInput, comingDueInvoices, customersInput,
-    lastContactsInput, lastContactTruncated: lastContactTruncatedSrc, promisesInput, recentByCase, presenceRows,
+    lastContactsInput, queueTruncated, lastContactTruncated: lastContactTruncatedSrc,
+    lastContactLoadError, promisesInput, recentByCase, presenceRows,
     roster, ownerLabels, orgConfig, smsEnabled, smsQuietNow, quietHoursLabel, templates,
   } = src;
   let lastContactTruncated = lastContactTruncatedSrc;
+  let loadError = lastContactLoadError;
 
   const orgCompany = orgRow?.name ?? "";
   const orgPhone = orgConfig.companyProfile.phone ?? "";
@@ -464,7 +467,8 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
         ? invoice
         : (sel.invoices[0]?.invoiceId ?? workspaceInvoices[0]?.invoiceId ?? null);
 
-    // Batch C: selected-case queries. Lists page (and throw on error); singles check error.
+    // Batch C: selected-case lists page (loadError, never throw). Query order is
+    // created_at desc so max_rows keeps newest replies; display sort is oldest-first.
     type ActRow = ContactLogRow & { user_id: string | null };
     type MsgRow = SelectedMessageRow & { case_id: string | null };
     type EmailRow = {
@@ -478,7 +482,7 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
       { data: ap, error: apErr },
       emailPage,
     ] = await Promise.all([
-      pageAll<ActRow>(
+      pageAllHonest<ActRow>(
         (from, to) =>
           orderPage(
             supabase
@@ -489,7 +493,7 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
           ).range(from, to),
         { maxRows: PAGE_ALL_MAX_ROWS },
       ),
-      pageAll<MsgRow>(
+      pageAllHonest<MsgRow>(
         (from, to) =>
           orderPage(
             supabase
@@ -504,7 +508,7 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
         .from("customers").select("phone, email, sms_consent, sms_consent_source, preferred_channel, do_not_call, do_not_text, do_not_email").eq("id", customerId).maybeSingle(),
       supabase
         .from("promises").select("id").eq("org_id", org.org_id).eq("case_id", sel.caseId).eq("status", "pending").maybeSingle(),
-      pageAll<EmailRow>(
+      pageAllHonest<EmailRow>(
         (from, to) =>
           orderPage(
             supabase
@@ -518,35 +522,49 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
     ]);
     if (custErr) throw custErr;
     if (apErr) throw apErr;
-    if (actPage.truncated || msgPage.truncated || emailPage.truncated) {
-      lastContactTruncated = true;
-    }
-
-    // Activity: contact logs for the case (timeline input).
-    const logInputs: TimelineLogInput[] = actPage.rows.map((r) => ({
-      id: r.id, at: r.created_at, method: r.method, outcome: r.outcome, notes: r.notes,
-      followUpAt: r.follow_up_at,
-      promisedAmount: r.promised_amount == null ? null : Number(r.promised_amount),
-      promisedDate: r.promised_date,
-      authorLabel: r.user_id ? (ownerLabels.get(r.user_id) ?? null) : null,
-    }));
-
-    // Messages: thread by CUSTOMER (one conversation per customer); also carries
-    // case_id so we can derive the per-case slice for the timeline.
-    const msgRowsTyped = [...msgPage.rows].sort((a, b) => a.created_at.localeCompare(b.created_at));
-    selectedMessages = msgRowsTyped.map((r) => ({
-      id: r.id, direction: r.direction, body: r.body, status: r.status,
-      errorCode: r.error_code, createdAt: r.created_at,
-    }));
-
-    // Timeline: case-scoped logs + case-scoped SMS, merged newest-first.
-    const smsInputs: TimelineSmsInput[] = msgRowsTyped
-      .filter((r) => r.case_id === sel.caseId)
-      .map((r) => ({
-        id: r.id, at: r.created_at, direction: r.direction,
-        body: r.body, status: r.status, errorCode: r.error_code,
+    const batchC = honestListState([actPage, msgPage, emailPage]);
+    if (batchC.loadError) {
+      loadError = loadError ?? "Could not load thread";
+    } else {
+      if (batchC.truncated) lastContactTruncated = true;
+      // Activity: contact logs for the case (timeline input).
+      const logInputs: TimelineLogInput[] = actPage.rows.map((r) => ({
+        id: r.id, at: r.created_at, method: r.method, outcome: r.outcome, notes: r.notes,
+        followUpAt: r.follow_up_at,
+        promisedAmount: r.promised_amount == null ? null : Number(r.promised_amount),
+        promisedDate: r.promised_date,
+        authorLabel: r.user_id ? (ownerLabels.get(r.user_id) ?? null) : null,
       }));
-    selectedTimeline = buildTimeline(logInputs, smsInputs);
+
+      // Messages: thread by CUSTOMER. Query is created_at desc (newest kept);
+      // display sort is oldest-first among the kept page.
+      const msgRowsTyped = [...msgPage.rows].sort((a, b) => a.created_at.localeCompare(b.created_at));
+      selectedMessages = msgRowsTyped.map((r) => ({
+        id: r.id, direction: r.direction, body: r.body, status: r.status,
+        errorCode: r.error_code, createdAt: r.created_at,
+      }));
+
+      // Timeline: case-scoped logs + case-scoped SMS, merged newest-first.
+      const smsInputs: TimelineSmsInput[] = msgRowsTyped
+        .filter((r) => r.case_id === sel.caseId)
+        .map((r) => ({
+          id: r.id, at: r.created_at, direction: r.direction,
+          body: r.body, status: r.status, errorCode: r.error_code,
+        }));
+      selectedTimeline = buildTimeline(logInputs, smsInputs);
+
+      selectedEmailMessages = [...emailPage.rows]
+        .sort((a, b) => a.created_at.localeCompare(b.created_at))
+        .map((r) => ({
+          id: r.id,
+          direction: r.direction,
+          subject: r.subject ?? null,
+          body: r.body ?? null,
+          status: r.status ?? null,
+          errorCode: r.error_code ?? null,
+          createdAt: r.created_at,
+        }));
+    }
 
     // Consent + phone + email prefs from the customer.
     selectedConsent = (custRow as any)?.sms_consent ?? false;
@@ -558,19 +576,6 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
 
     // Active pending promise id for the cancel form
     selectedPromiseId = ap?.id ?? null;
-
-    // Email thread: per-customer conversation (mirrors SMS thread above).
-    selectedEmailMessages = [...emailPage.rows]
-      .sort((a, b) => a.created_at.localeCompare(b.created_at))
-      .map((r) => ({
-        id: r.id,
-        direction: r.direction,
-        subject: r.subject ?? null,
-        body: r.body ?? null,
-        status: r.status ?? null,
-        errorCode: r.error_code ?? null,
-        createdAt: r.created_at,
-      }));
   }
 
   return data(
@@ -639,6 +644,11 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
       timeZone: orgConfig.companyProfile.timezone,
       arKpis,
       lastContactTruncated,
+      queueTruncated,
+      queueTruncatedMessage: queueTruncated
+        ? `Showing the first ${invoicesInput.length} overdue invoices / ${cases.length} cases — list may be incomplete`
+        : null,
+      loadError,
       workspaceInvoices,
       ...dashboardData,
     },
@@ -711,6 +721,8 @@ export default function Dashboard() {
     today,
     arKpis,
     lastContactTruncated,
+    queueTruncatedMessage,
+    loadError,
     repInvoiceId,
     workspaceInvoices,
     smsTemplates,
@@ -807,8 +819,10 @@ export default function Dashboard() {
       <div className="flex flex-col h-full">
           {/* KPI band */}
           <div className="px-6 py-3 border-b border-border bg-panel shrink-0 space-y-3">
+            {loadError ? <LoadErrorBanner message={loadError} /> : null}
+            {queueTruncatedMessage ? <TruncationBanner message={queueTruncatedMessage} /> : null}
             <ArKpiBand kpis={arKpis} isOwner={isOwner} />
-            <KpiBand metrics={metrics} view={view} sort={sort} search={q} entity={hrefEntity} density={hrefDensity} scopeLabel={scopeLabel} clearHref={clearHref} lastContactTruncated={lastContactTruncated} />
+            <KpiBand metrics={metrics} view={view} sort={sort} search={q} entity={hrefEntity} density={hrefDensity} scopeLabel={scopeLabel} clearHref={clearHref} lastContactTruncated={lastContactTruncated || !!loadError} />
           </div>
 
           {/* Triage strip — top-3 actionable cases */}

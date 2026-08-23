@@ -9,7 +9,7 @@ import { ArKpiBand } from "../components/ArKpiBand";
 import { AgingBarChart, ChartCard, TrendLineChart } from "../components/SvgCharts";
 import { ContentShell } from "../components/ContentShell";
 import { pageTitle } from "../lib/meta";
-import { TruncationBanner } from "../components/TruncationBanner";
+import { LoadErrorBanner, TruncationBanner } from "../components/TruncationBanner";
 import type { Route } from "./+types/reports";
 
 export const meta: Route.MetaFunction = ({ data }) => {
@@ -50,6 +50,7 @@ function fmtHours(x: number | null): string {
 
 export default function Reports() {
   const { report, arKpis, orgName, initials, userLabel, connected, syncLabel, syncIssues } = useLoaderData<typeof loader>();
+  const loadError = report.loadError;
   const truncated = report.truncated || arKpis.truncated;
   const teamContacts = report.perRep.reduce((s, r) => s + r.contactsLogged, 0);
   const teamKept = report.perRep.reduce((s, r) => s + r.kept, 0);
@@ -71,7 +72,7 @@ export default function Reports() {
         <div className="flex items-center justify-between gap-3">
           <h1 className="font-display text-xl font-semibold text-text">Team performance</h1>
           <div className="flex items-center gap-2">
-            {!report.truncated ? (
+            {!loadError && !report.truncated ? (
               <a
                 href={`/reports.csv?range=${report.range}`}
                 download={`nudgepay-report-${report.range}d.csv`}
@@ -80,7 +81,7 @@ export default function Reports() {
                 Download CSV
               </a>
             ) : null}
-            {!arKpis.truncated ? (
+            {!loadError && !arKpis.truncated ? (
               <a
                 href={`/reports.csv?range=${report.range}&sheet=ar`}
                 download={`nudgepay-ar-${report.range}d.csv`}
@@ -106,7 +107,7 @@ export default function Reports() {
           </div>
         </div>
 
-        {truncated ? <TruncationBanner /> : null}
+        {loadError ? <LoadErrorBanner message={loadError} /> : truncated ? <TruncationBanner /> : null}
 
         <section>
           <ArKpiBand kpis={arKpis} isOwner={false} />
@@ -116,17 +117,17 @@ export default function Reports() {
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
           <div className="rounded-lg border border-border bg-panel p-4">
             <p className="text-xs font-sans uppercase tracking-wider text-muted">Median time to first contact</p>
-            <p className="mt-1 font-display text-2xl text-text">{report.truncated ? "—" : fmtHours(report.firstContact.medianHours)}</p>
-            <p className="text-xs text-muted">{report.truncated ? "—" : `${fmtPct(report.firstContact.within24hPct)} within 24h · ${report.firstContact.uncontacted} uncontacted`}</p>
+            <p className="mt-1 font-display text-2xl text-text">{loadError || report.truncated ? "—" : fmtHours(report.firstContact.medianHours)}</p>
+            <p className="text-xs text-muted">{loadError || report.truncated ? "—" : `${fmtPct(report.firstContact.within24hPct)} within 24h · ${report.firstContact.uncontacted} uncontacted`}</p>
           </div>
           <div className="rounded-lg border border-border bg-panel p-4">
             <p className="text-xs font-sans uppercase tracking-wider text-muted">Contacts logged ({report.range}d)</p>
-            <p className="mt-1 font-display text-2xl text-text">{report.truncated ? "—" : teamContacts}</p>
+            <p className="mt-1 font-display text-2xl text-text">{loadError || report.truncated ? "—" : teamContacts}</p>
           </div>
           <div className="rounded-lg border border-border bg-panel p-4">
             <p className="text-xs font-sans uppercase tracking-wider text-muted">Team promise-kept rate</p>
-            <p className="mt-1 font-display text-2xl text-text">{report.truncated ? "—" : fmtPct(teamKeptRate)}</p>
-            <p className="text-xs text-muted">{report.truncated ? "—" : `${teamKept} kept / ${teamResolved} resolved`}</p>
+            <p className="mt-1 font-display text-2xl text-text">{loadError || report.truncated ? "—" : fmtPct(teamKeptRate)}</p>
+            <p className="text-xs text-muted">{loadError || report.truncated ? "—" : `${teamKept} kept / ${teamResolved} resolved`}</p>
           </div>
         </div>
 

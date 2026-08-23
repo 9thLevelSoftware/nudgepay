@@ -318,7 +318,7 @@ test("reports page renders ArKpiBand for the selected range and stays owner-only
   expect(page).toContain("loadTeamReport");
   expect(page).toContain("<ArKpiBand");
   expect(page).toContain("sheet=ar");
-  expect(page).toContain('report.truncated ? "—"');
+  expect(page).toContain("loadError || report.truncated");
   expect(page).toContain("!report.truncated");
   expect(page).toContain("!arKpis.truncated");
   expect(page).not.toContain("lastContactsInput");
@@ -515,10 +515,13 @@ test("loadReportArKpis truncated open-case page nulls rates instead of looking c
   expect(kpis.truncated).toBe(true);
 });
 
-test("loadReportArKpis throws when the open-case query errors", async () => {
+test("loadReportArKpis query error does not throw and does not paint 0% rates", async () => {
   const { client } = makeClient({
     ...AR_FIXTURE,
     collection_cases: { rows: [], error: { message: "boom" } },
   });
-  await expect(loadReportArKpis({ supabase: client, orgId: "org-1", range: 30 })).rejects.toMatchObject({ message: "boom" });
+  const kpis = await loadReportArKpis({ supabase: client, orgId: "org-1", range: 30 });
+  expect(kpis.contactRate).toBeNull();
+  expect(kpis.promiseRate).toBeNull();
+  expect(kpis.truncated).toBe(true);
 });

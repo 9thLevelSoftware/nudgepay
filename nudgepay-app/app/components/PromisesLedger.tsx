@@ -41,6 +41,8 @@ interface Props {
   search: string;
   counts: Record<PromiseTab, number>;
   selectedId: string | null;
+  loadError?: string | null;
+  truncated?: boolean;
 }
 
 /** Compact received-vs-promised progress: fill bar + % + amounts. */
@@ -79,7 +81,7 @@ function ReceivedProgress({ received, promised }: { received: number; promised: 
   );
 }
 
-export function PromisesLedger({ rows, tab, sort, search, counts, selectedId }: Props) {
+export function PromisesLedger({ rows, tab, sort, search, counts, selectedId, loadError = null, truncated = false }: Props) {
   const searchRef = useSearchShortcut();
   const params = (over: Record<string, string>) => {
     const p = new URLSearchParams({ tab, sort, ...over });
@@ -149,13 +151,15 @@ export function PromisesLedger({ rows, tab, sort, search, counts, selectedId }: 
       </div>
 
       {rows.length === 0 ? (
-        search ? (
-          <p className="px-4 py-10 text-center text-sm text-muted">
-            No promises match <span className="font-medium text-text">“{search}”</span> in this view.
-          </p>
-        ) : (
-          <p className="px-4 py-10 text-center text-sm text-muted">No promises in this view.</p>
-        )
+        <p className="px-4 py-10 text-center text-sm text-muted">
+          {loadError
+            ? loadError
+            : truncated
+              ? "Promise list may be incomplete."
+              : search
+                ? <>No promises match <span className="font-medium text-text">“{search}”</span> in this view.</>
+                : "No promises in this view."}
+        </p>
       ) : (
         <ul role="list" className="divide-y divide-border">
           {rows.map((r) => {
