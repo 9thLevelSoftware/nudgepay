@@ -212,6 +212,20 @@ function RevokeInviteButton({
   );
 }
 
+function RevokeInviteToast({ fetcher }: { fetcher: ReturnType<typeof useFetcher> }) {
+  const toast = useToast();
+  const submitting = useRef(false);
+  useEffect(() => {
+    if (fetcher.state === "submitting") submitting.current = true;
+    if (fetcher.state === "idle" && submitting.current) {
+      submitting.current = false;
+      const err = new URL(window.location.href).searchParams.get("error");
+      if (err !== "revoke") toast("Invite revoked.");
+    }
+  }, [fetcher.state, toast]);
+  return null;
+}
+
 function InviteLinkStatus({ link, sent }: { link: string; sent: boolean }) {
   const [copied, setCopied] = useState(false);
   const copy = async () => {
@@ -251,16 +265,6 @@ export default function Settings() {
     navigation.formAction === "/api/profile" &&
     navigation.formData?.get("intent") === intent;
   const revokeFetcher = useFetcher();
-  const toast = useToast();
-  const revokeSubmitting = useRef(false);
-  useEffect(() => {
-    if (revokeFetcher.state === "submitting") revokeSubmitting.current = true;
-    if (revokeFetcher.state === "idle" && revokeSubmitting.current) {
-      revokeSubmitting.current = false;
-      const err = new URL(window.location.href).searchParams.get("error");
-      if (err !== "revoke") toast("Invite revoked.");
-    }
-  }, [revokeFetcher.state, toast]);
 
   useFlashCleanup();
 
@@ -283,6 +287,7 @@ export default function Settings() {
       activeNav="settings"
       syncIssues={<SyncIssues issues={d.syncIssues} returnTo={returnTo} />}
     >
+      <RevokeInviteToast fetcher={revokeFetcher} />
       {d.qboFlash && QBO_FLASH[d.qboFlash] ? (
         <FlashBanner tone={QBO_FLASH[d.qboFlash].tone} text={QBO_FLASH[d.qboFlash].text} />
       ) : null}
