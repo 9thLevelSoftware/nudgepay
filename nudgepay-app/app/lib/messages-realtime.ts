@@ -75,6 +75,54 @@ export function inboundFingerprintIsNewer(
   return Boolean(current && current !== previous && (previous == null || current > previous));
 }
 
+export type InboundFingerprintState = {
+  lastInboundAt: string | null;
+  toast: boolean;
+  realtimeToasted: boolean;
+};
+
+/**
+ * After a Realtime inbound toast + loader revalidate, adopt the new
+ * lastInboundAt so the 20s poll does not toast the same reply.
+ * Omit/unknown must not set realtimeToasted — poll stays the toast path.
+ */
+export function absorbRealtimeInboundFingerprint(args: {
+  previous: string | null;
+  current: string | null;
+  realtimeToasted: boolean;
+}): { lastInboundAt: string | null; realtimeToasted: boolean } {
+  if (!args.realtimeToasted) {
+    return { lastInboundAt: args.previous, realtimeToasted: false };
+  }
+  if (!inboundFingerprintIsNewer(args.previous, args.current)) {
+    return { lastInboundAt: args.previous, realtimeToasted: true };
+  }
+  return { lastInboundAt: args.current, realtimeToasted: false };
+}
+
+/**
+ * Poll fingerprint: toast on a newer stamp unless Realtime already toasted
+ * that inbound (flag set, cursor not yet absorbed from the loader).
+ */
+export function applyPollInboundFingerprint(args: {
+  previous: string | null;
+  current: string | null;
+  realtimeToasted: boolean;
+}): InboundFingerprintState {
+  if (!inboundFingerprintIsNewer(args.previous, args.current)) {
+    return {
+      lastInboundAt: args.previous,
+      toast: false,
+      realtimeToasted: args.realtimeToasted,
+    };
+  }
+  return {
+    lastInboundAt: args.current,
+    toast: !args.realtimeToasted,
+    realtimeToasted: false,
+  };
+}
+
 /**
  * Mirrors `notify_message_event`: a realtime.send throw must not fail INSERT.
  * SQL uses `exception when others then raise warning` and still `return NEW`.

@@ -3,6 +3,8 @@ import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import {
   MESSAGE_EVENT_ALLOWED_KEYS,
+  absorbRealtimeInboundFingerprint,
+  applyPollInboundFingerprint,
   inboundFingerprintIsNewer,
   notifyMessageEventSafe,
   parseMessageEventPayload,
@@ -100,11 +102,16 @@ describe("content-free realtime payload", () => {
 
   it("SQL json_build_object only sends table, org_id, direction", () => {
     const sql = read("../supabase/migrations/0051_message_events_direction.sql");
-    expect(sql).toMatch(/json_build_object\([\s\S]*'table'[\s\S]*'org_id'[\s\S]*'direction'/);
-    expect(sql).not.toMatch(/NEW\.body/);
-    expect(sql).not.toMatch(/NEW\.from/);
-    expect(sql).not.toMatch(/NEW\.to_/);
-    expect(sql).not.toMatch(/NEW\.customer_id/);
+    const built = sql.match(/json_build_object\(([\s\S]*?)\)::jsonb/);
+    expect(built, "json_build_object payload missing").toBeTruthy();
+    const args = built![1];
+    expect(args).toMatch(/'table',\s*TG_TABLE_NAME/);
+    expect(args).toMatch(/'org_id',\s*NEW\.org_id/);
+    expect(args).toMatch(/'direction',\s*NEW\.direction/);
+    expect([...args.matchAll(/NEW\.(\w+)/g)].map((m) => m[1]).sort()).toEqual([
+      "direction",
+      "org_id",
+    ]);
     expect(sql).toMatch(/realtime\.send\([\s\S]*,\s*false\s*\)/);
   });
 });
@@ -138,6 +145,44 @@ describe("inbound-only toast", () => {
     emit({ payload: { table: "email_messages", org_id: "org-1", direction: "sideways" } });
     expect(toasts).toHaveLength(1);
     expect(toasts[0]!.direction).toBe("inbound");
+  });
+
+  it("Realtime inbound absorbs the next fingerprint so the 20s poll does not toast again", () => {
+    const t0 = "2026-08-23T12:00:00Z";
+    const t1 = "2026-08-23T12:00:01Z";
+    // Socket toasted; loader lastInboundAt advances — absorb, no poll toast.
+    const absorbed = absorbRealtimeInboundFingerprint({
+      previous: t0,
+      current: t1,
+      realtimeToasted: true,
+    });
+    expect(absorbed).toEqual({ lastInboundAt: t1, realtimeToasted: false });
+    expect(applyPollInboundFingerprint({
+      previous: absorbed.lastInboundAt,
+      current: t1,
+      realtimeToasted: absorbed.realtimeToasted,
+    }).toast).toBe(false);
+
+    // Poll wins the race before loader absorb: still no second toast, cursor advances.
+    const raced = applyPollInboundFingerprint({
+      previous: t0,
+      current: t1,
+      realtimeToasted: true,
+    });
+    expect(raced).toEqual({ lastInboundAt: t1, toast: false, realtimeToasted: false });
+
+    // Omit/unknown did not toast — loader must not swallow; poll still toasts.
+    const omitted = absorbRealtimeInboundFingerprint({
+      previous: t0,
+      current: t1,
+      realtimeToasted: false,
+    });
+    expect(omitted).toEqual({ lastInboundAt: t0, realtimeToasted: false });
+    expect(applyPollInboundFingerprint({
+      previous: omitted.lastInboundAt,
+      current: t1,
+      realtimeToasted: omitted.realtimeToasted,
+    })).toEqual({ lastInboundAt: t1, toast: true, realtimeToasted: false });
   });
 });
 
@@ -200,7 +245,9 @@ describe("loader remains source of thread bodies", () => {
     expect(route).toMatch(/select\("customer_id, direction, body/);
     expect(route).toContain("subscribeMessageEvents");
     expect(route).toContain("shouldToastInbound");
-    expect(route).toContain("inboundFingerprintIsNewer");
+    expect(route).toContain("absorbRealtimeInboundFingerprint");
+    expect(route).toContain("applyPollInboundFingerprint");
+    expect(route).toContain("realtimeToastedRef");
     expect(route).toContain("/api/messages-activity");
     expect(route).not.toMatch(/payload\.body/);
 

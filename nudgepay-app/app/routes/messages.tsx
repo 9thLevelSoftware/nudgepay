@@ -31,7 +31,8 @@ import { MessageThreadPanel } from "../components/MessageThreadPanel";
 import { DrawerShell } from "../components/DrawerShell";
 import { pageTitle } from "../lib/meta";
 import {
-  inboundFingerprintIsNewer,
+  absorbRealtimeInboundFingerprint,
+  applyPollInboundFingerprint,
   shouldToastInbound,
   subscribeMessageEvents,
 } from "../lib/messages-realtime";
@@ -374,7 +375,10 @@ export default function Messages() {
   const activityFetcher = useFetcher<{ lastInboundAt: string | null }>();
   const toast = useToast();
   const lastInboundRef = useRef<string | null>(d.lastInboundAt ?? null);
-  // Dedup: realtime and the 20s poll can notice the same inbound message.
+  // Realtime inbound toasts immediately; the next poll/loader fingerprint
+  // must advance the cursor without a second toast. 8s lastToastAtRef is
+  // only a belt for a poll already in flight (cannot cover the 20s interval).
+  const realtimeToastedRef = useRef(false);
   const lastToastAtRef = useRef(0);
   const toastNewInbound = useCallback(() => {
     if (Date.now() - lastToastAtRef.current < 8000) return;
@@ -404,7 +408,10 @@ export default function Messages() {
         if (revalidator.state !== "idle") return;
         const active = document.activeElement as HTMLElement | null;
         if (active && ["TEXTAREA", "INPUT", "SELECT"].includes(active.tagName)) return;
-        if (shouldToastInbound(payload)) toastNewInbound();
+        if (shouldToastInbound(payload)) {
+          toastNewInbound();
+          realtimeToastedRef.current = true;
+        }
         revalidator.revalidate();
       },
     });
@@ -432,12 +439,28 @@ export default function Messages() {
     };
   }, [activityFetcher, revalidator]);
 
-  // Toast and refresh when a new inbound customer reply lands.
+  // Loader fingerprint after a Realtime inbound toast: absorb, do not toast.
   useEffect(() => {
-    const current = activityFetcher.data?.lastInboundAt ?? null;
-    const previous = lastInboundRef.current;
-    if (inboundFingerprintIsNewer(previous, current)) {
-      lastInboundRef.current = current;
+    const next = absorbRealtimeInboundFingerprint({
+      previous: lastInboundRef.current,
+      current: d.lastInboundAt ?? null,
+      realtimeToasted: realtimeToastedRef.current,
+    });
+    lastInboundRef.current = next.lastInboundAt;
+    realtimeToastedRef.current = next.realtimeToasted;
+  }, [d.lastInboundAt]);
+
+  // Toast and refresh when a new inbound customer reply lands via poll.
+  // If Realtime already toasted, advance the cursor and stay silent.
+  useEffect(() => {
+    const next = applyPollInboundFingerprint({
+      previous: lastInboundRef.current,
+      current: activityFetcher.data?.lastInboundAt ?? null,
+      realtimeToasted: realtimeToastedRef.current,
+    });
+    lastInboundRef.current = next.lastInboundAt;
+    realtimeToastedRef.current = next.realtimeToasted;
+    if (next.toast) {
       toastNewInbound();
       revalidator.revalidate();
     }
