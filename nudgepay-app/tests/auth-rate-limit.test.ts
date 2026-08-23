@@ -1,5 +1,9 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { authRateLimited, authRateLimitKey } from "../app/lib/auth-rate-limit.server";
+import {
+  authRateLimited,
+  authRateLimitKey,
+  resetMemoryAuthRateLimit,
+} from "../app/lib/auth-rate-limit.server";
 import { humanAuthError } from "../app/lib/auth-errors";
 import { action as loginAction } from "../app/routes/login";
 import { action as signupAction } from "../app/routes/signup";
@@ -9,6 +13,7 @@ const TOO_MANY = "Too many attempts. Wait a few minutes and try again.";
 
 afterEach(() => {
   vi.restoreAllMocks();
+  resetMemoryAuthRateLimit();
 });
 
 function ctx(env: Record<string, unknown> = {}) {
@@ -44,20 +49,31 @@ describe("authRateLimited", () => {
     ).resolves.toBe(false);
   });
 
-  it("missing limiter + QBO_SANDBOX=true allows", async () => {
-    await expect(authRateLimited({ QBO_SANDBOX: "true" }, "1.1.1.1")).resolves.toBe(false);
+  it("missing limiter in local/dev allows", async () => {
+    await expect(authRateLimited({}, "1.1.1.1")).resolves.toBe(false);
   });
 
-  it("missing limiter + QBO_SANDBOX=false without WAF flag rejects", async () => {
-    const error = vi.spyOn(console, "error").mockImplementation(() => {});
-    await expect(authRateLimited({ QBO_SANDBOX: "false" }, "1.1.1.1")).resolves.toBe(true);
-    expect(error).toHaveBeenCalledWith({ event: "auth_rate_limit_unbound" });
-  });
-
-  it("missing limiter + QBO_SANDBOX=false with AUTH_RATE_LIMIT_WAF=true allows", async () => {
+  it("missing limiter + AUTH_RATE_LIMIT_WAF=true allows", async () => {
     await expect(
-      authRateLimited({ QBO_SANDBOX: "false", AUTH_RATE_LIMIT_WAF: "true" }, "1.1.1.1"),
+      authRateLimited({ NODE_ENV: "production", AUTH_RATE_LIMIT_WAF: "true" }, "1.1.1.1"),
     ).resolves.toBe(false);
+  });
+
+  it("Render/Node (BUILD_TARGET=node) uses the in-memory limiter", async () => {
+    const env = { BUILD_TARGET: "node", QBO_SANDBOX: "false" };
+    for (let i = 0; i < 20; i++) {
+      await expect(authRateLimited(env, "203.0.113.8")).resolves.toBe(false);
+    }
+    await expect(authRateLimited(env, "203.0.113.8")).resolves.toBe(true);
+    await expect(authRateLimited(env, "203.0.113.9")).resolves.toBe(false);
+  });
+
+  it("NODE_ENV=production without a CF binding uses the in-memory limiter", async () => {
+    const env = { NODE_ENV: "production" };
+    for (let i = 0; i < 20; i++) {
+      await expect(authRateLimited(env, "198.51.100.8")).resolves.toBe(false);
+    }
+    await expect(authRateLimited(env, "198.51.100.8")).resolves.toBe(true);
   });
 });
 
