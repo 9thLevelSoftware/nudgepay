@@ -24,6 +24,7 @@ import { NotificationPrefsForm } from "../components/NotificationPrefsForm";
 import { CompanyProfileForm } from "../components/CompanyProfileForm";
 import { TemplateEditor } from "../components/TemplateEditor";
 import { useTwoStep } from "../components/TwoStepConfirm";
+import { Button } from "../components/ui";
 import { resolveChannelSettings, resolveSmsSenderSettings } from "../lib/channel-settings";
 import { resolveEmailSettings } from "../lib/email-settings";
 import { deriveWebhookUrls } from "../lib/provider-status";
@@ -191,30 +192,17 @@ function RevokeInviteButton({
           <span className="text-xs text-hot" role="alert">
             Revoke this invite?
           </span>
-          <button
-            type="submit"
-            disabled={busy}
-            className="text-xs font-semibold text-hot hover:underline disabled:opacity-60 disabled:cursor-not-allowed"
-          >
+          <Button type="submit" variant="destructive" size="sm" disabled={busy}>
             {busy ? "Revoking…" : "Confirm revoke"}
-          </button>
-          <button
-            type="button"
-            onClick={disarm}
-            className="text-xs font-medium text-muted hover:text-text"
-          >
+          </Button>
+          <Button type="button" variant="ghost" size="sm" onClick={disarm}>
             Cancel
-          </button>
+          </Button>
         </>
       ) : (
-        <button
-          type="button"
-          onClick={arm}
-          disabled={busy}
-          className="text-xs font-medium text-hot hover:underline disabled:opacity-60 disabled:cursor-not-allowed"
-        >
+        <Button type="button" variant="ghost" size="sm" onClick={arm} disabled={busy}>
           Revoke
-        </button>
+        </Button>
       )}
     </Form>
   );
