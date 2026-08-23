@@ -29,6 +29,13 @@ test("STOP-locked consent hides Mark consented for members; owner override requi
   expect(form![0]).toMatch(/name="reason"/);
   expect(form![0]).toMatch(/minLength=\{3\}/);
   expect(form![0]).toContain("Override STOP");
+  expect(form![0]).toContain("<Input");
+});
+
+test("owner STOP override clears do_not_text with consent", () => {
+  const src = read("../app/routes/api.sms-consent.tsx");
+  expect(src).toContain("overrideStop");
+  expect(src).toContain("do_not_text: false");
 });
 
 test("invite flash is generic, not raw DB (NP-AUD-2026-126)", () => {

@@ -22,6 +22,7 @@ import { canSendEmail, type CommPrefs } from "~/lib/comm-prefs";
 import { resolveCallAction } from "~/lib/channel-actions";
 import { statusChipTone, type ChipTone } from "~/lib/status-style";
 import { smsFlash } from "~/lib/flash-copy";
+import { Input } from "~/components/ui";
 
 // Static tone-to-text-color map — heat.band → Tailwind class.
 // Must be literal strings so Tailwind can tree-shake them; no dynamic construction.
@@ -243,12 +244,12 @@ function MessagesTab({
                 <input type="hidden" name="returnTo" value={returnTo} />
                 <input type="hidden" name="consent" value={consent ? "false" : "true"} />
                 {!consent && smsConsentSource === "inbound_stop" ? (
-                  <input
+                  <Input
                     name="reason"
                     required
                     minLength={3}
                     placeholder="Override reason"
-                    className="h-7 w-40 rounded border border-border bg-surface px-2 text-xs font-sans"
+                    className="h-7 w-40 px-2 py-0 text-xs"
                     aria-label="Consent override reason"
                   />
                 ) : null}

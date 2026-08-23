@@ -50,7 +50,8 @@ export async function action({ request, context }: ActionFunctionArgs) {
   if (curErr || !current) return redirect(withSms(returnTo, "error"), { headers });
 
   const reason = typeof form.get("reason") === "string" ? (form.get("reason") as string).trim() : "";
-  if (consent === true && current.sms_consent_source === "inbound_stop") {
+  const overrideStop = consent === true && current.sms_consent_source === "inbound_stop";
+  if (overrideStop) {
     if (org.role !== "owner" || reason.length < 3) {
       return redirect(withSms(returnTo, "consent_locked"), { headers });
     }
@@ -63,7 +64,10 @@ export async function action({ request, context }: ActionFunctionArgs) {
       sms_consent_source: "staff",
       sms_consent_at: new Date().toISOString(),
       sms_consent_actor: user.id,
-      sms_consent_reason: consent && current.sms_consent_source === "inbound_stop" ? reason : null,
+      sms_consent_reason: overrideStop ? reason : null,
+      // Inbound STOP also sets do_not_text; the SMS gate and inbox canReply
+      // prioritize it, so override must restore a sendable state atomically.
+      ...(overrideStop ? { do_not_text: false } : {}),
     })
     .eq("org_id", org.org_id)
     .eq("id", customerId);
