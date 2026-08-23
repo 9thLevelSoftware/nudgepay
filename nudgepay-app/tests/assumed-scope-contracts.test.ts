@@ -311,6 +311,20 @@ test("CDC catch-up rethrows recon so last_cdc_time is not stamped", () => {
   const cdc = src.slice(src.indexOf("export async function runCdcCatchup"));
   expect(cdc.indexOf("throw e")).toBeGreaterThan(-1);
   expect(cdc.indexOf("throw e")).toBeLessThan(cdc.indexOf("last_cdc_time: fetchedAt"));
+  expect(cdc).toContain("if (cdcCursorErr) throw cdcCursorErr");
+  expect(cdc).toContain("QUERY_LIMIT");
+});
+
+test("inner apply re-pull and eval rethrow; notify stays non-fatal", () => {
+  const src = read("../app/lib/qbo-sync.server.ts");
+  const apply = src.slice(
+    src.indexOf("export async function applyPaymentsAndEvaluate"),
+    src.indexOf("export async function applyPaymentWebhook"),
+  );
+  expect(apply).not.toContain("payment re-pull failed");
+  expect(apply).not.toContain("promise evaluation failed (payments)");
+  expect(apply).toContain("broken-promise notification failed (non-fatal)");
+  expect(apply).toContain("throw e");
 });
 
 test("syncOverdueInvoices and applyInvoiceWebhook do not swallow recon", () => {
@@ -333,6 +347,18 @@ test("sync pages Intuit queries and does not advance truncated CDC (NP-AUD-2026-
   const src = read("../app/lib/qbo-sync.server.ts");
   expect(src).toContain("qboQueryAll");
   expect(src).toContain("CDC truncated");
+  const api = read("../app/lib/qbo-api.server.ts");
+  expect(api).toContain("truncated: true");
+  expect(api).toContain("QBO_QUERY_MAX_PAGES");
+});
+
+test("first-connect heal backfills before CDC and skips CDC on backfill failure", () => {
+  const src = read("../app/lib/qbo-cron.server.ts");
+  expect(src).toContain("syncOverdueInvoices");
+  expect(src).toContain('scope: "backfill"');
+  expect(src).toContain("continue");
+  const query = src.slice(src.indexOf("pageAll"));
+  expect(query).toContain("last_sync_at");
 });
 
 test("inbound email routing includes disabled from-addresses and treats multiples as ambiguous", () => {

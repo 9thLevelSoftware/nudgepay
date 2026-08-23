@@ -153,3 +153,97 @@ test("applyInvoiceWebhook deleted path stamps first transition and leaves histor
   expect(hist!.status).toBe("paid");
   expect(hist!.paid_date).toBeNull();
 });
+
+test("applyInvoiceWebhook delete-missing path reconciles instead of returning early", async () => {
+  const org = await freshOrg();
+  await storeConnection(svc, KEY, org, "realm-w6", { accessToken: "AT", refreshToken: "RT", expiresIn: 3600 });
+  const { data: cust } = await svc.from("customers")
+    .insert({ org_id: org, qbo_id: "70", name: "Delete Recon Co" }).select("id").single();
+  const { data: opened } = await svc.from("collection_cases")
+    .insert({ org_id: org, customer_id: cust!.id, status: "new", next_action_type: "contact", next_action_at: "2026-01-01" })
+    .select("id").single();
+  await svc.from("invoices").insert({
+    org_id: org, qbo_id: "701", customer_id: cust!.id, amount: 80, balance: 80, status: "overdue",
+    paid_date: null, due_date: "2026-01-01",
+  });
+
+  const fetchFn = vi.fn(async (url: string) => {
+    if (String(url).includes("/invoice/701")) return jsonResponse({ time: "now" });
+    throw new Error(`unexpected ${url}`);
+  });
+
+  await applyInvoiceWebhook(deps(fetchFn), org, "701");
+
+  const { data: cse } = await svc.from("collection_cases").select("status, closed_at").eq("id", opened!.id).single();
+  expect(cse!.status).toBe("resolved");
+  expect(cse!.closed_at).not.toBeNull();
+});
+
+test("runCdcCatchup throws on last_cdc_time read error and does not stamp", async () => {
+  const org = await freshOrg();
+  await storeConnection(svc, KEY, org, "realm-w7", { accessToken: "AT", refreshToken: "RT", expiresIn: 3600 });
+  await svc.from("qbo_connections").update({ last_cdc_time: "2026-01-01T00:00:00Z" }).eq("org_id", org);
+
+  const origFrom = svc.from.bind(svc);
+  const wrapped = {
+    ...svc,
+    from(table: string) {
+      const q = origFrom(table);
+      if (table !== "qbo_connections") return q;
+      const origSelect = q.select.bind(q);
+      q.select = ((cols: string, ...rest: unknown[]) => {
+        const next = origSelect(cols, ...rest);
+        if (!String(cols).includes("last_cdc_time")) return next;
+        return {
+          eq() {
+            return {
+              maybeSingle: async () => ({ data: null, error: { message: "cursor read failed" } }),
+            };
+          },
+        };
+      }) as typeof q.select;
+      return q;
+    },
+  };
+
+  const fetchFn = vi.fn(async () => {
+    throw new Error("cdc should not run after a cursor read error");
+  });
+
+  await expect(runCdcCatchup({ ...deps(fetchFn), service: wrapped as any }, org))
+    .rejects.toMatchObject({ message: "cursor read failed" });
+
+  const { data: conn } = await svc.from("qbo_connections").select("last_cdc_time").eq("org_id", org).single();
+  expect(new Date(conn!.last_cdc_time as string).toISOString()).toBe("2026-01-01T00:00:00.000Z");
+  expect(fetchFn).not.toHaveBeenCalled();
+});
+
+test("Intuit 404 for one CustomerRef still stamps last_cdc_time", async () => {
+  const org = await freshOrg();
+  await storeConnection(svc, KEY, org, "realm-w8", { accessToken: "AT", refreshToken: "RT", expiresIn: 3600 });
+  await svc.from("qbo_connections").update({ last_cdc_time: "2026-01-01T00:00:00Z" }).eq("org_id", org);
+
+  const fetchFn = vi.fn(async (url: string) => {
+    if (String(url).includes("/cdc?")) {
+      return jsonResponse({ CDCResponse: [{ QueryResponse: [
+        { Invoice: [{ Id: "800", DocNumber: "8", TotalAmt: "5", Balance: "0", DueDate: "2026-01-01", CustomerRef: { value: "missing-cust" } }] },
+      ] }] });
+    }
+    if (String(url).includes("/customer/missing-cust")) return jsonResponse({ Fault: {} }, 404);
+    throw new Error(`unexpected ${url}`);
+  });
+
+  const result = await runCdcCatchup(deps(fetchFn), org);
+  expect(result).toEqual({ customers: 0, invoices: 1 });
+
+  const { data: inv } = await svc.from("invoices").select("customer_id, status").eq("org_id", org).eq("qbo_id", "800").single();
+  expect(inv!.customer_id).toBeNull();
+  expect(inv!.status).toBe("paid");
+
+  const { data: conn } = await svc.from("qbo_connections").select("last_cdc_time").eq("org_id", org).single();
+  expect(conn!.last_cdc_time).not.toBe("2026-01-01T00:00:00Z");
+  expect(conn!.last_cdc_time).not.toBeNull();
+
+  const { data: errs } = await svc.from("sync_errors").select("scope, message").eq("org_id", org).is("resolved_at", null);
+  expect((errs ?? []).some((e) => e.scope === "customer")).toBe(true);
+});

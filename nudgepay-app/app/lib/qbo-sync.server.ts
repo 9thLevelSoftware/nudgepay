@@ -13,6 +13,7 @@ import { DEFAULT_ORG_CONFIG } from "./org-config";
 import { todayInTz } from "./tz";
 import { mergePaidDate, type ExistingPaidRow } from "./paid-date";
 import { recordSyncError, resolveSyncErrors } from "./sync-errors.server";
+import { isTruncatedPage } from "./page-all";
 
 export type NotifyFn = (orgId: string, brokenDetails: BrokenPromiseDetail[], today: string) => Promise<void>;
 
@@ -26,8 +27,8 @@ export type SyncDeps = {
   errorSource?: "manual" | "webhook" | "cron";
 };
 
-// QBO query page cap. Chancey carries 125-175 overdue invoices; CDC caps at
-// 1000. A single page of 1000 covers this org; >1000 is flagged (truncated).
+// QBO query page cap and CDC entity-array cap. Chancey carries 125-175 overdue
+// invoices; a single page of 1000 covers this org; ≥1000 CDC entities throw.
 export const QUERY_LIMIT = 1000;
 
 export async function upsertCustomers(service: SupabaseClient, rows: CustomerUpsert[]): Promise<void> {
@@ -85,17 +86,68 @@ export async function upsertPayments(service: SupabaseClient, rows: PaymentUpser
 }
 
 // Resolve QBO customer ids -> our customer UUIDs for an org (covers both
-// just-upserted and pre-existing customers).
+// just-upserted and pre-existing customers). Throws only when a lookup page
+// is truncated — missing ids after a complete page do not throw.
 export async function customerIdMap(
   service: SupabaseClient, orgId: string, qboCustomerIds: string[],
 ): Promise<Map<string, string>> {
   const map = new Map<string, string>();
   const ids = [...new Set(qboCustomerIds.filter(Boolean))];
   if (ids.length === 0) return map;
-  const { data, error } = await service.from("customers")
-    .select("id, qbo_id").eq("org_id", orgId).in("qbo_id", ids);
-  if (error) throw error;
-  for (const row of data ?? []) map.set(row.qbo_id as string, row.id as string);
+  for (let i = 0; i < ids.length; i += PAID_DATE_LOOKUP_CHUNK) {
+    const chunk = ids.slice(i, i + PAID_DATE_LOOKUP_CHUNK);
+    const { data, error, count } = await service.from("customers")
+      .select("id, qbo_id", { count: "exact" }).eq("org_id", orgId).in("qbo_id", chunk);
+    if (error) throw error;
+    const rows = data ?? [];
+    if (isTruncatedPage(rows.length, count) || rows.length > PAID_DATE_LOOKUP_CHUNK) {
+      throw new Error("customer lookup truncated: page is incomplete");
+    }
+    for (const row of rows) map.set(row.qbo_id as string, row.id as string);
+  }
+  return map;
+}
+
+function isQboNotFound(e: unknown): boolean {
+  return e instanceof Error && e.message.includes("QBO API request failed: 404");
+}
+
+// Fill holes in customerIdMap via QBO. Intuit 404 / unnamed Customer leave
+// customer_id null and record a narrow sync error — they must not block a stamp.
+async function hydrateCustomerIdMap(
+  deps: SyncDeps, orgId: string, accessToken: string, realmId: string, qboCustomerIds: string[],
+): Promise<Map<string, string>> {
+  const map = await customerIdMap(deps.service, orgId, qboCustomerIds);
+  const missing = [...new Set(qboCustomerIds.filter(Boolean))].filter((id) => !map.has(id));
+  if (missing.length === 0) return map;
+  const fetched: CustomerUpsert[] = [];
+  for (const qboId of missing) {
+    let raw: any = null;
+    try {
+      raw = await qboReadEntity(deps.fetchFn, deps.api, accessToken, realmId, "Customer", qboId);
+    } catch (e) {
+      if (isQboNotFound(e)) {
+        await recordSyncError(deps.service, {
+          orgId, source: deps.errorSource ?? "cron", scope: "customer",
+          message: `QBO customer ${qboId} not found`,
+        }).catch((err) => console.error("[6b] recordSyncError customer 404 failed", err));
+        continue;
+      }
+      throw e;
+    }
+    if (!raw || qboCustomerName(raw).length === 0) {
+      await recordSyncError(deps.service, {
+        orgId, source: deps.errorSource ?? "cron", scope: "customer",
+        message: `QBO customer ${qboId} missing or unnamed`,
+      }).catch((err) => console.error("[6b] recordSyncError customer miss failed", err));
+      continue;
+    }
+    fetched.push(mapQboCustomer(raw, orgId));
+  }
+  if (fetched.length === 0) return map;
+  await upsertCustomers(deps.service, fetched);
+  const extra = await customerIdMap(deps.service, orgId, fetched.map((c) => c.qbo_id));
+  for (const [k, v] of extra) map.set(k, v);
   return map;
 }
 
@@ -109,13 +161,14 @@ export async function repullCustomerInvoices(
   const ids = [...new Set(qboCustomerIds.filter(Boolean))];
   if (ids.length === 0) return;
   const idList = ids.map((id) => `'${id}'`).join(",");
-  const invoices = await qboQueryAll(
+  const { rows: invoices, truncated } = await qboQueryAll(
     deps.fetchFn, deps.api, accessToken, realmId,
     `select * from Invoice where CustomerRef in (${idList})`,
     "Invoice",
   );
+  if (truncated) throw new Error("invoice re-pull truncated: do not advance watermark");
   if (invoices.length === 0) return;
-  const idMap = await customerIdMap(deps.service, orgId, ids);
+  const idMap = await hydrateCustomerIdMap(deps, orgId, accessToken, realmId, ids);
   const now = new Date();
   const rows = invoices.map((inv) =>
     mapQboInvoice(inv, orgId, idMap.get(String(inv?.CustomerRef?.value)) ?? null, now, syncToday));
@@ -135,14 +188,13 @@ export async function applyPaymentsAndEvaluate(
     console.warn("[6b] payment with no CustomerRef; skipping re-pull", droppedIds);
   }
   const payCustQboIds = allPayCustQboIds.filter(Boolean).map(String);
-  const payIdMap = await customerIdMap(deps.service, orgId, payCustQboIds);
+  const payIdMap = await hydrateCustomerIdMap(deps, orgId, accessToken, realmId, payCustQboIds);
   const paymentRows = paymentRaws.map((e) =>
     mapQboPayment(e.raw, e.type, orgId, payIdMap.get(String(e?.raw?.CustomerRef?.value)) ?? null, now));
   await upsertPayments(deps.service, paymentRows);
 
   if (payCustQboIds.length > 0) {
-    try { await repullCustomerInvoices(deps, orgId, accessToken, realmId, payCustQboIds, today); }
-    catch (e) { console.error("[6b] payment re-pull failed", e); }
+    await repullCustomerInvoices(deps, orgId, accessToken, realmId, payCustQboIds, today);
   }
   try {
     await applyCaseReconciliation(deps.service, orgId, today);
@@ -158,14 +210,11 @@ export async function applyPaymentsAndEvaluate(
     }).catch((err) => console.error("[6b] recordSyncError failed", err));
     throw e;
   }
-  try {
-    const evalResult = await applyPromiseEvaluation(deps.service, orgId, today);
-    if (evalResult.brokenDetails.length > 0 && deps.notify) {
-      try { await deps.notify(orgId, evalResult.brokenDetails, today); }
-      catch (e) { console.error("[6b] broken-promise notification failed (non-fatal)", e); }
-    }
+  const evalResult = await applyPromiseEvaluation(deps.service, orgId, today);
+  if (evalResult.brokenDetails.length > 0 && deps.notify) {
+    try { await deps.notify(orgId, evalResult.brokenDetails, today); }
+    catch (e) { console.error("[6b] broken-promise notification failed (non-fatal)", e); }
   }
-  catch (e) { console.error("[6b] promise evaluation failed (payments)", e); }
 }
 
 export async function applyPaymentWebhook(
@@ -195,21 +244,27 @@ export async function syncOverdueInvoices(
 
   // Overdue invoices (critical path — feeds case pipeline). Separate query
   // so coming-due rows can never displace overdue rows at the cap.
-  const overdueInvoices = await qboQueryAll(
+  const overdueQuery = await qboQueryAll(
     deps.fetchFn, deps.api, accessToken, realmId,
     `select * from Invoice where Balance > '0' and DueDate < '${today}'`,
     "Invoice",
   );
+  if (overdueQuery.truncated) {
+    throw new Error("overdue invoices truncated: do not stamp last_sync_at");
+  }
+  const overdueInvoices = overdueQuery.rows;
 
   // Coming-due invoices (awareness only — org-configured lookahead window,
   // separate capped query).
   const todayMs = new Date(today + "T00:00:00Z").getTime();
   const plus7 = new Date(todayMs + orgConfig.workflow.comingDueDays * 86_400_000).toISOString().slice(0, 10);
-  const comingDueInvoices = await qboQueryAll(
+  const comingDueQuery = await qboQueryAll(
     deps.fetchFn, deps.api, accessToken, realmId,
     `select * from Invoice where Balance > '0' and DueDate >= '${today}' and DueDate <= '${plus7}'`,
     "Invoice",
   );
+  const comingDueInvoices = comingDueQuery.rows;
+  let truncated = comingDueQuery.truncated;
 
   // Merge and deduplicate by QBO Id (defensive — queries are disjoint by
   // date range but a QBO edge case could return the same invoice in both).
@@ -239,7 +294,8 @@ export async function syncOverdueInvoices(
       `select * from Customer where Id in (${idList})`,
       "Customer",
     );
-    customerRows.push(...customers.map((c) => mapQboCustomer(c, orgId)));
+    truncated = truncated || customers.truncated;
+    customerRows.push(...customers.rows.map((c) => mapQboCustomer(c, orgId)));
   }
   if (extraCustIds.length > 0) {
     const idList = extraCustIds.map((id) => `'${id}'`).join(",");
@@ -248,13 +304,14 @@ export async function syncOverdueInvoices(
       `select * from Customer where Id in (${idList})`,
       "Customer",
     );
-    customerRows.push(...customers.map((c) => mapQboCustomer(c, orgId)));
+    truncated = truncated || customers.truncated;
+    customerRows.push(...customers.rows.map((c) => mapQboCustomer(c, orgId)));
   }
   await upsertCustomers(deps.service, customerRows);
 
   const custIds = invoices.map((i) => i?.CustomerRef?.value).filter(Boolean).map(String);
 
-  const idMap = await customerIdMap(deps.service, orgId, custIds);
+  const idMap = await hydrateCustomerIdMap(deps, orgId, accessToken, realmId, custIds);
   const now = new Date();
   const invoiceRows = invoices.map((inv) =>
     mapQboInvoice(inv, orgId, idMap.get(String(inv?.CustomerRef?.value)) ?? null, now, today),
@@ -263,8 +320,16 @@ export async function syncOverdueInvoices(
 
   // Reuse the org-local `today` computed above (same calendar day as the
   // overdue-invoice query) rather than recomputing from a fresh UTC Date.
-  // Recon failure must not stamp last_sync_at — CDC retries the window.
+  // Apply failure must not stamp last_sync_at — CDC retries the window.
   await applyPaymentsAndEvaluate(deps, orgId, accessToken, realmId, [], today, now);
+
+  if (truncated) {
+    return {
+      customers: customerRows.length,
+      invoices: invoiceRows.length,
+      truncated: true,
+    };
+  }
 
   const { error } = await deps.service.from("qbo_connections")
     .update({ last_sync_at: now.toISOString() }).eq("org_id", orgId);
@@ -318,19 +383,16 @@ export async function applyInvoiceWebhook(
       .eq("org_id", orgId)
       .eq("qbo_id", qboInvoiceId);
     if (error) throw error;
-    return;
+  } else {
+    // Ensure the invoice's customer exists locally so the FK resolves.
+    const qboCustomerId = inv?.CustomerRef?.value ? String(inv.CustomerRef.value) : null;
+    let customerId: string | null = null;
+    if (qboCustomerId) {
+      const idMap = await hydrateCustomerIdMap(deps, orgId, accessToken, realmId, [qboCustomerId]);
+      customerId = idMap.get(qboCustomerId) ?? null;
+    }
+    await upsertInvoices(deps.service, [mapQboInvoice(inv, orgId, customerId, now, syncToday)], syncToday);
   }
-
-  // Ensure the invoice's customer exists locally so the FK resolves.
-  const qboCustomerId = inv?.CustomerRef?.value ? String(inv.CustomerRef.value) : null;
-  let customerId: string | null = null;
-  if (qboCustomerId) {
-    const c = await qboReadEntity(deps.fetchFn, deps.api, accessToken, realmId, "Customer", qboCustomerId);
-    if (c) await upsertCustomers(deps.service, [mapQboCustomer(c, orgId)]);
-    const idMap = await customerIdMap(deps.service, orgId, [qboCustomerId]);
-    customerId = idMap.get(qboCustomerId) ?? null;
-  }
-  await upsertInvoices(deps.service, [mapQboInvoice(inv, orgId, customerId, now, syncToday)], syncToday);
 
   await applyPaymentsAndEvaluate(deps, orgId, accessToken, realmId, [], syncToday, now);
 }
@@ -345,11 +407,13 @@ export async function runCdcCatchup(
   const { accessToken, realmId } = await getValidAccessToken(
     deps.fetchFn, deps.service, deps.cfg, deps.key, orgId,
   );
-  const { data: conn } = await deps.service.from("qbo_connections")
+  const { data: conn, error: cdcCursorErr } = await deps.service.from("qbo_connections")
     .select("last_cdc_time").eq("org_id", orgId).maybeSingle();
+  if (cdcCursorErr) throw cdcCursorErr;
 
   // Capture the CDC cursor *before* the Intuit call. Stamping a post-apply
   // clock would skip entities that changed while we were processing.
+  // A failed cursor read must not invent a 7-day window.
   const fetchedAt = new Date();
   const sinceMs = conn?.last_cdc_time
     ? new Date(conn.last_cdc_time as string).getTime()
@@ -358,12 +422,11 @@ export async function runCdcCatchup(
   const changedSince = new Date(Math.max(sinceMs, minMs)).toISOString();
 
   const { invoices, customers, payments, creditMemos } = await qboCdc(deps.fetchFn, deps.api, accessToken, realmId, changedSince);
-  const CDC_CAP = 1000;
   if (
-    invoices.length >= CDC_CAP
-    || customers.length >= CDC_CAP
-    || payments.length >= CDC_CAP
-    || creditMemos.length >= CDC_CAP
+    invoices.length >= QUERY_LIMIT
+    || customers.length >= QUERY_LIMIT
+    || payments.length >= QUERY_LIMIT
+    || creditMemos.length >= QUERY_LIMIT
   ) {
     throw new Error("CDC truncated: do not advance watermark");
   }
@@ -377,7 +440,7 @@ export async function runCdcCatchup(
   const reconcileToday = todayInTz(orgConfig.companyProfile.timezone, fetchedAt);
 
   const custIds = invoices.map((i) => i?.CustomerRef?.value).filter(Boolean).map(String);
-  const idMap = await customerIdMap(deps.service, orgId, custIds);
+  const idMap = await hydrateCustomerIdMap(deps, orgId, accessToken, realmId, custIds);
   const invoiceRows = invoices.map((inv) =>
     mapQboInvoice(inv, orgId, idMap.get(String(inv?.CustomerRef?.value)) ?? null, fetchedAt, reconcileToday),
   );

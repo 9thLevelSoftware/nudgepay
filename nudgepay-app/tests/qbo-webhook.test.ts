@@ -1,4 +1,6 @@
 import { expect, test } from "vitest";
+import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 import {
   signQboPayload, verifyQboSignature, parseQboWebhook,
 } from "../app/lib/qbo-webhook.server";
@@ -136,6 +138,19 @@ test("CloudEvents parser ignores undocumented entity types in the Intuit envelop
     data: {},
   }]);
   expect(parseQboWebhook(body)).toEqual([]);
+});
+
+test("applyInvoiceWebhook delete-missing and success paths recon/eval and do not swallow", () => {
+  const src = readFileSync(fileURLToPath(new URL("../app/lib/qbo-sync.server.ts", import.meta.url)), "utf8");
+  const inv = src.slice(
+    src.indexOf("export async function applyInvoiceWebhook"),
+    src.indexOf("// --- CDC catch-up"),
+  );
+  expect(inv).toContain("applyPaymentsAndEvaluate");
+  expect(inv).not.toContain("cron will re-converge");
+  expect(inv).not.toMatch(/if \(error\) throw error;\s*return;/);
+  const afterZero = inv.slice(inv.indexOf("incomingBalance: 0"));
+  expect(afterZero).toContain("applyPaymentsAndEvaluate");
 });
 
 test("parseQboWebhook still flattens legacy eventNotifications next to CloudEvents", () => {

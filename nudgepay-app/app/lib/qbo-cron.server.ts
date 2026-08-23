@@ -5,7 +5,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { getEnv, getQboEnv, getEmailEnvOrNull, resendTransport } from "./env.server";
 import { createSupabaseServiceClient } from "./supabase.server";
 import { qboApiBaseUrl } from "./qbo-api.server";
-import { runCdcCatchup, type SyncDeps } from "./qbo-sync.server";
+import { runCdcCatchup, syncOverdueInvoices, type SyncDeps } from "./qbo-sync.server";
 import { recordSyncError, resolveSyncErrors } from "./sync-errors.server";
 import { orderPage, pageAll, PAGE_ALL_MAX_ROWS } from "./page-all";
 import { sendBrokenPromiseAlerts } from "./notifications.server";
@@ -59,11 +59,11 @@ export async function runScheduledCdc(
   const qbo = getQboEnv(context);
   const service = createSupabaseServiceClient(env);
 
-  const conns = await pageAll<{ org_id: string }>(
+  const conns = await pageAll<{ org_id: string; last_sync_at: string | null }>(
     (from, to) =>
       orderPage(
         service.from("qbo_connections")
-          .select("org_id", { count: "exact" })
+          .select("org_id, last_sync_at", { count: "exact" })
           .eq("status", "connected"),
       ).range(from, to),
     { maxRows: PAGE_ALL_MAX_ROWS },
@@ -71,6 +71,9 @@ export async function runScheduledCdc(
   if (conns.truncated) throw new Error("connected orgs truncated: page is incomplete");
 
   const orgIds = conns.rows.map((c) => c.org_id as string);
+  const lastSyncByOrg = new Map(
+    conns.rows.map((c) => [c.org_id as string, c.last_sync_at as string | null]),
+  );
   const checkpoint = await loadCdcCheckpoint(service);
   const ordered = planOrderedOrgIds(orgIds, checkpoint);
 
@@ -106,12 +109,26 @@ export async function runScheduledCdc(
       return { orgs: orgIds.length, processed, nextOrgId: step.nextOrgId };
     }
     const orgId = step.orgId;
+    if (!lastSyncByOrg.get(orgId)) {
+      try {
+        await syncOverdueInvoices(deps, orgId);
+      } catch (err) {
+        console.error(`[cron] overdue backfill failed for org ${orgId}:`, err);
+        await recordSyncError(service, {
+          orgId, source: "cron", scope: "backfill",
+          message: err instanceof Error ? err.message : String(err),
+        }).catch(() => {});
+        processed += 1;
+        continue;
+      }
+    }
     try {
       await runCdcCatchup(deps, orgId);
       await resolveSyncErrors(service, { orgId }); // CDC catch-up heals all prior errors
     } catch (err) {
       // Isolate per-org failures so one bad connection doesn't abort the batch,
       // and record it so the org's dashboard surfaces the failed sync.
+      // Do not resolveSyncErrors for a thrown catch-up.
       console.error(`[cron] CDC catch-up failed for org ${orgId}:`, err);
       await recordSyncError(service, {
         orgId, source: "cron", scope: "cdc",

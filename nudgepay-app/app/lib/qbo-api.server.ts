@@ -81,28 +81,32 @@ export async function qboQuery(
 }
 
 export const QBO_QUERY_PAGE = 1000;
+export const QBO_QUERY_MAX_PAGES = 50;
+
+export type QboQueryAllResult = { rows: any[]; truncated: boolean };
 
 /**
  * Page Intuit queries until a short page. `selectClause` must not include
  * startposition/maxresults — those are appended here.
+ * `truncated` is true when the 50-page loop exits on a full last page.
  */
 export async function qboQueryAll(
   fetchFn: typeof fetch, api: QboApiConfig, accessToken: string,
   realmId: string, selectClause: string, entityName: "Invoice" | "Customer" | "Payment" | "CreditMemo",
   clock: QboRetryClock = {},
   pageSize: number = QBO_QUERY_PAGE,
-): Promise<any[]> {
+): Promise<QboQueryAllResult> {
   const size = Math.max(1, Math.floor(pageSize));
   const all: any[] = [];
   let start = 1;
-  for (let n = 0; n < 50; n++) {
+  for (let n = 0; n < QBO_QUERY_MAX_PAGES; n++) {
     const q = `${selectClause} startposition ${start} maxresults ${size}`;
     const page = await qboQuery(fetchFn, api, accessToken, realmId, q, entityName, clock);
     all.push(...page);
-    if (page.length < size) break;
+    if (page.length < size) return { rows: all, truncated: false };
     start += size;
   }
-  return all;
+  return { rows: all, truncated: true };
 }
 
 export async function qboReadEntity(

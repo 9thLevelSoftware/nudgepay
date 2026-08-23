@@ -1,7 +1,7 @@
 import { expect, test, vi } from "vitest";
 import {
   qboApiBaseUrl, qboQuery, qboQueryAll, qboReadEntity, qboReadCompanyInfo, qboCdc,
-  retryAfterWaitMs, QBO_429_WAIT_CAP_MS,
+  retryAfterWaitMs, QBO_429_WAIT_CAP_MS, QBO_QUERY_MAX_PAGES,
 } from "../app/lib/qbo-api.server";
 
 const api = { baseUrl: "https://sandbox-quickbooks.api.intuit.com" };
@@ -34,9 +34,20 @@ test("qboQueryAll pages until a short page", async () => {
     if (decoded.includes("startposition 3")) return jsonResponse({ QueryResponse: { Invoice: page2 } });
     return jsonResponse({ QueryResponse: { Invoice: page1 } });
   });
-  const rows = await qboQueryAll(fetchFn as any, api, "AT", "r", "select * from Invoice", "Invoice", {}, 2);
+  const { rows, truncated } = await qboQueryAll(fetchFn as any, api, "AT", "r", "select * from Invoice", "Invoice", {}, 2);
   expect(rows.map((r) => r.Id)).toEqual(["1", "2", "3"]);
+  expect(truncated).toBe(false);
   expect(fetchFn).toHaveBeenCalledTimes(2);
+});
+
+test("qboQueryAll is truncated after 50 full pages", async () => {
+  const fetchFn = vi.fn(async () => jsonResponse({ QueryResponse: { Invoice: [{ Id: "1" }, { Id: "2" }] } }));
+  const { rows, truncated } = await qboQueryAll(
+    fetchFn as any, api, "AT", "r", "select * from Invoice", "Invoice", {}, 2,
+  );
+  expect(truncated).toBe(true);
+  expect(rows).toHaveLength(QBO_QUERY_MAX_PAGES * 2);
+  expect(fetchFn).toHaveBeenCalledTimes(QBO_QUERY_MAX_PAGES);
 });
 
 test("qboQuery returns [] when the entity key is absent", async () => {
