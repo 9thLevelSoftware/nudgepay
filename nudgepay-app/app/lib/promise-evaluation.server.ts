@@ -68,7 +68,7 @@ export async function applyPromiseEvaluation(
   for (const op of ops) {
     const { data: updated, error } = await client.from("promises")
       .update({ status: op.status, amount_received: op.amountReceived, resolved_at: new Date().toISOString() })
-      .eq("id", op.promiseId).eq("status", "pending") // guard against a concurrent transition
+      .eq("id", op.promiseId).eq("org_id", orgId).eq("status", "pending") // guard against a concurrent transition
       .select("id");
     if (error) throw error as PostgrestError;
     if (!updated || updated.length === 0) continue;
@@ -81,7 +81,7 @@ export async function applyPromiseEvaluation(
       if (caseId) {
         const { error: cErr } = await client.from("collection_cases")
           .update({ status: "working", next_action_type: "follow_up", next_action_at: today })
-          .eq("id", caseId);
+          .eq("id", caseId).eq("org_id", orgId);
         if (cErr) throw cErr;
         const promRow = promises.find((p) => (p.id as string) === op.promiseId);
         brokenDetails.push({

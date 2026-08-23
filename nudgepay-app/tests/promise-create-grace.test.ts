@@ -1,12 +1,14 @@
 import { expect, test } from "vitest";
-import { serviceClient } from "./helpers";
+import { serviceClient, makeUserClient } from "./helpers";
 import { createPromiseForLog } from "../app/lib/promise-create.server";
 
 test("grace_until uses the org's configured grace days", async () => {
   const svc = serviceClient();
+  const user = await makeUserClient("c7-grace@example.com");
   const rnd = Math.random().toString(36).slice(2, 8);
   const { data: org } = await svc.from("organizations").insert({ name: `C7 Grace ${rnd}` }).select("id").single();
   const orgId = org!.id as string;
+  await svc.from("memberships").insert({ org_id: orgId, user_id: user.userId, role: "member" });
   const { data: cust } = await svc.from("customers")
     .insert({ org_id: orgId, qbo_id: `c7g-${rnd}`, name: "Acme" }).select("id").single();
   const customerId = cust!.id as string;
@@ -19,9 +21,9 @@ test("grace_until uses the org's configured grace days", async () => {
   const caseId = cse!.id as string;
   await svc.from("org_settings").insert({ org_id: orgId, promise_grace_days: 5 });
 
-  const res = await createPromiseForLog(svc, {
+  const res = await createPromiseForLog(user.client, {
     orgId, caseId, customerId,
-    userId: null as unknown as string,
+    userId: user.userId,
     contactLogId: null, promisedAmount: 100, promisedDate: "2026-06-22", // Monday
   });
   expect(res.ok).toBe(true);
@@ -34,9 +36,11 @@ test("grace_until uses the org's configured grace days", async () => {
 
 test("grace_until skips a configured holiday", async () => {
   const svc = serviceClient();
+  const user = await makeUserClient("c7-holiday@example.com");
   const rnd = Math.random().toString(36).slice(2, 8);
   const { data: org } = await svc.from("organizations").insert({ name: `C7 Holiday ${rnd}` }).select("id").single();
   const orgId = org!.id as string;
+  await svc.from("memberships").insert({ org_id: orgId, user_id: user.userId, role: "member" });
   const { data: cust } = await svc.from("customers")
     .insert({ org_id: orgId, qbo_id: `c7h-${rnd}`, name: "Acme" }).select("id").single();
   const customerId = cust!.id as string;
@@ -50,9 +54,9 @@ test("grace_until skips a configured holiday", async () => {
   await svc.from("org_settings").insert({ org_id: orgId, promise_grace_days: 2 });
   await svc.from("org_holidays").insert({ org_id: orgId, holiday_date: "2026-06-24" });
 
-  const res = await createPromiseForLog(svc, {
+  const res = await createPromiseForLog(user.client, {
     orgId, caseId, customerId,
-    userId: null as unknown as string,
+    userId: user.userId,
     contactLogId: null, promisedAmount: 100, promisedDate: "2026-06-22", // Monday
   });
   expect(res.ok).toBe(true);
