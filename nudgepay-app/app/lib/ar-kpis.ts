@@ -19,6 +19,8 @@ export type ArKpis = {
   promiseRate: number | null;
   collected: number;
   coverage: ArKpiCoverage;
+  /** True when a source query hit the 5,000-row page cap — independent of DSO history. */
+  truncated: boolean;
   /** Current open-AR distribution, available to report visualizations. */
   agingBuckets?: ArAgingBucket[];
   inputs: {
@@ -164,6 +166,7 @@ export function buildArKpis(input: {
     dso, bestPossibleDso, cei, contactRate, promiseRate,
     collected: collections,
     coverage: empty ? "empty" : anyTrunc || dso == null ? "partial" : "full",
+    truncated: anyTrunc,
     inputs: {
       endingTotalAr, endingCurrentAr, creditSales, collections,
       openCases, contactedOpenCases, promisesCreated: input.promisesCreatedInWindow,

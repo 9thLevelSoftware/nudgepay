@@ -1,7 +1,7 @@
 // PostgREST/Supabase list cap: a page shorter than `count` is truncated.
 // Never treat a truncated set as complete (recon must not auto-resolve).
-// pageAll / pageAllChunked are for dedicated peek / payer / AR reads only —
-// they do not page Stage-1 of loadCaseQueueSource.
+// Stage 1 of loadCaseQueueSource uses pageAll on invoices and cases (no embed).
+// orderPage has no table qualifier — do not use it on embedded selects.
 
 export const POSTGREST_MAX_ROWS = 1000;
 export const PAGE_ALL_MAX_ROWS = 5000;
@@ -102,4 +102,63 @@ export function orderPage(q: {
     order: (column: string, opts: { ascending: boolean }) => unknown;
   };
   return once.order("id", { ascending: false });
+}
+
+export type KeysetCursor = { created_at: string; id: string };
+
+export function quotePostgrestValue(value: string): string {
+  return `"${value.replace(/\\/g, "\\\\").replace(/"/g, '\\"')}"`;
+}
+
+/** PostgREST filter for the next page after `cursor` under created_at desc, id desc. */
+export function keysetDescFilter(cursor: KeysetCursor): string {
+  const created = quotePostgrestValue(cursor.created_at);
+  const id = quotePostgrestValue(cursor.id);
+  return `created_at.lt.${created},and(created_at.eq.${created},id.lt.${id})`;
+}
+
+export function keysetAfter(
+  q: { or: (filter: string) => unknown },
+  cursor: KeysetCursor | null,
+): any {
+  if (!cursor) return q;
+  return q.or(keysetDescFilter(cursor));
+}
+
+/**
+ * Keyset paging on (created_at desc, id desc). Offset `.range(from, to)` can
+ * skip/duplicate rows when concurrent inserts/deletes shift ranks; destructive
+ * recon must not close a case because a still-overdue customer was omitted.
+ */
+export async function pageAllKeyset<T extends KeysetCursor>(
+  run: (cursor: KeysetCursor | null, from: number, to: number) => PromiseLike<PageAllPage<T>>,
+  opts?: { pageSize?: number; maxRows?: number },
+): Promise<PageAllResult<T>> {
+  const pageSize = opts?.pageSize ?? POSTGREST_MAX_ROWS;
+  const maxRows = opts?.maxRows ?? PAGE_ALL_MAX_ROWS;
+  const rows: T[] = [];
+  let cursor: KeysetCursor | null = null;
+  for (;;) {
+    const { data, count, error } = await run(cursor, 0, pageSize - 1);
+    if (error) throw error;
+    const page = data ?? [];
+    rows.push(...page);
+    const exhausted = page.length < pageSize;
+    const hitCap = rows.length >= maxRows;
+    const moreInDb = count != null && count > rows.length;
+    if (hitCap) {
+      const capped = rows.slice(0, maxRows);
+      if (moreInDb) return { rows: capped, truncated: true };
+      if (!exhausted && capped.length > 0) {
+        const last = capped[capped.length - 1];
+        const probe = await run({ created_at: last.created_at, id: last.id }, 0, 0);
+        if (probe.error) throw probe.error;
+        return { rows: capped, truncated: (probe.data ?? []).length > 0 };
+      }
+      return { rows: capped, truncated: false };
+    }
+    if (exhausted) return { rows, truncated: moreInDb };
+    const last = page[page.length - 1];
+    cursor = { created_at: last.created_at, id: last.id };
+  }
 }

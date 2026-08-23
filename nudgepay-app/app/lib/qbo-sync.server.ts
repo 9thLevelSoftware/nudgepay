@@ -12,6 +12,7 @@ import { loadOrgConfig } from "./org-config.server";
 import { DEFAULT_ORG_CONFIG } from "./org-config";
 import { todayInTz } from "./tz";
 import { mergePaidDate, type ExistingPaidRow } from "./paid-date";
+import { recordSyncError, resolveSyncErrors } from "./sync-errors.server";
 
 export type NotifyFn = (orgId: string, brokenDetails: BrokenPromiseDetail[], today: string) => Promise<void>;
 
@@ -22,6 +23,7 @@ export type SyncDeps = {
   api: QboApiConfig;    // data API base url
   key: string;          // AES key for token decrypt
   notify?: NotifyFn;    // optional broken-promise alert callback
+  errorSource?: "manual" | "webhook" | "cron";
 };
 
 // QBO query page cap. Chancey carries 125-175 overdue invoices; CDC caps at
@@ -142,8 +144,20 @@ export async function applyPaymentsAndEvaluate(
     try { await repullCustomerInvoices(deps, orgId, accessToken, realmId, payCustQboIds, today); }
     catch (e) { console.error("[6b] payment re-pull failed", e); }
   }
-  try { await applyCaseReconciliation(deps.service, orgId, today); }
-  catch (e) { console.error("[6b] reconciliation failed (payments)", e); }
+  try {
+    await applyCaseReconciliation(deps.service, orgId, today);
+    await resolveSyncErrors(deps.service, { orgId, scope: "recon" })
+      .catch((err) => console.error("[6b] resolveSyncErrors recon failed", err));
+  } catch (e) {
+    console.error("[6b] reconciliation failed (payments)", e);
+    await recordSyncError(deps.service, {
+      orgId,
+      source: deps.errorSource ?? "cron",
+      scope: "recon",
+      message: e instanceof Error ? e.message : String(e),
+    }).catch((err) => console.error("[6b] recordSyncError failed", err));
+    throw e;
+  }
   try {
     const evalResult = await applyPromiseEvaluation(deps.service, orgId, today);
     if (evalResult.brokenDetails.length > 0 && deps.notify) {
@@ -249,11 +263,8 @@ export async function syncOverdueInvoices(
 
   // Reuse the org-local `today` computed above (same calendar day as the
   // overdue-invoice query) rather than recomputing from a fresh UTC Date.
-  try {
-    await applyPaymentsAndEvaluate(deps, orgId, accessToken, realmId, [], today, now);
-  } catch (e) {
-    console.error("[6b] payments/eval failed; cron will re-converge", e);
-  }
+  // Recon failure must not stamp last_sync_at — CDC retries the window.
+  await applyPaymentsAndEvaluate(deps, orgId, accessToken, realmId, [], today, now);
 
   const { error } = await deps.service.from("qbo_connections")
     .update({ last_sync_at: now.toISOString() }).eq("org_id", orgId);
@@ -321,11 +332,7 @@ export async function applyInvoiceWebhook(
   }
   await upsertInvoices(deps.service, [mapQboInvoice(inv, orgId, customerId, now, syncToday)], syncToday);
 
-  try {
-    await applyPaymentsAndEvaluate(deps, orgId, accessToken, realmId, [], syncToday, now);
-  } catch (e) {
-    console.error("[6b] payments/eval failed; cron will re-converge", e);
-  }
+  await applyPaymentsAndEvaluate(deps, orgId, accessToken, realmId, [], syncToday, now);
 }
 
 // --- CDC catch-up -----------------------------------------------------------

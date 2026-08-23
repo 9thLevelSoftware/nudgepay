@@ -30,6 +30,8 @@ import { MessagesInbox } from "../components/MessagesInbox";
 import { MessageThreadPanel } from "../components/MessageThreadPanel";
 import { DrawerShell } from "../components/DrawerShell";
 import { pageTitle } from "../lib/meta";
+import { chunkIds, orderPage, pageAll, pageAllChunked, PAGE_ALL_MAX_ROWS } from "../lib/page-all";
+import { TruncationBanner } from "../components/TruncationBanner";
 import type { Route } from "./+types/messages";
 
 export const meta: Route.MetaFunction = () => pageTitle("Messages");
@@ -68,19 +70,37 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
     ? (sp.get("channel") as ChannelFilter) : "all";
 
   // --- Reads (USER client, explicit org_id) ---
-  const { data: msgRows } = await supabase
-    .from("text_messages")
-    .select("customer_id, direction, body, status, error_code, invoice_id, created_at")
-    .eq("org_id", org.org_id)
-    .not("customer_id", "is", null);
-  const rawMessages = (msgRows as any[]) ?? [];
-
-  const { data: emailRows } = await supabase
-    .from("email_messages")
-    .select("customer_id, direction, body, subject, status, error_code, invoice_id, created_at")
-    .eq("org_id", org.org_id)
-    .not("customer_id", "is", null);
-  const rawEmails = (emailRows as any[]) ?? [];
+  type SmsRow = {
+    customer_id: string; direction: string; body: string | null; status: string | null;
+    error_code: string | null; invoice_id: string | null; created_at: string;
+  };
+  type EmailRow = SmsRow & { subject: string | null };
+  const [msgPage, emailPage] = await Promise.all([
+    pageAll<SmsRow>(
+      (from, to) =>
+        orderPage(
+          supabase
+            .from("text_messages")
+            .select("customer_id, direction, body, status, error_code, invoice_id, created_at", { count: "exact" })
+            .eq("org_id", org.org_id)
+            .not("customer_id", "is", null),
+        ).range(from, to),
+      { maxRows: PAGE_ALL_MAX_ROWS },
+    ),
+    pageAll<EmailRow>(
+      (from, to) =>
+        orderPage(
+          supabase
+            .from("email_messages")
+            .select("customer_id, direction, body, subject, status, error_code, invoice_id, created_at", { count: "exact" })
+            .eq("org_id", org.org_id)
+            .not("customer_id", "is", null),
+        ).range(from, to),
+      { maxRows: PAGE_ALL_MAX_ROWS },
+    ),
+  ]);
+  const rawMessages = msgPage.rows;
+  const rawEmails = emailPage.rows;
 
   const messagesInput: ThreadMessageInput[] = [
     ...rawMessages.map((r) => ({ ...mapSms(r), channel: "sms" as const, subject: null })),
@@ -99,49 +119,83 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
 
   // Only customers referenced by a message (either channel).
   const customerIds = Array.from(new Set(messagesInput.map((m) => m.customerId)));
-  let custRows: any[] = [];
-  if (customerIds.length > 0) {
-    const { data } = await supabase
-      .from("customers")
-      .select("id, name, phone, email, owner, sms_consent, preferred_channel, do_not_call, do_not_text, do_not_email")
-      .eq("org_id", org.org_id).in("id", customerIds);
-    custRows = (data as any[]) ?? [];
-  }
+  const custChunks = chunkIds(customerIds, 100);
+  type CustRow = {
+    id: string; name: string | null; phone: string | null; email: string | null; owner: string | null;
+    sms_consent: boolean | null; preferred_channel: string | null; do_not_call: boolean | null;
+    do_not_text: boolean | null; do_not_email: boolean | null;
+  };
+  type CaseLookupRow = { id: string; customer_id: string; closed_at: string | null; exception_reason: string | null };
+  type InvLookupRow = {
+    id: string; customer_id: string | null; qbo_doc_number: string | null; balance: number | string | null; due_date: string | null;
+  };
+  const [custPage, casePage, invPage] = customerIds.length === 0
+    ? [
+        { rows: [] as CustRow[], truncated: false },
+        { rows: [] as CaseLookupRow[], truncated: false },
+        { rows: [] as InvLookupRow[], truncated: false },
+      ]
+    : await Promise.all([
+        pageAllChunked<CustRow>(
+          custChunks,
+          (ids, from, to) =>
+            orderPage(
+              supabase
+                .from("customers")
+                .select("id, name, phone, email, owner, sms_consent, preferred_channel, do_not_call, do_not_text, do_not_email", { count: "exact" })
+                .eq("org_id", org.org_id)
+                .in("id", ids),
+            ).range(from, to),
+          { maxRows: PAGE_ALL_MAX_ROWS },
+        ),
+        pageAllChunked<CaseLookupRow>(
+          custChunks,
+          (ids, from, to) =>
+            orderPage(
+              supabase
+                .from("collection_cases")
+                .select("id, customer_id, closed_at, exception_reason", { count: "exact" })
+                .eq("org_id", org.org_id)
+                .in("customer_id", ids)
+                .is("closed_at", null),
+            ).range(from, to),
+          { maxRows: PAGE_ALL_MAX_ROWS },
+        ),
+        pageAllChunked<InvLookupRow>(
+          custChunks,
+          (ids, from, to) =>
+            orderPage(
+              supabase
+                .from("invoices")
+                .select("id, customer_id, qbo_doc_number, balance, due_date", { count: "exact" })
+                .eq("org_id", org.org_id)
+                .in("customer_id", ids),
+            ).range(from, to),
+          { maxRows: PAGE_ALL_MAX_ROWS },
+        ),
+      ]);
+  const custRows = custPage.rows;
 
-  // Open cases for those customers → hasOpenCase / openCaseId / contactBlocked.
   const openCaseByCustomer = new Map<string, string>();
   const blockedByCustomer = new Map<string, boolean>();
-  if (customerIds.length > 0) {
-    const { data: caseRows } = await supabase
-      .from("collection_cases").select("id, customer_id, closed_at, exception_reason")
-      .eq("org_id", org.org_id).in("customer_id", customerIds).is("closed_at", null);
-    for (const c of (caseRows as any[]) ?? []) {
-      openCaseByCustomer.set(c.customer_id as string, c.id as string);
-      if (isContactBlocked(c.exception_reason as any)) {
-        blockedByCustomer.set(c.customer_id as string, true);
-      }
+  for (const c of casePage.rows) {
+    openCaseByCustomer.set(c.customer_id, c.id);
+    if (isContactBlocked(c.exception_reason as any)) {
+      blockedByCustomer.set(c.customer_id, true);
     }
   }
 
-  // Latest invoice (any status) per customer → anchor fallback + selected template vars.
-  // Order by created_at desc and keep the first seen per customer.
   const latestInvoiceByCustomer = new Map<string, { id: string; docNumber: string | null; balance: number; dueDate: string | null }>();
   const invoiceById = new Map<string, { docNumber: string | null; balance: number; dueDate: string | null }>();
-  if (customerIds.length > 0) {
-    const { data: invRows } = await supabase
-      .from("invoices").select("id, customer_id, qbo_doc_number, balance, due_date")
-      .eq("org_id", org.org_id).in("customer_id", customerIds)
-      .order("created_at", { ascending: false });
-    for (const r of (invRows as any[]) ?? []) {
-      const meta = {
-        docNumber: (r.qbo_doc_number as string | null) ?? null,
-        balance: Number(r.balance ?? 0),
-        dueDate: (r.due_date as string | null) ?? null,
-      };
-      invoiceById.set(r.id as string, meta);
-      const cid = r.customer_id as string;
-      if (!latestInvoiceByCustomer.has(cid)) latestInvoiceByCustomer.set(cid, { id: r.id as string, ...meta });
-    }
+  for (const r of invPage.rows) {
+    const meta = {
+      docNumber: r.qbo_doc_number ?? null,
+      balance: Number(r.balance ?? 0),
+      dueDate: r.due_date ?? null,
+    };
+    invoiceById.set(r.id, meta);
+    const cid = r.customer_id;
+    if (cid && !latestInvoiceByCustomer.has(cid)) latestInvoiceByCustomer.set(cid, { id: r.id, ...meta });
   }
 
   const customersInput: ThreadCustomerInput[] = custRows.map((c) => ({
@@ -171,12 +225,19 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
   };
 
   const lastReadByKey = new Map<string, string>();
-  const { data: readRows } = await supabase
-    .from("thread_reads")
-    .select("customer_id, channel, last_read_at")
-    .eq("org_id", org.org_id)
-    .eq("user_id", user.id);
-  for (const r of (readRows as { customer_id: string; channel: "sms" | "email"; last_read_at: string }[] | null) ?? []) {
+  const readPage = await pageAll<{ customer_id: string; channel: "sms" | "email"; last_read_at: string }>(
+    (from, to) =>
+      supabase
+        .from("thread_reads")
+        .select("customer_id, channel, last_read_at", { count: "exact" })
+        .eq("org_id", org.org_id)
+        .eq("user_id", user.id)
+        .order("customer_id", { ascending: false })
+        .order("channel", { ascending: false })
+        .range(from, to),
+    { maxRows: PAGE_ALL_MAX_ROWS },
+  );
+  for (const r of readPage.rows) {
     lastReadByKey.set(threadReadKey(r.customer_id, r.channel), r.last_read_at);
   }
 
@@ -255,16 +316,21 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
     };
   }
 
-  const { data: mcfg } = await supabase.from("messaging_config")
+  const { data: mcfg, error: mcfgErr } = await supabase.from("messaging_config")
     .select("sms_enabled").eq("org_id", org.org_id).maybeSingle();
+  if (mcfgErr) throw mcfgErr;
   const smsEnabled = resolveChannelSettings(mcfg as { sms_enabled?: boolean | null } | null).smsEnabled;
   const { startHour, endHour } = orgConfig.quietHours;
   const smsQuietNow = !isWithinSendWindow(new Date(), orgConfig.companyProfile.timezone, startHour, endHour);
   const quietHoursLabel = quietHoursWindowLabel(startHour, endHour);
 
-  const { data: ecfg } = await supabase.from("email_config")
+  const { data: ecfg, error: ecfgErr } = await supabase.from("email_config")
     .select("email_enabled, from_address, from_name").eq("org_id", org.org_id).maybeSingle();
+  if (ecfgErr) throw ecfgErr;
   const emailEnabled = resolveEmailSettings(ecfg as any).emailEnabled;
+
+  const truncated = msgPage.truncated || emailPage.truncated || custPage.truncated
+    || casePage.truncated || invPage.truncated || readPage.truncated;
 
   return data(
     {
@@ -278,6 +344,7 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
       smsTemplates: templates.sms,
       emailTemplates: templates.email,
       timeZone: orgConfig.companyProfile.timezone,
+      truncated,
     },
     { headers },
   );
@@ -352,7 +419,8 @@ export default function Messages() {
       syncIssues={<SyncIssues issues={d.syncIssues} returnTo="/messages" />}
     >
       <div className="p-4 sm:p-6 space-y-4 sm:space-y-6">
-        <MessagesMetrics metrics={d.metrics} />
+        {d.truncated ? <TruncationBanner /> : null}
+        <MessagesMetrics metrics={d.metrics} truncated={d.truncated} />
         {(() => {
           const threadPanel = (
             <MessageThreadPanel

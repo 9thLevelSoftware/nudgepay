@@ -19,10 +19,22 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
   let filename: string;
   if (sheet === "ar") {
     const arKpis = await loadReportArKpis({ supabase, orgId: org.org_id, range });
+    if (arKpis.truncated) {
+      return new Response(
+        "This list is incomplete (over 5,000 rows). Totals may under-count.",
+        { status: 409, headers },
+      );
+    }
     csv = arKpisToCsv(arKpis);
     filename = `nudgepay-ar-${range}d.csv`;
   } else {
     const report = await loadTeamReport({ supabase, service, orgId: org.org_id, range });
+    if (report.truncated) {
+      return new Response(
+        "This list is incomplete (over 5,000 rows). Totals may under-count.",
+        { status: 409, headers },
+      );
+    }
     csv = teamReportToCsv(report);
     filename = `nudgepay-report-${range}d.csv`;
   }

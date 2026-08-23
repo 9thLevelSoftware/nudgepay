@@ -9,6 +9,7 @@ import { runDailyDigest, retryUnsentBrokenPromiseAlerts } from "./notifications.
 import { recordSyncError } from "./sync-errors.server";
 import { todayInTz, shouldSendDigestNow } from "./tz";
 import { DEFAULT_COMPANY_PROFILE } from "./org-profile";
+import { orderPage, pageAll, PAGE_ALL_MAX_ROWS } from "./page-all";
 
 type DigestScheduleRow = {
   timezone: string | null;
@@ -31,12 +32,19 @@ export async function runScheduledDigest(
   const service = createSupabaseServiceClient(env);
 
   // All orgs with a connected QBO are candidates for digests.
-  const { data: conns, error } = await service.from("qbo_connections")
-    .select("org_id").eq("status", "connected");
-  if (error) throw error;
+  const conns = await pageAll<{ org_id: string }>(
+    (from, to) =>
+      orderPage(
+        service.from("qbo_connections")
+          .select("org_id", { count: "exact" })
+          .eq("status", "connected"),
+      ).range(from, to),
+    { maxRows: PAGE_ALL_MAX_ROWS },
+  );
+  if (conns.truncated) throw new Error("connected orgs truncated: page is incomplete");
 
   let sent = 0;
-  for (const c of conns ?? []) {
+  for (const c of conns.rows) {
     const orgId = c.org_id as string;
     try {
       const { data: settings } = await service
@@ -136,5 +144,5 @@ export async function runScheduledDigest(
       }).catch(() => {});
     }
   }
-  return { orgs: (conns ?? []).length, sent };
+  return { orgs: conns.rows.length, sent };
 }

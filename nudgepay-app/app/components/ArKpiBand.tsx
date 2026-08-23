@@ -24,7 +24,7 @@ function formatShare(n: number | null): string {
 
 export function ArKpiBand({ kpis, isOwner }: { kpis: ArKpis; isOwner: boolean }) {
   const empty = kpis.coverage === "empty";
-  const partial = kpis.coverage === "partial";
+  const partial = kpis.truncated;
   const emptySub = "Connect QuickBooks";
   const historyPrefix = partial ? "Partial history · " : "";
   const heading = `Receivables (${kpis.rangeDays}d)`;
@@ -71,7 +71,7 @@ export function ArKpiBand({ kpis, isOwner }: { kpis: ArKpis; isOwner: boolean })
             heading
           )}
         </h2>
-        {kpis.coverage === "partial" ? (
+        {kpis.truncated ? (
           <span
             className="inline-flex items-center rounded-md bg-copper/10 border border-copper/20 px-2 py-0.5 text-[10px] font-sans font-medium text-copper"
             title={PARTIAL_TITLE}

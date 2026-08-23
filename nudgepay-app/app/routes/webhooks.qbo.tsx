@@ -36,6 +36,7 @@ export async function action({ request, context }: ActionFunctionArgs) {
     api: { baseUrl: qboApiBaseUrl(qbo.QBO_SANDBOX) },
     key: qbo.QBO_ENCRYPTION_KEY,
     notify,
+    errorSource: "webhook",
   };
 
   const waitUntil = (context as { cloudflare?: { ctx?: { waitUntil?: (p: Promise<unknown>) => void } } })

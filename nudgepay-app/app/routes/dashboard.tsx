@@ -56,6 +56,7 @@ import { DEFAULT_ORG_CONFIG } from "../lib/org-config";
 import { resolveEmailSettings } from "../lib/email-settings";
 import { plural } from "../lib/labels";
 import { pageTitle } from "../lib/meta";
+import { orderPage, pageAll, PAGE_ALL_MAX_ROWS } from "../lib/page-all";
 import { displayLabel, initialsFrom } from "../lib/names";
 import { buildComingDueGroups, comingDueMetric, type ComingDueGroup } from "../lib/coming-due";
 import type { Route } from "./+types/dashboard";
@@ -250,11 +251,11 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
   // Batch A: shared queue source + dashboard-only queries in parallel.
   const [
     src,
-    { data: orgRow },
+    { data: orgRow, error: orgErr },
     conn,
-    { data: connMeta },
-    { data: ecfg },
-    { data: syncErrorRows },
+    { data: connMeta, error: connMetaErr },
+    { data: ecfg, error: ecfgErr },
+    { data: syncErrorRows, error: syncErr },
     arSrc,
   ] = await Promise.all([
     loadCaseQueueSource({
@@ -271,6 +272,10 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
       supabase, orgId: org.org_id, today, rangeDays: DASHBOARD_AR_RANGE_DAYS,
     }),
   ]);
+  if (orgErr) throw orgErr;
+  if (connMetaErr) throw connMetaErr;
+  if (ecfgErr) throw ecfgErr;
+  if (syncErr) throw syncErr;
 
   const connected = conn?.status === "connected";
   const qboConfigured = getQboEnvOrNull(context as any) !== null;
@@ -349,9 +354,10 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
   // Destructure the shared queue source
   const {
     cases, invoicesInput, comingDueInvoices, customersInput,
-    lastContactsInput, promisesInput, recentByCase, presenceRows,
+    lastContactsInput, lastContactTruncated: lastContactTruncatedSrc, promisesInput, recentByCase, presenceRows,
     roster, ownerLabels, orgConfig, smsEnabled, smsQuietNow, quietHoursLabel, templates,
   } = src;
+  let lastContactTruncated = lastContactTruncatedSrc;
 
   const orgCompany = orgRow?.name ?? "";
   const orgPhone = orgConfig.companyProfile.phone ?? "";
@@ -457,40 +463,66 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
         ? invoice
         : (sel.invoices[0]?.invoiceId ?? workspaceInvoices[0]?.invoiceId ?? null);
 
-    // Batch C: the 5 selected-case queries.
+    // Batch C: selected-case queries. Lists page (and throw on error); singles check error.
+    type ActRow = ContactLogRow & { user_id: string | null };
+    type MsgRow = SelectedMessageRow & { case_id: string | null };
+    type EmailRow = {
+      id: string; direction: string; subject: string | null; body: string | null;
+      status: string | null; error_code: string | null; created_at: string;
+    };
     const [
-      { data: actRows },
-      { data: msgRows },
-      { data: custRow },
-      { data: ap },
-      { data: emailMsgRows },
+      actPage,
+      msgPage,
+      { data: custRow, error: custErr },
+      { data: ap, error: apErr },
+      emailPage,
     ] = await Promise.all([
-      supabase
-        .from("contact_logs")
-        .select("id, user_id, method, outcome, notes, created_at, follow_up_at, promised_amount, promised_date")
-        .eq("org_id", org.org_id)
-        .eq("case_id", sel.caseId)
-        .order("created_at", { ascending: false }),
-      supabase
-        .from("text_messages")
-        .select("id, case_id, direction, body, status, error_code, created_at")
-        .eq("org_id", org.org_id)
-        .eq("customer_id", customerId)
-        .order("created_at", { ascending: true }),
+      pageAll<ActRow>(
+        (from, to) =>
+          orderPage(
+            supabase
+              .from("contact_logs")
+              .select("id, user_id, method, outcome, notes, created_at, follow_up_at, promised_amount, promised_date", { count: "exact" })
+              .eq("org_id", org.org_id)
+              .eq("case_id", sel.caseId),
+          ).range(from, to),
+        { maxRows: PAGE_ALL_MAX_ROWS },
+      ),
+      pageAll<MsgRow>(
+        (from, to) =>
+          orderPage(
+            supabase
+              .from("text_messages")
+              .select("id, case_id, direction, body, status, error_code, created_at", { count: "exact" })
+              .eq("org_id", org.org_id)
+              .eq("customer_id", customerId),
+          ).range(from, to),
+        { maxRows: PAGE_ALL_MAX_ROWS },
+      ),
       supabase
         .from("customers").select("phone, email, sms_consent, preferred_channel, do_not_call, do_not_text, do_not_email").eq("id", customerId).maybeSingle(),
       supabase
         .from("promises").select("id").eq("org_id", org.org_id).eq("case_id", sel.caseId).eq("status", "pending").maybeSingle(),
-      supabase
-        .from("email_messages")
-        .select("id, direction, subject, body, status, error_code, created_at")
-        .eq("org_id", org.org_id)
-        .eq("customer_id", customerId)
-        .order("created_at", { ascending: true }),
+      pageAll<EmailRow>(
+        (from, to) =>
+          orderPage(
+            supabase
+              .from("email_messages")
+              .select("id, direction, subject, body, status, error_code, created_at", { count: "exact" })
+              .eq("org_id", org.org_id)
+              .eq("customer_id", customerId),
+          ).range(from, to),
+        { maxRows: PAGE_ALL_MAX_ROWS },
+      ),
     ]);
+    if (custErr) throw custErr;
+    if (apErr) throw apErr;
+    if (actPage.truncated || msgPage.truncated || emailPage.truncated) {
+      lastContactTruncated = true;
+    }
 
     // Activity: contact logs for the case (timeline input).
-    const logInputs: TimelineLogInput[] = ((actRows as unknown as (ContactLogRow & { user_id: string | null })[]) ?? []).map((r) => ({
+    const logInputs: TimelineLogInput[] = actPage.rows.map((r) => ({
       id: r.id, at: r.created_at, method: r.method, outcome: r.outcome, notes: r.notes,
       followUpAt: r.follow_up_at,
       promisedAmount: r.promised_amount == null ? null : Number(r.promised_amount),
@@ -500,7 +532,7 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
 
     // Messages: thread by CUSTOMER (one conversation per customer); also carries
     // case_id so we can derive the per-case slice for the timeline.
-    const msgRowsTyped = (msgRows as unknown as (SelectedMessageRow & { case_id: string | null })[]) ?? [];
+    const msgRowsTyped = [...msgPage.rows].sort((a, b) => a.created_at.localeCompare(b.created_at));
     selectedMessages = msgRowsTyped.map((r) => ({
       id: r.id, direction: r.direction, body: r.body, status: r.status,
       errorCode: r.error_code, createdAt: r.created_at,
@@ -526,15 +558,17 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
     selectedPromiseId = ap?.id ?? null;
 
     // Email thread: per-customer conversation (mirrors SMS thread above).
-    selectedEmailMessages = ((emailMsgRows as any[]) ?? []).map((r) => ({
-      id: r.id as string,
-      direction: r.direction as string,
-      subject: (r.subject as string | null) ?? null,
-      body: (r.body as string | null) ?? null,
-      status: (r.status as string | null) ?? null,
-      errorCode: (r.error_code as string | null) ?? null,
-      createdAt: r.created_at as string,
-    }));
+    selectedEmailMessages = [...emailPage.rows]
+      .sort((a, b) => a.created_at.localeCompare(b.created_at))
+      .map((r) => ({
+        id: r.id,
+        direction: r.direction,
+        subject: r.subject ?? null,
+        body: r.body ?? null,
+        status: r.status ?? null,
+        errorCode: r.error_code ?? null,
+        createdAt: r.created_at,
+      }));
   }
 
   return data(
@@ -601,6 +635,7 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
       today,
       timeZone: orgConfig.companyProfile.timezone,
       arKpis,
+      lastContactTruncated,
       workspaceInvoices,
       ...dashboardData,
     },
@@ -671,6 +706,7 @@ export default function Dashboard() {
     comingDueDays,
     today,
     arKpis,
+    lastContactTruncated,
     repInvoiceId,
     workspaceInvoices,
     smsTemplates,
@@ -768,7 +804,7 @@ export default function Dashboard() {
           {/* KPI band */}
           <div className="px-6 py-3 border-b border-border bg-panel shrink-0 space-y-3">
             <ArKpiBand kpis={arKpis} isOwner={isOwner} />
-            <KpiBand metrics={metrics} view={view} sort={sort} search={q} entity={hrefEntity} density={hrefDensity} scopeLabel={scopeLabel} clearHref={clearHref} />
+            <KpiBand metrics={metrics} view={view} sort={sort} search={q} entity={hrefEntity} density={hrefDensity} scopeLabel={scopeLabel} clearHref={clearHref} lastContactTruncated={lastContactTruncated} />
           </div>
 
           {/* Triage strip — top-3 actionable cases */}

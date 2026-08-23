@@ -32,6 +32,7 @@ import { SendTextMiniForm } from "../components/focus/SendTextMiniForm";
 import { formatDate, formatInstant } from "../lib/dates";
 import { pageTitle } from "../lib/meta";
 import { smsFlashCopy } from "../lib/flash-copy";
+import { chunkIds, orderPage, pageAllChunked, PAGE_ALL_MAX_ROWS } from "../lib/page-all";
 import type { Route } from "./+types/focus";
 
 export const meta: Route.MetaFunction = () => pageTitle("Focus Mode");
@@ -117,28 +118,51 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
   // Build timelines for every case in the queue (sliced to 5 recent entries).
   const caseIds = queue.map((c) => c.caseId);
   const timelines: Record<string, TimelineEntry[]> = {};
+  let historyTruncated = src.lastContactTruncated;
 
   if (caseIds.length > 0) {
-    const [{ data: logRows }, { data: msgRows }] = await Promise.all([
-      supabase
-        .from("contact_logs")
-        .select("id, case_id, user_id, method, outcome, notes, created_at, follow_up_at, promised_amount, promised_date")
-        .eq("org_id", org.org_id)
-        .in("case_id", caseIds)
-        .order("created_at", { ascending: false }),
-      supabase
-        .from("text_messages")
-        .select("id, case_id, direction, body, status, error_code, created_at")
-        .eq("org_id", org.org_id)
-        .in("case_id", caseIds)
-        .order("created_at", { ascending: false }),
+    type FocusLogRow = {
+      id: string; case_id: string | null; user_id: string | null; method: string;
+      outcome: string | null; notes: string | null; created_at: string;
+      follow_up_at: string | null; promised_amount: number | string | null; promised_date: string | null;
+    };
+    type FocusMsgRow = {
+      id: string; case_id: string | null; direction: string; body: string | null;
+      status: string | null; error_code: string | null; created_at: string;
+    };
+    const chunks = chunkIds(caseIds, 100);
+    const [logs, texts] = await Promise.all([
+      pageAllChunked<FocusLogRow>(
+        chunks,
+        (ids, from, to) =>
+          orderPage(
+            supabase
+              .from("contact_logs")
+              .select("id, case_id, user_id, method, outcome, notes, created_at, follow_up_at, promised_amount, promised_date", { count: "exact" })
+              .eq("org_id", org.org_id)
+              .in("case_id", ids),
+          ).range(from, to),
+        { maxRows: PAGE_ALL_MAX_ROWS },
+      ),
+      pageAllChunked<FocusMsgRow>(
+        chunks,
+        (ids, from, to) =>
+          orderPage(
+            supabase
+              .from("text_messages")
+              .select("id, case_id, direction, body, status, error_code, created_at", { count: "exact" })
+              .eq("org_id", org.org_id)
+              .in("case_id", ids),
+          ).range(from, to),
+        { maxRows: PAGE_ALL_MAX_ROWS },
+      ),
     ]);
+    historyTruncated = historyTruncated || logs.truncated || texts.truncated;
 
-    // Group by case_id
     const logsByCase = new Map<string, TimelineLogInput[]>();
     const smsByCase = new Map<string, TimelineSmsInput[]>();
 
-    for (const r of (logRows as any[]) ?? []) {
+    for (const r of logs.rows) {
       if (!r.case_id) continue;
       const list = logsByCase.get(r.case_id) ?? [];
       list.push({
@@ -155,7 +179,7 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
       logsByCase.set(r.case_id, list);
     }
 
-    for (const r of (msgRows as any[]) ?? []) {
+    for (const r of texts.rows) {
       if (!r.case_id) continue;
       const list = smsByCase.get(r.case_id) ?? [];
       list.push({
@@ -186,6 +210,7 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
     smsEnabled: src.smsEnabled,
     smsQuietNow: src.smsQuietNow,
     quietHoursLabel: src.quietHoursLabel,
+    lastContactTruncated: historyTruncated,
     currentUserId: user.id,
     today,
     smsTemplates: src.templates.sms,
@@ -203,7 +228,7 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
 export default function FocusMode() {
   const {
     queue, scope, heldLabels, collisions, timelines, smsEnabled, smsQuietNow, quietHoursLabel, today,
-    smsTemplates, orgCompany, orgPhone, orgPaymentLink, timeZone,
+    smsTemplates, orgCompany, orgPhone, orgPaymentLink, timeZone, lastContactTruncated,
   } = useLoaderData<typeof loader>();
 
   // Session state
@@ -417,6 +442,16 @@ export default function FocusMode() {
           You own no cases — working the full open queue
         </div>
       )}
+      {lastContactTruncated ? (
+        <div className="border-b border-white/10 bg-copper/10 px-4 py-2 text-center">
+          <span
+            className="inline-flex items-center rounded-md border border-copper/20 px-2 py-0.5 text-[10px] font-sans font-medium text-copper"
+            title="Based on the last 5,000 contact rows. Totals may under-count."
+          >
+            Partial history
+          </span>
+        </div>
+      ) : null}
 
       {/* ── Main content ─────────────────────────────────────────────────── */}
       <main className="flex-1 flex items-start justify-center px-4 py-8 gap-6">

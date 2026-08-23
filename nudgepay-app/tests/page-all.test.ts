@@ -1,13 +1,18 @@
 import { expect, test } from "vitest";
+import { readFileSync } from "node:fs";
 import {
   assertNotTruncated,
   chunkIds,
   isTruncatedPage,
+  keysetAfter,
+  keysetDescFilter,
   orderPage,
   pageAll,
   pageAllChunked,
+  pageAllKeyset,
   PAGE_ALL_MAX_ROWS,
   POSTGREST_MAX_ROWS,
+  quotePostgrestValue,
 } from "../app/lib/page-all";
 
 test("isTruncatedPage is true when returned rows are fewer than exact count", () => {
@@ -190,10 +195,132 @@ test("orderPage applies created_at desc then id desc", () => {
   ]);
 });
 
+test("quotePostgrestValue double-quotes and escapes reserved characters", () => {
+  expect(quotePostgrestValue("2026-01-01T00:00:00.000Z")).toBe('"2026-01-01T00:00:00.000Z"');
+  expect(quotePostgrestValue('a"b\\c')).toBe('"a\\"b\\\\c"');
+});
+
+test("keysetDescFilter encodes created_at desc, id desc continuation", () => {
+  expect(keysetDescFilter({ created_at: "2026-01-01T00:00:00.000Z", id: "inv-1" }))
+    .toBe('created_at.lt."2026-01-01T00:00:00.000Z",and(created_at.eq."2026-01-01T00:00:00.000Z",id.lt."inv-1")');
+});
+
+test("keysetAfter is a no-op without a cursor and applies or() with one", () => {
+  const filters: string[] = [];
+  const q = { or(filter: string) { filters.push(filter); return q; } };
+  expect(keysetAfter(q, null)).toBe(q);
+  expect(filters).toEqual([]);
+  const cursor = { created_at: "2026-01-01T00:00:00.000Z", id: "inv-1" };
+  expect(keysetAfter(q, cursor)).toBe(q);
+  expect(filters).toEqual([keysetDescFilter(cursor)]);
+});
+
+test("pageAllKeyset walks (created_at, id) cursors instead of offsets", async () => {
+  const all = [
+    { created_at: "2026-01-03T00:00:00.000Z", id: "c" },
+    { created_at: "2026-01-02T00:00:00.000Z", id: "b" },
+    { created_at: "2026-01-01T00:00:00.000Z", id: "a" },
+  ];
+  const cursors: Array<{ created_at: string; id: string } | null> = [];
+  const run = async (cursor: { created_at: string; id: string } | null, from: number, to: number) => {
+    cursors.push(cursor);
+    const start = cursor
+      ? all.findIndex((r) => r.created_at === cursor.created_at && r.id === cursor.id) + 1
+      : 0;
+    const page = all.slice(start, start + (to - from + 1));
+    return { data: page, count: all.length, error: null };
+  };
+  const { rows, truncated } = await pageAllKeyset(run, { pageSize: 2, maxRows: 50 });
+  expect(rows).toEqual(all);
+  expect(truncated).toBe(false);
+  expect(cursors).toEqual([null, { created_at: "2026-01-02T00:00:00.000Z", id: "b" }]);
+});
+
+test("pageAllKeyset still returns a skipped later row after a newer insert between pages", async () => {
+  const original = [
+    { created_at: "2026-01-03T00:00:00.000Z", id: "c", customer_id: "keep" },
+    { created_at: "2026-01-02T00:00:00.000Z", id: "b", customer_id: "keep" },
+    { created_at: "2026-01-01T00:00:00.000Z", id: "a", customer_id: "must-keep" },
+  ];
+  let live = [...original];
+  const run = async (cursor: { created_at: string; id: string } | null, from: number, to: number) => {
+    const start = cursor
+      ? live.findIndex((r) => r.created_at === cursor.created_at && r.id === cursor.id) + 1
+      : 0;
+    const page = live.slice(start, start + (to - from + 1));
+    if (!cursor) {
+      live = [
+        { created_at: "2026-01-04T00:00:00.000Z", id: "d", customer_id: "new" },
+        ...original,
+      ];
+    }
+    return { data: page, count: original.length, error: null };
+  };
+  const { rows, truncated } = await pageAllKeyset(run, { pageSize: 2, maxRows: 50 });
+  expect(truncated).toBe(false);
+  expect(rows.map((r) => r.id)).toEqual(["c", "b", "a"]);
+  expect(rows.some((r) => r.customer_id === "must-keep")).toBe(true);
+});
+
+test("pageAllKeyset flags truncated at maxRows when more rows remain", async () => {
+  const all = Array.from({ length: 6 }, (_, i) => ({
+    created_at: `2026-01-0${6 - i}T00:00:00.000Z`,
+    id: `id-${i}`,
+  }));
+  const run = async (cursor: { created_at: string; id: string } | null, from: number, to: number) => {
+    const start = cursor
+      ? all.findIndex((r) => r.created_at === cursor.created_at && r.id === cursor.id) + 1
+      : 0;
+    const page = all.slice(start, start + (to - from + 1));
+    return { data: page, count: all.length, error: null };
+  };
+  const { rows, truncated } = await pageAllKeyset(run, { pageSize: 2, maxRows: 4 });
+  expect(rows).toHaveLength(4);
+  expect(truncated).toBe(true);
+});
+
+test("pageAllKeyset is not truncated when the set is exactly maxRows", async () => {
+  const all = Array.from({ length: 4 }, (_, i) => ({
+    created_at: `2026-01-0${4 - i}T00:00:00.000Z`,
+    id: `id-${i}`,
+  }));
+  let probes = 0;
+  const run = async (cursor: { created_at: string; id: string } | null, from: number, to: number) => {
+    const start = cursor
+      ? all.findIndex((r) => r.created_at === cursor.created_at && r.id === cursor.id) + 1
+      : 0;
+    if (cursor) probes += 1;
+    const page = all.slice(start, start + (to - from + 1));
+    return { data: page, count: all.length, error: null };
+  };
+  const { rows, truncated } = await pageAllKeyset(run, { pageSize: 2, maxRows: 4 });
+  expect(rows).toHaveLength(4);
+  expect(truncated).toBe(false);
+  expect(probes).toBeGreaterThanOrEqual(1);
+});
+
 test("pageAllChunked returns empty and not truncated for no chunks", async () => {
   const { rows, truncated } = await pageAllChunked([], async () => {
     throw new Error("should not run");
   });
   expect(rows).toEqual([]);
   expect(truncated).toBe(false);
+});
+
+test("Stage 1 of loadCaseQueueSource uses pageAll on non-embedded queries", () => {
+  const pageAllSrc = readFileSync(new URL("../app/lib/page-all.ts", import.meta.url), "utf8");
+  expect(pageAllSrc).toMatch(/Stage 1 of loadCaseQueueSource uses pageAll/);
+  expect(pageAllSrc).not.toMatch(/do not page Stage-1/);
+  const queue = readFileSync(new URL("../app/lib/case-queue.server.ts", import.meta.url), "utf8");
+  expect(queue).not.toContain("customers!invoices_org_customer_fk");
+  expect(queue).toContain("pageAll<InvoiceRow>");
+  expect(queue).toContain("pageAllChunked");
+  expect(queue).toContain("lastContactTruncated");
+});
+
+test("focus pages timeline lists and uses Partial history not TruncationBanner", () => {
+  const focus = readFileSync(new URL("../app/routes/focus.tsx", import.meta.url), "utf8");
+  expect(focus).toContain("pageAllChunked");
+  expect(focus).toContain("Partial history");
+  expect(focus).not.toContain("TruncationBanner");
 });

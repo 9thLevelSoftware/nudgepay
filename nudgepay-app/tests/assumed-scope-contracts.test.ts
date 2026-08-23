@@ -92,8 +92,82 @@ test("email_config upsert stamps updated_at (NP-AUD-2026-128)", () => {
 
 test("case-queue throws on truncated PostgREST pages (NP-AUD-2026-007-TRUNCATION)", () => {
   const src = read("../app/lib/case-queue.server.ts");
-  expect(src).toContain("assertNotTruncated");
+  expect(src).toContain("pageAll");
+  expect(src).toContain("pageAllChunked");
   expect(src).toContain('count: "exact"');
+  expect(src).toContain("invoices truncated");
+  expect(src).toContain("lastContactTruncated");
+});
+
+function dataDestructuresWithoutError(src: string): string[] {
+  const out: string[] = [];
+  const re = /\{\s*data\s*:/g;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(src))) {
+    let depth = 0;
+    let end = m.index;
+    for (let i = m.index; i < src.length; i++) {
+      if (src[i] === "{") depth += 1;
+      else if (src[i] === "}") {
+        depth -= 1;
+        if (depth === 0) { end = i; break; }
+      }
+    }
+    const obj = src.slice(m.index, end + 1);
+    if (!/\berror\b/.test(obj)) out.push(obj.replace(/\s+/g, " ").slice(0, 120));
+  }
+  return out;
+}
+
+test("listed loaders check error on every { data: destructure including Promise.all arms", () => {
+  const files = [
+    "../app/routes/messages.tsx",
+    "../app/routes/promises.tsx",
+    "../app/routes/accounts.tsx",
+    "../app/lib/reports.server.ts",
+    "../app/lib/case-queue.server.ts",
+    "../app/routes/dashboard.tsx",
+    "../app/routes/focus.tsx",
+  ];
+  for (const rel of files) {
+    const hits = dataDestructuresWithoutError(read(rel));
+    expect(hits, `${rel} has { data: without error: ${hits.join(" | ")}`).toEqual([]);
+  }
+});
+
+test("SyncDeps constructors set errorSource", () => {
+  expect(read("../app/lib/qbo-cron.server.ts")).toContain('errorSource: "cron"');
+  expect(read("../app/routes/auth.qbo.callback.tsx")).toContain('errorSource: "manual"');
+  expect(read("../app/routes/api.qbo.refresh.tsx")).toContain('errorSource: "manual"');
+  expect(read("../app/routes/webhooks.qbo.tsx")).toContain('errorSource: "webhook"');
+});
+
+test("CDC catch-up rethrows recon so last_cdc_time is not stamped", () => {
+  const src = read("../app/lib/qbo-sync.server.ts");
+  const recon = src.slice(src.indexOf("await applyCaseReconciliation"));
+  expect(recon).toContain("recordSyncError");
+  expect(recon).toContain('scope: "recon"');
+  expect(recon).toContain("resolveSyncErrors");
+  expect(recon).toContain("throw e");
+  const cdc = src.slice(src.indexOf("export async function runCdcCatchup"));
+  expect(cdc.indexOf("throw e")).toBeGreaterThan(-1);
+  expect(cdc.indexOf("throw e")).toBeLessThan(cdc.indexOf("last_cdc_time: fetchedAt"));
+});
+
+test("syncOverdueInvoices and applyInvoiceWebhook do not swallow recon", () => {
+  const src = read("../app/lib/qbo-sync.server.ts");
+  const overdue = src.slice(
+    src.indexOf("export async function syncOverdueInvoices"),
+    src.indexOf("export async function applyCustomerWebhook"),
+  );
+  expect(overdue).toContain("applyPaymentsAndEvaluate");
+  expect(overdue).not.toContain("cron will re-converge");
+  const inv = src.slice(
+    src.indexOf("export async function applyInvoiceWebhook"),
+    src.indexOf("// --- CDC catch-up"),
+  );
+  expect(inv).toContain("applyPaymentsAndEvaluate");
+  expect(inv).not.toContain("cron will re-converge");
 });
 
 test("sync pages Intuit queries and does not advance truncated CDC (NP-AUD-2026-028)", () => {

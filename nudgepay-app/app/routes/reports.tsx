@@ -9,6 +9,7 @@ import { ArKpiBand } from "../components/ArKpiBand";
 import { AgingBarChart, ChartCard, TrendLineChart } from "../components/SvgCharts";
 import { ContentShell } from "../components/ContentShell";
 import { pageTitle } from "../lib/meta";
+import { TruncationBanner } from "../components/TruncationBanner";
 import type { Route } from "./+types/reports";
 
 export const meta: Route.MetaFunction = ({ data }) => {
@@ -49,6 +50,7 @@ function fmtHours(x: number | null): string {
 
 export default function Reports() {
   const { report, arKpis, orgName, initials, userLabel, connected, syncLabel, syncIssues } = useLoaderData<typeof loader>();
+  const truncated = report.truncated || arKpis.truncated;
   const teamContacts = report.perRep.reduce((s, r) => s + r.contactsLogged, 0);
   const teamKept = report.perRep.reduce((s, r) => s + r.kept, 0);
   const teamResolved = report.perRep.reduce((s, r) => s + r.resolved, 0);
@@ -69,20 +71,24 @@ export default function Reports() {
         <div className="flex items-center justify-between gap-3">
           <h1 className="font-display text-xl font-semibold text-text">Team performance</h1>
           <div className="flex items-center gap-2">
-            <a
-              href={`/reports.csv?range=${report.range}`}
-              download={`nudgepay-report-${report.range}d.csv`}
-              className="rounded-md border border-border px-3 py-1.5 text-xs font-medium text-text hover:border-copper focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-copper"
-            >
-              Download CSV
-            </a>
-            <a
-              href={`/reports.csv?range=${report.range}&sheet=ar`}
-              download={`nudgepay-ar-${report.range}d.csv`}
-              className="rounded-md border border-border px-3 py-1.5 text-xs font-medium text-text hover:border-copper focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-copper"
-            >
-              Download receivables CSV
-            </a>
+            {!report.truncated ? (
+              <a
+                href={`/reports.csv?range=${report.range}`}
+                download={`nudgepay-report-${report.range}d.csv`}
+                className="rounded-md border border-border px-3 py-1.5 text-xs font-medium text-text hover:border-copper focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-copper"
+              >
+                Download CSV
+              </a>
+            ) : null}
+            {!arKpis.truncated ? (
+              <a
+                href={`/reports.csv?range=${report.range}&sheet=ar`}
+                download={`nudgepay-ar-${report.range}d.csv`}
+                className="rounded-md border border-border px-3 py-1.5 text-xs font-medium text-text hover:border-copper focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-copper"
+              >
+                Download receivables CSV
+              </a>
+            ) : null}
             <div className="flex items-center gap-1" role="group" aria-label="Time range">
               {REPORT_RANGES.map((r) => (
                 <Link
@@ -100,6 +106,8 @@ export default function Reports() {
           </div>
         </div>
 
+        {truncated ? <TruncationBanner /> : null}
+
         <section>
           <ArKpiBand kpis={arKpis} isOwner={false} />
         </section>
@@ -108,17 +116,17 @@ export default function Reports() {
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
           <div className="rounded-lg border border-border bg-panel p-4">
             <p className="text-xs font-sans uppercase tracking-wider text-muted">Median time to first contact</p>
-            <p className="mt-1 font-display text-2xl text-text">{fmtHours(report.firstContact.medianHours)}</p>
-            <p className="text-xs text-muted">{fmtPct(report.firstContact.within24hPct)} within 24h · {report.firstContact.uncontacted} uncontacted</p>
+            <p className="mt-1 font-display text-2xl text-text">{report.truncated ? "—" : fmtHours(report.firstContact.medianHours)}</p>
+            <p className="text-xs text-muted">{report.truncated ? "—" : `${fmtPct(report.firstContact.within24hPct)} within 24h · ${report.firstContact.uncontacted} uncontacted`}</p>
           </div>
           <div className="rounded-lg border border-border bg-panel p-4">
             <p className="text-xs font-sans uppercase tracking-wider text-muted">Contacts logged ({report.range}d)</p>
-            <p className="mt-1 font-display text-2xl text-text">{teamContacts}</p>
+            <p className="mt-1 font-display text-2xl text-text">{report.truncated ? "—" : teamContacts}</p>
           </div>
           <div className="rounded-lg border border-border bg-panel p-4">
             <p className="text-xs font-sans uppercase tracking-wider text-muted">Team promise-kept rate</p>
-            <p className="mt-1 font-display text-2xl text-text">{fmtPct(teamKeptRate)}</p>
-            <p className="text-xs text-muted">{teamKept} kept / {teamResolved} resolved</p>
+            <p className="mt-1 font-display text-2xl text-text">{report.truncated ? "—" : fmtPct(teamKeptRate)}</p>
+            <p className="text-xs text-muted">{report.truncated ? "—" : `${teamKept} kept / ${teamResolved} resolved`}</p>
           </div>
         </div>
 
@@ -182,12 +190,12 @@ export default function Reports() {
                 {report.perRep.map((r) => (
                   <tr key={r.userId} className="border-t border-border text-text">
                     <td className="px-3 py-2">{r.label}</td>
-                    <td className="px-3 py-2 text-right">{r.contactsLogged}</td>
-                    <td className="px-3 py-2 text-right">{r.casesTouched}</td>
-                    <td className="px-3 py-2 text-right">{r.kept}</td>
-                    <td className="px-3 py-2 text-right">{r.partiallyKept}</td>
-                    <td className="px-3 py-2 text-right">{r.broken}</td>
-                    <td className="px-3 py-2 text-right">{fmtPct(r.keptRate)}</td>
+                    <td className="px-3 py-2 text-right">{report.truncated ? "—" : r.contactsLogged}</td>
+                    <td className="px-3 py-2 text-right">{report.truncated ? "—" : r.casesTouched}</td>
+                    <td className="px-3 py-2 text-right">{report.truncated ? "—" : r.kept}</td>
+                    <td className="px-3 py-2 text-right">{report.truncated ? "—" : r.partiallyKept}</td>
+                    <td className="px-3 py-2 text-right">{report.truncated ? "—" : r.broken}</td>
+                    <td className="px-3 py-2 text-right">{report.truncated ? "—" : fmtPct(r.keptRate)}</td>
                   </tr>
                 ))}
               </tbody>
@@ -212,9 +220,9 @@ export default function Reports() {
                 {report.workload.map((w) => (
                   <tr key={w.ownerId ?? "unassigned"} className="border-t border-border text-text">
                     <td className="px-3 py-2">{w.label}</td>
-                    <td className="px-3 py-2 text-right">{w.openCases}</td>
-                    <td className="px-3 py-2 text-right">{fmtUSD(w.overdueTotal)}</td>
-                    <td className="px-3 py-2 text-right">{w.brokenPromises}</td>
+                    <td className="px-3 py-2 text-right">{report.truncated ? "—" : w.openCases}</td>
+                    <td className="px-3 py-2 text-right">{report.truncated ? "—" : fmtUSD(w.overdueTotal)}</td>
+                    <td className="px-3 py-2 text-right">{report.truncated ? "—" : w.brokenPromises}</td>
                   </tr>
                 ))}
               </tbody>

@@ -40,6 +40,7 @@ export async function action({ request, context }: ActionFunctionArgs) {
     api: { baseUrl: qboApiBaseUrl(qbo.QBO_SANDBOX) },
     key: qbo.QBO_ENCRYPTION_KEY,
     notify,
+    errorSource: "manual",
   };
   try {
     await syncOverdueInvoices(deps, org.org_id);

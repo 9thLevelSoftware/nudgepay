@@ -30,6 +30,8 @@ import { AccountsDirectory } from "../components/AccountsDirectory";
 import { AccountQuickPanel } from "../components/AccountQuickPanel";
 import { DrawerShell } from "../components/DrawerShell";
 import { pageTitle } from "../lib/meta";
+import { orderPage, pageAll, PAGE_ALL_MAX_ROWS } from "../lib/page-all";
+import { TruncationBanner } from "../components/TruncationBanner";
 import type { Route } from "./+types/accounts";
 
 export const meta: Route.MetaFunction = () => pageTitle("Accounts");
@@ -66,12 +68,52 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
 
   // --- Data loading (USER client, explicit org_id scope) ---
 
-  // All customers
-  const { data: custRows } = await supabase
-    .from("customers")
-    .select("id, name, phone, email, owner, sms_consent, preferred_channel, do_not_call, do_not_text")
-    .eq("org_id", org.org_id);
-  const customersInput: CustomerInput[] = ((custRows as any[]) ?? []).map((r) => ({
+  type CustRow = {
+    id: string; name: string | null; phone: string | null; email: string | null; owner: string | null;
+    sms_consent: boolean | null; preferred_channel: string | null; do_not_call: boolean | null; do_not_text: boolean | null;
+  };
+  type InvRow = {
+    id: string; qbo_doc_number: string | null; customer_id: string | null; balance: number | string | null;
+    due_date: string | null; amount: number | string | null; invoice_date: string | null; status: string | null; paid_date: string | null;
+  };
+  type CaseDbRow = {
+    id: string; customer_id: string; status: string; exception_reason: string | null;
+    next_action_at: string | null; closed_at: string | null;
+  };
+  const [custPage, invPage, casePage] = await Promise.all([
+    pageAll<CustRow>(
+      (from, to) =>
+        orderPage(
+          supabase
+            .from("customers")
+            .select("id, name, phone, email, owner, sms_consent, preferred_channel, do_not_call, do_not_text", { count: "exact" })
+            .eq("org_id", org.org_id),
+        ).range(from, to),
+      { maxRows: PAGE_ALL_MAX_ROWS },
+    ),
+    pageAll<InvRow>(
+      (from, to) =>
+        orderPage(
+          supabase
+            .from("invoices")
+            .select("id, qbo_doc_number, customer_id, balance, due_date, amount, invoice_date, status, paid_date", { count: "exact" })
+            .eq("org_id", org.org_id)
+            .gt("balance", 0),
+        ).range(from, to),
+      { maxRows: PAGE_ALL_MAX_ROWS },
+    ),
+    pageAll<CaseDbRow>(
+      (from, to) =>
+        orderPage(
+          supabase
+            .from("collection_cases")
+            .select("id, customer_id, status, exception_reason, next_action_at, closed_at", { count: "exact" })
+            .eq("org_id", org.org_id),
+        ).range(from, to),
+      { maxRows: PAGE_ALL_MAX_ROWS },
+    ),
+  ]);
+  const customersInput: CustomerInput[] = custPage.rows.map((r) => ({
     id: r.id,
     name: r.name ?? "(unknown customer)",
     phone: r.phone ?? null,
@@ -80,14 +122,7 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
     smsConsent: r.sms_consent ?? false,
     commPrefs: resolveCommPrefs(r),
   }));
-
-  // Open invoices (balance > 0)
-  const { data: invRows } = await supabase
-    .from("invoices")
-    .select("id, qbo_doc_number, customer_id, balance, due_date, amount, invoice_date, status, paid_date")
-    .eq("org_id", org.org_id)
-    .gt("balance", 0);
-  const invoicesInput: InvoiceInput[] = ((invRows as any[]) ?? []).map((r) => ({
+  const invoicesInput: InvoiceInput[] = invPage.rows.map((r) => ({
     id: r.id,
     qbo_doc_number: r.qbo_doc_number ?? null,
     customer_id: r.customer_id ?? null,
@@ -98,13 +133,7 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
     status: r.status ?? null,
     paid_date: r.paid_date ?? null,
   }));
-
-  // All collection_cases (open + closed — needed for caseToCustomer map)
-  const { data: caseRows } = await supabase
-    .from("collection_cases")
-    .select("id, customer_id, status, exception_reason, next_action_at, closed_at")
-    .eq("org_id", org.org_id);
-  const allCaseRows = (caseRows as any[]) ?? [];
+  const allCaseRows = casePage.rows;
 
   // activeCases: open rows only (closed_at == null)
   const activeCases: AccountCaseInput[] = allCaseRows
@@ -126,49 +155,66 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
 
   // Last contact per customer: contact_logs + outbound text_messages
   const lastContactsInput: AccountLastContactInput[] = [];
-
-  const { data: logRows } = await supabase
-    .from("contact_logs")
-    .select("customer_id, created_at, method")
-    .eq("org_id", org.org_id)
-    .not("customer_id", "is", null)
-    .order("created_at", { ascending: false });
+  type ContactRow = { customer_id: string | null; created_at: string; method: string | null };
+  type OutboundRow = { case_id: string | null; customer_id: string | null; created_at: string };
+  const [logPage, msgPage, emailPage] = await Promise.all([
+    pageAll<ContactRow>(
+      (from, to) =>
+        orderPage(
+          supabase
+            .from("contact_logs")
+            .select("customer_id, created_at, method", { count: "exact" })
+            .eq("org_id", org.org_id)
+            .not("customer_id", "is", null),
+        ).range(from, to),
+      { maxRows: PAGE_ALL_MAX_ROWS },
+    ),
+    pageAll<OutboundRow>(
+      (from, to) =>
+        orderPage(
+          supabase
+            .from("text_messages")
+            .select("case_id, customer_id, created_at", { count: "exact" })
+            .eq("org_id", org.org_id)
+            .eq("direction", "outbound"),
+        ).range(from, to),
+      { maxRows: PAGE_ALL_MAX_ROWS },
+    ),
+    pageAll<OutboundRow>(
+      (from, to) =>
+        orderPage(
+          supabase
+            .from("email_messages")
+            .select("case_id, customer_id, created_at", { count: "exact" })
+            .eq("org_id", org.org_id)
+            .eq("direction", "outbound"),
+        ).range(from, to),
+      { maxRows: PAGE_ALL_MAX_ROWS },
+    ),
+  ]);
   const methodLabel: Record<string, string> = { call: "Call", email: "Email", text: "Text", note: "Note" };
-  for (const r of (logRows as any[]) ?? []) {
+  for (const r of logPage.rows) {
     if (r.customer_id) {
       lastContactsInput.push({
         customerId: r.customer_id,
         date: r.created_at,
-        channel: methodLabel[r.method as string] ?? "Note",
+        channel: methodLabel[r.method ?? ""] ?? "Note",
       });
     }
   }
-
-  const { data: msgRows } = await supabase
-    .from("text_messages")
-    .select("case_id, customer_id, created_at")
-    .eq("org_id", org.org_id)
-    .eq("direction", "outbound")
-    .order("created_at", { ascending: false });
-  for (const r of (msgRows as any[]) ?? []) {
-    const cid = (r.customer_id as string | null)
-      ?? (r.case_id ? caseToCustomer.get(r.case_id as string) : undefined);
+  for (const r of msgPage.rows) {
+    const cid = r.customer_id ?? (r.case_id ? caseToCustomer.get(r.case_id) : undefined);
     if (!cid) continue;
     lastContactsInput.push({ customerId: cid, date: r.created_at, channel: "Text" });
   }
-
-  const { data: emailRows } = await supabase
-    .from("email_messages")
-    .select("case_id, customer_id, created_at")
-    .eq("org_id", org.org_id)
-    .eq("direction", "outbound")
-    .order("created_at", { ascending: false });
-  for (const r of (emailRows as any[]) ?? []) {
-    const cid = (r.customer_id as string | null)
-      ?? (r.case_id ? caseToCustomer.get(r.case_id as string) : undefined);
+  for (const r of emailPage.rows) {
+    const cid = r.customer_id ?? (r.case_id ? caseToCustomer.get(r.case_id) : undefined);
     if (!cid) continue;
     lastContactsInput.push({ customerId: cid, date: r.created_at, channel: "Email" });
   }
+
+  const truncated = custPage.truncated || invPage.truncated || casePage.truncated
+    || logPage.truncated || msgPage.truncated || emailPage.truncated;
 
   // Owner labels
   const roster = await listOrgMembers(service, org.org_id);
@@ -232,6 +278,7 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
       densityFromUrl,
       selected,
       timeZone: orgConfig.companyProfile.timezone,
+      truncated,
     },
     { headers },
   );
@@ -255,7 +302,8 @@ export default function Accounts() {
       syncIssues={<SyncIssues issues={d.syncIssues} returnTo="/accounts" />}
     >
       <div className="p-4 sm:p-6 space-y-4 sm:space-y-6">
-        <AccountsMetrics metrics={d.metrics} />
+        {d.truncated ? <TruncationBanner /> : null}
+        <AccountsMetrics metrics={d.metrics} truncated={d.truncated} />
         <div className="grid gap-4 lg:grid-cols-[1fr_360px]">
           <AccountsDirectory
             rows={d.rows}
