@@ -444,6 +444,43 @@ test("inventory From overlapping the fallback sender defers to unique outbound h
   expect(rows![0].customer_id).toBe(custB!.id);
 });
 
+test("fallback From overlap ignores Messaging Service history from another org", async () => {
+  const phone = "+13105550225";
+  const sharedFrom = "+15005552225";
+  const { data: orgA } = await svc.from("organizations").insert({ name: "Overlap Inv Org" }).select("id").single();
+  const orgAId = orgA!.id as string;
+  const { data: orgB } = await svc.from("organizations").insert({ name: "Overlap MS Hist Org" }).select("id").single();
+  const orgBId = orgB!.id as string;
+
+  const { error: invErr } = await svc.from("sms_sender_inventory").insert({
+    org_id: orgAId, from_number: sharedFrom, status: "active",
+  });
+  expect(invErr).toBeNull();
+
+  await svc.from("customers").insert({
+    org_id: orgAId, qbo_id: "c-ov-a", name: "Overlap A", phone, sms_consent: true,
+  });
+  const { data: custB } = await svc.from("customers")
+    .insert({ org_id: orgBId, qbo_id: "c-ov-b", name: "Overlap B", phone, sms_consent: true }).select("id").single();
+
+  await svc.from("text_messages").insert({
+    org_id: orgBId, customer_id: custB!.id, direction: "outbound",
+    twilio_message_sid: "SMout-225-ms", from_number: null, to_number: phone, body: "ping",
+  });
+
+  const out = await recordInboundMessage(svc, {
+    from: phone,
+    to: sharedFrom,
+    body: "hello",
+    messageSid: "SMin-225-ms-hist",
+    fallbackFrom: sharedFrom,
+  });
+  expect(out.matched).toBe(false);
+  const { data: rows } = await svc.from("text_messages")
+    .select("id").eq("twilio_message_sid", "SMin-225-ms-hist");
+  expect(rows ?? []).toHaveLength(0);
+});
+
 test("inventory SID overlapping the fallback SID defers to unique outbound history", async () => {
   const phone = "+13105550223";
   const inboundTo = "+15005552223";
@@ -477,12 +514,12 @@ test("inventory SID overlapping the fallback SID defers to unique outbound histo
     messagingServiceSid: sharedSid,
     fallbackMessagingServiceSid: sharedSid,
   });
-  expect(out.matched).toBe(true);
+  // Null-from Messaging Service history is not a match when the SID overlaps
+  // the env fallback; otherwise any org that ever texted this phone would win.
+  expect(out.matched).toBe(false);
   const { data: rows } = await svc.from("text_messages")
-    .select("org_id, customer_id").eq("twilio_message_sid", "SMin-223-fallback-sid");
-  expect(rows).toHaveLength(1);
-  expect(rows![0].org_id).toBe(orgBId);
-  expect(rows![0].customer_id).toBe(custB!.id);
+    .select("org_id").eq("twilio_message_sid", "SMin-223-fallback-sid");
+  expect(rows ?? []).toHaveLength(0);
 });
 
 test("recordInboundMessage matches inventory SID stored with surrounding whitespace", async () => {

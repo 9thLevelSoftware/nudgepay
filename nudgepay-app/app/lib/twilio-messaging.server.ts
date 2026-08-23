@@ -178,12 +178,16 @@ async function uniqueOutboundOrg(
   service: SupabaseClient,
   fromNorm: string,
   toNorm: string,
+  requireFromMatch = false,
 ): Promise<string | null> {
-  const { data: outbound, error: outboundErr } = await service.from("text_messages")
+  let q = service.from("text_messages")
     .select("org_id")
     .eq("direction", "outbound")
-    .eq("to_number_norm", fromNorm)
-    .or(`from_number_norm.is.null,from_number_norm.eq."${toNorm}"`);
+    .eq("to_number_norm", fromNorm);
+  q = requireFromMatch
+    ? q.eq("from_number_norm", toNorm)
+    : q.or(`from_number_norm.is.null,from_number_norm.eq."${toNorm}"`);
+  const { data: outbound, error: outboundErr } = await q;
   if (outboundErr) throw outboundErr;
   const orgIds = new Set((outbound ?? []).map((msg) => msg.org_id as string));
   return orgIds.size === 1 ? [...orgIds][0]! : null;
@@ -242,7 +246,9 @@ async function resolveInboundOrgId(service: SupabaseClient, args: {
   }
 
   if (fromNorm.length < 10) return null;
-  const historyOrg = toNorm.length >= 10 ? await uniqueOutboundOrg(service, fromNorm, toNorm) : null;
+  const historyOrg = toNorm.length >= 10
+    ? await uniqueOutboundOrg(service, fromNorm, toNorm, overlapsFallback)
+    : null;
   if (historyOrg) return historyOrg;
   if (overlapsFallback) return null;
   return invOrgs[0] ?? sidOrgs[0] ?? null;
