@@ -50,13 +50,17 @@ function pruneMemoryHits(now: number): void {
 
 /** In-process limiter for Node/Render (no Cloudflare ratelimit binding). */
 export function memoryAuthRateLimited(key: string, now = Date.now()): boolean {
-  if (memoryHits.size >= MEMORY_MAX_KEYS) pruneMemoryHits(now);
   const cutoff = now - MEMORY_WINDOW_MS;
   const prev = (memoryHits.get(key) ?? []).filter((t) => t > cutoff);
-  if (prev.length === 0) memoryHits.delete(key);
   if (prev.length >= MEMORY_LIMIT) {
     memoryHits.set(key, prev);
     return true;
+  }
+  // Evict only when inserting a previously unseen key. Updating an existing
+  // Map entry does not refresh insertion order, so pruning on a known key
+  // could delete the bucket currently being evaluated.
+  if (!memoryHits.has(key) && memoryHits.size >= MEMORY_MAX_KEYS) {
+    pruneMemoryHits(now);
   }
   prev.push(now);
   memoryHits.set(key, prev);

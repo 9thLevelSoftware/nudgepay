@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   authRateLimited,
   authRateLimitKey,
+  memoryAuthRateLimited,
   resetMemoryAuthRateLimit,
 } from "../app/lib/auth-rate-limit.server";
 import { humanAuthError } from "../app/lib/auth-errors";
@@ -66,6 +67,17 @@ describe("authRateLimited", () => {
     }
     await expect(authRateLimited(env, "203.0.113.8")).resolves.toBe(true);
     await expect(authRateLimited(env, "203.0.113.9")).resolves.toBe(false);
+  });
+
+  it("does not evict an existing blocked bucket just to inspect it", () => {
+    const blocked = "203.0.113.50";
+    const now = Date.now();
+    for (let i = 0; i < 20; i++) expect(memoryAuthRateLimited(blocked, now)).toBe(false);
+    expect(memoryAuthRateLimited(blocked, now)).toBe(true);
+    for (let i = 0; i < 9_999; i++) {
+      expect(memoryAuthRateLimited(`fill-${i}`, now)).toBe(false);
+    }
+    expect(memoryAuthRateLimited(blocked, now)).toBe(true);
   });
 
   it("NODE_ENV=production without a CF binding uses the in-memory limiter", async () => {
