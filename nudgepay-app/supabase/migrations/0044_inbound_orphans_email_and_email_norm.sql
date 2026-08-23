@@ -44,3 +44,6 @@ alter table email_config drop column if exists from_address_norm;
 alter table email_config
   add column from_address_norm text
     generated always as (public.normalize_email(from_address)) stored;
+create index if not exists email_config_from_address_norm_idx
+  on email_config (from_address_norm)
+  where from_address_norm is not null;

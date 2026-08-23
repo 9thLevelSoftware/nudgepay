@@ -15,5 +15,6 @@ test("email_norm generated column uses the same extract-then-lower semantics", (
   expect(sql).toContain("substring(raw from '<([^>]+)>')");
   expect(sql).toContain("public.normalize_email(email)");
   expect(sql).toContain("public.normalize_email(from_address)");
+  expect(sql).toContain("email_config_from_address_norm_idx");
   expect(sql).not.toMatch(/generated always as \(lower\(btrim\(email\)\)\) stored/);
 });
