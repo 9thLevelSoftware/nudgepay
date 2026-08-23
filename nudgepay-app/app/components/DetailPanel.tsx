@@ -22,6 +22,7 @@ import { canSendEmail, type CommPrefs } from "~/lib/comm-prefs";
 import { resolveCallAction } from "~/lib/channel-actions";
 import { statusChipTone, type ChipTone } from "~/lib/status-style";
 import { smsFlash } from "~/lib/flash-copy";
+import { Input } from "~/components/ui";
 
 // Static tone-to-text-color map — heat.band → Tailwind class.
 // Must be literal strings so Tailwind can tree-shake them; no dynamic construction.
@@ -135,7 +136,7 @@ const CHASE_CHANNEL_LABEL: Record<"sms" | "email" | "call", string> = {
 };
 
 function MessagesTab({
-  selected, invoices, repInvoiceId, messages, consent, prefs, phone, sms, smsEnabled, smsQuietNow, quietHoursLabel,
+  selected, invoices, repInvoiceId, messages, consent, smsConsentSource, isOwner, prefs, phone, sms, smsEnabled, smsQuietNow, quietHoursLabel,
   view, sort, q, density, entity, invoice, collision,
   smsTemplates, orgCompany, orgPhone, orgPaymentLink, timeZone, composerRef,
 }: {
@@ -144,6 +145,8 @@ function MessagesTab({
   repInvoiceId: string | null;
   messages: MessageEntry[];
   consent: boolean;
+  smsConsentSource: "inbound_stop" | "inbound_start" | "staff" | "import" | "unknown" | null;
+  isOwner: boolean;
   prefs: CommPrefs;
   phone: string | null;
   sms: string | null;
@@ -216,7 +219,7 @@ function MessagesTab({
       className="flex flex-1 flex-col min-h-0"
     >
       {/* Consent row */}
-      <div className="flex items-center justify-between gap-2 px-5 py-3 border-b border-border">
+      <div className="flex flex-wrap items-center justify-between gap-2 px-5 py-3 border-b border-border">
         <span className="text-xs font-sans text-muted">
           SMS consent:{" "}
           <span className={consent ? "font-semibold text-cool" : "font-semibold text-hot"}>
@@ -224,26 +227,42 @@ function MessagesTab({
           </span>
           {phone ? <span className="text-muted"> · {phone}</span> : null}
         </span>
-        <div className="flex items-center gap-3">
+        <div className="flex flex-wrap items-center gap-3">
           <Link
             to={prefsHref}
             className="text-xs font-medium text-copper hover:underline"
           >
             Communication preferences
           </Link>
-          <form method="post" action="/api/sms-consent">
-            <input type="hidden" name="invoiceId" value={repInvoiceId ?? ""} />
-            <input type="hidden" name="customerId" value={selected.customerId} />
-            <input type="hidden" name="returnTo" value={returnTo} />
-            <input type="hidden" name="consent" value={consent ? "false" : "true"} />
-            <button
-              type="submit"
-              disabled={consentBusy}
-              className="text-xs font-sans font-medium text-copper hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-copper rounded disabled:opacity-60 disabled:cursor-not-allowed"
-            >
-              {consentBusy ? "Updating…" : consent ? "Revoke consent" : "Mark consented"}
-            </button>
-          </form>
+          {!consent && smsConsentSource === "inbound_stop" && !isOwner ? (
+            <p className="text-xs font-sans text-hot">Stopped by inbound STOP. Owner override required.</p>
+          ) : (
+            <form method="post" action="/api/sms-consent">
+              <div className="flex flex-wrap items-center gap-2">
+                <input type="hidden" name="invoiceId" value={repInvoiceId ?? ""} />
+                <input type="hidden" name="customerId" value={selected.customerId} />
+                <input type="hidden" name="returnTo" value={returnTo} />
+                <input type="hidden" name="consent" value={consent ? "false" : "true"} />
+                {!consent && smsConsentSource === "inbound_stop" ? (
+                  <Input
+                    name="reason"
+                    required
+                    minLength={3}
+                    placeholder="Override reason"
+                    className="h-7 w-40 max-w-full min-w-0 px-2 py-0 text-xs"
+                    aria-label="Consent override reason"
+                  />
+                ) : null}
+                <button
+                  type="submit"
+                  disabled={consentBusy}
+                  className="text-xs font-sans font-medium text-copper hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-copper rounded disabled:opacity-60 disabled:cursor-not-allowed"
+                >
+                  {consentBusy ? "Updating…" : consent ? "Revoke consent" : smsConsentSource === "inbound_stop" ? "Override STOP" : "Mark consented"}
+                </button>
+              </div>
+            </form>
+          )}
         </div>
       </div>
 
@@ -592,6 +611,8 @@ export function DetailPanel({
   timeline,
   messages,
   consent,
+  smsConsentSource,
+  isOwner,
   prefs,
   phone,
   sms,
@@ -626,6 +647,8 @@ export function DetailPanel({
   timeline: TimelineEntry[];
   messages: MessageEntry[];
   consent: boolean;
+  smsConsentSource: "inbound_stop" | "inbound_start" | "staff" | "import" | "unknown" | null;
+  isOwner: boolean;
   prefs: CommPrefs;
   phone: string | null;
   sms: string | null;
@@ -1246,6 +1269,8 @@ export function DetailPanel({
           repInvoiceId={repInvoiceId}
           messages={messages}
           consent={consent}
+          smsConsentSource={smsConsentSource}
+          isOwner={isOwner}
           prefs={prefs}
           phone={phone}
           sms={sms}

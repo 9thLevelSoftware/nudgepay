@@ -21,19 +21,20 @@ export const SYNC_FLASH: Record<string, { tone: "ok" | "warn" | "err"; text: str
 // SMS result flash (?sms= on dashboard/inbox, Focus JSON `sms` field).
 // `tone` is the Tailwind text class used by inline banners (not FlashBanner's
 // semantic ok/warn/err) so DetailPanel and MessageThreadPanel can share this map.
-export type SmsFlashCode = SmsSendReason | "sent";
+export type SmsFlashCode = SmsSendReason | "sent" | "consent_locked";
 
 export type SmsFlash = { text: string; tone: string };
 
 export const SMS_FLASH: { [K in SmsFlashCode]: SmsFlash } = {
-  sent:      { text: "Text sent.",                                                  tone: "text-cool" },
-  noconsent: { text: "Not sent — customer has not consented to SMS.",               tone: "text-hot" },
-  optout:    { text: "Not sent — customer opted out of texts.",                     tone: "text-hot" },
-  error:     { text: "Could not send the text.",                                    tone: "text-hot" },
-  blocked:   { text: "Not sent — this case is marked do-not-contact / legal.",      tone: "text-hot" },
-  disabled:  { text: "Not sent — text messaging is turned off for this workspace.", tone: "text-hot" },
-  quiet:     { text: "Not sent — outside quiet hours.",                             tone: "text-warm" },
-  limited:   { text: "Not sent — send limit reached. Try again later.",             tone: "text-hot" },
+  sent:            { text: "Text sent.",                                                  tone: "text-cool" },
+  noconsent:       { text: "Not sent — customer has not consented to SMS.",               tone: "text-hot" },
+  optout:          { text: "Not sent — customer opted out of texts.",                     tone: "text-hot" },
+  error:           { text: "Could not send the text.",                                    tone: "text-hot" },
+  blocked:         { text: "Not sent — this case is marked do-not-contact / legal.",      tone: "text-hot" },
+  disabled:        { text: "Not sent — text messaging is turned off for this workspace.", tone: "text-hot" },
+  quiet:           { text: "Not sent — outside quiet hours.",                             tone: "text-warm" },
+  limited:         { text: "Not sent — send limit reached. Try again later.",             tone: "text-hot" },
+  consent_locked:  { text: "Could not mark consented — inbound STOP requires an owner override with a reason.", tone: "text-hot" },
 };
 
 /** Human copy for an SMS result code. Unknown codes use the generic error. */

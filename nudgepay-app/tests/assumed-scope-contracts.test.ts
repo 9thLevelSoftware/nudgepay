@@ -14,6 +14,60 @@ test("DetailPanel consent posts customerId (NP-AUD-2026-109)", () => {
   expect(form![0]).not.toMatch(/name="assign"/);
 });
 
+test("STOP-locked consent hides Mark consented for members; owner override requires reason", () => {
+  const src = read("../app/components/DetailPanel.tsx");
+  const memberPath = src.match(
+    /!consent && smsConsentSource === "inbound_stop" && !isOwner \? \([\s\S]*?\) : \(/,
+  );
+  expect(memberPath, "member STOP-locked branch missing").toBeTruthy();
+  expect(memberPath![0]).toContain("Stopped by inbound STOP. Owner override required.");
+  expect(memberPath![0]).not.toMatch(/Mark consented/);
+  expect(memberPath![0]).not.toMatch(/type="submit"/);
+
+  const form = src.match(/<form method="post" action="\/api\/sms-consent">[\s\S]*?<\/form>/);
+  expect(form, "sms-consent form missing").toBeTruthy();
+  expect(form![0]).toMatch(/name="reason"/);
+  expect(form![0]).toMatch(/minLength=\{3\}/);
+  expect(form![0]).toContain("Override STOP");
+  expect(form![0]).toContain("<Input");
+});
+
+test("owner STOP override clears do_not_text with consent", () => {
+  const src = read("../app/routes/api.sms-consent.tsx");
+  expect(src).toContain("overrideStop");
+  expect(src).toContain("do_not_text: false");
+  expect(src).toContain("stopLocked");
+  expect(src).toContain("rewrite inbound_stop");
+  expect(src).toContain('select("sms_consent, sms_consent_source, sms_consent_at")');
+  expect(src).toContain('.eq("sms_consent_source", "inbound_stop")');
+  expect(src).toContain('.eq("sms_consent_at", observedAt)');
+});
+
+test("inbox STOP override uses shared Input and wraps on narrow panes", () => {
+  const inbox = read("../app/components/MessageThreadPanel.tsx");
+  expect(inbox).toContain('from "./ui"');
+  expect(inbox).toContain("<Input");
+  expect(inbox).toContain("flex-wrap");
+  const dash = read("../app/components/DetailPanel.tsx");
+  expect(dash).toContain("flex-wrap");
+});
+
+test("inbound STOP lock is enforced by a BEFORE INSERT OR UPDATE trigger", () => {
+  const sql = read("../supabase/migrations/0047_inbound_stop_lock.sql");
+  expect(sql).toContain("prevent_inbound_stop_unlock");
+  expect(sql).toMatch(/inbound STOP can only be set by the inbound webhook/);
+  expect(sql).toMatch(/TG_OP = 'INSERT'/);
+  expect(sql).toMatch(/before insert or update on customers/);
+  expect(sql).toMatch(/sms_consent_source is distinct from 'inbound_stop'/);
+  expect(sql).toMatch(/sms_consent_at is distinct from old.sms_consent_at/);
+  expect(sql).toMatch(/is_org_owner/);
+  expect(sql).toMatch(/sms_consent_source := 'staff'/);
+  expect(sql).toMatch(/sms_consent_actor := auth\.uid\(\)/);
+  expect(sql).toMatch(/sms_consent_at := now\(\)/);
+  expect(sql).toMatch(/new\.sms_consent_at is not distinct from old\.sms_consent_at/);
+  expect(sql).toContain("btrim(new.sms_consent_reason, E' \\t\\n\\r\\v\\f')");
+});
+
 test("invite flash is generic, not raw DB (NP-AUD-2026-126)", () => {
   const action = read("../app/routes/api.members.tsx");
   expect(action).toContain('flag(returnTo, "error", "invite")');
