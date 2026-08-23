@@ -43,7 +43,6 @@ export async function acceptInvite(
     if (msg.includes("Invite expired")) throw new Error("Invite expired");
     throw rpcErr;
   }
-  if (!orgId) throw new Error("Invite not found");
   return orgId as string;
 }
 
