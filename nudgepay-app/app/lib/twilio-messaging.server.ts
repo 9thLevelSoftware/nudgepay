@@ -174,33 +174,64 @@ export async function sendInvoiceText(
   return { id: row!.id as string, sid: result.sid, status: result.status };
 }
 
-async function resolveInboundOrgId(service: SupabaseClient, args: { from: string; to: string }): Promise<string | null> {
-  const toNorm = normalizePhone(args.to);
-  if (toNorm.length < 10) return null;
-
-  // 1 inventory To hit → that org; 0 → outbound history; 2+ → unmatched.
-  const { data: inventoryHits, error: invErr } = await service
-    .from("sms_sender_inventory")
-    .select("org_id")
-    .eq("status", "active")
-    .eq("from_number_last10", toNorm)
-    .limit(2);
-  if (invErr) throw invErr;
-  const invOrgs = [...new Set((inventoryHits ?? []).map((row) => row.org_id as string))];
-  if (invOrgs.length === 1) return invOrgs[0];
-  if (invOrgs.length > 1) return null;
-
-  const fromNorm = normalizePhone(args.from);
-  if (fromNorm.length < 10) return null;
+async function uniqueOutboundOrg(
+  service: SupabaseClient,
+  fromNorm: string,
+  toNorm: string,
+): Promise<string | null> {
   const { data: outbound, error: outboundErr } = await service.from("text_messages")
     .select("org_id")
     .eq("direction", "outbound")
     .eq("to_number_norm", fromNorm)
     .or(`from_number_norm.is.null,from_number_norm.eq."${toNorm}"`);
   if (outboundErr) throw outboundErr;
-
   const orgIds = new Set((outbound ?? []).map((msg) => msg.org_id as string));
-  return orgIds.size === 1 ? [...orgIds][0] : null;
+  return orgIds.size === 1 ? [...orgIds][0]! : null;
+}
+
+async function resolveInboundOrgId(service: SupabaseClient, args: {
+  from: string;
+  to: string;
+  messagingServiceSid?: string;
+  fallbackFrom?: string;
+}): Promise<string | null> {
+  const sid = (args.messagingServiceSid ?? "").trim();
+  if (sid) {
+    const { data: sidHits, error: sidErr } = await service
+      .from("sms_sender_inventory")
+      .select("org_id")
+      .eq("status", "active")
+      .ilike("messaging_service_sid", sid.replace(/[%_]/g, ""))
+      .limit(2);
+    if (sidErr) throw sidErr;
+    const sidOrgs = [...new Set((sidHits ?? []).map((row) => row.org_id as string))];
+    if (sidOrgs.length === 1) return sidOrgs[0];
+    if (sidOrgs.length > 1) return null;
+  }
+
+  const toNorm = normalizePhone(args.to);
+  const fromNorm = normalizePhone(args.from);
+  const fallbackNorm = args.fallbackFrom ? normalizePhone(args.fallbackFrom) : "";
+  const overlapsFallback = fallbackNorm.length >= 10 && fallbackNorm === toNorm;
+
+  let invOrgs: string[] = [];
+  if (toNorm.length >= 10) {
+    const { data: inventoryHits, error: invErr } = await service
+      .from("sms_sender_inventory")
+      .select("org_id")
+      .eq("status", "active")
+      .eq("from_number_last10", toNorm)
+      .limit(2);
+    if (invErr) throw invErr;
+    invOrgs = [...new Set((inventoryHits ?? []).map((row) => row.org_id as string))];
+    if (invOrgs.length > 1) return null;
+    if (invOrgs.length === 1 && !overlapsFallback) return invOrgs[0];
+  }
+
+  if (fromNorm.length < 10) return null;
+  const historyOrg = toNorm.length >= 10 ? await uniqueOutboundOrg(service, fromNorm, toNorm) : null;
+  if (historyOrg) return historyOrg;
+  return overlapsFallback ? null : (invOrgs[0] ?? null);
 }
 
 export type InboundResult = {
@@ -306,6 +337,8 @@ export async function recordInboundMessage(
     to: string;
     body: string;
     messageSid: string;
+    messagingServiceSid?: string;
+    fallbackFrom?: string;
     onOrphanStop?: (info: OrphanStopInfo) => void;
   },
 ): Promise<InboundResult> {
@@ -321,7 +354,12 @@ export async function recordInboundMessage(
     await applyKeywordByPhone(service, fromNorm, keyword);
   }
 
-  const orgId = await resolveInboundOrgId(service, { from: args.from, to: args.to });
+  const orgId = await resolveInboundOrgId(service, {
+    from: args.from,
+    to: args.to,
+    messagingServiceSid: args.messagingServiceSid,
+    fallbackFrom: args.fallbackFrom,
+  });
   const name = await loadOrgName(service, orgId);
   const twiml = twimlForKeyword(keyword, name);
 

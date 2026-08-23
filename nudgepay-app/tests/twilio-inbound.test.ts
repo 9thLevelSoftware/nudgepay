@@ -359,6 +359,91 @@ test("recordInboundMessage routes by inventory from_number_last10 and skips outb
   expect(rows![0].customer_id).toBe(custA!.id);
 });
 
+test("recordInboundMessage routes by inventory MessagingServiceSid before history", async () => {
+  const phone = "+13105550221";
+  const inboundTo = "+15005552221";
+  const { data: orgA } = await svc.from("organizations").insert({ name: "SID Inventory Org" }).select("id").single();
+  const orgAId = orgA!.id as string;
+  const { data: orgB } = await svc.from("organizations").insert({ name: "SID History Org" }).select("id").single();
+  const orgBId = orgB!.id as string;
+
+  const { error: invErr } = await svc.from("sms_sender_inventory").insert({
+    org_id: orgAId,
+    messaging_service_sid: "MG" + "a".repeat(32),
+    status: "active",
+  });
+  expect(invErr).toBeNull();
+
+  const { data: custA } = await svc.from("customers")
+    .insert({ org_id: orgAId, qbo_id: "c-sid-a", name: "Acme SID A", phone, sms_consent: true }).select("id").single();
+  const { data: custB } = await svc.from("customers")
+    .insert({ org_id: orgBId, qbo_id: "c-sid-b", name: "Acme SID B", phone, sms_consent: true }).select("id").single();
+
+  await svc.from("text_messages").insert([
+    {
+      org_id: orgAId, customer_id: custA!.id, direction: "outbound",
+      twilio_message_sid: "SMout-221-a", from_number: null, to_number: phone, body: "a",
+    },
+    {
+      org_id: orgBId, customer_id: custB!.id, direction: "outbound",
+      twilio_message_sid: "SMout-221-b", from_number: null, to_number: phone, body: "b",
+    },
+  ]);
+
+  const out = await recordInboundMessage(svc, {
+    from: phone,
+    to: inboundTo,
+    body: "hello",
+    messageSid: "SMin-221-sid",
+    messagingServiceSid: "MG" + "a".repeat(32),
+  });
+  expect(out.matched).toBe(true);
+  const { data: rows } = await svc.from("text_messages")
+    .select("org_id, customer_id").eq("twilio_message_sid", "SMin-221-sid");
+  expect(rows).toHaveLength(1);
+  expect(rows![0].org_id).toBe(orgAId);
+  expect(rows![0].customer_id).toBe(custA!.id);
+});
+
+test("inventory From overlapping the fallback sender defers to unique outbound history", async () => {
+  const phone = "+13105550222";
+  const sharedFrom = "+15005552222";
+  const { data: orgA } = await svc.from("organizations").insert({ name: "Fallback Inventory Org" }).select("id").single();
+  const orgAId = orgA!.id as string;
+  const { data: orgB } = await svc.from("organizations").insert({ name: "Fallback History Org" }).select("id").single();
+  const orgBId = orgB!.id as string;
+
+  const { error: invErr } = await svc.from("sms_sender_inventory").insert({
+    org_id: orgAId, from_number: sharedFrom, status: "active",
+  });
+  expect(invErr).toBeNull();
+
+  const { data: custA } = await svc.from("customers")
+    .insert({ org_id: orgAId, qbo_id: "c-fb-a", name: "Acme FB A", phone, sms_consent: true }).select("id").single();
+  const { data: custB } = await svc.from("customers")
+    .insert({ org_id: orgBId, qbo_id: "c-fb-b", name: "Acme FB B", phone, sms_consent: true }).select("id").single();
+  expect(custA).toBeTruthy();
+
+  await svc.from("text_messages").insert({
+    org_id: orgBId, customer_id: custB!.id, direction: "outbound",
+    twilio_message_sid: "SMout-222-hist", from_number: sharedFrom, to_number: phone, body: "ping",
+  });
+
+  const out = await recordInboundMessage(svc, {
+    from: phone,
+    to: sharedFrom,
+    body: "hello",
+    messageSid: "SMin-222-fallback",
+    fallbackFrom: sharedFrom,
+  });
+  expect(out.matched).toBe(true);
+  const { data: rows } = await svc.from("text_messages")
+    .select("org_id, customer_id").eq("twilio_message_sid", "SMin-222-fallback");
+  expect(rows).toHaveLength(1);
+  expect(rows![0].org_id).toBe(orgBId);
+  expect(rows![0].customer_id).toBe(custB!.id);
+});
+
 test("recordInboundMessage treats replayed MessageSid as idempotent", async () => {
   const { inboundTo } = await seedCustomerWithOutbound("+13105550209", "SMout-209", true);
   const args = { from: "+13105550209", to: inboundTo, body: "hello", messageSid: "SMin-209-idempotent" };

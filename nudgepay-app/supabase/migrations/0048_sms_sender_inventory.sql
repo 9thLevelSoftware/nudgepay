@@ -10,7 +10,10 @@ create table sms_sender_inventory (
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
   constraint sms_sender_inventory_sender_present
-    check (messaging_service_sid is not null or from_number is not null)
+    check (
+      (messaging_service_sid is not null and btrim(messaging_service_sid) <> '')
+      or (from_number is not null and btrim(from_number) <> '')
+    )
 );
 
 create unique index sms_sender_inventory_from_number_key
