@@ -122,6 +122,31 @@ describe("email inbound + status", () => {
     expect(rows![0].body).toBe("ok");
   });
 
+  it("recordInboundEmail matches a stored display-name customer email", async () => {
+    const addr = `cust-display-${Math.random()}@x.com`;
+    const { customerId, invoiceId, orgFromAddress } = await seedWithOutbound(
+      `Acme AR <${addr}>`,
+      `re_out_disp_${Math.random()}`,
+      `billing-disp-${Math.random()}@chancey.test`,
+    );
+    const r = await recordInboundEmail(svc, {
+      from: addr,
+      to: orgFromAddress,
+      subject: "Re",
+      body: "ok",
+      providerMessageId: `in_disp_${Math.random()}`,
+    });
+    expect(r.matched).toBe(true);
+    const { data: row } = await svc.from("customers").select("email_norm").eq("id", customerId).single();
+    expect(row!.email_norm).toBe(addr);
+    const { data: inbound } = await svc
+      .from("email_messages")
+      .select("customer_id, invoice_id")
+      .eq("customer_id", customerId)
+      .eq("direction", "inbound");
+    expect(inbound!.some((m) => m.invoice_id === invoiceId)).toBe(true);
+  });
+
   it("unmatched sender persists inbound_orphans and returns matched:false", async () => {
     const orgFrom = `billing-unmatched-${Math.random()}@chancey.test`;
     await seedWithOutbound("cust-known-unm@x.com", `re_out_unm_${Math.random()}`, orgFrom);
