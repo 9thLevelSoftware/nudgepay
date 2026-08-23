@@ -46,3 +46,14 @@ create policy sms_sender_inventory_member_read on sms_sender_inventory
 -- Writes are operator/service_role only; authenticated is select-only.
 grant select, insert, update, delete on sms_sender_inventory to service_role;
 revoke insert, update, delete on sms_sender_inventory from authenticated;
+
+-- Persist the outbound Messaging Service SID so fallback-SID inbound history
+-- can filter to that service instead of treating every null-from send as a match.
+alter table text_messages
+  add column if not exists messaging_service_sid text;
+alter table text_messages
+  add column if not exists messaging_service_sid_norm text
+    generated always as (nullif(lower(btrim(messaging_service_sid)), '')) stored;
+create index if not exists text_messages_outbound_sid_idx
+  on text_messages (to_number_norm, messaging_service_sid_norm)
+  where direction = 'outbound' and messaging_service_sid_norm is not null;

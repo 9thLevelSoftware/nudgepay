@@ -503,7 +503,8 @@ test("inventory SID overlapping the fallback SID defers to unique outbound histo
 
   await svc.from("text_messages").insert({
     org_id: orgBId, customer_id: custB!.id, direction: "outbound",
-    twilio_message_sid: "SMout-223-hist", from_number: null, to_number: phone, body: "ping",
+    twilio_message_sid: "SMout-223-hist", from_number: null,
+    messaging_service_sid: sharedSid, to_number: phone, body: "ping",
   });
 
   const out = await recordInboundMessage(svc, {
@@ -517,6 +518,55 @@ test("inventory SID overlapping the fallback SID defers to unique outbound histo
   expect(out.matched).toBe(true);
   const { data: rows } = await svc.from("text_messages")
     .select("org_id, customer_id").eq("twilio_message_sid", "SMin-223-fallback-sid");
+  expect(rows).toHaveLength(1);
+  expect(rows![0].org_id).toBe(orgBId);
+  expect(rows![0].customer_id).toBe(custB!.id);
+});
+
+test("fallback SID history ignores another org's Messaging Service sends", async () => {
+  const phone = "+13105550226";
+  const inboundTo = "+15005552226";
+  const fallbackSid = "MG" + "d".repeat(32);
+  const otherSid = "MG" + "e".repeat(32);
+  const { data: orgA } = await svc.from("organizations").insert({ name: "Other SID Hist Org" }).select("id").single();
+  const orgAId = orgA!.id as string;
+  const { data: orgB } = await svc.from("organizations").insert({ name: "Fallback SID Hist Org" }).select("id").single();
+  const orgBId = orgB!.id as string;
+
+  const { error: invErr } = await svc.from("sms_sender_inventory").insert({
+    org_id: orgAId, messaging_service_sid: fallbackSid, status: "active",
+  });
+  expect(invErr).toBeNull();
+
+  const { data: custA } = await svc.from("customers")
+    .insert({ org_id: orgAId, qbo_id: "c-sidmix-a", name: "Mix A", phone, sms_consent: true }).select("id").single();
+  const { data: custB } = await svc.from("customers")
+    .insert({ org_id: orgBId, qbo_id: "c-sidmix-b", name: "Mix B", phone, sms_consent: true }).select("id").single();
+
+  await svc.from("text_messages").insert([
+    {
+      org_id: orgAId, customer_id: custA!.id, direction: "outbound",
+      twilio_message_sid: "SMout-226-other", from_number: null,
+      messaging_service_sid: otherSid, to_number: phone, body: "a",
+    },
+    {
+      org_id: orgBId, customer_id: custB!.id, direction: "outbound",
+      twilio_message_sid: "SMout-226-fb", from_number: null,
+      messaging_service_sid: fallbackSid, to_number: phone, body: "b",
+    },
+  ]);
+
+  const out = await recordInboundMessage(svc, {
+    from: phone,
+    to: inboundTo,
+    body: "hello",
+    messageSid: "SMin-226-sid-filter",
+    messagingServiceSid: fallbackSid,
+    fallbackMessagingServiceSid: fallbackSid,
+  });
+  expect(out.matched).toBe(true);
+  const { data: rows } = await svc.from("text_messages")
+    .select("org_id, customer_id").eq("twilio_message_sid", "SMin-226-sid-filter");
   expect(rows).toHaveLength(1);
   expect(rows![0].org_id).toBe(orgBId);
   expect(rows![0].customer_id).toBe(custB!.id);

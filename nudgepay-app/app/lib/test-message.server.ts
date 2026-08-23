@@ -48,6 +48,7 @@ export async function sendTestSms(
     twilio_message_sid: result.sid,
     status: result.status,
     from_number: "from" in sender ? sender.from : null,
+    messaging_service_sid: "messagingServiceSid" in sender ? sender.messagingServiceSid : null,
     to_number: args.to,
     body,
   });

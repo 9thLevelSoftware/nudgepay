@@ -166,6 +166,7 @@ export async function sendInvoiceText(
     twilio_message_sid: result.sid,
     status: result.status,
     from_number: "from" in sender ? sender.from : null,
+    messaging_service_sid: "messagingServiceSid" in sender ? sender.messagingServiceSid : null,
     to_number: cust.phone as string,
     body,
   }).select("id").single();
@@ -178,15 +179,19 @@ async function uniqueOutboundOrg(
   service: SupabaseClient,
   fromNorm: string,
   toNorm: string,
-  requireFromMatch = false,
+  opts: { requireFromMatch?: boolean; messagingServiceSid?: string } = {},
 ): Promise<string | null> {
   let q = service.from("text_messages")
     .select("org_id")
     .eq("direction", "outbound")
     .eq("to_number_norm", fromNorm);
-  q = requireFromMatch
-    ? q.eq("from_number_norm", toNorm)
-    : q.or(`from_number_norm.is.null,from_number_norm.eq."${toNorm}"`);
+  if (opts.messagingServiceSid) {
+    q = q.eq("messaging_service_sid_norm", opts.messagingServiceSid);
+  } else if (opts.requireFromMatch) {
+    q = q.eq("from_number_norm", toNorm);
+  } else {
+    q = q.or(`from_number_norm.is.null,from_number_norm.eq."${toNorm}"`);
+  }
   const { data: outbound, error: outboundErr } = await q;
   if (outboundErr) throw outboundErr;
   const orgIds = new Set((outbound ?? []).map((msg) => msg.org_id as string));
@@ -248,12 +253,10 @@ async function resolveInboundOrgId(service: SupabaseClient, args: {
   // SID overlap: those same null-from rows ARE the production history — do
   // not apply the From-number filter or fallback-SID replies become orphans.
   const historyOrg = toNorm.length >= 10
-    ? await uniqueOutboundOrg(
-      service,
-      fromNorm,
-      toNorm,
-      overlapsFallbackFrom && !overlapsFallbackSid,
-    )
+    ? await uniqueOutboundOrg(service, fromNorm, toNorm, {
+      requireFromMatch: overlapsFallbackFrom && !overlapsFallbackSid,
+      messagingServiceSid: overlapsFallbackSid ? sid : undefined,
+    })
     : null;
   if (historyOrg) return historyOrg;
   if (overlapsFallback) return null;
