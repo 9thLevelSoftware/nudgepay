@@ -1,6 +1,8 @@
 // PostgREST/Supabase list cap: a page shorter than `count` is truncated.
 // Never treat a truncated set as complete (recon must not auto-resolve).
-// Stage 1 of loadCaseQueueSource uses pageAll on invoices and cases (no embed).
+// Stage 1 of loadCaseQueueSource uses pageAll on overdue invoices, coming-due
+// invoices, and open cases (no embed). Truncation is queueTruncated chrome,
+// not a throw. Leftover lists use honestPage / pageAllHonest and never throw.
 // orderPage has no table qualifier — do not use it on embedded selects.
 
 export const POSTGREST_MAX_ROWS = 1000;
@@ -13,6 +15,77 @@ export type PageAllPage<T> = {
 };
 
 export type PageAllResult<T> = { rows: T[]; truncated: boolean };
+
+export type HonestPage<T> = {
+  rows: T[];
+  truncated: boolean;
+  error: { message: string } | null;
+};
+
+/** Fail-closed single-page reader. Callers must branch on `error` before `truncated`. */
+export function honestPage<T>(args: {
+  data: T[] | null;
+  count: number | null | undefined;
+  error: { message: string } | null;
+  askedExact: boolean;
+}): HonestPage<T> {
+  if (args.error) return { rows: [], truncated: false, error: args.error };
+  const rows = args.data ?? [];
+  const truncated =
+    args.askedExact && (args.count == null || isTruncatedPage(rows.length, args.count));
+  return { rows, truncated, error: null };
+}
+
+function errorMessage(error: unknown): string {
+  if (typeof error === "object" && error && "message" in error) {
+    const message = (error as { message: unknown }).message;
+    if (typeof message === "string" && message.trim()) return message;
+  }
+  return "query failed";
+}
+
+export async function pageAllHonest<T>(
+  run: (from: number, to: number) => PromiseLike<PageAllPage<T>>,
+  opts?: { pageSize?: number; maxRows?: number },
+): Promise<HonestPage<T>> {
+  try {
+    const page = await pageAll(run, opts);
+    return { rows: page.rows, truncated: page.truncated, error: null };
+  } catch (error) {
+    return honestPage({
+      data: null, count: null, error: { message: errorMessage(error) }, askedExact: true,
+    });
+  }
+}
+
+export async function pageAllChunkedHonest<T>(
+  idChunks: string[][],
+  runChunk: (
+    ids: string[],
+    from: number,
+    to: number,
+  ) => PromiseLike<PageAllPage<T>>,
+  opts?: { pageSize?: number; maxRows?: number },
+): Promise<HonestPage<T>> {
+  try {
+    const page = await pageAllChunked(idChunks, runChunk, opts);
+    return { rows: page.rows, truncated: page.truncated, error: null };
+  } catch (error) {
+    return honestPage({
+      data: null, count: null, error: { message: errorMessage(error) }, askedExact: true,
+    });
+  }
+}
+
+/** Collapse pages into chrome flags. Error wins; truncation is not a query failure. */
+export function honestListState(
+  pages: ReadonlyArray<Pick<HonestPage<unknown>, "error" | "truncated">>,
+): { loadError: string | null; truncated: boolean } {
+  for (const page of pages) {
+    if (page.error) return { loadError: page.error.message, truncated: false };
+  }
+  return { loadError: null, truncated: pages.some((page) => page.truncated) };
+}
 
 export function isTruncatedPage(length: number, count: number | null | undefined): boolean {
   if (count == null || !Number.isFinite(count)) return false;

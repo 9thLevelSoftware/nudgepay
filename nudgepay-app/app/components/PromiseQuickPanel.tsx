@@ -18,9 +18,11 @@ interface Props {
   note: string | null;
   returnTo: string;
   promiseError?: string | null;
+  loadError?: string | null;
+  truncated?: boolean;
 }
 
-export function PromiseQuickPanel({ promise, invoices, note, returnTo, promiseError }: Props) {
+export function PromiseQuickPanel({ promise, invoices, note, returnTo, promiseError, loadError = null, truncated = false }: Props) {
   const navigation = useNavigation();
   const cancelBusy = navigation.state !== "idle" && navigation.formAction === "/api/promises/cancel";
   const [confirmCancel, setConfirmCancel] = useState(false);
@@ -53,6 +55,10 @@ export function PromiseQuickPanel({ promise, invoices, note, returnTo, promiseEr
         ) : null}
       </header>
 
+      {loadError ? (
+        <p className="px-4 py-2 text-sm text-hot border-b border-border" role="alert">{loadError}</p>
+      ) : null}
+
       <div className="grid grid-cols-2 gap-3 p-4 bg-paper border-b border-border">
         <div><p className="font-mono text-[11px] uppercase text-muted">Promised</p><p className="font-display text-lg text-text tabular-nums">{formatUSD(promise.promisedAmount)}</p></div>
         <div><p className="font-mono text-[11px] uppercase text-muted">Received</p><p className="font-display text-lg text-text tabular-nums">{formatUSD(promise.amountReceived)}</p></div>
@@ -69,16 +75,21 @@ export function PromiseQuickPanel({ promise, invoices, note, returnTo, promiseEr
       <div className="p-4 border-b border-border">
         <p className="font-mono text-[11px] uppercase text-muted mb-2">Linked invoices</p>
         {invoices.length === 0 ? (
-          <p className="text-sm text-muted">No linked invoices.</p>
+          <p className="text-sm text-muted">{truncated ? "Invoice list may be incomplete." : "No linked invoices."}</p>
         ) : (
-          <ul className="space-y-1 text-sm">
-            {invoices.map((inv) => (
-              <li key={inv.invoiceId} className="flex justify-between">
-                <span className="text-text">{inv.docNumber ? `#${inv.docNumber}` : "(no invoice #)"}</span>
-                <span className="text-muted tabular-nums">{formatUSD(inv.balance)}</span>
-              </li>
-            ))}
-          </ul>
+          <>
+            {truncated ? (
+              <p className="mb-2 text-xs text-warm">Invoice list may be incomplete.</p>
+            ) : null}
+            <ul className="space-y-1 text-sm">
+              {invoices.map((inv) => (
+                <li key={inv.invoiceId} className="flex justify-between">
+                  <span className="text-text">{inv.docNumber ? `#${inv.docNumber}` : "(no invoice #)"}</span>
+                  <span className="text-muted tabular-nums">{formatUSD(inv.balance)}</span>
+                </li>
+              ))}
+            </ul>
+          </>
         )}
       </div>
 

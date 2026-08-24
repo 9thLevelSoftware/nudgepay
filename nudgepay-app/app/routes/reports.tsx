@@ -9,7 +9,7 @@ import { ArKpiBand } from "../components/ArKpiBand";
 import { AgingBarChart, ChartCard, TrendLineChart } from "../components/SvgCharts";
 import { ContentShell } from "../components/ContentShell";
 import { pageTitle } from "../lib/meta";
-import { TruncationBanner } from "../components/TruncationBanner";
+import { LoadErrorBanner, TruncationBanner } from "../components/TruncationBanner";
 import type { Route } from "./+types/reports";
 
 export const meta: Route.MetaFunction = ({ data }) => {
@@ -50,7 +50,10 @@ function fmtHours(x: number | null): string {
 
 export default function Reports() {
   const { report, arKpis, orgName, initials, userLabel, connected, syncLabel, syncIssues } = useLoaderData<typeof loader>();
+  const loadError = report.loadError || arKpis.loadError;
   const truncated = report.truncated || arKpis.truncated;
+  const hideTeam = !!report.loadError || report.truncated;
+  const hideAr = !!arKpis.loadError || arKpis.truncated;
   const teamContacts = report.perRep.reduce((s, r) => s + r.contactsLogged, 0);
   const teamKept = report.perRep.reduce((s, r) => s + r.kept, 0);
   const teamResolved = report.perRep.reduce((s, r) => s + r.resolved, 0);
@@ -71,7 +74,7 @@ export default function Reports() {
         <div className="flex items-center justify-between gap-3">
           <h1 className="font-display text-xl font-semibold text-text">Team performance</h1>
           <div className="flex items-center gap-2">
-            {!report.truncated ? (
+            {!report.loadError && !report.truncated ? (
               <a
                 href={`/reports.csv?range=${report.range}`}
                 download={`nudgepay-report-${report.range}d.csv`}
@@ -80,7 +83,7 @@ export default function Reports() {
                 Download CSV
               </a>
             ) : null}
-            {!arKpis.truncated ? (
+            {!arKpis.loadError && !arKpis.truncated ? (
               <a
                 href={`/reports.csv?range=${report.range}&sheet=ar`}
                 download={`nudgepay-ar-${report.range}d.csv`}
@@ -106,27 +109,27 @@ export default function Reports() {
           </div>
         </div>
 
-        {truncated ? <TruncationBanner /> : null}
+        {loadError ? <LoadErrorBanner message={loadError} /> : truncated ? <TruncationBanner /> : null}
 
         <section>
-          <ArKpiBand kpis={arKpis} isOwner={false} />
+          <ArKpiBand kpis={arKpis} isOwner={false} loadError={arKpis.loadError} />
         </section>
 
         {/* Summary strip */}
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
           <div className="rounded-lg border border-border bg-panel p-4">
             <p className="text-xs font-sans uppercase tracking-wider text-muted">Median time to first contact</p>
-            <p className="mt-1 font-display text-2xl text-text">{report.truncated ? "—" : fmtHours(report.firstContact.medianHours)}</p>
-            <p className="text-xs text-muted">{report.truncated ? "—" : `${fmtPct(report.firstContact.within24hPct)} within 24h · ${report.firstContact.uncontacted} uncontacted`}</p>
+            <p className="mt-1 font-display text-2xl text-text">{hideTeam ? "—" : fmtHours(report.firstContact.medianHours)}</p>
+            <p className="text-xs text-muted">{hideTeam ? "—" : `${fmtPct(report.firstContact.within24hPct)} within 24h · ${report.firstContact.uncontacted} uncontacted`}</p>
           </div>
           <div className="rounded-lg border border-border bg-panel p-4">
             <p className="text-xs font-sans uppercase tracking-wider text-muted">Contacts logged ({report.range}d)</p>
-            <p className="mt-1 font-display text-2xl text-text">{report.truncated ? "—" : teamContacts}</p>
+            <p className="mt-1 font-display text-2xl text-text">{hideTeam ? "—" : teamContacts}</p>
           </div>
           <div className="rounded-lg border border-border bg-panel p-4">
             <p className="text-xs font-sans uppercase tracking-wider text-muted">Team promise-kept rate</p>
-            <p className="mt-1 font-display text-2xl text-text">{report.truncated ? "—" : fmtPct(teamKeptRate)}</p>
-            <p className="text-xs text-muted">{report.truncated ? "—" : `${teamKept} kept / ${teamResolved} resolved`}</p>
+            <p className="mt-1 font-display text-2xl text-text">{hideTeam ? "—" : fmtPct(teamKeptRate)}</p>
+            <p className="text-xs text-muted">{hideTeam ? "—" : `${teamKept} kept / ${teamResolved} resolved`}</p>
           </div>
         </div>
 
@@ -134,15 +137,21 @@ export default function Reports() {
         <div className="grid gap-4 lg:grid-cols-2">
           <ChartCard
             title="A/R aging"
-            description={`Open receivables by due-date age · ${fmtUSD(arKpis.inputs.endingTotalAr)} total`}
+            description={`Open receivables by due-date age · ${hideAr ? "—" : fmtUSD(arKpis.inputs.endingTotalAr)} total`}
           >
-            <AgingBarChart buckets={arKpis.agingBuckets ?? []} />
+            {arKpis.loadError ? (
+              <p className="py-12 text-center text-sm text-muted">Could not load report</p>
+            ) : (
+              <AgingBarChart buckets={arKpis.agingBuckets ?? []} />
+            )}
           </ChartCard>
           <ChartCard
             title="Contact volume"
             description={`Contacts logged per day over the last ${report.range} days`}
           >
-            {contactTrend.length > 0 ? (
+            {report.loadError ? (
+              <p className="py-12 text-center text-sm text-muted">Could not load report</p>
+            ) : contactTrend.length > 0 ? (
               <TrendLineChart
                 points={contactTrend}
                 label="Daily contact volume"
@@ -158,7 +167,9 @@ export default function Reports() {
           title="Promise kept-rate trend"
           description="Daily kept rate for promises resolved in the selected period."
         >
-          {promiseTrend.some((point) => point.value != null) ? (
+          {report.loadError ? (
+            <p className="py-12 text-center text-sm text-muted">Could not load report</p>
+          ) : promiseTrend.some((point) => point.value != null) ? (
             <TrendLineChart
               points={promiseTrend}
               label="Daily promise kept-rate trend"
@@ -190,12 +201,12 @@ export default function Reports() {
                 {report.perRep.map((r) => (
                   <tr key={r.userId} className="border-t border-border text-text">
                     <td className="px-3 py-2">{r.label}</td>
-                    <td className="px-3 py-2 text-right">{report.truncated ? "—" : r.contactsLogged}</td>
-                    <td className="px-3 py-2 text-right">{report.truncated ? "—" : r.casesTouched}</td>
-                    <td className="px-3 py-2 text-right">{report.truncated ? "—" : r.kept}</td>
-                    <td className="px-3 py-2 text-right">{report.truncated ? "—" : r.partiallyKept}</td>
-                    <td className="px-3 py-2 text-right">{report.truncated ? "—" : r.broken}</td>
-                    <td className="px-3 py-2 text-right">{report.truncated ? "—" : fmtPct(r.keptRate)}</td>
+                    <td className="px-3 py-2 text-right">{hideTeam ? "—" : r.contactsLogged}</td>
+                    <td className="px-3 py-2 text-right">{hideTeam ? "—" : r.casesTouched}</td>
+                    <td className="px-3 py-2 text-right">{hideTeam ? "—" : r.kept}</td>
+                    <td className="px-3 py-2 text-right">{hideTeam ? "—" : r.partiallyKept}</td>
+                    <td className="px-3 py-2 text-right">{hideTeam ? "—" : r.broken}</td>
+                    <td className="px-3 py-2 text-right">{hideTeam ? "—" : fmtPct(r.keptRate)}</td>
                   </tr>
                 ))}
               </tbody>
@@ -220,9 +231,9 @@ export default function Reports() {
                 {report.workload.map((w) => (
                   <tr key={w.ownerId ?? "unassigned"} className="border-t border-border text-text">
                     <td className="px-3 py-2">{w.label}</td>
-                    <td className="px-3 py-2 text-right">{report.truncated ? "—" : w.openCases}</td>
-                    <td className="px-3 py-2 text-right">{report.truncated ? "—" : fmtUSD(w.overdueTotal)}</td>
-                    <td className="px-3 py-2 text-right">{report.truncated ? "—" : w.brokenPromises}</td>
+                    <td className="px-3 py-2 text-right">{hideTeam ? "—" : w.openCases}</td>
+                    <td className="px-3 py-2 text-right">{hideTeam ? "—" : fmtUSD(w.overdueTotal)}</td>
+                    <td className="px-3 py-2 text-right">{hideTeam ? "—" : w.brokenPromises}</td>
                   </tr>
                 ))}
               </tbody>

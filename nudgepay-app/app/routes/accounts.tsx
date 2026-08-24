@@ -30,8 +30,8 @@ import { AccountsDirectory } from "../components/AccountsDirectory";
 import { AccountQuickPanel } from "../components/AccountQuickPanel";
 import { DrawerShell } from "../components/DrawerShell";
 import { pageTitle } from "../lib/meta";
-import { orderPage, pageAll, PAGE_ALL_MAX_ROWS } from "../lib/page-all";
-import { TruncationBanner } from "../components/TruncationBanner";
+import { honestListState, orderPage, pageAllHonest, PAGE_ALL_MAX_ROWS } from "../lib/page-all";
+import { LoadErrorBanner, TruncationBanner } from "../components/TruncationBanner";
 import type { Route } from "./+types/accounts";
 
 export const meta: Route.MetaFunction = () => pageTitle("Accounts");
@@ -81,7 +81,7 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
     next_action_at: string | null; closed_at: string | null;
   };
   const [custPage, invPage, casePage] = await Promise.all([
-    pageAll<CustRow>(
+    pageAllHonest<CustRow>(
       (from, to) =>
         orderPage(
           supabase
@@ -91,7 +91,7 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
         ).range(from, to),
       { maxRows: PAGE_ALL_MAX_ROWS },
     ),
-    pageAll<InvRow>(
+    pageAllHonest<InvRow>(
       (from, to) =>
         orderPage(
           supabase
@@ -102,7 +102,7 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
         ).range(from, to),
       { maxRows: PAGE_ALL_MAX_ROWS },
     ),
-    pageAll<CaseDbRow>(
+    pageAllHonest<CaseDbRow>(
       (from, to) =>
         orderPage(
           supabase
@@ -158,7 +158,7 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
   type ContactRow = { customer_id: string | null; created_at: string; method: string | null };
   type OutboundRow = { case_id: string | null; customer_id: string | null; created_at: string };
   const [logPage, msgPage, emailPage] = await Promise.all([
-    pageAll<ContactRow>(
+    pageAllHonest<ContactRow>(
       (from, to) =>
         orderPage(
           supabase
@@ -169,7 +169,7 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
         ).range(from, to),
       { maxRows: PAGE_ALL_MAX_ROWS },
     ),
-    pageAll<OutboundRow>(
+    pageAllHonest<OutboundRow>(
       (from, to) =>
         orderPage(
           supabase
@@ -180,7 +180,7 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
         ).range(from, to),
       { maxRows: PAGE_ALL_MAX_ROWS },
     ),
-    pageAll<OutboundRow>(
+    pageAllHonest<OutboundRow>(
       (from, to) =>
         orderPage(
           supabase
@@ -213,8 +213,9 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
     lastContactsInput.push({ customerId: cid, date: r.created_at, channel: "Email" });
   }
 
-  const truncated = custPage.truncated || invPage.truncated || casePage.truncated
-    || logPage.truncated || msgPage.truncated || emailPage.truncated;
+  const listState = honestListState([custPage, invPage, casePage, logPage, msgPage, emailPage]);
+  const loadError = listState.loadError ? "Could not load accounts" : null;
+  const truncated = listState.truncated;
 
   // Owner labels
   const roster = await listOrgMembers(service, org.org_id);
@@ -268,7 +269,7 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
       connected,
       isOwner,
       syncIssues,
-      rows,
+      rows: loadError ? [] : rows,
       metrics,
       counts,
       filter,
@@ -276,9 +277,10 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
       q,
       density,
       densityFromUrl,
-      selected,
+      selected: loadError ? null : selected,
       timeZone: orgConfig.companyProfile.timezone,
       truncated,
+      loadError,
     },
     { headers },
   );
@@ -302,8 +304,8 @@ export default function Accounts() {
       syncIssues={<SyncIssues issues={d.syncIssues} returnTo="/accounts" />}
     >
       <div className="p-4 sm:p-6 space-y-4 sm:space-y-6">
-        {d.truncated ? <TruncationBanner /> : null}
-        <AccountsMetrics metrics={d.metrics} truncated={d.truncated} />
+        {d.loadError ? <LoadErrorBanner message={d.loadError} /> : d.truncated ? <TruncationBanner /> : null}
+        <AccountsMetrics metrics={d.metrics} truncated={d.truncated || !!d.loadError} />
         <div className="grid gap-4 lg:grid-cols-[1fr_360px]">
           <AccountsDirectory
             rows={d.rows}
@@ -315,6 +317,8 @@ export default function Accounts() {
             counts={d.counts}
             selectedId={d.selected?.customerId ?? null}
             timeZone={d.timeZone}
+            loadError={d.loadError}
+            truncated={d.truncated}
           />
           <div className="hidden lg:block">
             <AccountQuickPanel account={d.selected} />

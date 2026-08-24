@@ -30,6 +30,28 @@ export type CasePromiseInput = {
 };
 export type CaseLastContactInput = { caseId: string; date: string; channel: string };
 
+export type QueueTruncation = {
+  overdue: boolean;
+  comingDue: boolean;
+  cases: boolean;
+  customers: boolean;
+};
+
+export function isQueueTruncated(t: QueueTruncation): boolean {
+  return t.overdue || t.comingDue || t.cases || t.customers;
+}
+
+/** Banner copy names the truncated Stage-1 page(s); never a generic overdue-only lie. */
+export function queueTruncationMessage(t: QueueTruncation): string | null {
+  const parts: string[] = [];
+  if (t.overdue) parts.push("overdue invoices");
+  if (t.comingDue) parts.push("coming-due invoices");
+  if (t.cases) parts.push("open cases");
+  if (t.customers) parts.push("customers");
+  if (parts.length === 0) return null;
+  return `Showing a partial ${parts.join(" / ")} list — list may be incomplete`;
+}
+
 export type CaseStatus = "new" | "working" | "promised" | "waiting" | "on_hold" | "resolved";
 export type NextActionType = "contact" | "follow_up" | "promise" | "waiting" | "exception";
 
@@ -77,6 +99,8 @@ export type CaseItem = {
   priorAttempts: number;
   override: { level: PriorityLevel; reason: string | null; by: string | null; at: string | null } | null;
   lastContact: LastContact;
+  /** Stage-2 last-contact was truncated or failed — missing is unknown, not never-contacted. */
+  lastContactUnknown: boolean;
   phone: string | null;
   smsConsent: boolean;
   commPrefs: CommPrefs;
@@ -136,6 +160,7 @@ export function buildCaseItems(
   today: string,
   ownerLabels: Map<string, string>,
   config: OrgConfig,
+  opts?: { lastContactIncomplete?: boolean },
 ): CaseItem[] {
   const customerById = new Map(customers.map((c) => [c.id, c]));
 
@@ -186,12 +211,14 @@ export function buildCaseItems(
     const name = cust?.name ?? "(unknown customer)";
     const followUpDue = cse.nextActionAt != null && cse.nextActionAt <= today;
     const prom = promiseByCase.get(cse.id) ?? null;
+    const lastContactUnknown = !lc && !!opts?.lastContactIncomplete;
     const daysSinceContact = lc ? ageInDays(lc.date, today) : null;
     const scored = scorePriority({
       ageDays: oldestAgeDays,
       balance: totalOverdue,
       brokenPromise: prom?.status === "broken",
       daysSinceContact,
+      contactUnknown: lastContactUnknown,
       followUpDue,
     }, {
       thresholds: {
@@ -229,6 +256,7 @@ export function buildCaseItems(
         ? { level: overrideLevel, reason: cse.priorityOverrideReason ?? null, by: cse.priorityOverrideBy ?? null, at: cse.priorityOverrideAt ?? null }
         : null,
       lastContact: lc ? { date: lc.date, channel: lc.channel } : null,
+      lastContactUnknown,
       phone: cust?.phone ?? null,
       smsConsent: cust?.smsConsent ?? false,
       commPrefs: cust?.commPrefs ?? DEFAULT_COMM_PREFS,
@@ -260,7 +288,7 @@ export function applyCaseView(
 ): CaseItem[] {
   if (view === "30-plus") return items.filter((i) => i.oldestAgeDays >= 30 && !i.suppressed);
   if (view === "high-value") return items.filter((i) => i.totalOverdue >= highValue && !i.suppressed);
-  if (view === "never-contacted") return items.filter((i) => i.lastContact === null && !i.suppressed);
+  if (view === "never-contacted") return items.filter((i) => i.lastContact === null && !i.lastContactUnknown && !i.suppressed);
   if (view === "follow-ups-due") return items.filter((i) => i.nextActionAt != null && i.nextActionAt <= today && !i.suppressed);
   if (view === "broken-promises") return items.filter((i) => i.brokenPromise && !i.suppressed);
   if (view === "waiting") return items.filter((i) => i.status === "waiting");
@@ -334,7 +362,7 @@ export function computeCaseMetrics(items: CaseItem[], today: string, highValue: 
   return {
     thirtyPlus: bucket(active, (i) => i.oldestAgeDays >= 30),
     highValue: bucket(active, (i) => i.totalOverdue >= highValue),
-    neverContacted: bucket(active, (i) => i.lastContact === null),
+    neverContacted: bucket(active, (i) => i.lastContact === null && !i.lastContactUnknown),
     allOpen: bucket(active, () => true),
     followUpsDue: bucket(active, (i) => i.nextActionAt != null && i.nextActionAt <= today),
     brokenPromises: bucket(active, (i) => i.brokenPromise),

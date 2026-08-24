@@ -91,14 +91,19 @@ export function FocusCard({
           <span className="text-on-ink/80">Email</span>{" "}
           <span className="text-surface">{item.email ?? "—"}</span>
         </div>
-        {item.lastContact && (
+        {item.lastContactUnknown ? (
+          <div className="col-span-2">
+            <span className="text-on-ink/80">Last contact</span>{" "}
+            <span className="text-surface">unknown</span>
+          </div>
+        ) : item.lastContact ? (
           <div className="col-span-2">
             <span className="text-on-ink/80">Last contact</span>{" "}
             <span className="text-surface">
               {item.lastContact.channel} · {formatInstant(item.lastContact.date, timeZone)}
             </span>
           </div>
-        )}
+        ) : null}
         {item.owner && (
           <div className="col-span-2">
             <span className="text-on-ink/80">Owner</span>{" "}

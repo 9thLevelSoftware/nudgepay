@@ -11,7 +11,9 @@ import type { ExceptionReason } from "./contact-log";
 import { buildArAgingBuckets, buildArKpis, type ArKpis } from "./ar-kpis";
 import { loadArKpiSource } from "./ar-kpis.server";
 import { loadContactPromiseRates } from "./contact-promise-rates.server";
-import { chunkIds, orderPage, pageAll, pageAllChunked, PAGE_ALL_MAX_ROWS } from "./page-all";
+import {
+  chunkIds, honestListState, orderPage, pageAllChunkedHonest, pageAllHonest, PAGE_ALL_MAX_ROWS,
+} from "./page-all";
 import {
   activeBrokenCaseIds, buildTeamReport, type ReportRange,
   type ReportContactLog, type ReportPromise, type ReportOpenedCase, type ReportWorkloadCase,
@@ -30,7 +32,7 @@ export async function loadTeamReport(args: {
   service: SupabaseClient;
   orgId: string;
   range: ReportRange;
-}): Promise<TeamReport & { truncated: boolean }> {
+}): Promise<TeamReport & { truncated: boolean; loadError: string | null }> {
   const { supabase, service, orgId, range } = args;
 
   const orgConfig = await loadOrgConfig(supabase, orgId);
@@ -49,7 +51,7 @@ export async function loadTeamReport(args: {
   };
   type InvRow = { customer_id: string | null; balance: number | string | null };
   const [logs, proms, opened, openCasesPage, invs] = await Promise.all([
-    pageAll<LogRow>(
+    pageAllHonest<LogRow>(
       (from, to) =>
         orderPage(
           supabase
@@ -60,7 +62,7 @@ export async function loadTeamReport(args: {
         ).range(from, to),
       { maxRows: PAGE_ALL_MAX_ROWS },
     ),
-    pageAll<PromRow>(
+    pageAllHonest<PromRow>(
       (from, to) =>
         orderPage(
           supabase
@@ -72,7 +74,7 @@ export async function loadTeamReport(args: {
         ).range(from, to),
       { maxRows: PAGE_ALL_MAX_ROWS },
     ),
-    pageAll<OpenedRow>(
+    pageAllHonest<OpenedRow>(
       (from, to) =>
         orderPage(
           supabase
@@ -83,7 +85,7 @@ export async function loadTeamReport(args: {
         ).range(from, to),
       { maxRows: PAGE_ALL_MAX_ROWS },
     ),
-    pageAll<OpenRow>(
+    pageAllHonest<OpenRow>(
       (from, to) =>
         orderPage(
           supabase
@@ -94,7 +96,7 @@ export async function loadTeamReport(args: {
         ).range(from, to),
       { maxRows: PAGE_ALL_MAX_ROWS },
     ),
-    pageAll<InvRow>(
+    pageAllHonest<InvRow>(
       (from, to) =>
         orderPage(
           supabase
@@ -122,8 +124,8 @@ export async function loadTeamReport(args: {
 
   type CustOwnerRow = { id: string; owner: string | null };
   const custPage = customerIds.length === 0
-    ? { rows: [] as CustOwnerRow[], truncated: false }
-    : await pageAllChunked<CustOwnerRow>(
+    ? { rows: [] as CustOwnerRow[], truncated: false, error: null }
+    : await pageAllChunkedHonest<CustOwnerRow>(
         chunkIds(customerIds, 100),
         (ids, from, to) =>
           orderPage(
@@ -147,8 +149,8 @@ export async function loadTeamReport(args: {
   const openCaseIds = openCases.map((c) => c.id);
   type PromCaseRow = { case_id: string; status: ReportPromise["status"]; created_at: string };
   const promForCases = openCaseIds.length === 0
-    ? { rows: [] as PromCaseRow[], truncated: false }
-    : await pageAllChunked<PromCaseRow>(
+    ? { rows: [] as PromCaseRow[], truncated: false, error: null }
+    : await pageAllChunkedHonest<PromCaseRow>(
         chunkIds(openCaseIds, 100),
         (ids, from, to) =>
           orderPage(
@@ -175,12 +177,23 @@ export async function loadTeamReport(args: {
     hasBrokenPromise: brokenCaseIds.has(c.id),
   }));
 
-  const truncated = logs.truncated || proms.truncated || opened.truncated
-    || openCasesPage.truncated || invs.truncated || custPage.truncated || promForCases.truncated;
+  const listState = honestListState(
+    [logs, proms, opened, openCasesPage, invs, custPage, promForCases],
+  );
+  const loadError = listState.loadError ? "Could not load report" : null;
+  const truncated = listState.truncated;
 
   return {
-    ...buildTeamReport({ range, roster, contactLogs, promises, openedCases, workloadCases, today, timeZone: tz }),
+    ...buildTeamReport({
+      range, roster,
+      contactLogs: loadError ? [] : contactLogs,
+      promises: loadError ? [] : promises,
+      openedCases: loadError ? [] : openedCases,
+      workloadCases: loadError ? [] : workloadCases,
+      today, timeZone: tz,
+    }),
     truncated,
+    loadError,
   };
 }
 
@@ -190,7 +203,7 @@ export async function loadReportArKpis(args: {
   supabase: SupabaseClient;
   orgId: string;
   range: ReportRange;
-}): Promise<ArKpis> {
+}): Promise<ArKpis & { loadError: string | null }> {
   const { supabase, orgId, range } = args;
   const orgConfig = await loadOrgConfig(supabase, orgId);
   const tz = orgConfig.companyProfile.timezone;
@@ -199,7 +212,7 @@ export async function loadReportArKpis(args: {
 
   const [arSrc, openCases] = await Promise.all([
     loadArKpiSource({ supabase, orgId, today, rangeDays: range }),
-    pageAll<OpenCaseRow>(
+    pageAllHonest<OpenCaseRow>(
       (from, to) =>
         orderPage(
           supabase
@@ -211,6 +224,25 @@ export async function loadReportArKpis(args: {
       { maxRows: PAGE_ALL_MAX_ROWS },
     ),
   ]);
+
+  if (openCases.error) {
+    const kpis = buildArKpis({
+      open: arSrc.open,
+      salesLookback: arSrc.salesLookback,
+      payments: arSrc.payments,
+      today,
+      rangeDays: range,
+      openCaseIds: [],
+      contactedCaseIdsInWindow: [],
+      promisesCreatedInWindow: 0,
+      truncated: { ...arSrc.truncated, contact: false },
+    });
+    return {
+      ...kpis,
+      agingBuckets: buildArAgingBuckets(arSrc.open, today),
+      loadError: "Could not load report",
+    };
+  }
 
   const openCaseIds = openCases.rows
     .filter((c) => !isCaseSuppressed({
@@ -236,5 +268,5 @@ export async function loadReportArKpis(args: {
     promisesCreatedInWindow: rates.promisesCreated,
     truncated: { ...arSrc.truncated, contact: rates.truncated || openCases.truncated },
   });
-  return { ...kpis, agingBuckets: buildArAgingBuckets(arSrc.open, today) };
+  return { ...kpis, agingBuckets: buildArAgingBuckets(arSrc.open, today), loadError: null };
 }

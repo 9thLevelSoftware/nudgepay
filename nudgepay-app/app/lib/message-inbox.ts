@@ -261,3 +261,23 @@ export function computeMessageMetrics(rows: ThreadRow[]): MessageMetrics {
     unanswered: rows.filter((r) => r.unansweredInbound > 0).length,
   };
 }
+
+/** Incomplete or failed reads are unknown — never a numeric 0% / empty-inbox-as-done. */
+export function honestMetrics<T>(
+  metrics: T,
+  honesty: { loadError: string | null; truncated: boolean },
+): T | null {
+  if (honesty.loadError || honesty.truncated) return null;
+  return metrics;
+}
+
+export function inboxListCopy(args: {
+  loadError: string | null;
+  truncated: boolean;
+  rowCount: number;
+}): string | null {
+  if (args.loadError) return args.loadError;
+  if (args.rowCount > 0) return null;
+  if (args.truncated) return "Inbox may be incomplete.";
+  return "No threads in this view.";
+}

@@ -26,8 +26,8 @@ import { PromisesLedger } from "../components/PromisesLedger";
 import { PromiseQuickPanel } from "../components/PromiseQuickPanel";
 import { DrawerShell } from "../components/DrawerShell";
 import { pageTitle } from "../lib/meta";
-import { chunkIds, orderPage, pageAll, pageAllChunked, PAGE_ALL_MAX_ROWS } from "../lib/page-all";
-import { TruncationBanner } from "../components/TruncationBanner";
+import { chunkIds, honestListState, orderPage, pageAllChunkedHonest, pageAllHonest, PAGE_ALL_MAX_ROWS } from "../lib/page-all";
+import { LoadErrorBanner, TruncationBanner } from "../components/TruncationBanner";
 import type { Route } from "./+types/promises";
 
 export const meta: Route.MetaFunction = () => pageTitle("Promises");
@@ -73,7 +73,7 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
     baseline_balance: number | string | null; promised_date: string; grace_until: string;
     created_at: string; contact_log_id: string | null;
   };
-  const promisePage = await pageAll<PromiseDbRow>(
+  const promisePage = await pageAllHonest<PromiseDbRow>(
     (from, to) =>
       orderPage(
         supabase
@@ -94,8 +94,8 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
   type PiRow = { promise_id: string; invoice_id: string };
   const [custPage, casePage, piPage] = await Promise.all([
     customerIds.length === 0
-      ? Promise.resolve({ rows: [] as CustRow[], truncated: false })
-      : pageAllChunked<CustRow>(
+      ? Promise.resolve({ rows: [] as CustRow[], truncated: false, error: null })
+      : pageAllChunkedHonest<CustRow>(
           chunkIds(customerIds, 100),
           (ids, from, to) =>
             orderPage(
@@ -108,8 +108,8 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
           { maxRows: PAGE_ALL_MAX_ROWS },
         ),
     caseIds.length === 0
-      ? Promise.resolve({ rows: [] as CaseLookupRow[], truncated: false })
-      : pageAllChunked<CaseLookupRow>(
+      ? Promise.resolve({ rows: [] as CaseLookupRow[], truncated: false, error: null })
+      : pageAllChunkedHonest<CaseLookupRow>(
           chunkIds(caseIds, 100),
           (ids, from, to) =>
             orderPage(
@@ -122,8 +122,8 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
           { maxRows: PAGE_ALL_MAX_ROWS },
         ),
     pendingIds.length === 0
-      ? Promise.resolve({ rows: [] as PiRow[], truncated: false })
-      : pageAllChunked<PiRow>(
+      ? Promise.resolve({ rows: [] as PiRow[], truncated: false, error: null })
+      : pageAllChunkedHonest<PiRow>(
           chunkIds(pendingIds, 100),
           (ids, from, to) =>
             supabase
@@ -146,8 +146,8 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
   const linkInvIds = Array.from(new Set(piPage.rows.map((l) => l.invoice_id)));
   type BalRow = { id: string; balance: number | string | null };
   const invBalPage = linkInvIds.length === 0
-    ? { rows: [] as BalRow[], truncated: false }
-    : await pageAllChunked<BalRow>(
+    ? { rows: [] as BalRow[], truncated: false, error: null }
+    : await pageAllChunkedHonest<BalRow>(
         chunkIds(linkInvIds, 100),
         (ids, from, to) =>
           orderPage(
@@ -211,8 +211,10 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
   let selectedInvoices: PromiseLinkedInvoice[] = [];
   let selectedNote: string | null = null;
   let selectedTruncated = false;
+  let selectedError: { message: string } | null = null;
+  let invoiceDetailFailed = false;
   if (selected) {
-    const selectedPi = await pageAll<{ invoice_id: string }>(
+    const selectedPi = await pageAllHonest<{ invoice_id: string }>(
       (from, to) =>
         supabase
           .from("promise_invoices")
@@ -227,8 +229,8 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
     const invIds = selectedPi.rows.map((r) => r.invoice_id);
     type SelInv = { id: string; qbo_doc_number: string | null; balance: number | string | null };
     const selInvPage = invIds.length === 0
-      ? { rows: [] as SelInv[], truncated: false }
-      : await pageAllChunked<SelInv>(
+      ? { rows: [] as SelInv[], truncated: false, error: null }
+      : await pageAllChunkedHonest<SelInv>(
           chunkIds(invIds, 100),
           (ids, from, to) =>
             orderPage(
@@ -241,6 +243,8 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
           { maxRows: PAGE_ALL_MAX_ROWS },
         );
     selectedTruncated = selectedTruncated || selInvPage.truncated;
+    invoiceDetailFailed = !!(selectedPi.error || selInvPage.error);
+    selectedError = selectedPi.error ?? selInvPage.error;
     const invById = new Map(selInvPage.rows.map((r) => [r.id, r]));
     selectedInvoices = invIds.map((id) => ({
       invoiceId: id,
@@ -252,21 +256,33 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
     if (contactLogId) {
       const { data: log, error: logErr } = await supabase
         .from("contact_logs").select("notes").eq("org_id", org.org_id).eq("id", contactLogId).maybeSingle();
-      if (logErr) throw logErr;
-      selectedNote = (log as { notes?: string | null } | null)?.notes ?? null;
+      if (logErr) {
+        selectedError = selectedError ?? { message: logErr.message };
+      } else {
+        selectedNote = (log as { notes?: string | null } | null)?.notes ?? null;
+      }
     }
   }
 
-  const truncated = promisePage.truncated || custPage.truncated || casePage.truncated
-    || piPage.truncated || invBalPage.truncated || selectedTruncated;
+  const listState = honestListState([promisePage, custPage, casePage, piPage, invBalPage]);
+  const loadError = listState.loadError ? "Could not load promises" : null;
+  const truncated = listState.truncated;
+  const selectedLoadError = selectedError ? "Could not load promise detail" : null;
 
   return data(
     {
       orgName,
       initials, userLabel, syncLabel, connected, isOwner, syncIssues,
-      rows, metrics, counts, tab, sort, q, returnTo,
-      selected, selectedInvoices, selectedNote, promiseError,
+      rows: loadError ? [] : rows,
+      metrics, counts, tab, sort, q, returnTo,
+      selected: loadError ? null : selected,
+      selectedInvoices: loadError || invoiceDetailFailed ? [] : selectedInvoices,
+      selectedNote: loadError || selectedLoadError ? null : selectedNote,
+      promiseError,
       truncated,
+      loadError,
+      selectedLoadError,
+      selectedTruncated,
     },
     { headers },
   );
@@ -290,6 +306,8 @@ export default function Promises() {
       note={d.selectedNote}
       returnTo={d.returnTo}
       promiseError={d.promiseError}
+      loadError={d.selectedLoadError}
+      truncated={d.selectedTruncated}
     />
   );
   return (
@@ -304,8 +322,8 @@ export default function Promises() {
       syncIssues={<SyncIssues issues={d.syncIssues} returnTo="/promises" />}
     >
       <div className="p-4 sm:p-6 space-y-4 sm:space-y-6">
-        {d.truncated ? <TruncationBanner /> : null}
-        <PromisesMetrics metrics={d.metrics} truncated={d.truncated} />
+        {d.loadError ? <LoadErrorBanner message={d.loadError} /> : d.truncated ? <TruncationBanner /> : null}
+        <PromisesMetrics metrics={d.metrics} truncated={d.truncated || !!d.loadError} />
         <div className="grid gap-4 lg:grid-cols-[1fr_360px]">
           <PromisesLedger
             rows={d.rows}
@@ -314,6 +332,8 @@ export default function Promises() {
             search={d.q}
             counts={d.counts}
             selectedId={d.selected?.promiseId ?? null}
+            loadError={d.loadError}
+            truncated={d.truncated}
           />
           <div className="hidden lg:block">{isDesktop ? quickPanel : null}</div>
         </div>

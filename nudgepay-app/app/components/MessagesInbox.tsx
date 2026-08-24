@@ -1,6 +1,6 @@
 // app/components/MessagesInbox.tsx
 import { Form, Link } from "react-router";
-import type { ThreadRow, MessageTab, MessageSort, ChannelFilter } from "../lib/message-inbox";
+import { inboxListCopy, type ThreadRow, type MessageTab, type MessageSort, type ChannelFilter } from "../lib/message-inbox";
 import { formatInstant } from "../lib/dates";
 import { Icon } from "./Icons";
 import { useSearchShortcut } from "../lib/use-search-shortcut";
@@ -34,9 +34,11 @@ interface Props {
   channel: ChannelFilter;
   channelCounts: { all: number; sms: number; email: number };
   timeZone?: string | null;
+  loadError?: string | null;
+  truncated?: boolean;
 }
 
-export function MessagesInbox({ rows, tab, sort, search, counts, selectedId, selectedChannel, channel, channelCounts, timeZone }: Props) {
+export function MessagesInbox({ rows, tab, sort, search, counts, selectedId, selectedChannel, channel, channelCounts, timeZone, loadError = null, truncated = false }: Props) {
   const searchRef = useSearchShortcut();
   const tabHref = (id: MessageTab) =>
     `?${new URLSearchParams({ tab: id, sort, channel, ...(search ? { q: search } : {}) }).toString()}`;
@@ -117,7 +119,9 @@ export function MessagesInbox({ rows, tab, sort, search, counts, selectedId, sel
       </nav>
 
       {rows.length === 0 ? (
-        <p className="px-4 py-10 text-center text-sm text-muted">No threads in this view.</p>
+        <p className="px-4 py-10 text-center text-sm text-muted">
+          {inboxListCopy({ loadError, truncated, rowCount: rows.length })}
+        </p>
       ) : (
         <ul role="list" className="divide-y divide-border">
           {rows.map((r) => {

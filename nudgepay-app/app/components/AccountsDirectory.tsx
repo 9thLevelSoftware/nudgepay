@@ -98,10 +98,13 @@ interface Props {
   counts: Record<AccountFilter, number>;
   selectedId: string | null;
   timeZone?: string | null;
+  loadError?: string | null;
+  truncated?: boolean;
 }
 
 export function AccountsDirectory({
   rows, filter, sort, search, density, densityFromUrl, counts, selectedId, timeZone,
+  loadError = null, truncated = false,
 }: Props) {
   const navigate = useNavigate();
   const location = useLocation();
@@ -279,7 +282,13 @@ export function AccountsDirectory({
       {/* Rows — self-scrolling region; desktop rows virtualize over 60+ entries.
           The column header above stays put while the list scrolls. */}
       {rows.length === 0 ? (
-        <p className="px-4 py-10 text-center text-sm text-muted">No accounts match this filter.</p>
+        <p className="px-4 py-10 text-center text-sm text-muted">
+          {loadError
+            ? loadError
+            : truncated
+              ? "Account list may be incomplete."
+              : "No accounts match this filter."}
+        </p>
       ) : (
         <div
           ref={scrollerRef}
