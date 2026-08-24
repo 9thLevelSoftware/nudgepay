@@ -16,6 +16,8 @@ import { SettingsTabs, SettingsDirtyProvider, resolveSettingsTab, settingsReturn
 import { CollectionsRulesForm } from "../components/CollectionsRulesForm";
 import { SmsSettingsSection } from "../components/SmsSettingsSection";
 import { EmailSettingsSection } from "../components/EmailSettingsSection";
+import { UnmatchedStopList } from "../components/UnmatchedStopList";
+import { listRecentUnmatchedStops } from "../lib/inbound-orphans.server";
 import { LateFeesForm } from "../components/LateFeesForm";
 import { PriorityThresholdsForm } from "../components/PriorityThresholdsForm";
 import { WorkflowSettingsForm } from "../components/WorkflowSettingsForm";
@@ -154,6 +156,7 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
       brokenPromiseEmail: notifPrefs?.broken_promise_email ?? true,
       dailyDigestEmail: notifPrefs?.daily_digest_email ?? true,
     },
+    unmatchedStops: isOwner ? await listRecentUnmatchedStops(service) : { rows: [], loadError: null },
     providerStatus: {
       twilioConfigured,
       resendConfigured,
@@ -652,6 +655,7 @@ export default function Settings() {
           {/* ── Channels tab ─────────────────────────────────────── */}
           {tab === "channels" && (
             <>
+              {d.isOwner ? <UnmatchedStopList stops={d.unmatchedStops.rows} loadError={d.unmatchedStops.loadError} /> : null}
               <SmsSettingsSection
                 key={d.orgId}
                 isOwner={d.isOwner}

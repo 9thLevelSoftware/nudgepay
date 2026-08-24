@@ -33,6 +33,7 @@ type CustomerRow = {
   email: string | null;
   owner: string | null;
   sms_consent: boolean | null;
+  sms_consent_source: "inbound_stop" | "inbound_start" | "staff" | "import" | "unknown" | null;
   preferred_channel: string | null;
   do_not_call: boolean | null;
   do_not_text: boolean | null;
@@ -142,7 +143,7 @@ export async function loader({ request, params, context }: LoaderFunctionArgs) {
   const { data: custData } = await supabase
     .from("customers")
     .select(
-      "id, name, phone, email, owner, sms_consent, preferred_channel, do_not_call, do_not_text, do_not_email, notes",
+      "id, name, phone, email, owner, sms_consent, sms_consent_source, preferred_channel, do_not_call, do_not_text, do_not_email, notes",
     )
     .eq("org_id", org.org_id)
     .eq("id", customerId)
@@ -307,6 +308,7 @@ export async function loader({ request, params, context }: LoaderFunctionArgs) {
         ownerId: customerRow.owner,
         ownerLabel,
         smsConsent: customerRow.sms_consent ?? false,
+        smsConsentSource: customerRow.sms_consent_source ?? null,
         doNotCall: customerRow.do_not_call ?? false,
         doNotText: customerRow.do_not_text ?? false,
         commPrefs,
@@ -356,6 +358,7 @@ export default function AccountProfilePage() {
         email={d.account.email}
         phone={d.account.phone}
         smsConsent={d.account.smsConsent}
+        smsConsentSource={d.account.smsConsentSource}
         commPrefs={d.account.commPrefs}
         notes={d.account.notes}
         openBalance={d.account.openBalance}

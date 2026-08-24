@@ -77,6 +77,9 @@ export function SmsSettingsSection(d: SmsSettingsProps) {
       {!d.smsEnabled && (
         <p className="mt-2 text-xs text-hot">Outbound texts are turned off — composers are disabled and sends are blocked.</p>
       )}
+      <p className="mt-2 text-xs text-warm" role="status">
+        All workspaces share this sender. STOP applies to every customer with this phone.
+      </p>
 
       {/* Sender identity (operator-managed) */}
       <div className="mt-4 flex flex-col gap-2 rounded-md border border-border bg-panel/40 p-3">

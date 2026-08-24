@@ -27,10 +27,22 @@ export function evaluateTestBudget(count: number, cap = TEST_HOUR_CAP): BudgetVe
   return { ok: true };
 }
 
-/** Minute-bucket key so a double-click within 60s is treated as one send. */
-export function sendIdempotencyKey(kind: string, parts: string[], now = new Date()): string {
-  const bucket = Math.floor(now.getTime() / 60_000);
-  return `${kind}:${parts.join(":")}:${bucket}`.slice(0, 128);
+/** FNV-1a 64-bit so long bodies fit the 128-char provider key without a time bucket. */
+function fnv1a64Hex(input: string): string {
+  let h = 0xcbf29ce484222325n;
+  for (let i = 0; i < input.length; i++) {
+    h ^= BigInt(input.charCodeAt(i));
+    h = (h * 0x100000001b3n) & 0xffffffffffffffffn;
+  }
+  return h.toString(16).padStart(16, "0");
+}
+
+/** Stable key `kind:org:invoice:hash(body)` — no minute bucket. */
+export function sendIdempotencyKey(kind: string, parts: string[]): string {
+  const org = parts[0] ?? "";
+  const invoice = parts[1] ?? "";
+  const bodyHash = fnv1a64Hex(parts.slice(2).join("\n"));
+  return `${kind}:${org}:${invoice}:${bodyHash}`.slice(0, 128);
 }
 
 export function hourAgoIso(now = new Date()): string {

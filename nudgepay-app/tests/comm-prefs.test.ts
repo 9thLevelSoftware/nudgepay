@@ -73,11 +73,24 @@ describe("parseCommPrefsUpdate (NP-AUD-2026-003)", () => {
     }))).toEqual({ preferred_channel: "email", do_not_email: true });
   });
 
-  it("treats an unchecked box with sentinel as false for call/text", () => {
+  it("treats an unchecked box with sentinel as false for call, not text without confirm", () => {
     expect(parseCommPrefsUpdate(fd({
       do_not_call_set: "1",
       do_not_text_set: "1",
-    }))).toEqual({ preferred_channel: null, do_not_call: false, do_not_text: false });
+    }))).toEqual({ preferred_channel: null, do_not_call: false });
+  });
+
+  it("does not clear do_not_text without confirm_resubscribe_sms", () => {
+    expect(parseCommPrefsUpdate(fd({
+      do_not_text_set: "1",
+    }))).toEqual({ preferred_channel: null });
+  });
+
+  it("allows explicit SMS re-subscribe when confirm_resubscribe_sms is posted", () => {
+    expect(parseCommPrefsUpdate(fd({
+      do_not_text_set: "1",
+      confirm_resubscribe_sms: "true",
+    }))).toEqual({ preferred_channel: null, do_not_text: false });
   });
 
   it("does not clear do_not_email without confirm_resubscribe", () => {

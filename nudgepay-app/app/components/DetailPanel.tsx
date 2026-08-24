@@ -97,6 +97,8 @@ const EMAIL_BANNER: Record<string, { text: string; tone: string }> = {
   blocked:  { text: "Not sent — this case is marked do-not-contact / legal.",       tone: "text-hot" },
   error:    { text: "Could not send the email.",                                    tone: "text-hot" },
   limited:  { text: "Not sent — send limit reached. Try again later.",              tone: "text-hot" },
+  quiet:    { text: "Not sent — outside quiet hours.",                              tone: "text-warm" },
+  from_allowlist: { text: "Not sent — from address is not on the operator allowlist.", tone: "text-hot" },
 };
 
 // Static promise-error code → copy. Literal strings for Tailwind v4.

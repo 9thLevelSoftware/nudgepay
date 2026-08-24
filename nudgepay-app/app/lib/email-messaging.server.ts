@@ -3,9 +3,15 @@ import { sendEmail, type EmailConfig } from "./email-client.server";
 import { assertEmailBudget } from "./send-limits.server";
 import { sendIdempotencyKey } from "./send-limits";
 import { signUnsubscribeToken } from "./unsubscribe-token";
-import { activeCaseForSend, activeCaseId } from "./twilio-messaging.server";
+import {
+  activeCaseForSend,
+  activeCaseId,
+  loadQuietHoursWindow,
+  type QuietHoursWindow,
+} from "./twilio-messaging.server";
 import { isContactBlocked } from "./exceptions";
 import { assertFromAddressAllowed } from "./email-settings";
+import { isWithinSendWindow, quietHoursWindowLabel } from "./quiet-hours";
 
 export type EmailDeps = {
   fetchFn: typeof fetch;
@@ -13,6 +19,10 @@ export type EmailDeps = {
   email: EmailConfig;
   unsubscribeBaseUrl: string; // APP_PUBLIC_BASE_URL (non-null at call site)
   unsubscribeSecret: string;
+  /** Pre-fetched quiet-hours window; when absent, sendInvoiceEmail reads org_settings. */
+  quietHoursWindow?: QuietHoursWindow;
+  /** Injectable "now" for the quiet-hours check — defaults to `new Date()`. Test-only override. */
+  now?: Date;
 };
 
 function formatSender(fromAddress: string, fromName: string): string {
@@ -44,6 +54,12 @@ export async function sendInvoiceEmail(
   if (!ec || ec.email_enabled !== true) throw new Error("Email disabled for this workspace");
   if (!ec.from_address) throw new Error("No from address configured");
   assertFromAddressAllowed(ec.from_address as string, deps.email.allowedFrom, args.orgId);
+
+  const window = deps.quietHoursWindow ?? await loadQuietHoursWindow(deps.service, args.orgId);
+  const now = deps.now ?? new Date();
+  if (!isWithinSendWindow(now, window.timezone, window.startHour, window.endHour)) {
+    throw new Error(`Quiet hours: emails can be sent only between ${quietHoursWindowLabel(window.startHour, window.endHour)} (${window.timezone})`);
+  }
 
   // Contact-block (case legal hold) dominates the per-customer opt-out, mirroring SMS.
   const activeCase = await activeCaseForSend(deps.service, args.orgId, cust.id as string);

@@ -939,6 +939,7 @@ export default function Dashboard() {
               caseId={selected.caseId}
               repInvoiceId={repInvoiceId ?? null}
               prefs={selectedPrefs}
+              smsConsentSource={selectedSmsConsentSource}
               returnTo={`/dashboard${dashboardHref({ view, sort, q: q || undefined, entity: hrefEntity, density: hrefDensity, case: selected.caseId, tab, invoice: invoice ?? undefined })}`}
               closeHref={dashboardHref({ view, sort, q: q || undefined, entity: hrefEntity, density: hrefDensity, case: selected.caseId, tab, invoice: invoice ?? undefined })}
             />

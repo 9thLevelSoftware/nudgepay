@@ -29,11 +29,13 @@ test("evaluateTestBudget rejects at the hourly cap", () => {
   expect(evaluateTestBudget(TEST_HOUR_CAP - 1)).toEqual({ ok: true });
 });
 
-test("sendIdempotencyKey is stable within the same minute bucket", () => {
-  const now = new Date("2026-08-20T12:00:30Z");
-  const a = sendIdempotencyKey("sms", ["org", "inv", "hash"], now);
-  const b = sendIdempotencyKey("sms", ["org", "inv", "hash"], new Date("2026-08-20T12:00:59Z"));
-  const c = sendIdempotencyKey("sms", ["org", "inv", "hash"], new Date("2026-08-20T12:01:00Z"));
+test("sendIdempotencyKey is stable across minutes and hashes the body", () => {
+  const a = sendIdempotencyKey("sms", ["org", "inv", "hello"]);
+  const b = sendIdempotencyKey("sms", ["org", "inv", "hello"]);
+  const c = sendIdempotencyKey("sms", ["org", "inv", "hello!"]);
   expect(a).toBe(b);
   expect(c).not.toBe(a);
+  expect(a.startsWith("sms:org:inv:")).toBe(true);
+  expect(a).not.toMatch(/:\d{5,}$/);
+  expect(a.length).toBeLessThanOrEqual(128);
 });

@@ -1,7 +1,9 @@
 import { readFileSync } from "node:fs";
 import { expect, test } from "vitest";
-import { serviceClient, makeUserClient } from "./helpers";
+import { createClient } from "@supabase/supabase-js";
+import { serviceClient, makeUserClient, TEST_ENV } from "./helpers";
 import { parseCommPrefsUpdate } from "../app/lib/comm-prefs";
+import { action as commPrefsAction } from "../app/routes/api.comm-prefs";
 
 function fd(entries: Record<string, string>): FormData {
   const f = new FormData();
@@ -31,7 +33,10 @@ test("parseCommPrefsUpdate never includes sms_consent (legal record untouched)",
 });
 
 test("a non-true checkbox value resolves to false when the sentinel is posted", () => {
-  const u = parseCommPrefsUpdate(fd({ do_not_call_set: "1", do_not_call: "false", do_not_text_set: "1" }));
+  const u = parseCommPrefsUpdate(fd({
+    do_not_call_set: "1", do_not_call: "false",
+    do_not_text_set: "1", confirm_resubscribe_sms: "true",
+  }));
   expect(u.do_not_call).toBe(false);
   expect(u.do_not_text).toBe(false);
 });
@@ -77,7 +82,7 @@ test("a member of another org cannot change comm preferences (RLS blocks)", asyn
 test("comm-prefs resolves a bare customerId (Accounts profile path)", async () => {
   const svc = serviceClient();
   const { data: org } = await svc.from("organizations").insert({ name: "Prefs by customer" }).select("id").single();
-  const a = await makeUserClient("prefs-cust-a@example.com");
+  const a = await makeUserClient(`prefs-cust-a-${Math.random()}@example.com`);
   await svc.from("memberships").insert({ org_id: org!.id, user_id: a.userId, role: "owner" });
   const { data: cust } = await svc.from("customers")
     .insert({ org_id: org!.id, name: "DirectCo" }).select("id").single();
@@ -97,4 +102,109 @@ test("comm-prefs resolves a bare customerId (Accounts profile path)", async () =
 test("api.comm-prefs source resolves a bare customerId", () => {
   const src = readFileSync(new URL("../app/routes/api.comm-prefs.tsx", import.meta.url), "utf8");
   expect(src).toMatch(/form\.get\("customerId"\)/);
+});
+
+test("api.comm-prefs re-reads STOP source before clearing do_not_text", () => {
+  const src = readFileSync(new URL("../app/routes/api.comm-prefs.tsx", import.meta.url), "utf8");
+  expect(src).toContain("sms_consent_source");
+  expect(src).toContain("inbound_stop");
+  expect(src).toContain('withSms(returnTo, "consent_locked")');
+});
+
+function ctx() {
+  return { cloudflare: { env: TEST_ENV } } as any;
+}
+
+function sessionCookie(session: object): string {
+  const host = new URL(TEST_ENV.SUPABASE_URL).hostname.split(".")[0];
+  const json = JSON.stringify(session);
+  const b64url = Buffer.from(json, "utf8")
+    .toString("base64")
+    .replace(/\+/g, "-")
+    .replace(/\//g, "_")
+    .replace(/=+$/, "");
+  return `sb-${host}-auth-token=base64-${b64url}`;
+}
+
+async function signInSession(email: string): Promise<object> {
+  const anon = createClient(TEST_ENV.SUPABASE_URL, TEST_ENV.SUPABASE_ANON_KEY);
+  const { data, error } = await anon.auth.signInWithPassword({
+    email,
+    password: "test-pass-123",
+  });
+  if (error) throw error;
+  return data.session!;
+}
+
+async function postCommPrefs(cookie: string, fields: Record<string, string>): Promise<Response> {
+  const form = new FormData();
+  for (const [k, v] of Object.entries(fields)) form.set(k, v);
+  return commPrefsAction({
+    request: new Request("http://localhost/api/comm-prefs", {
+      method: "POST",
+      headers: { Cookie: cookie, Origin: "http://localhost" },
+      body: form,
+    }),
+    context: ctx(),
+    params: {},
+  } as any) as Promise<Response>;
+}
+
+test("confirmed prefs POST after inbound STOP does not 500 and leaves DNT set", async () => {
+  const svc = serviceClient();
+  const email = `prefs-stop-${Math.random()}@example.com`;
+  const owner = await makeUserClient(email);
+  const { data: org } = await svc.from("organizations").insert({ name: "Prefs STOP" }).select("id").single();
+  await svc.from("memberships").insert({ org_id: org!.id, user_id: owner.userId, role: "owner" });
+  const { data: cust } = await svc.from("customers")
+    .insert({
+      org_id: org!.id, qbo_id: `ps-${Math.random()}`, name: "Stopped Prefs",
+      sms_consent: false, do_not_text: true,
+      sms_consent_source: "inbound_stop", sms_consent_at: new Date().toISOString(),
+    })
+    .select("id").single();
+
+  const session = await signInSession(email);
+  const res = await postCommPrefs(sessionCookie(session), {
+    returnTo: "/dashboard",
+    customerId: cust!.id as string,
+    do_not_text_set: "1",
+    confirm_resubscribe_sms: "true",
+  });
+  expect(res.status).toBe(302);
+  expect(res.headers.get("Location") ?? "").toContain("sms=consent_locked");
+  const { data: after } = await svc.from("customers")
+    .select("do_not_text, sms_consent, sms_consent_source").eq("id", cust!.id).single();
+  expect(after!.do_not_text).toBe(true);
+  expect(after!.sms_consent).toBe(false);
+  expect(after!.sms_consent_source).toBe("inbound_stop");
+});
+
+test("member confirmed prefs POST after inbound STOP cannot clear DNT", async () => {
+  const svc = serviceClient();
+  const email = `prefs-stop-m-${Math.random()}@example.com`;
+  const member = await makeUserClient(email);
+  const { data: org } = await svc.from("organizations").insert({ name: "Prefs STOP member" }).select("id").single();
+  await svc.from("memberships").insert({ org_id: org!.id, user_id: member.userId, role: "member" });
+  const { data: cust } = await svc.from("customers")
+    .insert({
+      org_id: org!.id, qbo_id: `psm-${Math.random()}`, name: "Stopped Prefs Member",
+      sms_consent: false, do_not_text: true,
+      sms_consent_source: "inbound_stop", sms_consent_at: new Date().toISOString(),
+    })
+    .select("id").single();
+
+  const session = await signInSession(email);
+  const res = await postCommPrefs(sessionCookie(session), {
+    returnTo: "/dashboard",
+    customerId: cust!.id as string,
+    do_not_text_set: "1",
+    confirm_resubscribe_sms: "true",
+  });
+  expect(res.status).toBe(302);
+  expect(res.headers.get("Location") ?? "").toContain("sms=consent_locked");
+  const { data: after } = await svc.from("customers")
+    .select("do_not_text, sms_consent_source").eq("id", cust!.id).single();
+  expect(after!.do_not_text).toBe(true);
+  expect(after!.sms_consent_source).toBe("inbound_stop");
 });

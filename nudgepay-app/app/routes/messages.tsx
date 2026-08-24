@@ -38,6 +38,8 @@ import {
 } from "../lib/messages-realtime";
 import { chunkIds, honestListState, orderPage, pageAllChunkedHonest, pageAllHonest, PAGE_ALL_MAX_ROWS } from "../lib/page-all";
 import { LoadErrorBanner, TruncationBanner } from "../components/TruncationBanner";
+import { UnmatchedStopList } from "../components/UnmatchedStopList";
+import { listRecentUnmatchedStops } from "../lib/inbound-orphans.server";
 import type { Route } from "./+types/messages";
 
 export const meta: Route.MetaFunction = () => pageTitle("Messages");
@@ -345,6 +347,10 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
   if (ecfgErr) throw ecfgErr;
   const emailEnabled = resolveEmailSettings(ecfg as any).emailEnabled;
 
+  const unmatchedStops = isOwner
+    ? await listRecentUnmatchedStops(service)
+    : { rows: [], loadError: null };
+
   return data(
     {
       orgName,
@@ -362,6 +368,7 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
       orgId: org.org_id,
       supabaseUrl: env.SUPABASE_URL,
       supabaseAnonKey: env.SUPABASE_ANON_KEY,
+      unmatchedStops,
     },
     { headers },
   );
@@ -487,6 +494,12 @@ export default function Messages() {
     >
       <div className="p-4 sm:p-6 space-y-4 sm:space-y-6">
         {d.loadError ? <LoadErrorBanner message={d.loadError} /> : d.truncated ? <TruncationBanner /> : null}
+        {d.isOwner ? (
+          <p className="text-xs text-warm" role="status">
+            All workspaces share this sender. STOP applies to every customer with this phone.
+          </p>
+        ) : null}
+        {d.isOwner ? <UnmatchedStopList stops={d.unmatchedStops.rows} loadError={d.unmatchedStops.loadError} /> : null}
         <MessagesMetrics metrics={d.metrics} truncated={d.truncated || !!d.loadError} />
         {(() => {
           const threadPanel = (

@@ -24,6 +24,8 @@ const EMAIL_BANNER: Record<string, { text: string; tone: string }> = {
   blocked: { text: "Not sent — this case is marked do-not-contact / legal.", tone: "text-hot" },
   error: { text: "Could not send the email.", tone: "text-hot" },
   limited: { text: "Not sent — send limit reached. Try again later.", tone: "text-hot" },
+  quiet: { text: "Not sent — outside quiet hours.", tone: "text-warm" },
+  from_allowlist: { text: "Not sent — from address is not on the operator allowlist.", tone: "text-hot" },
 };
 
 interface Props {
@@ -202,6 +204,14 @@ export function MessageThreadPanel({
       {/* Composer */}
       {isEmail ? (
         <div className="border-t border-border px-4 py-3">
+          {smsQuietNow && (
+            <p
+              className="mb-2 rounded-md px-3 py-2 text-xs font-medium bg-warm/10 border border-warm/30 text-warm"
+              role="status"
+            >
+              Outside quiet hours ({quietHoursLabel}) — sends are blocked until the window reopens. The button stays enabled in case this page is stale.
+            </p>
+          )}
           <select
             key={`email-tmpl-${thread.customerId}-${thread.channel}`}
             defaultValue=""

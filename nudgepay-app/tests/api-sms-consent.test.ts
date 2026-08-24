@@ -1,7 +1,8 @@
-import { expect, test } from "vitest";
+import { expect, test, vi } from "vitest";
 import { createClient } from "@supabase/supabase-js";
 import { serviceClient, makeUserClient, TEST_ENV } from "./helpers";
 import { action as smsConsentAction } from "../app/routes/api.sms-consent";
+import { sendInvoiceText } from "../app/lib/twilio-messaging.server";
 
 function ctx() {
   return { cloudflare: { env: TEST_ENV } } as any;
@@ -153,8 +154,15 @@ test("owner restore after inbound STOP still updates via the action", async () =
   const { data: cust } = await svc.from("customers")
     .insert({
       org_id: org!.id, qbo_id: `cr-${Math.random()}`, name: "Stopped Co",
+      phone: "+13105550888",
       sms_consent: false, do_not_text: true,
       sms_consent_source: "inbound_stop", sms_consent_at: stoppedAt,
+    })
+    .select("id").single();
+  const { data: inv } = await svc.from("invoices")
+    .insert({
+      org_id: org!.id, qbo_id: `cr-i-${Math.random()}`, customer_id: cust!.id,
+      balance: 40, due_date: "2026-03-01",
     })
     .select("id").single();
 
@@ -170,7 +178,21 @@ test("owner restore after inbound STOP still updates via the action", async () =
   expect(loc).not.toContain("sms=error");
   expect(loc).not.toContain("consent_locked");
   const { data: after } = await svc.from("customers")
-    .select("sms_consent, sms_consent_source").eq("id", cust!.id).single();
+    .select("sms_consent, sms_consent_source, do_not_text").eq("id", cust!.id).single();
   expect(after!.sms_consent).toBe(true);
   expect(after!.sms_consent_source).toBe("staff");
+  expect(after!.do_not_text).toBe(false);
+
+  const fetchFn = vi.fn(async () => new Response(JSON.stringify({ sid: "SM-RESTORE", status: "queued" }), {
+    status: 201, headers: { "Content-Type": "application/json" },
+  }));
+  await sendInvoiceText({
+    fetchFn,
+    service: svc,
+    twilio: { accountSid: "AC1", authToken: "tok" },
+    defaultSender: { from: "+15005550006" },
+    statusCallback: null,
+    now: new Date("2026-06-15T18:00:00Z"),
+  }, { orgId: org!.id as string, invoiceId: inv!.id as string, userId: owner.userId, body: "Pay up" });
+  expect(fetchFn).toHaveBeenCalledOnce();
 });
