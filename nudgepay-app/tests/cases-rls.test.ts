@@ -152,3 +152,30 @@ test("RLS: a member can update next_action but cannot delete a case", async () =
   const { data: caseAfterFk } = await svc.from("collection_cases").select("id").eq("id", cse!.id);
   expect(caseAfterFk).toHaveLength(1);
 });
+
+test("RLS: a member cannot insert a phantom closed case; owner and recon can insert", async () => {
+  const svc = serviceClient();
+  const member = await makeUserClient(`cases-rls-ins-${Math.random()}@example.com`);
+  const owner = await makeUserClient(`cases-rls-own-${Math.random()}@example.com`);
+  const { data: org } = await svc.from("organizations").insert({ name: `Cases ins ${member.userId}` }).select("id").single();
+  await svc.from("memberships").insert({ org_id: org!.id, user_id: member.userId, role: "member" });
+  await svc.from("memberships").insert({ org_id: org!.id, user_id: owner.userId, role: "owner" });
+  const { data: cust } = await svc.from("customers")
+    .insert({ org_id: org!.id, qbo_id: `cs-ins-${member.userId}`, name: "Insert Cust" }).select("id").single();
+
+  const phantom = await member.client.from("collection_cases").insert({
+    org_id: org!.id,
+    customer_id: cust!.id,
+    status: "resolved",
+    closed_at: new Date().toISOString(),
+  });
+  expect(phantom.error).not.toBeNull();
+  const { data: none } = await svc.from("collection_cases").select("id").eq("org_id", org!.id);
+  expect(none ?? []).toHaveLength(0);
+
+  const ownerIns = await owner.client.from("collection_cases").insert({
+    org_id: org!.id, customer_id: cust!.id, status: "new", next_action_type: "contact",
+  }).select("id").single();
+  expect(ownerIns.error).toBeNull();
+  expect(ownerIns.data?.id).toBeTruthy();
+});

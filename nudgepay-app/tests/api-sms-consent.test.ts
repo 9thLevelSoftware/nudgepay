@@ -42,10 +42,9 @@ async function postSmsConsent(cookie: string, fields: Record<string, string>): P
   } as any) as Promise<Response>;
 }
 
-// Mirrors the RLS path the /api/sms-consent action relies on: a member updates
-// sms_consent on an own-org customer (resolved via an own-org invoice), and a
-// member of another org cannot change it.
-test("a member toggles sms_consent on an own-org customer via RLS", async () => {
+// Members cannot write sms_consent* (KD-7). Direct PostgREST is the trust
+// boundary — the /api/sms-consent action uses the user JWT.
+test("a member cannot toggle sms_consent on an own-org customer via RLS", async () => {
   const svc = serviceClient();
   const { data: org } = await svc.from("organizations").insert({ name: "Consent Org A" }).select("id").single();
   const orgId = org!.id;
@@ -58,23 +57,16 @@ test("a member toggles sms_consent on an own-org customer via RLS", async () => 
   const user = await makeUserClient("consent-a@example.com");
   await svc.from("memberships").insert({ org_id: orgId, user_id: user.userId, role: "member" });
 
-  // Resolve the invoice's customer (RLS-scoped) then flip consent on, off, on.
   const { data: seen } = await user.client.from("invoices").select("customer_id").eq("id", inv!.id).maybeSingle();
   expect(seen?.customer_id).toBe(cust!.id);
 
-  await user.client.from("customers").update({ sms_consent: true }).eq("id", cust!.id);
-  let { data: after } = await svc.from("customers").select("sms_consent").eq("id", cust!.id).single();
-  expect(after!.sms_consent).toBe(true);
-
-  await user.client.from("customers").update({ sms_consent: false }).eq("id", cust!.id);
-  ({ data: after } = await svc.from("customers").select("sms_consent").eq("id", cust!.id).single());
+  const { error } = await user.client.from("customers").update({ sms_consent: true }).eq("id", cust!.id);
+  expect(error).not.toBeNull();
+  const { data: after } = await svc.from("customers").select("sms_consent").eq("id", cust!.id).single();
   expect(after!.sms_consent).toBe(false);
 });
 
-// The Messages tab can toggle consent on invoice-less inbound-only threads via a
-// bare customerId. Mirrors the action's customerId fallback: a member updates an
-// own-org customer directly by id (RLS-scoped); an outsider cannot.
-test("a member toggles sms_consent via a bare customerId (no invoice) under RLS", async () => {
+test("a member cannot toggle sms_consent via a bare customerId (no invoice) under RLS", async () => {
   const svc = serviceClient();
   const { data: org } = await svc.from("organizations").insert({ name: "Consent Org C" }).select("id").single();
   const orgId = org!.id;
@@ -84,16 +76,15 @@ test("a member toggles sms_consent via a bare customerId (no invoice) under RLS"
   const member = await makeUserClient("consent-c@example.com");
   await svc.from("memberships").insert({ org_id: orgId, user_id: member.userId, role: "member" });
 
-  // No invoice exists — update the customer directly by id (the action's fallback path).
-  await member.client.from("customers").update({ sms_consent: true }).eq("id", cust!.id);
+  const { error } = await member.client.from("customers").update({ sms_consent: true }).eq("id", cust!.id);
+  expect(error).not.toBeNull();
   let { data: after } = await svc.from("customers").select("sms_consent").eq("id", cust!.id).single();
-  expect(after!.sms_consent).toBe(true);
+  expect(after!.sms_consent).toBe(false);
 
-  // An outsider with a known customerId still cannot change it (RLS).
   const outsider = await makeUserClient("consent-c-outsider@example.com");
   await outsider.client.from("customers").update({ sms_consent: false }).eq("id", cust!.id);
   ({ data: after } = await svc.from("customers").select("sms_consent").eq("id", cust!.id).single());
-  expect(after!.sms_consent).toBe(true); // unchanged — RLS blocked the cross-org update
+  expect(after!.sms_consent).toBe(false);
 });
 
 test("a member of another org cannot read the invoice or change consent", async () => {
@@ -150,4 +141,36 @@ test("action rejects an invoice from another org", async () => {
   expect(res.headers.get("Location") ?? "").toContain("sms=error");
   const { data: after } = await svc.from("customers").select("sms_consent").eq("id", custB!.id).single();
   expect(after!.sms_consent).toBe(true);
+});
+
+test("owner restore after inbound STOP still updates via the action", async () => {
+  const svc = serviceClient();
+  const email = `consent-restore-${Math.random()}@example.com`;
+  const owner = await makeUserClient(email);
+  const { data: org } = await svc.from("organizations").insert({ name: "Consent Restore" }).select("id").single();
+  await svc.from("memberships").insert({ org_id: org!.id, user_id: owner.userId, role: "owner" });
+  const stoppedAt = new Date().toISOString();
+  const { data: cust } = await svc.from("customers")
+    .insert({
+      org_id: org!.id, qbo_id: `cr-${Math.random()}`, name: "Stopped Co",
+      sms_consent: false, do_not_text: true,
+      sms_consent_source: "inbound_stop", sms_consent_at: stoppedAt,
+    })
+    .select("id").single();
+
+  const session = await signInSession(email);
+  const res = await postSmsConsent(sessionCookie(session), {
+    returnTo: "/dashboard",
+    customerId: cust!.id as string,
+    consent: "true",
+    reason: "customer called in",
+  });
+  expect(res.status).toBe(302);
+  const loc = res.headers.get("Location") ?? "";
+  expect(loc).not.toContain("sms=error");
+  expect(loc).not.toContain("consent_locked");
+  const { data: after } = await svc.from("customers")
+    .select("sms_consent, sms_consent_source").eq("id", cust!.id).single();
+  expect(after!.sms_consent).toBe(true);
+  expect(after!.sms_consent_source).toBe("staff");
 });

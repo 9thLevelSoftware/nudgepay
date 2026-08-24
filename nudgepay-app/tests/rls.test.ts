@@ -106,19 +106,26 @@ test("members can update customer workflow fields but not QBO-sourced customer f
     .single();
 
   const localUpdate = await member.client.from("customers")
-    .update({ sms_consent: true, notes: "called AP" })
+    .update({ notes: "called AP", do_not_text: true })
     .eq("id", cust!.id);
   expect(localUpdate.error).toBeNull();
+
+  const consentUpdate = await member.client.from("customers")
+    .update({ sms_consent: true })
+    .eq("id", cust!.id);
+  expect(consentUpdate.error).not.toBeNull();
 
   const sourceUpdate = await member.client.from("customers")
     .update({ name: "Tampered Name" })
     .eq("id", cust!.id);
   expect(sourceUpdate.error).not.toBeNull();
 
-  const { data: after } = await svc.from("customers").select("name, sms_consent, notes").eq("id", cust!.id).single();
+  const { data: after } = await svc.from("customers")
+    .select("name, sms_consent, notes, do_not_text").eq("id", cust!.id).single();
   expect(after!.name).toBe("Original Name");
-  expect(after!.sms_consent).toBe(true);
+  expect(after!.sms_consent).toBe(false);
   expect(after!.notes).toBe("called AP");
+  expect(after!.do_not_text).toBe(true);
 });
 
 test("composite tenant FKs reject cross-org child references even for service-role writes", async () => {
