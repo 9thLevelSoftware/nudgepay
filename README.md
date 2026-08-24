@@ -11,8 +11,12 @@ login with row-level isolation.
 
 ## Status
 
-Actively built. The gap analysis lives at
-[`docs/gap-analysis-2026-07-02.md`](docs/gap-analysis-2026-07-02.md).
+As of 2026-08-23, the active app is [`nudgepay-app/`](nudgepay-app/). How to
+run and test it lives in [`nudgepay-app/README.md`](nudgepay-app/README.md).
+
+The July 2026 gap analysis at
+[`docs/gap-analysis-2026-07-02.md`](docs/gap-analysis-2026-07-02.md) is
+**historical** — it is not the current status of the product.
 
 ## What's in the box
 
@@ -20,10 +24,11 @@ Actively built. The gap analysis lives at
   (all-open, coming-due, 30-plus, high-value, never-contacted,
   follow-ups-due, broken-promises, waiting, on-hold, my-work) and
   explainable "why this priority" reasoning.
-- **Customer-centric case workspace** — every customer has a collection
-  case that groups their invoices, contact log, SMS thread, and a
-  next-action invariant (scheduled follow-up / pending promise / waiting /
-  exception / closed).
+- **Customer-centric case workspace** — a collection case exists iff the
+  customer has an overdue invoice (due date + QBO balance > 0). The case
+  groups those invoices, the contact log, SMS thread, and a next-action
+  invariant (scheduled follow-up / pending promise / waiting / exception /
+  closed).
 - **Coming-due awareness** — 7-day window of approaching invoices,
   read-only metric tile + grouped view (no cases opened).
 - **Promise-to-pay state machine** with multi-invoice linkage, manual
@@ -47,8 +52,9 @@ Actively built. The gap analysis lives at
 - **Manual priority override** that records who, when, and why without
   mutating underlying financial signals.
 - **Multi-tenant isolation** via Supabase Row Level Security keyed on
-  org membership; service-role client used only for connection status
-  and member roster.
+  org membership. The service-role client is used for roster, sync, cron,
+  webhooks, send, and invites, always pinned to `org_id`; never in user
+  loaders. RLS is the user-data boundary.
 
 ## Stack
 
@@ -57,7 +63,7 @@ Actively built. The gap analysis lives at
 | Web framework| React Router 7 (SSR)                                                 |
 | UI           | React 19, Tailwind CSS 4, IBM Plex / Space Grotesk                   |
 | Runtime      | Cloudflare Workers (`workers/app.ts`) + scheduled cron handlers      |
-| Backend      | Supabase (Postgres + Auth + RLS) — 24 migrations under `supabase/`   |
+| Backend      | Supabase (Postgres + Auth + RLS) — migrations `0001`–`0051` under `supabase/` |
 | QBO          | Intuit QuickBooks Online Data API + webhooks (OAuth + CDC catch-up)  |
 | Messaging    | Twilio (SMS two-way), Resend (email)                                 |
 | Build / test | Vite 7, TypeScript 5.9, Vitest 4, Wrangler 4                         |
@@ -66,17 +72,15 @@ Actively built. The gap analysis lives at
 
 ```
 .
-├── docs/                                # gap analysis, Intuit production checklist
+├── docs/                                # audits, historical gap analysis, Intuit checklist
 ├── netlify/                             # legacy domain redirects → Worker
-├── nudgepay-frontend/                   # DEPRECATED — legacy React SPA
-├── nudgepay-backend/                    # DEPRECATED — legacy Express API
 └── nudgepay-app/
     ├── app/
     │   ├── components/                  # AppShell, WorkQueue, DetailPanel, MetricsStrip, ...
     │   ├── lib/                         # pure + server-side domain logic
     │   └── routes/                      # page + API + webhook routes
     ├── supabase/
-    │   └── migrations/                  # 0001–0024 schema + RLS
+    │   └── migrations/                  # 0001–0051 schema + RLS
     ├── tests/                           # vitest suites
     ├── workers/
     │   └── app.ts                       # Cloudflare fetch + scheduled handlers
@@ -160,17 +164,9 @@ Caveats, all called out inline in `render.yaml`:
 
 ## Testing
 
-```bash
-cd nudgepay-app
-npm test
-```
-
-The suite covers server-side domain logic (priority scoring, worklist
-derivation, promise evaluation, case lifecycle, coming-due grouping,
-late-fee math, display names, notification builders, business-day math,
-RLS contracts), API endpoints, webhook handlers, and route registration.
+See [`nudgepay-app/README.md`](nudgepay-app/README.md). PR CI is typecheck
++ `npm run test:unit` only — a green check is not RLS, QBO, or Twilio.
 
 ## License
 
-No license file is committed yet. All rights reserved until one is
-added.
+All rights reserved. See [`LICENSE`](LICENSE).

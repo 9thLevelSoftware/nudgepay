@@ -30,6 +30,11 @@ npx vitest run          # or: npm test
 
 Integration tests share one local database and run serially. `tests/global-setup.ts` truncates test data before the suite.
 
+GitHub Actions PR CI runs `npm run typecheck` and `npm run test:unit` only.
+CI does not run RLS, QBO, or Twilio. A green PR is not proof of those
+suites — they import `./helpers` and need local `npm test` (or the non-PR
+`supabase integration` job). No coverage thresholds.
+
 ### Typecheck and production dry-run
 
 ```bash

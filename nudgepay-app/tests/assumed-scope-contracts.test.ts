@@ -167,9 +167,44 @@ test("npm metadata is not the RR starter (NP-AUD-2026-132-STARTER)", () => {
   expect(pkg.cloudflare.label).toBe("NudgePay");
 });
 
-test("AGENTS.md lists migrations through 0041 (NP-AUD-2026-132-AGENTS)", () => {
+test("AGENTS.md lists migrations through 0051 (NP-AUD-2026-132-AGENTS)", () => {
   const agents = readFileSync(fileURLToPath(new URL("../../AGENTS.md", import.meta.url)), "utf8");
-  expect(agents).toMatch(/0001\.\.0041|0001–0041/);
+  expect(agents).toMatch(/0001\.\.0051|0001–0051/);
+  expect(agents).toMatch(/0051_message_events_direction/);
+  expect(agents).toMatch(/0049_cases_and_consent_rls/);
+  expect(agents).toMatch(/0050_promises_rls/);
+  expect(agents).toMatch(/inbound_orphans/);
+  expect(agents).toMatch(/cron_checkpoints/);
+  expect(agents).not.toMatch(/service-role client only in sync\/cron\/admin paths/);
+});
+
+test("home copy is a human queue, not automatic reminders (FP-12)", () => {
+  const home = read("../app/routes/home.tsx");
+  expect(home.toLowerCase()).not.toMatch(/automatic payment reminders/);
+  expect(home).toMatch(/PAGE_DESCRIPTION/);
+  expect(home).toMatch(/human follow-up queue/i);
+  expect(home).toMatch(/QuickBooks/i);
+  expect(home).toMatch(/not a payment processor/i);
+  expect(home).toContain('to="/signup"');
+});
+
+test("public signup route remains registered (A-022 is ops, not app)", () => {
+  const routes = read("../app/routes.ts");
+  expect(routes).toContain('"routes/signup.tsx"');
+});
+
+test("quiet hours copy does not promise future automation (FP-12)", () => {
+  const src = read("../app/components/QuietHoursForm.tsx");
+  expect(src.toLowerCase()).not.toMatch(/future automation/);
+});
+
+test("PR CI stays typecheck + unit and is labeled so green is not RLS", () => {
+  const ci = readFileSync(fileURLToPath(new URL("../../.github/workflows/ci.yml", import.meta.url)), "utf8");
+  expect(ci).toMatch(/name:\s*typecheck \+ unit tests/);
+  expect(ci).toContain("npm run test:unit");
+  expect(ci).toMatch(/does not prove RLS/i);
+  expect(ci).not.toMatch(/coverage-threshold|coverageThreshold|codecov/i);
+  expect(ci).not.toMatch(/\[\[ratelimits\]\]/);
 });
 
 test("app README is NudgePay not the starter (NP-AUD-2026-132-README)", () => {
