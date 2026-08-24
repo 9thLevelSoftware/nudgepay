@@ -2,7 +2,7 @@ import { data, type LoaderFunctionArgs } from "react-router";
 import { getEnv } from "../lib/env.server";
 import { requireOrgUser } from "../lib/session.server";
 
-/** Lightweight Messages polling endpoint; avoids reloading the full inbox. */
+/** Latest-inbound fingerprint. Realtime toast fallback when the public channel is down. */
 export async function loader({ request, context }: LoaderFunctionArgs) {
   const env = getEnv(context as any);
   const { supabase, headers, org } = await requireOrgUser(request, env);
