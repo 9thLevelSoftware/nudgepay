@@ -105,6 +105,7 @@ export async function applyCaseReconciliation(
       const { data: updated, error } = await client.from("collection_cases")
         .update({ status: "resolved", closed_at: new Date().toISOString(), next_action_at: null })
         .eq("id", op.caseId)
+        .eq("org_id", orgId)
         .select("id");
       if (error) throw error;
       if (updated && updated.length > 0) resolved += 1;

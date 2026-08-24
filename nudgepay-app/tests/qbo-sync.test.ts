@@ -1,4 +1,6 @@
 import { expect, test, vi } from "vitest";
+import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 import { serviceClient } from "./helpers";
 import { storeConnection } from "../app/lib/qbo-connection.server";
 import { syncOverdueInvoices, type SyncDeps } from "../app/lib/qbo-sync.server";
@@ -75,4 +77,16 @@ test("syncOverdueInvoices stamps last_sync_at on the connection", async () => {
   await syncOverdueInvoices(deps(qboMock([], [])), org);
   const { data } = await svc.from("qbo_connections").select("last_sync_at").eq("org_id", org).single();
   expect(data!.last_sync_at).not.toBeNull();
+});
+
+test("syncOverdueInvoices threads qboQueryAll truncated and does not swallow apply", () => {
+  const src = readFileSync(fileURLToPath(new URL("../app/lib/qbo-sync.server.ts", import.meta.url)), "utf8");
+  const overdue = src.slice(
+    src.indexOf("export async function syncOverdueInvoices"),
+    src.indexOf("export async function applyCustomerWebhook"),
+  );
+  expect(overdue).toContain("overdueQuery.truncated");
+  expect(overdue).toContain("comingDueQuery.truncated");
+  expect(overdue).not.toContain("cron will re-converge");
+  expect(overdue).toContain("applyPaymentsAndEvaluate");
 });

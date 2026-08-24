@@ -63,10 +63,28 @@ async function getJson(
 ): Promise<any> {
   const res = await fetchWithIntuitRetry(fetchFn, url, {
     method: "GET",
-    headers: { Authorization: `Bearer ${accessToken}`, Accept: "application/json" },
+    headers: qboGetHeaders(accessToken),
   }, clock);
   if (!res.ok) throw new Error(`QBO API request failed: ${res.status}`);
   return res.json();
+}
+
+function qboFaultCodes(body: unknown): string[] {
+  if (body == null || typeof body !== "object") return [];
+  const err = (body as { Fault?: { Error?: unknown } }).Fault?.Error;
+  const list = Array.isArray(err) ? err : err != null ? [err] : [];
+  return list.map((e) => String((e as { code?: unknown })?.code ?? "")).filter(Boolean);
+}
+
+/** HTTP 404, or HTTP 400 Fault 610 (Intuit "object not found" / deleted). */
+export function isQboObjectNotFound(status: number, body: unknown): boolean {
+  if (status === 404) return true;
+  if (status !== 400) return false;
+  return qboFaultCodes(body).includes("610");
+}
+
+function qboGetHeaders(accessToken: string): HeadersInit {
+  return { Authorization: `Bearer ${accessToken}`, Accept: "application/json" };
 }
 
 export async function qboQuery(
@@ -81,28 +99,32 @@ export async function qboQuery(
 }
 
 export const QBO_QUERY_PAGE = 1000;
+export const QBO_QUERY_MAX_PAGES = 50;
+
+export type QboQueryAllResult = { rows: any[]; truncated: boolean };
 
 /**
  * Page Intuit queries until a short page. `selectClause` must not include
  * startposition/maxresults — those are appended here.
+ * `truncated` is true when the 50-page loop exits on a full last page.
  */
 export async function qboQueryAll(
   fetchFn: typeof fetch, api: QboApiConfig, accessToken: string,
   realmId: string, selectClause: string, entityName: "Invoice" | "Customer" | "Payment" | "CreditMemo",
   clock: QboRetryClock = {},
   pageSize: number = QBO_QUERY_PAGE,
-): Promise<any[]> {
+): Promise<QboQueryAllResult> {
   const size = Math.max(1, Math.floor(pageSize));
   const all: any[] = [];
   let start = 1;
-  for (let n = 0; n < 50; n++) {
+  for (let n = 0; n < QBO_QUERY_MAX_PAGES; n++) {
     const q = `${selectClause} startposition ${start} maxresults ${size}`;
     const page = await qboQuery(fetchFn, api, accessToken, realmId, q, entityName, clock);
     all.push(...page);
-    if (page.length < size) break;
+    if (page.length < size) return { rows: all, truncated: false };
     start += size;
   }
-  return all;
+  return { rows: all, truncated: true };
 }
 
 export async function qboReadEntity(
@@ -112,8 +134,17 @@ export async function qboReadEntity(
 ): Promise<any | null> {
   const url = `${api.baseUrl}/v3/company/${realmId}/${entityName.toLowerCase()}/${id}`
     + `?minorversion=${MINOR_VERSION}`;
-  const data = await getJson(fetchFn, url, accessToken, clock);
-  return data?.[entityName] ?? null;
+  const res = await fetchWithIntuitRetry(fetchFn, url, {
+    method: "GET",
+    headers: qboGetHeaders(accessToken),
+  }, clock);
+  if (res.ok) {
+    const data = (await res.json()) as Record<string, unknown>;
+    return data[entityName] ?? null;
+  }
+  const body = await res.json().catch(() => null);
+  if (isQboObjectNotFound(res.status, body)) return null;
+  throw new Error(`QBO API request failed: ${res.status}`);
 }
 
 /** CompanyInfo is a singleton; Intuit uses id `"1"`. */

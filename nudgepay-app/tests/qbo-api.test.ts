@@ -1,7 +1,7 @@
 import { expect, test, vi } from "vitest";
 import {
   qboApiBaseUrl, qboQuery, qboQueryAll, qboReadEntity, qboReadCompanyInfo, qboCdc,
-  retryAfterWaitMs, QBO_429_WAIT_CAP_MS,
+  retryAfterWaitMs, QBO_429_WAIT_CAP_MS, QBO_QUERY_MAX_PAGES, isQboObjectNotFound,
 } from "../app/lib/qbo-api.server";
 
 const api = { baseUrl: "https://sandbox-quickbooks.api.intuit.com" };
@@ -34,9 +34,20 @@ test("qboQueryAll pages until a short page", async () => {
     if (decoded.includes("startposition 3")) return jsonResponse({ QueryResponse: { Invoice: page2 } });
     return jsonResponse({ QueryResponse: { Invoice: page1 } });
   });
-  const rows = await qboQueryAll(fetchFn as any, api, "AT", "r", "select * from Invoice", "Invoice", {}, 2);
+  const { rows, truncated } = await qboQueryAll(fetchFn as any, api, "AT", "r", "select * from Invoice", "Invoice", {}, 2);
   expect(rows.map((r) => r.Id)).toEqual(["1", "2", "3"]);
+  expect(truncated).toBe(false);
   expect(fetchFn).toHaveBeenCalledTimes(2);
+});
+
+test("qboQueryAll is truncated after 50 full pages", async () => {
+  const fetchFn = vi.fn(async () => jsonResponse({ QueryResponse: { Invoice: [{ Id: "1" }, { Id: "2" }] } }));
+  const { rows, truncated } = await qboQueryAll(
+    fetchFn as any, api, "AT", "r", "select * from Invoice", "Invoice", {}, 2,
+  );
+  expect(truncated).toBe(true);
+  expect(rows).toHaveLength(QBO_QUERY_MAX_PAGES * 2);
+  expect(fetchFn).toHaveBeenCalledTimes(QBO_QUERY_MAX_PAGES);
 });
 
 test("qboQuery returns [] when the entity key is absent", async () => {
@@ -54,6 +65,48 @@ test("qboReadEntity reads one entity by id and unwraps it", async () => {
 test("qboReadEntity returns null when the entity is missing", async () => {
   const fetchFn = vi.fn(async () => jsonResponse({ time: "now" }));
   expect(await qboReadEntity(fetchFn as any, api, "AT", "r", "Customer", "99")).toBeNull();
+});
+
+const INTUIT_FAULT_610 = {
+  Fault: {
+    Error: [{
+      Message: "Object Not Found",
+      Detail: "Object Not Found : Another user has deleted this transaction",
+      code: "610",
+    }],
+    type: "ValidationFault",
+  },
+};
+
+test("isQboObjectNotFound matches 404 and HTTP 400 Fault 610", () => {
+  expect(isQboObjectNotFound(404, { Fault: {} })).toBe(true);
+  expect(isQboObjectNotFound(400, INTUIT_FAULT_610)).toBe(true);
+  expect(isQboObjectNotFound(400, { Fault: { Error: { code: "610" } } })).toBe(true);
+  expect(isQboObjectNotFound(400, { Fault: { Error: [{ code: "6000" }] } })).toBe(false);
+  expect(isQboObjectNotFound(401, INTUIT_FAULT_610)).toBe(false);
+  expect(isQboObjectNotFound(500, null)).toBe(false);
+});
+
+test("qboReadEntity returns null on HTTP 400 Fault 610", async () => {
+  const fetchFn = vi.fn(async () => jsonResponse(INTUIT_FAULT_610, 400));
+  expect(await qboReadEntity(fetchFn as any, api, "AT", "r", "Invoice", "42")).toBeNull();
+});
+
+test("qboReadEntity returns null on HTTP 404", async () => {
+  const fetchFn = vi.fn(async () => jsonResponse({ Fault: {} }, 404));
+  expect(await qboReadEntity(fetchFn as any, api, "AT", "r", "Customer", "99")).toBeNull();
+});
+
+test("qboReadEntity still throws on HTTP 400 with a non-610 fault", async () => {
+  const fetchFn = vi.fn(async () => jsonResponse({ Fault: { Error: [{ code: "6000" }] } }, 400));
+  await expect(qboReadEntity(fetchFn as any, api, "AT", "r", "Invoice", "42"))
+    .rejects.toThrow("QBO API request failed: 400");
+});
+
+test("qboQuery still throws on HTTP 400 Fault 610", async () => {
+  const fetchFn = vi.fn(async () => jsonResponse(INTUIT_FAULT_610, 400));
+  await expect(qboQuery(fetchFn as any, api, "AT", "r", "q", "Invoice"))
+    .rejects.toThrow("QBO API request failed: 400");
 });
 
 test("qboReadCompanyInfo reads CompanyInfo id 1 and unwraps it", async () => {

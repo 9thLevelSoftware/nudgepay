@@ -1,6 +1,6 @@
 import { expect, test } from "vitest";
 import { applyCaseReconciliation } from "../app/lib/case-lifecycle.server";
-import { applyPaymentsAndEvaluate, type SyncDeps } from "../app/lib/qbo-sync.server";
+import { applyPaymentsAndEvaluate, customerIdMap, type SyncDeps } from "../app/lib/qbo-sync.server";
 
 type TableRows = { rows: Record<string, unknown>[]; count?: number; error?: { message: string } | null };
 
@@ -52,11 +52,11 @@ function makeClient(tables: Record<string, TableRows>) {
           return { error: null };
         },
         update() {
-          return {
-            eq() {
-              return { select: async () => ({ data: [], error: null }) };
-            },
+          const result = {
+            eq() { return result; },
+            select: async () => ({ data: [], error: null }),
           };
+          return result;
         },
         then(resolve: (v: unknown) => unknown, reject?: (e: unknown) => unknown) {
           calls.push({ table, from: state.from, to: state.to, or: state.or });
@@ -97,6 +97,22 @@ test("applyCaseReconciliation pages 1001 overdue invoices instead of throwing on
   expect(inserts.filter((i) => i.table === "collection_cases")).toHaveLength(1);
 });
 
+test("applyCaseReconciliation pages 1500 overdue invoices without throwing", async () => {
+  const invoices = Array.from({ length: 1500 }, (_, i) => ({
+    customer_id: `cust-${i % 50}`,
+    created_at: `2026-01-01T00:00:${String(i % 60).padStart(2, "0")}.000Z`,
+    id: `inv-${i}`,
+  }));
+  const { client, calls } = makeClient({
+    invoices: { rows: invoices },
+    collection_cases: { rows: [] },
+  });
+  const result = await applyCaseReconciliation(client, "org-1", "2026-06-22");
+  expect(result.opened).toBe(50);
+  const invoiceCalls = calls.filter((c) => c.table === "invoices");
+  expect(invoiceCalls.length).toBeGreaterThanOrEqual(2);
+});
+
 test("applyCaseReconciliation throws when overdue paging hits the cap", async () => {
   const invoices = Array.from({ length: 1000 }, (_, i) => ({
     customer_id: "cust-1",
@@ -130,12 +146,14 @@ test("applyCaseReconciliation does not close a case when a recheck finds an over
         range() { return q; },
         insert: async () => ({ error: null }),
         update() {
-          return {
+          const result = {
             eq(col: string, val: string) {
               if (col === "id") updates.push(val);
-              return { select: async () => ({ data: [{ id: val }], error: null }) };
+              return result;
             },
+            select: async () => ({ data: [{ id: updates[updates.length - 1] }], error: null }),
           };
+          return result;
         },
         then(resolve: (v: unknown) => unknown, reject?: (e: unknown) => unknown) {
           if (table === "invoices") {
@@ -191,4 +209,47 @@ test("applyPaymentsAndEvaluate records a recon error and rethrows so CDC cannot 
     .rejects.toEqual({ message: "boom" });
   expect(recorded).toHaveLength(1);
   expect(recorded[0]).toMatchObject({ org_id: "org-1", source: "cron", scope: "recon" });
+});
+
+function customerLookupClient(opts: {
+  rows: { id: string; qbo_id: string }[];
+  count?: number;
+  error?: { message: string } | null;
+}) {
+  return {
+    from() {
+      const q: Record<string, unknown> = {
+        select() { return q; },
+        eq() { return q; },
+        in() { return q; },
+        then(resolve: (v: unknown) => unknown, reject?: (e: unknown) => unknown) {
+          if (opts.error) {
+            return Promise.resolve({ data: null, count: null, error: opts.error }).then(resolve, reject);
+          }
+          return Promise.resolve({
+            data: opts.rows,
+            count: opts.count ?? opts.rows.length,
+            error: null,
+          }).then(resolve, reject);
+        },
+      };
+      return q;
+    },
+  };
+}
+
+test("customerIdMap throws on a short lookup page, not on a missing id", async () => {
+  await expect(customerIdMap(
+    customerLookupClient({ rows: [{ id: "u1", qbo_id: "1" }], count: 3 }) as any,
+    "org-1",
+    ["1", "2"],
+  )).rejects.toThrow(/customer lookup truncated/);
+
+  const map = await customerIdMap(
+    customerLookupClient({ rows: [{ id: "u1", qbo_id: "1" }] }) as any,
+    "org-1",
+    ["1", "2"],
+  );
+  expect(map.get("1")).toBe("u1");
+  expect(map.has("2")).toBe(false);
 });
