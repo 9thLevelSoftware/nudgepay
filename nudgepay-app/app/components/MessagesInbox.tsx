@@ -36,9 +36,11 @@ interface Props {
   timeZone?: string | null;
   loadError?: string | null;
   truncated?: boolean;
+  connected?: boolean;
+  needsReconnect?: boolean;
 }
 
-export function MessagesInbox({ rows, tab, sort, search, counts, selectedId, selectedChannel, channel, channelCounts, timeZone, loadError = null, truncated = false }: Props) {
+export function MessagesInbox({ rows, tab, sort, search, counts, selectedId, selectedChannel, channel, channelCounts, timeZone, loadError = null, truncated = false, connected, needsReconnect = false }: Props) {
   const searchRef = useSearchShortcut();
   const tabHref = (id: MessageTab) =>
     `?${new URLSearchParams({ tab: id, sort, channel, ...(search ? { q: search } : {}) }).toString()}`;
@@ -120,7 +122,14 @@ export function MessagesInbox({ rows, tab, sort, search, counts, selectedId, sel
 
       {rows.length === 0 ? (
         <p className="px-4 py-10 text-center text-sm text-muted">
-          {inboxListCopy({ loadError, truncated, rowCount: rows.length })}
+          {inboxListCopy({
+            loadError,
+            truncated,
+            rowCount: rows.length,
+            connected,
+            needsReconnect,
+            filterMiss: search.trim() !== "" || tab !== "all" || channel !== "all",
+          })}
         </p>
       ) : (
         <ul role="list" className="divide-y divide-border">

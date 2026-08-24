@@ -100,6 +100,11 @@ export function comingDueMetric(groups: ComingDueGroup[]): Metric {
 }
 
 /** Empty-state title for the Coming due view. Interpolates the org window. */
-export function comingDueEmptyCopy(comingDueDays: number = COMING_DUE_DAYS): string {
+export function comingDueEmptyCopy(
+  comingDueDays: number = COMING_DUE_DAYS,
+  opts?: { connected?: boolean; needsReconnect?: boolean },
+): string {
+  if (opts?.needsReconnect) return "Reconnect QuickBooks to load invoices.";
+  if (opts?.connected === false) return "Connect QuickBooks to load invoices.";
   return `No invoices coming due in the next ${comingDueDays} days.`;
 }

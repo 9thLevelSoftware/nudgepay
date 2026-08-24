@@ -275,9 +275,15 @@ export function inboxListCopy(args: {
   loadError: string | null;
   truncated: boolean;
   rowCount: number;
+  connected?: boolean;
+  needsReconnect?: boolean;
+  filterMiss?: boolean;
 }): string | null {
   if (args.loadError) return args.loadError;
   if (args.rowCount > 0) return null;
   if (args.truncated) return "Inbox may be incomplete.";
-  return "No threads in this view.";
+  if (args.needsReconnect) return "Reconnect QuickBooks to load messages.";
+  if (args.connected === false) return "Connect QuickBooks to load messages.";
+  if (args.filterMiss) return "No threads in this view.";
+  return args.connected === true ? "No conversations yet." : "No threads in this view.";
 }

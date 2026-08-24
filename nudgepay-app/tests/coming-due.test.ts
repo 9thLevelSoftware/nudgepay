@@ -160,3 +160,14 @@ test("coming-due stays ComingDueList and ignores entity", () => {
   expect(src).toContain("invoiceMode = entity === \"invoices\" && view !== \"coming-due\"");
   expect(src).toContain("Coming due is invoice-grouped. Switch to All open to use Customers vs Invoices.");
 });
+
+test("coming-due empty does not look healthy when disconnected", () => {
+  const src = readFileSync(new URL("../app/components/ComingDueList.tsx", import.meta.url), "utf8");
+  expect(src).toContain("healthyEmpty = connected && !needsReconnect");
+  expect(src).toContain('Icon name="check"');
+  expect(src).toContain("Check back later, or switch to another view.");
+  expect(src).toMatch(/healthyEmpty[\s\S]*\?[\s\S]*Icon name="check"[\s\S]*:[\s\S]*Icon name="filter"/);
+  expect(src).toMatch(/healthyEmpty[\s\S]*\?[\s\S]*Check back later/);
+  expect(comingDueEmptyCopy(7, { connected: false })).not.toMatch(/No invoices coming due/);
+  expect(comingDueEmptyCopy(7, { connected: false })).not.toMatch(/overdue/);
+});

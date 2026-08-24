@@ -22,8 +22,9 @@ export async function storeConnection(
 export async function getConnectionStatus(
   service: SupabaseClient, orgId: string,
 ): Promise<{ status: string; realmId: string | null } | null> {
-  const { data } = await service.from("qbo_connections")
+  const { data, error } = await service.from("qbo_connections")
     .select("status, realm_id").eq("org_id", orgId).maybeSingle();
+  if (error) throw error;
   return data ? { status: data.status as string, realmId: (data.realm_id as string) ?? null } : null;
 }
 

@@ -2,6 +2,7 @@ import { redirect } from "react-router";
 import { requireOrgUser } from "./session.server";
 import { createSupabaseServiceClient } from "./supabase.server";
 import { getConnectionStatus } from "./qbo-connection.server";
+import { connectionChrome, connectionSyncLabel } from "./connection-chrome";
 import type { AppEnv } from "./env.server";
 import { displayLabel, initialsFrom } from "./names";
 
@@ -58,7 +59,12 @@ export async function loadWorkspaceChrome(
       .is("resolved_at", null).order("occurred_at", { ascending: false }).limit(20),
   ]);
 
-  const connected = conn?.status === "connected";
+  if (connMetaRes.error) throw connMetaRes.error;
+
+  const lastSyncAt = (connMetaRes.data?.last_sync_at as string | null) ?? null;
+  const chrome = connectionChrome(conn?.status ?? null, lastSyncAt);
+  const connected = chrome.kind === "connected";
+  const needsReconnect = chrome.kind === "needs_reconnect";
   if (opts?.requireQbo === true && !connected) {
     throw redirect("/settings?tab=integrations", { headers });
   }
@@ -67,29 +73,13 @@ export async function loadWorkspaceChrome(
   const userLabel = displayLabel(user.user_metadata?.display_name, user.email, user.id);
   const initials = initialsFrom(userLabel);
 
-  // Sync label
-  const lastSyncAt = (connMetaRes?.data?.last_sync_at as string | null) ?? null;
-  let syncLabel: string;
-  if (!connected) {
-    syncLabel = "Not connected";
-  } else if (lastSyncAt) {
-    const diffMs = Date.now() - new Date(lastSyncAt).getTime();
-    const diffMin = Math.floor(diffMs / 60_000);
-    const diffHr = Math.floor(diffMin / 60);
-    const diffDay = Math.floor(diffHr / 24);
-    if (diffMin < 2) syncLabel = "Synced just now";
-    else if (diffMin < 60) syncLabel = `Synced ${diffMin}m ago`;
-    else if (diffHr < 24) syncLabel = `Synced ${diffHr}h ago`;
-    else syncLabel = `Synced ${diffDay}d ago`;
-  } else {
-    syncLabel = "Connected";
-  }
-
+  const syncLabel = connectionSyncLabel(chrome);
   const orgName = (orgRowRes.data?.name as string) ?? "Workspace";
 
   return {
     supabase, service, headers, user, org, isOwner,
-    orgName, initials, userLabel, connected, syncLabel, lastSyncAt,
+    orgName, initials, userLabel, connected, needsReconnect, connectionKind: chrome.kind,
+    syncLabel, lastSyncAt,
     syncIssues: mapSyncIssues(syncErrorRes.data as {
       id: string; source: string; scope: string; message: string; occurred_at: string;
     }[] | null),

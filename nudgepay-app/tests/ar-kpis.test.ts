@@ -2,6 +2,7 @@ import { readFileSync } from "node:fs";
 import { expect, test } from "vitest";
 import { ageInDays } from "../app/lib/worklist";
 import {
+  arKpiEmptySub,
   arKpisToCsv,
   buildArAgingBuckets,
   buildArKpis,
@@ -518,7 +519,20 @@ test("dashboard places ArKpiBand above KpiBand and links reports for owners only
   expect(dashboard).toContain("localMidnightUtcIso");
   expect(band).toContain('to="/reports"');
   expect(band).toContain("isOwner");
+  expect(band).toContain("arKpiEmptySub");
+  expect(band).not.toMatch(/connected = false/);
   expect(band).not.toMatch(/<MetricTile[^>]*href=/);
   expect(worklist).not.toContain("dso");
   expect(worklist).not.toContain("ArKpi");
+});
+
+test("AR empty subcopy is not Connect QuickBooks when connected", () => {
+  expect(arKpiEmptySub({ connected: true })).toBe("No overdue history in this window");
+  expect(arKpiEmptySub({ connected: true })).not.toBe("Connect QuickBooks");
+  expect(arKpiEmptySub({ connected: false })).toBe("Connect QuickBooks");
+  expect(arKpiEmptySub({ connected: false, needsReconnect: true })).toBe("Needs reconnect");
+  const dashboard = readFileSync(new URL("../app/routes/dashboard.tsx", import.meta.url), "utf8");
+  const reports = readFileSync(new URL("../app/routes/reports.tsx", import.meta.url), "utf8");
+  expect(dashboard).toMatch(/<ArKpiBand[\s\S]*connected=\{connected\}/);
+  expect(reports).toMatch(/<ArKpiBand[\s\S]*connected=\{connected\}/);
 });

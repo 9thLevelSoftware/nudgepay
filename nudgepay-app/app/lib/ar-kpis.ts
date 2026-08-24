@@ -7,6 +7,16 @@ import { ageInDays } from "./worklist";
 export const DASHBOARD_AR_RANGE_DAYS = 30;
 export const AR_SALES_LOOKBACK_DAYS = 365;
 
+/** Empty-coverage tile subtitle. Connected-empty is not first-run. */
+export function arKpiEmptySub(args: {
+  connected: boolean;
+  needsReconnect?: boolean;
+}): string {
+  if (args.needsReconnect) return "Needs reconnect";
+  if (args.connected) return "No overdue history in this window";
+  return "Connect QuickBooks";
+}
+
 export type ArKpiCoverage = "full" | "partial" | "empty";
 
 export type ArKpis = {

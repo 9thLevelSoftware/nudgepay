@@ -15,7 +15,6 @@ import { isQueueTruncated } from "./cases";
 import type { PriorityOverrideLevel } from "./priority";
 import type { ExceptionReason } from "./contact-log";
 import type { OrgConfig } from "./org-config";
-import { DEFAULT_ORG_CONFIG } from "./org-config";
 import { listOrgMembers, type OrgMember } from "./orgs.server";
 import { loadOrgConfig } from "./org-config.server";
 import { resolveCommPrefs } from "./comm-prefs";
@@ -135,7 +134,7 @@ export async function loadCaseQueueSource(args: LoadCaseQueueArgs): Promise<Case
   // it must be known before the invoices query below can be built. Callers
   // that already loaded it (e.g. to derive org-local `today`) pass it through
   // to avoid a second org_settings read.
-  const orgConfig = args.orgConfig ?? await loadOrgConfig(supabase, orgId).catch(() => DEFAULT_ORG_CONFIG);
+  const orgConfig = args.orgConfig ?? await loadOrgConfig(supabase, orgId);
   // Derive the lookahead upper bound from the org-local today (passed in by the
   // caller) rather than UTC Date.now(). This keeps the invoice query window
   // consistent with the org's calendar day — otherwise an east-of-UTC org whose
