@@ -61,7 +61,7 @@ export function PromiseQuickPanel({ promise, invoices, note, returnTo, promiseEr
 
       <div className="grid grid-cols-2 gap-3 p-4 bg-paper border-b border-border">
         <div><p className="font-mono text-[11px] uppercase text-muted">Promised</p><p className="font-display text-lg text-text tabular-nums">{formatUSD(promise.promisedAmount)}</p></div>
-        <div><p className="font-mono text-[11px] uppercase text-muted">Received</p><p className="font-display text-lg text-text tabular-nums">{formatUSD(promise.amountReceived)}</p></div>
+        <div><p className="font-mono text-[11px] uppercase text-muted">Received</p><p className="font-display text-lg text-text tabular-nums">{promise.amountReceived == null ? "—" : formatUSD(promise.amountReceived)}</p></div>
       </div>
 
       <dl className="p-4 space-y-2 text-sm border-b border-border">

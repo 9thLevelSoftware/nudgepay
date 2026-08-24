@@ -35,9 +35,10 @@ export type PromiseInput = {
   createdAt: string;    // ISO timestamp
 };
 
-export type PromiseRow = PromiseInput & {
+export type PromiseRow = Omit<PromiseInput, "amountReceived"> & {
+  amountReceived: number | null; // null when pending live-delta was truncated
   owner: string;
-  outstanding: number;         // max(0, promised - received)
+  outstanding: number;         // max(0, promised - received); promised when received unknown
   superseded: boolean;         // renegotiated | cancelled
   awaitingEvaluation: boolean; // pending but today > graceUntil (sync lag)
   caseOpen: boolean;           // case still open (closed cases can't be deep-linked into Collections)
@@ -59,6 +60,9 @@ export type BuildPromiseRowsOpts = {
   // the live linked balance (balance-delta, matching evaluatePromise). Absent
   // entry → fall back to the persisted amountReceived.
   liveLinkedBalanceByPromiseId?: ReadonlyMap<string, number>;
+  // Truncated links/invoices page: pending received is unknown (null), never
+  // inflated by treating missing invoice ids as $0.
+  liveDeltaTruncated?: boolean;
   // case_ids whose case is still open (closed_at is null). Absent → treat every
   // case as open (the no-info default, used by pure unit tests).
   openCaseIds?: ReadonlySet<string>;
@@ -73,15 +77,19 @@ export function buildPromiseRows(
   return promises.map((p) => {
     // Live received for pending promises (the persisted column lags until the
     // evaluator settles the promise); terminal statuses keep their authoritative value.
-    let amountReceived = p.amountReceived;
-    if (p.status === "pending" && opts.liveLinkedBalanceByPromiseId?.has(p.promiseId)) {
+    let amountReceived: number | null = p.amountReceived;
+    if (p.status === "pending" && opts.liveDeltaTruncated) {
+      amountReceived = null;
+    } else if (p.status === "pending" && opts.liveLinkedBalanceByPromiseId?.has(p.promiseId)) {
       amountReceived = Math.max(0, p.baselineBalance - opts.liveLinkedBalanceByPromiseId.get(p.promiseId)!);
     }
     return {
       ...p,
       owner: p.ownerId ? (ownerLabels.get(p.ownerId) ?? "Unknown") : "Unassigned",
       amountReceived,
-      outstanding: Math.max(0, p.promisedAmount - amountReceived),
+      outstanding: amountReceived == null
+        ? p.promisedAmount
+        : Math.max(0, p.promisedAmount - amountReceived),
       superseded: p.status === "renegotiated" || p.status === "cancelled",
       awaitingEvaluation: p.status === "pending" && today > p.graceUntil,
       caseOpen: opts.openCaseIds ? opts.openCaseIds.has(p.caseId) : true,

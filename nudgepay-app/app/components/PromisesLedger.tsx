@@ -46,7 +46,10 @@ interface Props {
 }
 
 /** Compact received-vs-promised progress: fill bar + % + amounts. */
-function ReceivedProgress({ received, promised }: { received: number; promised: number }) {
+function ReceivedProgress({ received, promised }: { received: number | null; promised: number }) {
+  if (received == null) {
+    return <span className="text-sm text-muted tabular-nums truncate">— received</span>;
+  }
   if (promised <= 0) {
     return (
       <span className="flex min-w-0 flex-col gap-1">

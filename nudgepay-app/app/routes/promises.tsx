@@ -27,6 +27,7 @@ import { PromiseQuickPanel } from "../components/PromiseQuickPanel";
 import { DrawerShell } from "../components/DrawerShell";
 import { pageTitle } from "../lib/meta";
 import { chunkIds, honestListState, orderPage, pageAllChunkedHonest, pageAllHonest, PAGE_ALL_MAX_ROWS } from "../lib/page-all";
+import { liveLinkedBalancesOrNull } from "../lib/promises";
 import { LoadErrorBanner, TruncationBanner } from "../components/TruncationBanner";
 import type { Route } from "./+types/promises";
 
@@ -142,7 +143,6 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
     casePage.rows.filter((c) => c.closed_at == null).map((c) => c.id),
   );
 
-  const liveLinkedBalanceByPromiseId = new Map<string, number>();
   const linkInvIds = Array.from(new Set(piPage.rows.map((l) => l.invoice_id)));
   type BalRow = { id: string; balance: number | string | null };
   const invBalPage = linkInvIds.length === 0
@@ -159,15 +159,16 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
           ).range(from, to),
         { maxRows: PAGE_ALL_MAX_ROWS },
       );
+  const liveDeltaTruncated = piPage.truncated || invBalPage.truncated;
   const balById = new Map<string, number>();
   for (const inv of invBalPage.rows) balById.set(inv.id, Number(inv.balance) || 0);
-  for (const l of piPage.rows) {
-    const bal = balById.get(l.invoice_id) ?? 0;
-    liveLinkedBalanceByPromiseId.set(
-      l.promise_id,
-      (liveLinkedBalanceByPromiseId.get(l.promise_id) ?? 0) + bal,
-    );
-  }
+  // Truncated → null received (never treat a capped miss as $0). Complete map
+  // still uses missing id as $0 (deleted invoice).
+  const liveLinkedBalanceByPromiseId = liveLinkedBalancesOrNull(
+    liveDeltaTruncated,
+    piPage.rows.map((l) => ({ promiseId: l.promise_id, invoiceId: l.invoice_id })),
+    balById,
+  );
 
   const promisesInput: PromiseInput[] = rawPromises.map((r) => {
     const c = custById.get(r.customer_id);
@@ -191,7 +192,8 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
   const ownerLabels = new Map(roster.map((m) => [m.userId, m.label]));
 
   const allRows = buildPromiseRows(promisesInput, today, ownerLabels, {
-    liveLinkedBalanceByPromiseId,
+    liveLinkedBalanceByPromiseId: liveLinkedBalanceByPromiseId ?? undefined,
+    liveDeltaTruncated,
     openCaseIds,
   });
   // Search narrows the whole ledger (counts + rows), matching the Accounts
