@@ -29,6 +29,19 @@ test("delete_workspace purges the org, writes a tombstone, and is not callable b
   });
   expect(jwt.error).not.toBeNull();
 
+  // Body-level owner check: service_role must still fail for a non-owner p_deleted_by.
+  const { error: memberRpc } = await svc.rpc("delete_workspace", {
+    p_org_id: orgId,
+    p_deleted_by: member.userId,
+    p_org_name: "Delete Me Co",
+    p_member_count: 2,
+  });
+  expect(memberRpc).not.toBeNull();
+  const { data: stillThere } = await svc.from("organizations").select("id").eq("id", orgId);
+  expect(stillThere ?? []).toHaveLength(1);
+  const { data: noTomb } = await svc.from("workspace_deletions").select("org_id").eq("org_id", orgId);
+  expect(noTomb ?? []).toHaveLength(0);
+
   const { error: rpcErr } = await svc.rpc("delete_workspace", {
     p_org_id: orgId,
     p_deleted_by: owner.userId,

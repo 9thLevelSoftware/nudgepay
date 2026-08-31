@@ -61,8 +61,26 @@ begin
   if p_org_id is null then
     raise exception 'workspace not found';
   end if;
-  if not exists (select 1 from public.organizations where id = p_org_id) then
+
+  -- Serialize deletion and confirm the org still exists.
+  perform 1 from public.organizations where id = p_org_id for update;
+  if not found then
     raise exception 'workspace not found';
+  end if;
+
+  -- Recheck owner membership inside the transaction (closes TOCTOU after resolveOrg).
+  -- service_role bypasses JWT, so this body check is the authorization gate.
+  if p_deleted_by is null then
+    raise exception 'not an owner';
+  end if;
+  perform 1
+    from public.memberships
+   where org_id = p_org_id
+     and user_id = p_deleted_by
+     and role = 'owner'
+   for update;
+  if not found then
+    raise exception 'not an owner';
   end if;
 
   insert into public.workspace_deletions (org_id, org_name, deleted_by, member_count)
