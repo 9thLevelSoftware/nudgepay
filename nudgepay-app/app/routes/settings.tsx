@@ -27,7 +27,7 @@ import { NotificationPrefsForm } from "../components/NotificationPrefsForm";
 import { CompanyProfileForm } from "../components/CompanyProfileForm";
 import { TemplateEditor } from "../components/TemplateEditor";
 import { useTwoStep } from "../components/TwoStepConfirm";
-import { Button } from "../components/ui";
+import { Button, Input } from "../components/ui";
 import { useToast } from "../components/Toasts";
 import { resolveChannelSettings, resolveSmsSenderSettings } from "../lib/channel-settings";
 import { resolveEmailSettings } from "../lib/email-settings";
@@ -846,23 +846,24 @@ function DeleteWorkspaceForm({
         <input type="hidden" name="returnTo" value={returnTo} />
         <label className="grid gap-1 text-sm font-medium text-text">
           Workspace name
-          <input
+          <Input
             name="confirm"
             type="text"
             required
             autoComplete="off"
             value={typed}
             onChange={(e) => setTyped(e.target.value)}
-            className="h-9 rounded-md border border-border bg-panel px-3 text-sm text-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-copper"
           />
         </label>
-        <button
+        <Button
           type="submit"
+          variant="destructive"
+          size="sm"
           disabled={!canSubmit || busy}
-          className="h-9 w-fit rounded-md border border-hot px-4 text-sm font-medium text-hot disabled:opacity-60 disabled:cursor-not-allowed"
+          className="w-fit"
         >
           {busy ? "Deleting…" : "Delete workspace"}
-        </button>
+        </Button>
       </Form>
       {deleteError === "confirm" ? (
         <p className="mt-2 text-xs text-hot" role="alert">Type the workspace name to confirm.</p>
