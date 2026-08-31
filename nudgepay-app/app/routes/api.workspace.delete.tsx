@@ -35,10 +35,20 @@ export async function action({ request, context }: ActionFunctionArgs) {
     return redirect(flag(returnTo, "deleteError", decision.error), { headers });
   }
 
-  const { count: memberCount } = await service
+  // Re-check owner immediately before QBO revoke (closes demotion TOCTOU vs resolveOrg).
+  const { data: stillOwner, error: ownerErr } = await service
     .from("memberships")
-    .select("user_id", { count: "exact", head: true })
-    .eq("org_id", org.org_id);
+    .select("user_id")
+    .eq("org_id", org.org_id)
+    .eq("user_id", user.id)
+    .eq("role", "owner")
+    .maybeSingle();
+  if (ownerErr) {
+    return redirect(flag(returnTo, "deleteError", "workspace"), { headers });
+  }
+  if (!stillOwner) {
+    return redirect(flag(returnTo, "deleteError", "forbidden"), { headers });
+  }
 
   const conn = await getConnectionStatus(service, org.org_id);
   // Revoke whenever a connection row exists (connected or error with
@@ -69,7 +79,7 @@ export async function action({ request, context }: ActionFunctionArgs) {
     p_org_id: org.org_id,
     p_deleted_by: user.id,
     p_org_name: orgName,
-    p_member_count: memberCount ?? 0,
+    p_member_count: 0,
   });
   if (error) {
     return redirect(flag(returnTo, "deleteError", "workspace"), { headers });
