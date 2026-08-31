@@ -83,7 +83,7 @@ test("delete_workspace purges the org, writes a tombstone, and is not callable b
     p_org_id: orgId,
     p_deleted_by: owner.userId,
     p_org_name: "Delete Me Co",
-    p_member_count: 2,
+    p_member_count: 99,
   });
   expect(rpcErr).toBeNull();
 

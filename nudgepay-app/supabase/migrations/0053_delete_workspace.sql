@@ -59,6 +59,7 @@ set search_path = public
 as $$
 declare
   locked_name text;
+  locked_members int;
 begin
   if p_org_id is null then
     raise exception 'workspace not found';
@@ -92,8 +93,12 @@ begin
     raise exception 'not an owner';
   end if;
 
+  -- Count after locks so the tombstone is not a stale/failed pre-RPC query.
+  perform 1 from public.memberships where org_id = p_org_id for update;
+  select count(*)::int into locked_members from public.memberships where org_id = p_org_id;
+
   insert into public.workspace_deletions (org_id, org_name, deleted_by, member_count)
-  values (p_org_id, locked_name, p_deleted_by, coalesce(p_member_count, 0));
+  values (p_org_id, locked_name, p_deleted_by, coalesce(locked_members, 0));
 
   perform set_config('app.deleting_workspace', 'true', true);
 
