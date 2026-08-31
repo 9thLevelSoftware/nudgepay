@@ -7,6 +7,7 @@ name: CI
 #                             (RLS, migrations, QBO/Twilio fakes). A green PR is not
 #                             real-provider or staging proof.
 #   browser smoke          — Playwright against /healthz, /login, /signup
+#   npm audit (production) — `npm audit --omit=dev` on nudgepay-app
 # No coverage thresholds. No auth rate-limit job.
 
 on:
@@ -67,6 +68,19 @@ jobs:
       - run: npx vitest run
       - run: npx supabase stop
         if: always()
+
+  audit:
+    name: npm audit (production)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: nudgepay-app/package-lock.json
+      - run: npm ci
+      - run: npm audit --omit=dev
 
   e2e:
     name: browser smoke
