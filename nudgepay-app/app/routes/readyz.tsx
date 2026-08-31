@@ -9,7 +9,15 @@ import { readyzBody, type ReadyzProviders } from "../lib/readyz";
 // must not take traffic can probe this route. Provider flags are config
 // presence only — never live QBO/Twilio/Resend calls.
 
-function providersFrom(raw: Record<string, string>, context: LoaderFunctionArgs["context"]): ReadyzProviders {
+function providersFrom(context: LoaderFunctionArgs["context"]): ReadyzProviders {
+  const env = (context as { cloudflare?: { env?: Record<string, string> } }).cloudflare?.env ?? {};
+  return {
+    qbo: Boolean(getQboEnvOrNull(context as any)),
+    twilio: Boolean(getTwilioEnvOrNull(context as any)),
+    email: Boolean(getEmailEnvOrNull(context as any)),
+    operatorAlert: operatorAlertWebhookOk(env.OPERATOR_ALERT_WEBHOOK),
+  };
+}
   return {
     qbo: Boolean(getQboEnvOrNull(context as any)),
     twilio: Boolean(getTwilioEnvOrNull(context as any)),
