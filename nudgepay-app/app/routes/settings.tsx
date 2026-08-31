@@ -448,6 +448,20 @@ export default function Settings() {
                 />
               ) : null}
 
+              <section className="rounded-lg border border-border bg-surface p-5">
+                <h2 className="font-display text-base font-semibold text-text">Download my data</h2>
+                <p className="mt-0.5 text-xs text-muted">
+                  JSON copy of your NudgePay login, membership, notification
+                  preferences, and contact-log activity. Workspace invoices and
+                  customer records are not included.
+                </p>
+                <Form method="get" action="/api/account/export" className="mt-3">
+                  <Button type="submit" variant="secondary" size="sm" className="w-fit">
+                    Download my data
+                  </Button>
+                </Form>
+              </section>
+
               <DeleteAccountForm
                 currentEmail={d.ownerEmail}
                 lastOwner={lastOwner}

@@ -215,22 +215,25 @@ test("wrangler staging env and operator alert webhook are declared", () => {
   expect(wrangler).toContain("QBO_SANDBOX = \"true\"");
 });
 
-test("Settings separates leave, workspace delete, and personal login delete", () => {
+test("Settings separates leave, workspace delete, export, and personal login delete", () => {
   const src = read("../app/routes/settings.tsx");
   expect(src).toMatch(/Leave workspace/);
   expect(src).toMatch(/does not delete the\s+workspace/i);
   expect(src).toMatch(/Delete workspace/);
   expect(src).toContain("/api/workspace/delete");
+  expect(src).toMatch(/Download my data/);
+  expect(src).toContain("/api/account/export");
   expect(src).toMatch(/Delete my NudgePay account/);
   expect(src).toContain("/api/account/delete");
   expect(src).not.toMatch(/Could not delete your account/);
 });
 
-test("privacy describes leave, workspace delete, and Auth-user erasure", () => {
+test("privacy describes leave, workspace delete, export, and Auth-user erasure", () => {
   const privacy = read("../app/routes/privacy.tsx");
   expect(privacy).toMatch(/leave this workspace/i);
   expect(privacy).toMatch(/does not delete the\s+workspace/i);
   expect(privacy).toMatch(/deletion tombstone/i);
+  expect(privacy).toMatch(/download a JSON copy of your NudgePay login/i);
   expect(privacy).toMatch(/delete your NudgePay login in Settings/i);
   expect(privacy).toMatch(/removes the Auth\s+user/i);
 });
