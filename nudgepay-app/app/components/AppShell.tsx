@@ -4,6 +4,7 @@ import { Icon } from "./Icons";
 import { ToastProvider } from "./Toasts";
 import { CommandPalette } from "./CommandPalette";
 import { ThemeToggle } from "./ThemeToggle";
+import { MAIN_CONTENT_ID, SkipLink } from "./ui";
 
 interface AppShellProps {
   orgName: string;
@@ -88,12 +89,7 @@ export function AppShell({
   return (
     <ToastProvider>
     <div className="relative flex flex-col h-screen overflow-hidden font-sans">
-      <a
-        href="#main-content"
-        className="sr-only focus:not-sr-only focus:absolute focus:top-2 focus:left-2 focus:z-50 rounded-md bg-copper px-3 py-2 text-sm font-semibold text-ink"
-      >
-        Skip to content
-      </a>
+      <SkipLink />
       {busy && (
         <div
           role="progressbar"
@@ -279,7 +275,7 @@ export function AppShell({
         {/* ── Main content ──────────────────────────────────────────────── */}
         <main
           className="flex-1 overflow-auto bg-panel"
-          id="main-content"
+          id={MAIN_CONTENT_ID}
           tabIndex={-1}
         >
           {children}

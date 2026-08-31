@@ -20,3 +20,12 @@ test("signup page is reachable from login", async ({ page }) => {
   await expect(page).toHaveURL(/\/signup/);
   await expect(page.locator('input[name="email"]')).toBeVisible();
 });
+
+test("login skip link moves focus to main", async ({ page }) => {
+  await page.goto("/login");
+  const skip = page.getByRole("link", { name: "Skip to content" });
+  await skip.focus();
+  await expect(skip).toBeVisible();
+  await skip.click();
+  await expect(page.locator("#main-content")).toBeFocused();
+});

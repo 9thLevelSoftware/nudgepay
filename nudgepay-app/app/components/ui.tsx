@@ -78,6 +78,20 @@ export function Button({
   );
 }
 
+export const MAIN_CONTENT_ID = "main-content";
+
+/** First focusable control on a chrome shell. Revealed on keyboard focus. */
+export function SkipLink() {
+  return (
+    <a
+      href={`#${MAIN_CONTENT_ID}`}
+      className="sr-only focus:not-sr-only focus:absolute focus:top-2 focus:left-2 focus:z-50 rounded-md bg-copper px-3 py-2 text-sm font-semibold text-ink"
+    >
+      Skip to content
+    </a>
+  );
+}
+
 // ── Surfaces ───────────────────────────────────────────────────────────────
 
 export function Card({

@@ -3,6 +3,7 @@ import { getEnv, getUnsubscribeEnv } from "../lib/env.server";
 import { createSupabaseServiceClient } from "../lib/supabase.server";
 import { verifyUnsubscribeToken } from "../lib/unsubscribe-token";
 import { pageTitle } from "../lib/meta";
+import { MAIN_CONTENT_ID, SkipLink } from "../components/ui";
 import type { Route } from "./+types/unsubscribe";
 
 export const meta: Route.MetaFunction = () => pageTitle("Unsubscribe");
@@ -50,29 +51,32 @@ export default function Unsubscribe() {
   const token = a?.token ?? l.token;
 
   return (
-    <main className="min-h-screen flex items-center justify-center bg-surface p-6">
-      <div className="max-w-md rounded-lg border border-border bg-panel p-6 text-center">
-        {!valid ? (
-          <>
-            <h1 className="text-lg font-semibold text-text">Link invalid or expired</h1>
-            <p className="mt-2 text-sm text-muted">We couldn't process this unsubscribe link. Please contact us directly to update your preferences.</p>
-          </>
-        ) : done ? (
-          <>
-            <h1 className="text-lg font-semibold text-text">You're unsubscribed</h1>
-            <p className="mt-2 text-sm text-muted">You will no longer receive collection emails from us. If this was a mistake, contact us and we'll re-enable email.</p>
-          </>
-        ) : (
-          <>
-            <h1 className="text-lg font-semibold text-text">Unsubscribe from emails?</h1>
-            <p className="mt-2 text-sm text-muted">Click below to stop receiving collection emails from us.</p>
-            <Form method="post" className="mt-4">
-              <input type="hidden" name="token" value={token} />
-              <button type="submit" className="rounded-md bg-copper px-4 py-2 text-sm font-semibold text-ink hover:bg-copper/90">Confirm unsubscribe</button>
-            </Form>
-          </>
-        )}
-      </div>
-    </main>
+    <div className="relative">
+      <SkipLink />
+      <main id={MAIN_CONTENT_ID} tabIndex={-1} className="min-h-screen flex items-center justify-center bg-surface p-6">
+        <div className="max-w-md rounded-lg border border-border bg-panel p-6 text-center">
+          {!valid ? (
+            <>
+              <h1 className="text-lg font-semibold text-text">Link invalid or expired</h1>
+              <p className="mt-2 text-sm text-muted">We couldn't process this unsubscribe link. Please contact us directly to update your preferences.</p>
+            </>
+          ) : done ? (
+            <>
+              <h1 className="text-lg font-semibold text-text">You're unsubscribed</h1>
+              <p className="mt-2 text-sm text-muted">You will no longer receive collection emails from us. If this was a mistake, contact us and we'll re-enable email.</p>
+            </>
+          ) : (
+            <>
+              <h1 className="text-lg font-semibold text-text">Unsubscribe from emails?</h1>
+              <p className="mt-2 text-sm text-muted">Click below to stop receiving collection emails from us.</p>
+              <Form method="post" className="mt-4">
+                <input type="hidden" name="token" value={token} />
+                <button type="submit" className="rounded-md bg-copper px-4 py-2 text-sm font-semibold text-ink hover:bg-copper/90">Confirm unsubscribe</button>
+              </Form>
+            </>
+          )}
+        </div>
+      </main>
+    </div>
   );
 }

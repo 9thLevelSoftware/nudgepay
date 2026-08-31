@@ -28,6 +28,7 @@ import {
 import { OUTCOME_LABELS } from "../lib/timeline";
 import { useFocusKeys, type FocusKey } from "../lib/use-focus-keys";
 import { FocusCard } from "../components/focus/FocusCard";
+import { MAIN_CONTENT_ID, SkipLink } from "../components/ui";
 import { LogCallMiniForm } from "../components/focus/LogCallMiniForm";
 import { SendTextMiniForm } from "../components/focus/SendTextMiniForm";
 import { formatDate, formatInstant } from "../lib/dates";
@@ -409,7 +410,8 @@ export default function FocusMode() {
   const pct = totalCount > 0 ? (triaged / totalCount) * 100 : 0;
 
   return (
-    <div className="flex min-h-screen flex-col bg-ink text-surface">
+    <div className="relative flex min-h-screen flex-col bg-ink text-surface">
+      <SkipLink />
       {/* ── Top bar ──────────────────────────────────────────────────────── */}
       <header className="flex items-center gap-4 border-b border-white/10 px-4 py-3">
         <Link
@@ -485,7 +487,7 @@ export default function FocusMode() {
       ) : null}
 
       {/* ── Main content ─────────────────────────────────────────────────── */}
-      <main className="flex-1 flex items-start justify-center px-4 py-8 gap-6">
+      <main id={MAIN_CONTENT_ID} tabIndex={-1} className="flex-1 flex items-start justify-center px-4 py-8 gap-6">
         {done ? (
           /* Done state */
           <div className="mx-auto max-w-md text-center mt-16">

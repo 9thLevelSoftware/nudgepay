@@ -109,3 +109,28 @@ describe("TEMP-UX-019 TemplateEditor channel toggle", () => {
     expect(src).toContain("aria-pressed={channel === \"email\"}");
   });
 });
+
+describe("skip to content", () => {
+  it("is a shared primitive targeting main-content", () => {
+    const src = read("../app/components/ui.tsx");
+    expect(src).toContain('export const MAIN_CONTENT_ID = "main-content"');
+    expect(src).toContain("export function SkipLink");
+    expect(src).toContain("Skip to content");
+    expect(src).toContain("sr-only focus:not-sr-only");
+  });
+
+  it("AppShell, PublicLayout, Focus, and unsubscribe use SkipLink", () => {
+    for (const rel of [
+      "../app/components/AppShell.tsx",
+      "../app/components/PublicLayout.tsx",
+      "../app/routes/focus.tsx",
+      "../app/routes/unsubscribe.tsx",
+    ]) {
+      const src = read(rel);
+      expect(src, rel).toContain("<SkipLink");
+      expect(src, rel).toContain("MAIN_CONTENT_ID");
+      expect(src, rel).toContain("tabIndex={-1}");
+      expect(src, rel).not.toMatch(/href="#main-content"/);
+    }
+  });
+});
