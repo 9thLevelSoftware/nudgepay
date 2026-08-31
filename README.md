@@ -63,7 +63,7 @@ The July 2026 gap analysis at
 | Web framework| React Router 7 (SSR)                                                 |
 | UI           | React 19, Tailwind CSS 4, IBM Plex / Space Grotesk                   |
 | Runtime      | Cloudflare Workers (`workers/app.ts`) + scheduled cron handlers      |
-| Backend      | Supabase (Postgres + Auth + RLS) — migrations `0001`–`0051` under `supabase/` |
+| Backend      | Supabase (Postgres + Auth + RLS) — migrations `0001`–`0052` under `supabase/` |
 | QBO          | Intuit QuickBooks Online Data API + webhooks (OAuth + CDC catch-up)  |
 | Messaging    | Twilio (SMS two-way), Resend (email)                                 |
 | Build / test | Vite 7, TypeScript 5.9, Vitest 4, Wrangler 4                         |
@@ -80,7 +80,7 @@ The July 2026 gap analysis at
     │   ├── lib/                         # pure + server-side domain logic
     │   └── routes/                      # page + API + webhook routes
     ├── supabase/
-    │   └── migrations/                  # 0001–0051 schema + RLS
+    │   └── migrations/                  # 0001–0052 schema + RLS
     ├── tests/                           # vitest suites
     ├── workers/
     │   └── app.ts                       # Cloudflare fetch + scheduled handlers
@@ -164,8 +164,9 @@ Caveats, all called out inline in `render.yaml`:
 
 ## Testing
 
-See [`nudgepay-app/README.md`](nudgepay-app/README.md). PR CI is typecheck
-+ `npm run test:unit` only — a green check is not RLS, QBO, or Twilio.
+See [`nudgepay-app/README.md`](nudgepay-app/README.md). PR CI runs typecheck
++ unit tests, `npm run check`, the local Supabase integration suite, and a
+Playwright smoke. A green PR is not real-provider or staging proof.
 
 ## License
 

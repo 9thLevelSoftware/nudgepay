@@ -88,10 +88,12 @@ test("JWT cannot relabel or delete outbound SID history used for inbound routing
   const { data: orgB } = await svc.from("organizations").insert({ name: `SSI-sid-own-b ${Math.random()}` }).select("id").single();
   const orgBId = orgB!.id as string;
   const owner = await makeUserClient(`ssi-sid-own-${Math.random()}@example.com`);
-  await svc.from("memberships").insert([
-    { org_id: orgAId, user_id: owner.userId, role: "owner" },
-    { org_id: orgBId, user_id: owner.userId, role: "owner" },
-  ]);
+  // One membership per user (0040). Org B exists so a relabel target is real,
+  // but this JWT is only an owner of A.
+  const { error: memErr } = await svc.from("memberships").insert({
+    org_id: orgAId, user_id: owner.userId, role: "owner",
+  });
+  expect(memErr).toBeNull();
   const { data: custA } = await svc.from("customers")
     .insert({ org_id: orgAId, qbo_id: `c-sid-own-${Math.random()}`, name: "SID Owner", phone: "+13105550998", sms_consent: true })
     .select("id").single();
@@ -107,13 +109,15 @@ test("JWT cannot relabel or delete outbound SID history used for inbound routing
 
   const moved = await owner.client.from("text_messages")
     .update({ org_id: orgBId, customer_id: null, invoice_id: null, case_id: null })
-    .eq("id", seeded!.id);
-  expect(moved.error).not.toBeNull();
+    .eq("id", seeded!.id)
+    .select("id");
+  // No JWT UPDATE policy: PostgREST reports 0 rows (error may be null).
+  expect(moved.data ?? []).toHaveLength(0);
   const { data: afterMove } = await svc.from("text_messages").select("org_id").eq("id", seeded!.id).single();
   expect(afterMove!.org_id).toBe(orgAId);
 
-  const del = await owner.client.from("text_messages").delete().eq("id", seeded!.id);
-  expect(del.error).not.toBeNull();
+  const del = await owner.client.from("text_messages").delete().eq("id", seeded!.id).select("id");
+  expect(del.data ?? []).toHaveLength(0);
   const { data: still } = await svc.from("text_messages").select("id").eq("id", seeded!.id);
   expect(still).toHaveLength(1);
 });

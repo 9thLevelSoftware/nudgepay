@@ -209,3 +209,9 @@ supabase/.temp/
 
 # Node/Render build output (see render.yaml, scripts/build-cron.mjs)
 /dist-cron/
+
+### Playwright ###
+/test-results/
+/playwright-report/
+/blob-report/
+/playwright/.cache/

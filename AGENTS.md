@@ -19,7 +19,7 @@ nudgepay-app/
 ├── workers/
 │   └── app.ts            # Cloudflare Worker entry (fetch + scheduled handlers)
 ├── supabase/
-│   └── migrations/       # 0001..0051 — sequential SQL migrations
+│   └── migrations/       # 0001..0052 — sequential SQL migrations
 ├── tests/                # Vitest test files
 ├── wrangler.toml         # Worker config + cron + env vars
 └── package.json
@@ -54,12 +54,12 @@ docs/                     # Gap analysis, Intuit checklist
 | `qbo-cron.server.ts`     | Scheduled CDC catch-up                   |
 | `digest-cron.server.ts`  | Scheduled daily digest                   |
 
-### Migrations (0001–0051)
+### Migrations (0001–0052)
 
 Supabase migrations in `supabase/migrations/`, sequential through
-`0051_message_events_direction.sql`. After `0048_sms_sender_inventory.sql`:
+`0052_text_messages_ledger_rls.sql`. After `0048_sms_sender_inventory.sql`:
 `0049_cases_and_consent_rls.sql`, `0050_promises_rls.sql`,
-`0051_message_events_direction.sql`.
+`0051_message_events_direction.sql`, `0052_text_messages_ledger_rls.sql`.
 
 Key tables: `organizations`, `memberships`, `qbo_connections`, `invoices`
 (including `paid_date`), `customers`, `collection_cases`, `contact_logs`,
@@ -80,8 +80,9 @@ Run from `nudgepay-app/`:
 npm run dev          # Local dev server (Workers + Supabase)
 npm run typecheck    # wrangler types + react-router typegen + tsc -b
 npm run check        # tsc + build + wrangler deploy --dry-run
-npm run test:unit    # PR CI — no Docker; does not run RLS/QBO/Twilio
-npx vitest run       # Full suite (needs local Supabase) — RLS proof
+npm run test:unit    # Fast PR job — no Docker; excludes ./helpers files
+npx vitest run       # Full suite (needs local Supabase) — RLS + fakes
+npm run test:e2e     # Playwright smoke (healthz/login/signup)
 npx vitest run tests/names.test.ts  # Single file
 
 # Supabase local
@@ -89,9 +90,9 @@ npx supabase start
 npx supabase db reset   # Applies all migrations fresh
 ```
 
-GitHub Actions PR CI is the `typecheck + unit tests` job. A green PR does
-**not** mean RLS, QBO, or Twilio ran. No coverage thresholds. No auth rate
-limits.
+GitHub Actions PR CI runs typecheck + unit tests, `npm run check`, the local
+Supabase integration suite, and a Playwright smoke. A green PR is not
+real-provider or staging proof. No coverage thresholds. No auth rate limits.
 
 ## Conventions
 

@@ -13,7 +13,11 @@ test("cron records a 'cdc' sync_error for a connected-but-tokenless org", async 
   const { data: org } = await svc.from("organizations").insert({ name: "Cron Wiring Org" }).select("id").single();
   const orgId = org!.id as string;
   // status 'connected' but no refresh token => getValidAccessToken throws.
-  await svc.from("qbo_connections").insert({ org_id: orgId, realm_id: "CRON-R1", status: "connected" });
+  // last_sync_at set so cron takes the CDC path (null last_sync_at is backfill).
+  await svc.from("qbo_connections").insert({
+    org_id: orgId, realm_id: "CRON-R1", status: "connected",
+    last_sync_at: "2026-01-01T00:00:00Z",
+  });
 
   await runScheduledCdc(TEST_ENV);
 
@@ -44,7 +48,9 @@ test("webhook isolates a failing event: records it and returns 500", async () =>
   });
 
   const res = await webhookAction({ request, context: ctx(), params: {} } as any);
-  expect(res.status).toBe(500); // hadFailure -> Intuit retries
+  // ACK 200 so Intuit does not retry the whole payload; the failed event is
+  // recorded in sync_errors for the next CDC catch-up.
+  expect(res.status).toBe(200);
 
   const { data } = await svc.from("sync_errors").select("source, scope").eq("org_id", orgId);
   expect(data!.length).toBe(1);
