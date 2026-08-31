@@ -41,7 +41,10 @@ export async function action({ request, context }: ActionFunctionArgs) {
     .eq("org_id", org.org_id);
 
   const conn = await getConnectionStatus(service, org.org_id);
-  if (conn?.status === "connected") {
+  // Revoke whenever a connection row exists (connected or error with
+  // refresh_token_enc still stored). disconnectConnection no-ops if tokens
+  // are already gone. Fail-open: never skip revoke because status is error.
+  if (conn) {
     const qbo = getQboEnvOrNull(context as any);
     if (qbo) {
       try {
