@@ -103,7 +103,7 @@ export function CompanyProfileForm({
             placeholder="https://pay.yourcompany.com"
             className="h-9 rounded-md border border-border bg-panel px-3 text-sm text-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-copper"
           />
-          <span className="text-xs text-muted font-normal">Will be available in templates as <code className="rounded bg-panel px-1 py-0.5 font-mono text-[11px]">{"{paymentLink}"}</code>. Leave blank if you don't have one.</span>
+          <span className="text-xs text-muted font-normal">Your own payment page for the <code className="rounded bg-panel px-1 py-0.5 font-mono text-[11px]">{"{paymentLink}"}</code> token. NudgePay does not process payments. Leave blank if you don&apos;t have one.</span>
           {errorCode === "portal" && <p className="text-xs text-hot" role="alert">Enter a valid URL (https://…) or leave blank.</p>}
         </label>
 

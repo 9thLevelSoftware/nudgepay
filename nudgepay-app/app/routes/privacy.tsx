@@ -59,7 +59,11 @@ export default function Privacy() {
         may host a secondary Node runtime for staging.</p>
 
       <h2 className="text-base font-semibold text-text mt-6 mb-2">8. Data retention and deletion</h2>
-      <p className="text-sm text-text leading-relaxed mb-3">Disconnecting QuickBooks revokes and deletes stored tokens. You can
+      <p className="text-sm text-text leading-relaxed mb-3">Expired OAuth states, notification logs older than 90 days, resolved
+        sync errors older than 90 days, and unused invites that have expired are
+        purged automatically. Invoices, customers, cases, and messages stay until
+        an owner deletes the workspace or erases a customer.
+        Disconnecting QuickBooks revokes and deletes stored tokens. You can
         leave this workspace in Settings by typing your email or LEAVE. That
         removes your membership and signs you out. It does not delete the
         workspace or erase invoices, customers, or messages. If you are the last remaining
@@ -81,10 +85,16 @@ export default function Privacy() {
         unless an owner deleted the workspace. For other erasure requests,
         contact {contact}.</p>
 
-      <h2 className="text-base font-semibold text-text mt-6 mb-2">9. No sale of data</h2>
+      <h2 className="text-base font-semibold text-text mt-6 mb-2">9. Payments and automated sequences</h2>
+      <p className="text-sm text-text leading-relaxed mb-3">NudgePay does not process payments and does not send automatic
+        reminder sequences. Each text and email is sent by a person on your team.
+        You may optionally store a URL to your own payment page for use in
+        message templates. We do not charge your customers.</p>
+
+      <h2 className="text-base font-semibold text-text mt-6 mb-2">10. No sale of data</h2>
       <p className="text-sm text-text leading-relaxed mb-3">We do not sell your data or share it for advertising.</p>
 
-      <h2 className="text-base font-semibold text-text mt-6 mb-2">10. Governing law</h2>
+      <h2 className="text-base font-semibold text-text mt-6 mb-2">11. Governing law</h2>
       <p className="text-sm text-text leading-relaxed mb-3">This policy is governed by the laws of Florida.</p>
     </PublicLayout>
   );

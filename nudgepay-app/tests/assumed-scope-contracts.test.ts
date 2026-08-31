@@ -188,6 +188,7 @@ test("home copy is a human queue, not automatic reminders (FP-12)", () => {
   expect(home).toMatch(/PAGE_DESCRIPTION/);
   expect(home).toMatch(/human follow-up queue/i);
   expect(home).toMatch(/QuickBooks/i);
+  expect(home).toMatch(/does not send automatic reminders/i);
   expect(home).toMatch(/not a payment processor/i);
   expect(home).toContain('to="/signup"');
 });
@@ -200,6 +201,7 @@ test("public signup route remains registered (A-022 is ops, not app)", () => {
 test("quiet hours copy does not promise future automation (FP-12)", () => {
   const src = read("../app/components/QuietHoursForm.tsx");
   expect(src.toLowerCase()).not.toMatch(/future automation/);
+  expect(src).toMatch(/Blocked sends are not queued to send later/);
 });
 
 test("Settings lists explicit pilot limits", () => {
@@ -241,6 +243,33 @@ test("privacy describes leave, workspace delete, customer PII erase, export, and
   expect(privacy).toMatch(/download a JSON copy of your NudgePay login/i);
   expect(privacy).toMatch(/delete your NudgePay login in Settings/i);
   expect(privacy).toMatch(/removes the Auth\s+user/i);
+  expect(privacy).toMatch(/90 days/);
+  expect(privacy).toMatch(/does not process payments/i);
+  expect(privacy).toMatch(/does not send automatic\s+reminder sequences/i);
+});
+
+test("payment portal is a tenant URL, not a NudgePay processor", () => {
+  const form = read("../app/components/CompanyProfileForm.tsx");
+  expect(form).toMatch(/NudgePay does not process payments/);
+  expect(form).toContain("{paymentLink}");
+  const eula = read("../app/routes/eula.tsx");
+  expect(eula).toMatch(/not a payment processor/i);
+  expect(eula).toMatch(/does not send\s+automatic collection sequences/i);
+  expect(eula).toMatch(/we do not charge your customers/i);
+});
+
+test("scheduled jobs do not send customer SMS or collection email", () => {
+  const worker = read("../workers/app.ts");
+  expect(worker).toContain("runScheduledDigest");
+  expect(worker).toContain("runScheduledRetention");
+  expect(worker).toContain("runScheduledCdc");
+  expect(worker).not.toMatch(/runBulkSms/);
+  expect(worker).not.toMatch(/api\.text\.send/);
+  expect(worker).not.toMatch(/api\.email\.send/);
+  const routes = read("../app/routes.ts");
+  expect(routes.toLowerCase()).not.toMatch(/stripe|checkout|\/billing/);
+  const pkg = JSON.parse(read("../package.json"));
+  expect(JSON.stringify(pkg.dependencies ?? {})).not.toMatch(/stripe/i);
 });
 
 test("PR CI runs unit, production check, supabase integration, and browser smoke", () => {

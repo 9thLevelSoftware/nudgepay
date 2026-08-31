@@ -33,7 +33,7 @@ export function QuietHoursForm({
     <section className="rounded-lg border border-border bg-surface p-5">
       <h2 className="font-display text-base font-semibold text-text">Quiet hours</h2>
       <p className="mt-1 text-xs text-muted">
-        Texts and emails are only sent between these hours, in your company's timezone. Attempts outside this window are blocked — this applies to every send path (single and bulk).
+        Texts and emails are only sent between these hours, in your company&apos;s timezone. Attempts outside this window are blocked on every send path (single and bulk). Blocked sends are not queued to send later.
       </p>
       <Form method="post" action="/api/org-settings" className="mt-3 flex flex-col gap-3">
         <input type="hidden" name="intent" value="save_quiet_hours" />

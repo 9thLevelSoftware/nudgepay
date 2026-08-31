@@ -91,5 +91,6 @@ test("home still exports meta and keeps public signup, login, and legal links", 
   expect(homeSrc).toContain('to="/login"');
   expect(homeSrc).toContain('to="/privacy"');
   expect(homeSrc).toContain('to="/eula"');
+  expect(homeSrc).toMatch(/does not send automatic reminders/i);
   expect(homeSrc).toMatch(/not a payment processor/i);
 });
