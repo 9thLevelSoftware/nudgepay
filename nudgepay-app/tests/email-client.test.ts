@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from "vitest";
-import { sendEmail, fetchReceivingEmail } from "../app/lib/email-client.server";
+import { sendEmail, fetchReceivingEmail, EMAIL_SEND_TIMEOUT_MS } from "../app/lib/email-client.server";
 
 function mockFetch(status: number, body: unknown) {
   return vi.fn(async () => new Response(JSON.stringify(body), { status }));
@@ -21,6 +21,30 @@ describe("sendEmail", () => {
     const f = mockFetch(422, { message: "domain not verified" });
     await expect(sendEmail(f as any, { apiKey: "k" },
       { from: "a@x.com", to: "b@y.com", subject: "s", text: "t" })).rejects.toThrow(/domain not verified/);
+  });
+  it("throws on a provider 503 without treating it as sent", async () => {
+    const f = mockFetch(503, { message: "unavailable" });
+    await expect(sendEmail(f as any, { apiKey: "k" },
+      { from: "a@x.com", to: "b@y.com", subject: "s", text: "t" })).rejects.toThrow(/Resend send failed \(503\)/);
+  });
+  it("fails closed when fetch rejects", async () => {
+    const f = vi.fn(async () => {
+      throw new TypeError("fetch failed");
+    });
+    await expect(sendEmail(f as any, { apiKey: "k" },
+      { from: "a@x.com", to: "b@y.com", subject: "s", text: "t" })).rejects.toThrow(/fetch failed/);
+  });
+  it("aborts a hung provider", async () => {
+    const timeout = vi.spyOn(AbortSignal, "timeout");
+    try {
+      const f = mockFetch(200, { id: "re_to" });
+      await sendEmail(f as any, { apiKey: "key" },
+        { from: "a@x.com", to: "b@y.com", subject: "Hi", text: "body" });
+      expect(timeout).toHaveBeenCalledWith(EMAIL_SEND_TIMEOUT_MS);
+      expect((f.mock.calls[0][1] as RequestInit).signal).toBeInstanceOf(AbortSignal);
+    } finally {
+      timeout.mockRestore();
+    }
   });
   it("omits reply_to unless a received mailbox is passed", async () => {
     const f = mockFetch(200, { id: "re_1" });
