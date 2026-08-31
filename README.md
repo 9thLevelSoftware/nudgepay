@@ -168,6 +168,9 @@ See [`nudgepay-app/README.md`](nudgepay-app/README.md). PR CI runs typecheck
 + unit tests, `npm run check`, the local Supabase integration suite, and a
 Playwright smoke. A green PR is not real-provider or staging proof.
 
+Design-partner limits, health probes, staging deploy, and operator paging:
+[`docs/pilot-ops.md`](docs/pilot-ops.md).
+
 ## License
 
 All rights reserved. See [`LICENSE`](LICENSE).

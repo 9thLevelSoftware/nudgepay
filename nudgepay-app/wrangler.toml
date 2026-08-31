@@ -100,6 +100,37 @@ simple = { limit = 20, period = 60 }
 #   RESEND_ALLOWED_FROM          comma-separated verified From addresses (`email` or `orgId:email`; required to enable email)
 #   UNSUBSCRIBE_SECRET           HMAC key for CAN-SPAM unsubscribe tokens
 #   APP_PUBLIC_BASE_URL          ${APP_BASE_URL}  (public origin for unsubscribe links + alert deep links)
+#   OPERATOR_ALERT_WEBHOOK       optional HTTPS URL; POST JSON when a scheduled handler throws
 # DEPLOY GATE: Connect/Refresh/Disconnect degrade via getQboEnvOrNull (no 500) until
 # QBO secrets are set. getTwilioEnv still throws on send/webhook paths until Twilio
 # secrets are set. Email/alert secrets are optional — getEmailEnvOrNull returns null.
+
+# --- Staging environment ------------------------------------------------------
+# Deploy with: npx wrangler deploy --env staging
+# Secrets: the same list as production, via `npx wrangler secret put <NAME> --env staging`.
+# QBO_SANDBOX stays true. Use a separate Supabase project. workers.dev hostname
+# is nudgepay-app-staging.<account>.workers.dev until a staging domain is attached.
+[env.staging]
+name = "nudgepay-app-staging"
+workers_dev = true
+
+[env.staging.vars]
+QBO_SANDBOX = "true"
+AUTH_RATE_LIMIT_REQUIRED = "true"
+
+[env.staging.triggers]
+crons = ["*/30 * * * *", "0 * * * *"]
+
+[env.staging.observability]
+enabled = true
+head_sampling_rate = 1
+
+[env.staging.observability.logs]
+enabled = true
+invocation_logs = true
+persist = true
+
+[[env.staging.ratelimits]]
+name = "AUTH_RATE_LIMIT"
+namespace_id = "1002"
+simple = { limit = 20, period = 60 }
