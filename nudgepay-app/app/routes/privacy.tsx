@@ -67,6 +67,8 @@ export default function Privacy() {
         cannot leave; they must transfer ownership or delete the workspace.
         Owners delete a workspace in Settings by typing its name; that revokes
         QuickBooks tokens, purges tenant data, and writes a deletion tombstone.
+        You can download a JSON copy of your NudgePay login, membership, and
+        contact-log activity in Settings (or onboarding if you have no workspace).
         You can delete your NudgePay login in Settings, or on onboarding if you
         have no workspace, by typing your email or DELETE. That removes the Auth
         user and your membership. Contact-log and message actor fields are

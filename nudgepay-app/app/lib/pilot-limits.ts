@@ -10,6 +10,6 @@ export const PILOT_LIMIT_LINES = [
   `Queue, reports, and sync pages cap at ${PILOT_MAX_LIST_ROWS.toLocaleString("en-US")} rows per list. Truncated results are marked; they are not silently complete.`,
   "Each signed-in user belongs to one workspace.",
   "Roles are owner and member only.",
-  "You can delete your NudgePay login after leaving or deleting your workspace.",
+  "You can download a copy of your NudgePay login data, then delete the login after leaving or deleting your workspace.",
   "NudgePay is a human follow-up queue, not automatic payment reminders, and is not a payment processor.",
 ] as const;

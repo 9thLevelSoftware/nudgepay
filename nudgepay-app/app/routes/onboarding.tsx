@@ -55,7 +55,9 @@ export default function Onboarding() {
   const actionData = useActionData<typeof action>();
   const navigation = useNavigation();
   const [sp] = useSearchParams();
-  const creating = navigation.state !== "idle" && navigation.formAction !== "/api/account/delete";
+  const creating = navigation.state !== "idle"
+    && navigation.formAction !== "/api/account/delete"
+    && navigation.formAction !== "/api/account/export";
   const deleting = navigation.state !== "idle" && navigation.formAction === "/api/account/delete";
   const accountError = sp.get("accountError");
   const [typed, setTyped] = useState("");
@@ -70,6 +72,11 @@ export default function Onboarding() {
           <input name="orgName" placeholder="e.g. Chancey Heating & Cooling" required className={inputClass} />
         </label>
         <Button type="submit" disabled={creating}>{creating ? "Creating organization…" : "Create organization"}</Button>
+      </Form>
+      <Form method="get" action="/api/account/export" className="mt-6">
+        <Button type="submit" variant="secondary" size="sm" className="w-fit">
+          Download my data
+        </Button>
       </Form>
       <section className="mt-8 rounded-lg border border-hot/40 bg-surface p-5">
         <h2 className="font-display text-base font-semibold text-text">Delete my NudgePay account</h2>
