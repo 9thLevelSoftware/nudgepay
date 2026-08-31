@@ -438,6 +438,15 @@ export default function Settings() {
                 error={sp.get("error")}
               />
 
+              {d.isOwner ? (
+                <DeleteWorkspaceForm
+                  orgName={d.orgName}
+                  returnTo={returnTo}
+                  busy={formBusy("/api/workspace/delete")}
+                  error={sp.get("error")}
+                />
+              ) : null}
+
               {/* Company profile */}
               <CompanyProfileForm
                 key={d.orgId}
@@ -770,8 +779,8 @@ function LeaveWorkspaceForm({
       </p>
       {lastOwner ? (
         <p className="mt-3 text-xs text-muted">
-          The last owner cannot leave. Transfer ownership first. To delete this
-          workspace and its data, contact support.
+          The last owner cannot leave. Transfer ownership first, or delete this
+          workspace below.
         </p>
       ) : (
         <Form method="post" action="/api/profile" className="mt-3 flex flex-col gap-3">
@@ -806,6 +815,63 @@ function LeaveWorkspaceForm({
       ) : null}
       {error === "delete" ? (
         <p className="mt-2 text-xs text-hot" role="alert">Could not leave the workspace. Try again.</p>
+      ) : null}
+    </section>
+  );
+}
+
+function DeleteWorkspaceForm({
+  orgName,
+  returnTo,
+  busy,
+  error,
+}: {
+  orgName: string;
+  returnTo: string;
+  busy: boolean;
+  error: string | null;
+}) {
+  const [typed, setTyped] = useState("");
+  const canSubmit = orgNameMatches(typed, orgName);
+
+  return (
+    <section className="rounded-lg border border-hot/40 bg-surface p-5">
+      <h2 className="font-display text-base font-semibold text-text">Delete workspace</h2>
+      <p className="mt-0.5 text-xs text-muted">
+        Permanently deletes this workspace, its invoices, customers, messages, and
+        QuickBooks connection. This cannot be undone. Type{" "}
+        <span className="font-medium text-text">{orgName}</span> to confirm.
+      </p>
+      <Form method="post" action="/api/workspace/delete" className="mt-3 flex flex-col gap-3">
+        <input type="hidden" name="returnTo" value={returnTo} />
+        <label className="grid gap-1 text-sm font-medium text-text">
+          Workspace name
+          <input
+            name="confirm"
+            type="text"
+            required
+            autoComplete="off"
+            value={typed}
+            onChange={(e) => setTyped(e.target.value)}
+            className="h-9 rounded-md border border-border bg-panel px-3 text-sm text-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-copper"
+          />
+        </label>
+        <button
+          type="submit"
+          disabled={!canSubmit || busy}
+          className="h-9 w-fit rounded-md border border-hot px-4 text-sm font-medium text-hot disabled:opacity-60 disabled:cursor-not-allowed"
+        >
+          {busy ? "Deleting…" : "Delete workspace"}
+        </button>
+      </Form>
+      {error === "confirm" ? (
+        <p className="mt-2 text-xs text-hot" role="alert">Type the workspace name to confirm.</p>
+      ) : null}
+      {error === "forbidden" ? (
+        <p className="mt-2 text-xs text-hot" role="alert">Only owners can delete this workspace.</p>
+      ) : null}
+      {error === "workspace" ? (
+        <p className="mt-2 text-xs text-hot" role="alert">Could not delete the workspace. Try again.</p>
       ) : null}
     </section>
   );

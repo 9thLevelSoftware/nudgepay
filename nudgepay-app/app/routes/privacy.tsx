@@ -62,10 +62,11 @@ export default function Privacy() {
       <p className="text-sm text-text leading-relaxed mb-3">Disconnecting QuickBooks revokes and deletes stored tokens. You can
         leave this workspace in Settings by typing your email or LEAVE. That
         removes your membership and signs you out. It does not delete the
-        workspace or erase invoices, customers, or messages. The last owner of
-        a workspace must transfer ownership first. If you are the last remaining
-        member and QuickBooks is connected, we disconnect those tokens. For
-        remaining stored workspace data, or to delete a workspace, contact {contact}.</p>
+        workspace or erase invoices, customers, or messages. The last owner
+        cannot leave; they must transfer ownership or delete the workspace.
+        Owners delete a workspace in Settings by typing its name; that revokes
+        QuickBooks tokens, purges tenant data, and writes a deletion tombstone.
+        Auth users are not deleted. For other erasure requests, contact {contact}.</p>
 
       <h2 className="text-base font-semibold text-text mt-6 mb-2">9. No sale of data</h2>
       <p className="text-sm text-text leading-relaxed mb-3">We do not sell your data or share it for advertising.</p>

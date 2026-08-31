@@ -19,7 +19,7 @@ nudgepay-app/
 ├── workers/
 │   └── app.ts            # Cloudflare Worker entry (fetch + scheduled handlers)
 ├── supabase/
-│   └── migrations/       # 0001..0052 — sequential SQL migrations
+│   └── migrations/       # 0001..0053 — sequential SQL migrations
 ├── tests/                # Vitest test files
 ├── wrangler.toml         # Worker config + cron + env vars
 └── package.json
@@ -54,12 +54,13 @@ docs/                     # Gap analysis, Intuit checklist
 | `qbo-cron.server.ts`     | Scheduled CDC catch-up                   |
 | `digest-cron.server.ts`  | Scheduled daily digest                   |
 
-### Migrations (0001–0052)
+### Migrations (0001–0053)
 
 Supabase migrations in `supabase/migrations/`, sequential through
-`0052_text_messages_ledger_rls.sql`. After `0048_sms_sender_inventory.sql`:
+`0053_delete_workspace.sql`. After `0048_sms_sender_inventory.sql`:
 `0049_cases_and_consent_rls.sql`, `0050_promises_rls.sql`,
-`0051_message_events_direction.sql`, `0052_text_messages_ledger_rls.sql`.
+`0051_message_events_direction.sql`, `0052_text_messages_ledger_rls.sql`,
+`0053_delete_workspace.sql`.
 
 Key tables: `organizations`, `memberships`, `qbo_connections`, `invoices`
 (including `paid_date`), `customers`, `collection_cases`, `contact_logs`,
