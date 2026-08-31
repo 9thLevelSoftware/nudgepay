@@ -18,17 +18,10 @@ function providersFrom(context: LoaderFunctionArgs["context"]): ReadyzProviders 
     operatorAlert: operatorAlertWebhookOk(env.OPERATOR_ALERT_WEBHOOK),
   };
 }
-  return {
-    qbo: Boolean(getQboEnvOrNull(context as any)),
-    twilio: Boolean(getTwilioEnvOrNull(context as any)),
-    email: Boolean(getEmailEnvOrNull(context as any)),
-    operatorAlert: operatorAlertWebhookOk(raw.OPERATOR_ALERT_WEBHOOK),
-  };
-}
 
 export async function loader({ context }: LoaderFunctionArgs) {
   const raw = (context as { cloudflare?: { env?: Record<string, string> } }).cloudflare?.env ?? {};
-  const providers = providersFrom(raw, context);
+  const providers = providersFrom(context);
   const url = raw.SUPABASE_URL ?? "";
   if (!url) {
     return Response.json(readyzBody({ ok: false, reason: "url", providers }), { status: 503 });

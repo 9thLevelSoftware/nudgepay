@@ -167,11 +167,12 @@ test("npm metadata is not the RR starter (NP-AUD-2026-132-STARTER)", () => {
   expect(pkg.cloudflare.label).toBe("NudgePay");
 });
 
-test("AGENTS.md lists migrations through 0052 (NP-AUD-2026-132-AGENTS)", () => {
+test("AGENTS.md lists migrations through 0053 (NP-AUD-2026-132-AGENTS)", () => {
   const agents = readFileSync(fileURLToPath(new URL("../../AGENTS.md", import.meta.url)), "utf8");
-  expect(agents).toMatch(/0001\.\.0052|0001–0052/);
+  expect(agents).toMatch(/0001\.\.0053|0001–0053/);
   expect(agents).toMatch(/0051_message_events_direction/);
   expect(agents).toMatch(/0052_text_messages_ledger_rls/);
+  expect(agents).toMatch(/0053_delete_workspace/);
   expect(agents).toMatch(/0049_cases_and_consent_rls/);
   expect(agents).toMatch(/0050_promises_rls/);
   expect(agents).toMatch(/inbound_orphans/);
@@ -217,6 +218,8 @@ test("Settings leave workspace is not labeled Delete account", () => {
   const src = read("../app/routes/settings.tsx");
   expect(src).toMatch(/Leave workspace/);
   expect(src).toMatch(/does not delete the\s+workspace/i);
+  expect(src).toMatch(/Delete workspace/);
+  expect(src).toContain("/api/workspace/delete");
   expect(src).not.toMatch(/Delete account/);
   expect(src).not.toMatch(/Could not delete your account/);
 });
@@ -225,6 +228,7 @@ test("privacy describes leave workspace, not self-serve account erasure", () => 
   const privacy = read("../app/routes/privacy.tsx");
   expect(privacy).toMatch(/leave this workspace/i);
   expect(privacy).toMatch(/does not delete the\s+workspace/i);
+  expect(privacy).toMatch(/deletion tombstone/i);
   expect(privacy).not.toMatch(/delete your account in Settings/);
 });
 

@@ -11,7 +11,10 @@ Support: `support@nudgepay-ar.app`.
 - Queue, reports, and sync pages cap at 5,000 rows per list. Truncation is
   shown; results are not silently complete.
 - Leave workspace removes membership and signs out. It does not delete the
-  Auth user, the organization, or tenant data. Workspace deletion is support-only.
+  Auth user, the organization, or tenant data.
+- Owners can delete a workspace in Settings by typing its name. That revokes
+  QuickBooks tokens, purges tenant rows, and writes `workspace_deletions`.
+  Auth users are not deleted.
 
 ## Health
 

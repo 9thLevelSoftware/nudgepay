@@ -24,7 +24,7 @@ export async function setup() {
   const sqlPath = join(tmpdir(), "nudgepay-vitest-truncate.sql");
   writeFileSync(
     sqlPath,
-    "truncate table public.organizations, public.oauth_states, public.cron_checkpoints restart identity cascade;\n",
+    "truncate table public.organizations, public.oauth_states, public.cron_checkpoints, public.workspace_deletions restart identity cascade;\n",
   );
   execFileSync("npx", ["supabase", "db", "query", "--local", "--file", sqlPath], {
     cwd: appRoot,
