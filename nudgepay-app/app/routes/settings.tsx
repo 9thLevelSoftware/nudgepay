@@ -4,6 +4,7 @@ import { useFlashCleanup } from "../lib/use-flash-cleanup";
 import { useDialog } from "../lib/use-dialog";
 import { orgNameMatches } from "../lib/qbo-disconnect";
 import { LEAVE_CONFIRM_TOKEN, deletionConfirmMatches, isLastOwnerMember } from "../lib/account-deletion";
+import { PERSONAL_DELETE_TOKEN, personalAccountConfirmMatches } from "../lib/personal-account-deletion";
 import { PILOT_LIMIT_LINES } from "../lib/pilot-limits";
 import { getEnv, getTwilioEnvOrNull, getEmailEnvOrNull, getPublicBaseUrls, getQboEnvOrNull, smsRequireInventory } from "../lib/env.server";
 import { loadWorkspaceChrome } from "../lib/workspace.server";
@@ -447,6 +448,14 @@ export default function Settings() {
                 />
               ) : null}
 
+              <DeleteAccountForm
+                currentEmail={d.ownerEmail}
+                lastOwner={lastOwner}
+                returnTo={returnTo}
+                busy={formBusy("/api/account/delete")}
+                accountError={sp.get("accountError")}
+              />
+
               {/* Company profile */}
               <CompanyProfileForm
                 key={d.orgId}
@@ -873,6 +882,73 @@ function DeleteWorkspaceForm({
       ) : null}
       {deleteError === "workspace" ? (
         <p className="mt-2 text-xs text-hot" role="alert">Could not delete the workspace. Try again.</p>
+      ) : null}
+    </section>
+  );
+}
+
+function DeleteAccountForm({
+  currentEmail,
+  lastOwner,
+  returnTo,
+  busy,
+  accountError,
+}: {
+  currentEmail: string;
+  lastOwner: boolean;
+  returnTo: string;
+  busy: boolean;
+  accountError: string | null;
+}) {
+  const [typed, setTyped] = useState("");
+  const canSubmit = personalAccountConfirmMatches(typed, currentEmail);
+
+  return (
+    <section className="rounded-lg border border-hot/40 bg-surface p-5">
+      <h2 className="font-display text-base font-semibold text-text">Delete my NudgePay account</h2>
+      <p className="mt-0.5 text-xs text-muted">
+        Deletes your NudgePay login. It does not delete this workspace or its
+        invoices, customers, or messages. Type your email or{" "}
+        <span className="font-medium text-text">{PERSONAL_DELETE_TOKEN}</span> to confirm.
+      </p>
+      {lastOwner ? (
+        <p className="mt-3 text-xs text-muted">
+          The last owner cannot delete their login while this workspace exists.
+          Delete the workspace above, or transfer ownership first.
+        </p>
+      ) : (
+        <Form method="post" action="/api/account/delete" className="mt-3 flex flex-col gap-3">
+          <input type="hidden" name="returnTo" value={returnTo} />
+          <label className="grid gap-1 text-sm font-medium text-text">
+            Confirm
+            <Input
+              name="confirm"
+              type="text"
+              required
+              autoComplete="off"
+              value={typed}
+              onChange={(e) => setTyped(e.target.value)}
+            />
+          </label>
+          <Button
+            type="submit"
+            variant="destructive"
+            size="sm"
+            disabled={!canSubmit || busy}
+            className="w-fit"
+          >
+            {busy ? "Deleting…" : "Delete my NudgePay account"}
+          </Button>
+        </Form>
+      )}
+      {accountError === "confirm" ? (
+        <p className="mt-2 text-xs text-hot" role="alert">Type your email or DELETE to confirm.</p>
+      ) : null}
+      {accountError === "last-owner" ? (
+        <p className="mt-2 text-xs text-hot" role="alert">The last owner cannot delete their login while this workspace exists.</p>
+      ) : null}
+      {accountError === "account" ? (
+        <p className="mt-2 text-xs text-hot" role="alert">Could not delete your NudgePay login. Try again.</p>
       ) : null}
     </section>
   );
