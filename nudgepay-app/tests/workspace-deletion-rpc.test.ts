@@ -69,6 +69,16 @@ test("delete_workspace purges the org, writes a tombstone, and is not callable b
   const { data: noTomb } = await svc.from("workspace_deletions").select("org_id").eq("org_id", orgId);
   expect(noTomb ?? []).toHaveLength(0);
 
+  const { error: nameRpc } = await svc.rpc("delete_workspace", {
+    p_org_id: orgId,
+    p_deleted_by: owner.userId,
+    p_org_name: "Wrong Name",
+    p_member_count: 2,
+  });
+  expect(nameRpc).not.toBeNull();
+  const { data: stillNamed } = await svc.from("organizations").select("id").eq("id", orgId);
+  expect(stillNamed ?? []).toHaveLength(1);
+
   const { error: rpcErr } = await svc.rpc("delete_workspace", {
     p_org_id: orgId,
     p_deleted_by: owner.userId,

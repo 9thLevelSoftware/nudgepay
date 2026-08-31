@@ -57,15 +57,24 @@ language plpgsql
 security definer
 set search_path = public
 as $$
+declare
+  locked_name text;
 begin
   if p_org_id is null then
     raise exception 'workspace not found';
   end if;
 
   -- Serialize deletion and confirm the org still exists.
-  perform 1 from public.organizations where id = p_org_id for update;
+  select name into locked_name from public.organizations where id = p_org_id for update;
   if not found then
     raise exception 'workspace not found';
+  end if;
+
+  -- Reconfirm the typed name against the locked row (closes rename TOCTOU).
+  if btrim(coalesce(p_org_name, '')) = ''
+     or btrim(coalesce(locked_name, '')) = ''
+     or lower(btrim(p_org_name)) is distinct from lower(btrim(locked_name)) then
+    raise exception 'workspace name mismatch';
   end if;
 
   -- Recheck owner membership inside the transaction (closes TOCTOU after resolveOrg).
@@ -84,7 +93,7 @@ begin
   end if;
 
   insert into public.workspace_deletions (org_id, org_name, deleted_by, member_count)
-  values (p_org_id, coalesce(p_org_name, ''), p_deleted_by, coalesce(p_member_count, 0));
+  values (p_org_id, locked_name, p_deleted_by, coalesce(p_member_count, 0));
 
   perform set_config('app.deleting_workspace', 'true', true);
 
