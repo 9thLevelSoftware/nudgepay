@@ -3,7 +3,7 @@ import { useFetcher, useLoaderData, useNavigation, useSearchParams, Form, data, 
 import { useFlashCleanup } from "../lib/use-flash-cleanup";
 import { useDialog } from "../lib/use-dialog";
 import { orgNameMatches } from "../lib/qbo-disconnect";
-import { DELETE_CONFIRM_TOKEN, deletionConfirmMatches, isLastOwnerMember } from "../lib/account-deletion";
+import { LEAVE_CONFIRM_TOKEN, deletionConfirmMatches, isLastOwnerMember } from "../lib/account-deletion";
 import { getEnv, getTwilioEnvOrNull, getEmailEnvOrNull, getPublicBaseUrls, getQboEnvOrNull, smsRequireInventory } from "../lib/env.server";
 import { loadWorkspaceChrome } from "../lib/workspace.server";
 import { listOrgMembers } from "../lib/orgs.server";
@@ -285,7 +285,6 @@ export default function Settings() {
   const memberError = sp.get("error");
   const ownerCount = d.members.filter((m) => m.role === "owner").length;
   const lastOwner = isLastOwnerMember(d.isOwner, ownerCount);
-  const canLeave = !lastOwner;
 
   return (
     <AppShell
@@ -418,7 +417,7 @@ export default function Settings() {
                 ) : null}
               </section>
 
-              <DeleteAccountForm
+              <LeaveWorkspaceForm
                 currentEmail={d.ownerEmail}
                 lastOwner={lastOwner}
                 returnTo={returnTo}
@@ -553,16 +552,10 @@ export default function Settings() {
                 {memberError === "member" ? (
                   <p className="mt-2 text-xs text-hot" role="alert">Could not change membership. The last owner cannot be removed or demoted.</p>
                 ) : null}
-                {canLeave ? (
-                  <Form method="post" action="/api/members" className="mt-4">
-                    <input type="hidden" name="returnTo" value={returnTo} />
-                    <input type="hidden" name="intent" value="leave" />
-                    <button type="submit" className="text-xs font-medium text-hot hover:underline">
-                      Leave workspace
-                    </button>
-                  </Form>
+                {lastOwner ? (
+                  <p className="mt-4 text-xs text-muted">The last owner cannot leave the workspace. Transfer ownership first.</p>
                 ) : (
-                  <p className="mt-4 text-xs text-muted">The last owner cannot leave the workspace.</p>
+                  <p className="mt-4 text-xs text-muted">To leave, confirm in Account below. Workspace data is not deleted.</p>
                 )}
               </section>
             </>
@@ -738,7 +731,7 @@ export default function Settings() {
   );
 }
 
-function DeleteAccountForm({
+function LeaveWorkspaceForm({
   currentEmail,
   lastOwner,
   returnTo,
@@ -756,14 +749,16 @@ function DeleteAccountForm({
 
   return (
     <section className="rounded-lg border border-border bg-surface p-5">
-      <h2 className="font-display text-base font-semibold text-text">Delete account</h2>
+      <h2 className="font-display text-base font-semibold text-text">Leave workspace</h2>
       <p className="mt-0.5 text-xs text-muted">
-        Removes you from this workspace and signs you out. Type your email or{" "}
-        <span className="font-medium text-text">{DELETE_CONFIRM_TOKEN}</span> to confirm.
+        Removes you from this workspace and signs you out. It does not delete the
+        workspace or its QuickBooks, invoices, or message history. Type your email or{" "}
+        <span className="font-medium text-text">{LEAVE_CONFIRM_TOKEN}</span> to confirm.
       </p>
       {lastOwner ? (
         <p className="mt-3 text-xs text-muted">
-          The last owner cannot delete their account. Transfer ownership first.
+          The last owner cannot leave. Transfer ownership first. To delete this
+          workspace and its data, contact support.
         </p>
       ) : (
         <Form method="post" action="/api/profile" className="mt-3 flex flex-col gap-3">
@@ -786,18 +781,18 @@ function DeleteAccountForm({
             disabled={!canSubmit || busy}
             className="h-9 w-fit rounded-md border border-hot px-4 text-sm font-medium text-hot disabled:opacity-60 disabled:cursor-not-allowed"
           >
-            {busy ? "Deleting…" : "Delete account"}
+            {busy ? "Leaving…" : "Leave workspace"}
           </button>
         </Form>
       )}
       {error === "confirm" ? (
-        <p className="mt-2 text-xs text-hot" role="alert">Type your email or DELETE to confirm.</p>
+        <p className="mt-2 text-xs text-hot" role="alert">Type your email or LEAVE to confirm.</p>
       ) : null}
       {error === "last-owner" ? (
-        <p className="mt-2 text-xs text-hot" role="alert">The last owner cannot delete their account. Transfer ownership first.</p>
+        <p className="mt-2 text-xs text-hot" role="alert">The last owner cannot leave. Transfer ownership first.</p>
       ) : null}
       {error === "delete" ? (
-        <p className="mt-2 text-xs text-hot" role="alert">Could not delete your account. Try again.</p>
+        <p className="mt-2 text-xs text-hot" role="alert">Could not leave the workspace. Try again.</p>
       ) : null}
     </section>
   );
