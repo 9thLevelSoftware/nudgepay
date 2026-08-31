@@ -51,6 +51,7 @@ export default [
   route("webhooks/resend", "routes/webhooks.resend.tsx"),
   route("api/profile", "routes/api.profile.tsx"),
   route("api/workspace/delete", "routes/api.workspace.delete.tsx"),
+  route("api/account/delete", "routes/api.account.delete.tsx"),
   route("api/members", "routes/api.members.tsx"),
   route("api/notification-prefs", "routes/api.notification-prefs.tsx"),
   route("api/test-message", "routes/api.test-message.tsx"),

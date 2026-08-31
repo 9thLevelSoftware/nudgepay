@@ -4,7 +4,7 @@ import type { Route } from "./+types/privacy";
 
 export const meta: Route.MetaFunction = () => pageTitle("Privacy Policy");
 
-const updated = "July 1, 2026";
+const updated = "August 31, 2026";
 const contact = "support@nudgepay-ar.app";
 
 export default function Privacy() {
@@ -67,7 +67,12 @@ export default function Privacy() {
         cannot leave; they must transfer ownership or delete the workspace.
         Owners delete a workspace in Settings by typing its name; that revokes
         QuickBooks tokens, purges tenant data, and writes a deletion tombstone.
-        Auth users are not deleted. For other erasure requests, contact {contact}.</p>
+        You can delete your NudgePay login in Settings, or on onboarding if you
+        have no workspace, by typing your email or DELETE. That removes the Auth
+        user and your membership. Contact-log and message actor fields are
+        cleared; remaining workspace invoices, customers, and messages stay
+        unless an owner deleted the workspace. For other erasure requests,
+        contact {contact}.</p>
 
       <h2 className="text-base font-semibold text-text mt-6 mb-2">9. No sale of data</h2>
       <p className="text-sm text-text leading-relaxed mb-3">We do not sell your data or share it for advertising.</p>

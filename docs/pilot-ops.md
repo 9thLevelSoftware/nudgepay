@@ -14,7 +14,10 @@ Support: `support@nudgepay-ar.app`.
   Auth user, the organization, or tenant data.
 - Owners can delete a workspace in Settings by typing its name. That revokes
   QuickBooks tokens, purges tenant rows, and writes `workspace_deletions`.
-  Auth users are not deleted.
+- Users delete their NudgePay login in Settings (or onboarding with no
+  workspace) by typing their email or DELETE. Actor columns on kept
+  workspace rows are set null. Last owners must delete or transfer the
+  workspace first.
 
 ## Health
 

@@ -19,7 +19,7 @@ nudgepay-app/
 ├── workers/
 │   └── app.ts            # Cloudflare Worker entry (fetch + scheduled handlers)
 ├── supabase/
-│   └── migrations/       # 0001..0053 — sequential SQL migrations
+│   └── migrations/       # 0001..0054 — sequential SQL migrations
 ├── tests/                # Vitest test files
 ├── wrangler.toml         # Worker config + cron + env vars
 └── package.json
@@ -54,19 +54,19 @@ docs/                     # Gap analysis, Intuit checklist
 | `qbo-cron.server.ts`     | Scheduled CDC catch-up                   |
 | `digest-cron.server.ts`  | Scheduled daily digest                   |
 
-### Migrations (0001–0053)
+### Migrations (0001–0054)
 
 Supabase migrations in `supabase/migrations/`, sequential through
-`0053_delete_workspace.sql`. After `0048_sms_sender_inventory.sql`:
+`0054_delete_personal_account.sql`. After `0048_sms_sender_inventory.sql`:
 `0049_cases_and_consent_rls.sql`, `0050_promises_rls.sql`,
 `0051_message_events_direction.sql`, `0052_text_messages_ledger_rls.sql`,
-`0053_delete_workspace.sql`.
+`0053_delete_workspace.sql`, `0054_delete_personal_account.sql`.
 
 Key tables: `organizations`, `memberships`, `qbo_connections`, `invoices`
 (including `paid_date`), `customers`, `collection_cases`, `contact_logs`,
 `promises`, `text_messages`, `email_messages`, `org_settings`, `email_config`,
 `messaging_config`, `sync_errors`, `user_notification_prefs`,
-`notification_log`, `inbound_orphans`, `cron_checkpoints`. Messages Realtime
+`notification_log`, `inbound_orphans`, `cron_checkpoints`, `workspace_deletions`. Messages Realtime
 broadcasts a content-free `{ table, org_id, direction }` ping (no body).
 
 RLS is the user-data boundary — all user-facing queries use the user client.
