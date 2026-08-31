@@ -26,7 +26,7 @@ export default function Home() {
         <p className="mt-4 text-base text-muted">
           {PAGE_DESCRIPTION} Work a human follow-up queue on your QuickBooks
           invoices — log contact and track promises so you spend less time chasing.
-          It is not a payment processor.
+          It does not send automatic reminders, and it is not a payment processor.
         </p>
         <div className="mt-8 flex items-center justify-center gap-3">
           <Link to="/signup" className={primaryLinkClass}>Sign up</Link>

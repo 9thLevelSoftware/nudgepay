@@ -13,4 +13,6 @@ test("pilot limit copy is explicit and not automation", () => {
   expect(PILOT_LIMIT_LINES.join(" ")).toMatch(/5,000/);
   expect(PILOT_LIMIT_LINES.join(" ").toLowerCase()).toMatch(/human follow-up queue/);
   expect(PILOT_LIMIT_LINES.join(" ").toLowerCase()).toMatch(/not automatic payment reminders/);
+  expect(PILOT_LIMIT_LINES.join(" ").toLowerCase()).toMatch(/payment portal url is your own page/);
+  expect(PILOT_LIMIT_LINES.join(" ").toLowerCase()).toMatch(/does not charge customers/);
 });

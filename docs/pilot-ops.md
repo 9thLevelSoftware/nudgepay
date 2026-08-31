@@ -1,13 +1,19 @@
 # Design-partner pilot operations
 
 NudgePay is a human-operated QuickBooks collections workspace. It is not
-automatic AR reminders and not a payment processor.
+automatic AR reminders and not a payment processor. Staff send each text
+and email. Quiet-hours blocks are not queued. A payment portal URL is the
+tenant's own page for message templates; NudgePay does not charge customers.
 
 Support: `support@nudgepay-ar.app`.
 
 ## Product limits
 
 - One workspace per user (`owner` / `member` only).
+- Staff send each text and email. There is no automatic reminder sequence.
+  Quiet-hours blocks are not queued to send later.
+- A payment portal URL is the tenant's own page. NudgePay does not process
+  payments or charge customers.
 - Queue, reports, and sync pages cap at 5,000 rows per list. Truncation is
   shown; results are not silently complete.
 - Leave workspace removes membership and signs out. It does not delete the

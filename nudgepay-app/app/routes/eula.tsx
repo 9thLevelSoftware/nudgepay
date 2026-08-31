@@ -36,7 +36,12 @@ export default function Eula() {
       <p className="text-sm text-text leading-relaxed mb-3">Either party may terminate access at any time. On termination, your
         QuickBooks tokens are revoked with Intuit and removed from our systems.</p>
 
-      <h2 className="text-base font-semibold text-text mt-6 mb-2">6. Governing law</h2>
+      <h2 className="text-base font-semibold text-text mt-6 mb-2">6. Product scope</h2>
+      <p className="text-sm text-text leading-relaxed mb-3">NudgePay is a human-operated follow-up queue. It does not send
+        automatic collection sequences. It is not a payment processor. A payment
+        portal URL you store is your own page; we do not charge your customers.</p>
+
+      <h2 className="text-base font-semibold text-text mt-6 mb-2">7. Governing law</h2>
       <p className="text-sm text-text leading-relaxed mb-3">This agreement is governed by the laws of Florida.</p>
     </PublicLayout>
   );
