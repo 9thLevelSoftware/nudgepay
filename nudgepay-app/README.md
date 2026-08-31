@@ -57,7 +57,10 @@ Cloudflare Workers is production and owns both cron schedules (`wrangler.toml`).
 ```bash
 npx wrangler secret put <NAME> --env production
 npm run deploy
+npx wrangler deploy --env staging
 ```
+
+Design-partner limits, `/readyz` provider flags, and operator paging: [`docs/pilot-ops.md`](../docs/pilot-ops.md).
 
 Enabling workspace email also requires `RESEND_ALLOWED_FROM` (comma-separated verified From addresses; `email` or `orgId:email` to bind a sender to one workspace). Enabling email fails closed if it is unset or empty.
 

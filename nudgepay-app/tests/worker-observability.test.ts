@@ -45,4 +45,27 @@ describe("withUnhandledLogging", () => {
       message: "cdc down",
     });
   });
+
+  it("awaits onError then still rethrows the original error", async () => {
+    const error = vi.spyOn(console, "error").mockImplementation(() => {});
+    const onError = vi.fn(async () => {});
+    const boom = new Error("cdc down");
+    await expect(
+      withUnhandledLogging("scheduled", { cron: "*/30 * * * *" }, async () => {
+        throw boom;
+      }, { onError }),
+    ).rejects.toBe(boom);
+    expect(onError).toHaveBeenCalledWith(boom);
+    expect(error).toHaveBeenCalledTimes(1);
+  });
+
+  it("swallows onError failures so the original error remains", async () => {
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    const boom = new Error("cdc down");
+    await expect(
+      withUnhandledLogging("scheduled", { cron: "*/30 * * * *" }, async () => {
+        throw boom;
+      }, { onError: async () => { throw new Error("pager down"); } }),
+    ).rejects.toBe(boom);
+  });
 });

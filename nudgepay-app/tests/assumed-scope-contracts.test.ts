@@ -199,6 +199,20 @@ test("quiet hours copy does not promise future automation (FP-12)", () => {
   expect(src.toLowerCase()).not.toMatch(/future automation/);
 });
 
+test("Settings lists explicit pilot limits", () => {
+  const src = read("../app/routes/settings.tsx");
+  expect(src).toContain("PILOT_LIMIT_LINES");
+  expect(src).toContain("Pilot limits");
+});
+
+test("wrangler staging env and operator alert webhook are declared", () => {
+  const wrangler = read("../wrangler.toml");
+  expect(wrangler).toContain("OPERATOR_ALERT_WEBHOOK");
+  expect(wrangler).toContain("[env.staging]");
+  expect(wrangler).toContain('name = "nudgepay-app-staging"');
+  expect(wrangler).toContain("QBO_SANDBOX = \"true\"");
+});
+
 test("Settings leave workspace is not labeled Delete account", () => {
   const src = read("../app/routes/settings.tsx");
   expect(src).toMatch(/Leave workspace/);

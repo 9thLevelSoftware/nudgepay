@@ -26,11 +26,19 @@ export async function withUnhandledLogging<T>(
   handler: WorkerHandlerKind,
   context: WorkerErrorContext,
   fn: () => Promise<T>,
+  opts?: { onError?: (err: unknown) => Promise<void> },
 ): Promise<T> {
   try {
     return await fn();
   } catch (err) {
     logUnhandledWorkerError(handler, context, err);
+    if (opts?.onError) {
+      try {
+        await opts.onError(err);
+      } catch {
+        // Pager failure must not replace the original error.
+      }
+    }
     throw err;
   }
 }

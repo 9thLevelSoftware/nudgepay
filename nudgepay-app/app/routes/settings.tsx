@@ -4,6 +4,7 @@ import { useFlashCleanup } from "../lib/use-flash-cleanup";
 import { useDialog } from "../lib/use-dialog";
 import { orgNameMatches } from "../lib/qbo-disconnect";
 import { LEAVE_CONFIRM_TOKEN, deletionConfirmMatches, isLastOwnerMember } from "../lib/account-deletion";
+import { PILOT_LIMIT_LINES } from "../lib/pilot-limits";
 import { getEnv, getTwilioEnvOrNull, getEmailEnvOrNull, getPublicBaseUrls, getQboEnvOrNull, smsRequireInventory } from "../lib/env.server";
 import { loadWorkspaceChrome } from "../lib/workspace.server";
 import { listOrgMembers } from "../lib/orgs.server";
@@ -415,6 +416,18 @@ export default function Settings() {
                 {sp.get("error") === "email" ? (
                   <p className="mt-2 text-xs text-hot" role="alert">Enter a valid email address different from your current one.</p>
                 ) : null}
+              </section>
+
+              <section className="rounded-lg border border-border bg-surface p-5">
+                <h2 className="font-display text-base font-semibold text-text">Pilot limits</h2>
+                <p className="mt-0.5 text-xs text-muted">
+                  Design-partner use. These are product limits, not hidden failures.
+                </p>
+                <ul className="mt-3 list-disc space-y-1 pl-5 text-xs text-muted">
+                  {PILOT_LIMIT_LINES.map((line) => (
+                    <li key={line}>{line}</li>
+                  ))}
+                </ul>
               </section>
 
               <LeaveWorkspaceForm
