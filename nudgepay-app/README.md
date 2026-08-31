@@ -24,16 +24,24 @@ npm run test:unit
 cp .env.test.example .env.test
 npx supabase start
 npx vitest run          # or: npm test
+
+# Browser smoke (starts `npm run dev`)
+npx playwright install chromium
+npm run test:e2e
 ```
 
 `.env.test` is gitignored. Copy it from `.env.test.example` (local-demo JWT keys from `npx supabase status`).
 
 Integration tests share one local database and run serially. `tests/global-setup.ts` truncates test data before the suite.
 
-GitHub Actions PR CI runs `npm run typecheck` and `npm run test:unit` only.
-CI does not run RLS, QBO, or Twilio. A green PR is not proof of those
-suites — they import `./helpers` and need local `npm test` (or the non-PR
-`supabase integration` job). No coverage thresholds.
+GitHub Actions PR CI runs four jobs:
+
+1. `npm run typecheck` and `npm run test:unit` (no Docker)
+2. `npm run check` (tsc + production build + Wrangler dry-run)
+3. `npx supabase start` then `npx vitest run` (RLS, migrations, QBO/Twilio fakes)
+4. Playwright smoke against `/healthz`, `/login`, and `/signup`
+
+A green PR is not real-provider or staging proof. No coverage thresholds.
 
 ### Typecheck and production dry-run
 

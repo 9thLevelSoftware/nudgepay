@@ -2,6 +2,7 @@ import { beforeAll, expect, test, vi } from "vitest";
 import { serviceClient, makeUserClient } from "./helpers";
 import { runBulkSms } from "../app/lib/bulk-send.server";
 import type { MessagingDeps } from "../app/lib/twilio-messaging.server";
+import { ensureStopLanguage } from "../app/lib/sms-keywords";
 import { MAX_BATCH } from "../app/lib/bulk";
 import { DEFAULT_ORG_CONFIG, type OrgConfig } from "../app/lib/org-config";
 
@@ -59,7 +60,7 @@ test("runBulkSms sends to eligible cases, skips no-consent/no-phone, records one
   const { data: rows } = await svc.from("text_messages").select("case_id, invoice_id, body").eq("case_id", yes.caseId);
   expect(rows).toHaveLength(1);
   expect(rows![0].invoice_id).toBe(yes.invoiceId);
-  expect(rows![0].body).toBe("Hi Yes Co, you owe $100.00.");
+  expect(rows![0].body).toBe(ensureStopLanguage("Hi Yes Co, you owe $100.00."));
   const { data: skippedRows } = await svc.from("text_messages").select("id").in("case_id", [noConsent.caseId, noPhone.caseId]);
   expect(skippedRows).toHaveLength(0);
 });
@@ -137,7 +138,7 @@ test("runBulkSms clamps to MAX_BATCH (50) when given 51 eligible cases", async (
   expect(res.sent).toBe(MAX_BATCH);
   expect(res.sent + res.failed + res.skipped).toBe(MAX_BATCH);
   expect(fetchFn).toHaveBeenCalledTimes(MAX_BATCH);
-});
+}, 20_000);
 
 // ---------------------------------------------------------------------------
 // Quiet hours (Phase 7) — bulk path

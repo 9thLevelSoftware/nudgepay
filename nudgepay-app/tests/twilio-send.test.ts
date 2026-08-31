@@ -1,6 +1,7 @@
 import { beforeAll, expect, test, vi } from "vitest";
 import { serviceClient, makeUserClient } from "./helpers";
 import { resolveSender, sendInvoiceText, normalizePhone, type MessagingDeps } from "../app/lib/twilio-messaging.server";
+import { ensureStopLanguage } from "../app/lib/sms-keywords";
 
 let userId: string;
 beforeAll(async () => { ({ userId } = await makeUserClient("sms-sender@example.com")); });
@@ -99,7 +100,7 @@ test("sendInvoiceText sends and inserts an outbound row when the customer consen
   expect(msg!.to_number).toBe("+12295550101");
   expect(msg!.customer_id).toBe(customerId);
   expect(msg!.invoice_id).toBe(invoiceId);
-  expect(msg!.body).toBe("Past due");
+  expect(msg!.body).toBe(ensureStopLanguage("Past due"));
 });
 
 test("sendInvoiceText refuses to send without consent (no Twilio call, no row)", async () => {

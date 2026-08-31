@@ -167,10 +167,11 @@ test("npm metadata is not the RR starter (NP-AUD-2026-132-STARTER)", () => {
   expect(pkg.cloudflare.label).toBe("NudgePay");
 });
 
-test("AGENTS.md lists migrations through 0051 (NP-AUD-2026-132-AGENTS)", () => {
+test("AGENTS.md lists migrations through 0052 (NP-AUD-2026-132-AGENTS)", () => {
   const agents = readFileSync(fileURLToPath(new URL("../../AGENTS.md", import.meta.url)), "utf8");
-  expect(agents).toMatch(/0001\.\.0051|0001–0051/);
+  expect(agents).toMatch(/0001\.\.0052|0001–0052/);
   expect(agents).toMatch(/0051_message_events_direction/);
+  expect(agents).toMatch(/0052_text_messages_ledger_rls/);
   expect(agents).toMatch(/0049_cases_and_consent_rls/);
   expect(agents).toMatch(/0050_promises_rls/);
   expect(agents).toMatch(/inbound_orphans/);
@@ -198,11 +199,15 @@ test("quiet hours copy does not promise future automation (FP-12)", () => {
   expect(src.toLowerCase()).not.toMatch(/future automation/);
 });
 
-test("PR CI stays typecheck + unit and is labeled so green is not RLS", () => {
+test("PR CI runs unit, production check, supabase integration, and browser smoke", () => {
   const ci = readFileSync(fileURLToPath(new URL("../../.github/workflows/ci.yml", import.meta.url)), "utf8");
   expect(ci).toMatch(/name:\s*typecheck \+ unit tests/);
   expect(ci).toContain("npm run test:unit");
-  expect(ci).toMatch(/does not prove RLS/i);
+  expect(ci).toContain("npm run check");
+  expect(ci).toContain("npx vitest run");
+  expect(ci).toContain("npm run test:e2e");
+  expect(ci).not.toMatch(/if:\s*github\.event_name\s*!=\s*'pull_request'/);
+  expect(ci).toMatch(/real-provider or staging proof/i);
   expect(ci).not.toMatch(/coverage-threshold|coverageThreshold|codecov/i);
   expect(ci).not.toMatch(/\[\[ratelimits\]\]/);
 });

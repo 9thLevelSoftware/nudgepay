@@ -21,9 +21,16 @@ async function setUpOrg(email: string, opts: { digestHourLocal: number; timezone
   const user = await makeUserClient(email);
   const { data: org } = await svc.from("organizations").insert({ name: `Digest Org ${user.userId}` }).select("id").single();
   const orgId = org!.id as string;
-  await svc.from("memberships").insert({ org_id: orgId, user_id: user.userId, role: "owner" });
+  const { error: memErr } = await svc.from("memberships").insert({ org_id: orgId, user_id: user.userId, role: "owner" });
+  if (memErr) throw memErr;
   await storeConnection(svc, KEY, orgId, `realm-digest-${user.userId}`, { accessToken: "AT", refreshToken: "RT", expiresIn: 3600 });
-  await svc.from("email_config").insert({ org_id: orgId, email_enabled: true, from_address: "alerts@nudgepay.test", from_name: "NudgePay" });
+  // from_address is globally unique (email_config_from_address_unique). Reusing
+  // one address across tests silently fails later inserts and the digest sends nothing.
+  const fromAddress = `digest-${orgId.replace(/-/g, "").slice(0, 12)}@nudgepay.test`;
+  const { error: emailCfgErr } = await svc.from("email_config").insert({
+    org_id: orgId, email_enabled: true, from_address: fromAddress, from_name: "NudgePay",
+  });
+  if (emailCfgErr) throw emailCfgErr;
   await svc.from("org_settings").insert({
     org_id: orgId, timezone: opts.timezone, digest_hour_local: opts.digestHourLocal, last_digest_date: null,
   });
@@ -34,7 +41,7 @@ async function setUpOrg(email: string, opts: { digestHourLocal: number; timezone
     org_id: orgId, customer_id: cust!.id, status: "working",
     next_action_type: "follow_up", next_action_at: opts.nextActionAt,
   });
-  return { svc, orgId, user, email };
+  return { svc, orgId, user, email, fromAddress };
 }
 
 // runScheduledDigest scans EVERY connected org system-wide, so the shared test
@@ -66,13 +73,17 @@ async function withMockedFetch<T>(fn: (m: ReturnType<typeof mockResendFetch>) =>
   }
 }
 
+function digestEnvFor(fromAddress: string): Record<string, string> {
+  return { ...DIGEST_ENV, RESEND_ALLOWED_FROM: fromAddress };
+}
+
 test("does not fire before the org-local digest hour", async () => {
-  const { svc, orgId, email } = await setUpOrg("digest-before@example.com", {
+  const { svc, orgId, email, fromAddress } = await setUpOrg(`digest-before-${Math.random()}@example.com`, {
     digestHourLocal: 8, timezone: "America/New_York", nextActionAt: "2026-01-15",
   });
   const { sentTo } = await withMockedFetch((m) =>
     // 11:00Z = 06:00 EST — before the configured 8am local hour.
-    runScheduledDigest(DIGEST_ENV, new Date("2026-01-15T11:00:00Z")).then(() => m),
+    runScheduledDigest(digestEnvFor(fromAddress), new Date("2026-01-15T11:00:00Z")).then(() => m),
   );
   expect(sentTo).not.toContain(email);
 
@@ -81,12 +92,12 @@ test("does not fire before the org-local digest hour", async () => {
 });
 
 test("fires once the org-local hour reaches digest_hour_local and records last_digest_date", async () => {
-  const { svc, orgId, email } = await setUpOrg("digest-fire@example.com", {
+  const { svc, orgId, email, fromAddress } = await setUpOrg(`digest-fire-${Math.random()}@example.com`, {
     digestHourLocal: 8, timezone: "America/New_York", nextActionAt: "2026-01-15",
   });
   const { sentTo } = await withMockedFetch((m) =>
     // 13:00Z = 08:00 EST — exactly the configured send hour.
-    runScheduledDigest(DIGEST_ENV, new Date("2026-01-15T13:00:00Z")).then(() => m),
+    runScheduledDigest(digestEnvFor(fromAddress), new Date("2026-01-15T13:00:00Z")).then(() => m),
   );
   expect(sentTo.filter((t) => t === email).length).toBe(1);
 
@@ -95,18 +106,18 @@ test("fires once the org-local hour reaches digest_hour_local and records last_d
 });
 
 test("does not fire twice on the same org-local day", async () => {
-  const { svc, orgId, email } = await setUpOrg("digest-once@example.com", {
+  const { svc, orgId, email, fromAddress } = await setUpOrg(`digest-once-${Math.random()}@example.com`, {
     digestHourLocal: 8, timezone: "America/New_York", nextActionAt: "2026-01-15",
   });
 
   const first = await withMockedFetch((m) =>
-    runScheduledDigest(DIGEST_ENV, new Date("2026-01-15T13:00:00Z")).then(() => m), // 08:00 EST
+    runScheduledDigest(digestEnvFor(fromAddress), new Date("2026-01-15T13:00:00Z")).then(() => m), // 08:00 EST
   );
   expect(first.sentTo.filter((t) => t === email).length).toBe(1);
 
   const second = await withMockedFetch((m) =>
     // Same org-local day, several hours later — must not re-send to this recipient.
-    runScheduledDigest(DIGEST_ENV, new Date("2026-01-15T18:00:00Z")).then(() => m), // 13:00 EST
+    runScheduledDigest(digestEnvFor(fromAddress), new Date("2026-01-15T18:00:00Z")).then(() => m), // 13:00 EST
   );
   expect(second.sentTo).not.toContain(email);
 
@@ -115,14 +126,14 @@ test("does not fire twice on the same org-local day", async () => {
 });
 
 test("catches up the day after a missed send", async () => {
-  const { svc, orgId, email } = await setUpOrg("digest-catchup@example.com", {
+  const { svc, orgId, email, fromAddress } = await setUpOrg(`digest-catchup-${Math.random()}@example.com`, {
     digestHourLocal: 8, timezone: "America/New_York", nextActionAt: "2026-01-15",
   });
   await svc.from("org_settings").update({ last_digest_date: "2026-01-14" }).eq("org_id", orgId);
 
   const { sentTo } = await withMockedFetch((m) =>
     // 13:00Z = 08:00 EST on 2026-01-15 — last_digest_date is the day before.
-    runScheduledDigest(DIGEST_ENV, new Date("2026-01-15T13:00:00Z")).then(() => m),
+    runScheduledDigest(digestEnvFor(fromAddress), new Date("2026-01-15T13:00:00Z")).then(() => m),
   );
   expect(sentTo.filter((t) => t === email).length).toBe(1);
 
