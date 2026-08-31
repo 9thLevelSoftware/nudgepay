@@ -32,7 +32,6 @@ export default {
 	scheduled(controller, env, ctx) {
 		const envRecord = env as unknown as Record<string, string>;
 		const cron = controller.cron;
-		const onError = (err: unknown) =>
 		const onError = (err: unknown) => alertFromWorkerError(fetch, envRecord, { handler: "scheduled", err, cron });
 		if (cron === "0 * * * *") {
 			// Hourly: digest gate (per-org local hour) + retention purge.
