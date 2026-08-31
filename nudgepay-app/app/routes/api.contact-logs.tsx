@@ -36,6 +36,15 @@ export async function action({ request, context }: ActionFunctionArgs) {
   if (f.customerId && f.customerId !== customerId) {
     return data({ ok: false as const, error: "missing-customer" }, { status: 400, headers });
   }
+  const { data: cust } = await supabase
+    .from("customers")
+    .select("erased_at")
+    .eq("org_id", org.org_id)
+    .eq("id", customerId)
+    .maybeSingle();
+  if (cust?.erased_at) {
+    return data({ ok: false as const, error: "erased" }, { status: 403, headers });
+  }
 
   // If an invoice was sub-selected, validate it too (own-org only).
   if (f.invoiceId) {

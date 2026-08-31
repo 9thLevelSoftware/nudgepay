@@ -1,5 +1,9 @@
 // app/components/AccountProfile.tsx
-import { Form, Link, useNavigation } from "react-router";
+import { useState } from "react";
+import { Form, Link, useNavigation, useSearchParams } from "react-router";
+import { orgNameMatches } from "../lib/qbo-disconnect";
+import { useTwoStep } from "./TwoStepConfirm";
+import { Button, Input } from "./ui";
 import type { AccountStanding } from "../lib/accounts";
 import type { TimelineEntry } from "../lib/timeline";
 import { STANDING_LABEL, STANDING_CHIP } from "./AccountsDirectory";
@@ -39,11 +43,15 @@ interface Props {
   activeCaseId: string | null;
   returnTo: string;
   timeZone?: string | null;
+  isOwner?: boolean;
+  erasedAt?: string | null;
 }
 
 export function AccountProfile(p: Props) {
   const navigation = useNavigation();
+  const [sp] = useSearchParams();
   const formBusy = (action: string) => navigation.state !== "idle" && navigation.formAction === action;
+  const erased = Boolean(p.erasedAt);
 
   return (
     <div key={p.customerId} className="max-w-5xl mx-auto p-4 sm:p-6 space-y-6">
@@ -86,10 +94,17 @@ export function AccountProfile(p: Props) {
         ))}
       </div>
 
+      {erased ? (
+        <p className="text-sm text-muted" role="status">
+          Personal data for this customer was erased. Invoices remain. QuickBooks
+          sync will not restore the name, phone, or email.
+        </p>
+      ) : null}
+
       {/* Contact (read-only) */}
       <section className="bg-surface border border-border rounded-card p-5">
         <h2 className="font-display text-sm font-semibold text-text mb-1">Contact</h2>
-        <p className="text-xs text-muted mb-3">From QuickBooks — read-only.</p>
+        <p className="text-xs text-muted mb-3">{erased ? "Erased." : "From QuickBooks — read-only."}</p>
         <dl className="grid sm:grid-cols-2 gap-3 text-sm">
           <div><dt className="text-muted">Phone</dt><dd className="text-text">{p.phone ?? "—"}</dd></div>
           <div><dt className="text-muted">Email</dt><dd className="text-text">{p.email ?? "—"}</dd></div>
@@ -161,7 +176,7 @@ export function AccountProfile(p: Props) {
           <button type="submit" disabled={formBusy("/api/comm-prefs")} className="h-9 px-3 rounded bg-ink text-surface text-sm font-medium disabled:opacity-60 disabled:cursor-not-allowed">{formBusy("/api/comm-prefs") ? "Saving…" : "Save preferences"}</button>
         </Form>
 
-        <Form method="post" action="/api/account-notes" className="space-y-2">
+        {erased ? null : <Form method="post" action="/api/account-notes" className="space-y-2">
           <input type="hidden" name="returnTo" value={p.returnTo} />
           <input type="hidden" name="customerId" value={p.customerId} />
           <label className="text-sm text-muted block">Account notes
@@ -174,7 +189,10 @@ export function AccountProfile(p: Props) {
             />
           </label>
           <button type="submit" disabled={formBusy("/api/account-notes")} className="h-9 px-3 rounded bg-copper text-ink text-sm font-medium disabled:opacity-60 disabled:cursor-not-allowed">{formBusy("/api/account-notes") ? "Saving…" : "Save notes"}</button>
-        </Form>
+        </Form>}
+        {sp.get("noteError") === "erased" ? (
+          <p className="text-xs text-hot" role="alert">Personal data for this customer is erased, so notes cannot be saved.</p>
+        ) : null}
       </section>
 
       {/* Invoices */}
@@ -234,6 +252,101 @@ export function AccountProfile(p: Props) {
           </ul>
         )}
       </section>
+
+      {p.isOwner ? (
+        <EraseCustomerForm
+          customerId={p.customerId}
+          customerName={p.name}
+          returnTo={p.returnTo}
+          busy={formBusy("/api/customer/erase")}
+          erased={erased}
+          eraseError={sp.get("eraseError")}
+        />
+      ) : null}
     </div>
+  );
+}
+
+function EraseCustomerForm({
+  customerId,
+  customerName,
+  returnTo,
+  busy,
+  erased,
+  eraseError,
+}: {
+  customerId: string;
+  customerName: string;
+  returnTo: string;
+  busy: boolean;
+  erased: boolean;
+  eraseError: string | null;
+}) {
+  const [typed, setTyped] = useState("");
+  const { confirming, arm, disarm } = useTwoStep(5000);
+  const nameOk = orgNameMatches(typed, customerName);
+
+  if (erased) return null;
+
+  return (
+    <section className="bg-surface border border-hot/40 rounded-card p-5">
+      <h2 className="font-display text-sm font-semibold text-text">Erase personal data</h2>
+      <p className="mt-0.5 text-xs text-muted">
+        Removes this customer&apos;s stored name, phone, email, notes, and message
+        bodies. Invoices stay. QuickBooks is not deleted. Type{" "}
+        <span className="font-medium text-text">{customerName}</span> to confirm.
+      </p>
+      <Form method="post" action="/api/customer/erase" className="mt-3 flex flex-col gap-3">
+        <input type="hidden" name="returnTo" value={returnTo} />
+        <input type="hidden" name="customerId" value={customerId} />
+        <label className="grid gap-1 text-sm font-medium text-text">
+          Customer name
+          <Input
+            name="confirm"
+            type="text"
+            required
+            autoComplete="off"
+            value={typed}
+            onChange={(e) => {
+              setTyped(e.target.value);
+              disarm();
+            }}
+          />
+        </label>
+        {confirming ? (
+          <div className="flex items-center gap-2" role="alert">
+            <Button type="submit" variant="destructive" size="sm" disabled={busy || !nameOk} className="w-fit">
+              {busy ? "Erasing…" : "Confirm erase"}
+            </Button>
+            <Button type="button" variant="secondary" size="sm" onClick={disarm}>
+              Cancel
+            </Button>
+          </div>
+        ) : (
+          <Button
+            type="button"
+            variant="destructive"
+            size="sm"
+            disabled={!nameOk || busy}
+            className="w-fit"
+            onClick={arm}
+          >
+            Erase personal data
+          </Button>
+        )}
+      </Form>
+      {eraseError === "confirm" ? (
+        <p className="mt-2 text-xs text-hot" role="alert">Type the customer name to confirm.</p>
+      ) : null}
+      {eraseError === "forbidden" ? (
+        <p className="mt-2 text-xs text-hot" role="alert">Only owners can erase customer personal data.</p>
+      ) : null}
+      {eraseError === "already" ? (
+        <p className="mt-2 text-xs text-hot" role="alert">Personal data for this customer is already erased.</p>
+      ) : null}
+      {eraseError === "erase" ? (
+        <p className="mt-2 text-xs text-hot" role="alert">Could not erase personal data. Try again.</p>
+      ) : null}
+    </section>
   );
 }

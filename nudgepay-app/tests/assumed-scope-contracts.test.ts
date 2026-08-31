@@ -167,13 +167,14 @@ test("npm metadata is not the RR starter (NP-AUD-2026-132-STARTER)", () => {
   expect(pkg.cloudflare.label).toBe("NudgePay");
 });
 
-test("AGENTS.md lists migrations through 0054 (NP-AUD-2026-132-AGENTS)", () => {
+test("AGENTS.md lists migrations through 0055 (NP-AUD-2026-132-AGENTS)", () => {
   const agents = readFileSync(fileURLToPath(new URL("../../AGENTS.md", import.meta.url)), "utf8");
-  expect(agents).toMatch(/0001\.\.0054|0001–0054/);
+  expect(agents).toMatch(/0001\.\.0055|0001–0055/);
   expect(agents).toMatch(/0051_message_events_direction/);
   expect(agents).toMatch(/0052_text_messages_ledger_rls/);
   expect(agents).toMatch(/0053_delete_workspace/);
   expect(agents).toMatch(/0054_delete_personal_account/);
+  expect(agents).toMatch(/0055_erase_customer_pii/);
   expect(agents).toMatch(/0049_cases_and_consent_rls/);
   expect(agents).toMatch(/0050_promises_rls/);
   expect(agents).toMatch(/inbound_orphans/);
@@ -228,11 +229,12 @@ test("Settings separates leave, workspace delete, export, and personal login del
   expect(src).not.toMatch(/Could not delete your account/);
 });
 
-test("privacy describes leave, workspace delete, export, and Auth-user erasure", () => {
+test("privacy describes leave, workspace delete, customer PII erase, export, and Auth-user erasure", () => {
   const privacy = read("../app/routes/privacy.tsx");
   expect(privacy).toMatch(/leave this workspace/i);
   expect(privacy).toMatch(/does not delete the\s+workspace/i);
   expect(privacy).toMatch(/deletion tombstone/i);
+  expect(privacy).toMatch(/erase a customer/i);
   expect(privacy).toMatch(/download a JSON copy of your NudgePay login/i);
   expect(privacy).toMatch(/delete your NudgePay login in Settings/i);
   expect(privacy).toMatch(/removes the Auth\s+user/i);
