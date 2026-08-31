@@ -222,6 +222,8 @@ test("Settings separates leave, workspace delete, export, and personal login del
   expect(src).toMatch(/does not delete the\s+workspace/i);
   expect(src).toMatch(/Delete workspace/);
   expect(src).toContain("/api/workspace/delete");
+  expect(src).toMatch(/Download workspace data/);
+  expect(src).toContain("/api/workspace/export");
   expect(src).toMatch(/Download my data/);
   expect(src).toContain("/api/account/export");
   expect(src).toMatch(/Delete my NudgePay account/);
@@ -235,6 +237,7 @@ test("privacy describes leave, workspace delete, customer PII erase, export, and
   expect(privacy).toMatch(/does not delete the\s+workspace/i);
   expect(privacy).toMatch(/deletion tombstone/i);
   expect(privacy).toMatch(/erase a customer/i);
+  expect(privacy).toMatch(/download a JSON copy of workspace/i);
   expect(privacy).toMatch(/download a JSON copy of your NudgePay login/i);
   expect(privacy).toMatch(/delete your NudgePay login in Settings/i);
   expect(privacy).toMatch(/removes the Auth\s+user/i);

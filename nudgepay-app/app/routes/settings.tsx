@@ -440,6 +440,22 @@ export default function Settings() {
               />
 
               {d.isOwner ? (
+                <section className="rounded-lg border border-border bg-surface p-5">
+                  <h2 className="font-display text-base font-semibold text-text">Download workspace data</h2>
+                  <p className="mt-0.5 text-xs text-muted">
+                    JSON copy of this workspace&apos;s customers, invoices, cases,
+                    and messages. QuickBooks tokens are not included. Lists cap
+                    at 5,000 rows each; truncation is marked in the file.
+                  </p>
+                  <Form method="get" action="/api/workspace/export" className="mt-3">
+                    <Button type="submit" variant="secondary" size="sm" className="w-fit">
+                      Download workspace data
+                    </Button>
+                  </Form>
+                </section>
+              ) : null}
+
+              {d.isOwner ? (
                 <DeleteWorkspaceForm
                   orgName={d.orgName}
                   returnTo={returnTo}

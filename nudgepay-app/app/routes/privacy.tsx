@@ -65,7 +65,9 @@ export default function Privacy() {
         workspace or erase invoices, customers, or messages. If you are the last remaining
         member and QuickBooks is connected, we disconnect those tokens. The last owner
         cannot leave; they must transfer ownership or delete the workspace.
-        Owners delete a workspace in Settings by typing its name; that revokes
+        Owners can download a JSON copy of workspace customers, invoices, cases,
+        and messages in Settings. Owners delete a workspace in Settings by typing
+        its name; that revokes
         QuickBooks tokens, purges tenant data, and writes a deletion tombstone.
         Owners can erase a customer&apos;s stored name, phone, email, notes, and
         message bodies from the account page by typing the customer name.
