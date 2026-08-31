@@ -3,6 +3,10 @@ import { getEnv } from "../lib/env.server";
 import { requireUser, resolveOrg } from "../lib/session.server";
 import { safeReturnTo } from "../lib/return-to";
 
+function flag(returnTo: string, key: string, val: string): string {
+  return `${returnTo}${returnTo.includes("?") ? "&" : "?"}${key}=${val}`;
+}
+
 export async function action({ request, context }: ActionFunctionArgs) {
   const env = getEnv(context as any);
   const { supabase, headers, user } = await requireUser(request, env);
@@ -21,7 +25,7 @@ export async function action({ request, context }: ActionFunctionArgs) {
   const { data: cust } = await supabase
     .from("customers").select("id, erased_at").eq("org_id", org.org_id).eq("id", customerId).maybeSingle();
   if (!cust) return redirect(returnTo, { headers });
-  if (cust.erased_at) return redirect(returnTo, { headers });
+  if (cust.erased_at) return redirect(flag(returnTo, "noteError", "erased"), { headers });
 
   const { error } = await supabase.from("customers")
     .update({

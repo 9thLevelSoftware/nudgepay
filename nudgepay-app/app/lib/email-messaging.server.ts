@@ -39,11 +39,12 @@ export async function sendInvoiceEmail(
   if (!inv?.customer_id) throw new Error("Invoice has no linked customer");
 
   const { data: cust, error: custErr } = await deps.service.from("customers")
-    .select("id, email, do_not_email")
+    .select("id, email, do_not_email, erased_at")
     .eq("org_id", args.orgId)
     .eq("id", inv.customer_id as string)
     .maybeSingle();
   if (custErr) throw custErr;
+  if (cust?.erased_at) throw new Error("Customer personal data was erased");
   if (!cust?.email) throw new Error("Customer has no email address");
 
   // Org-level email switch. Absent row => DISABLED (email defaults off). Fail loud

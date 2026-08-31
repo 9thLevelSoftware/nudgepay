@@ -1,3 +1,5 @@
+import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { ERASED_CUSTOMER_NAME, customerErasureDecision } from "../app/lib/customer-erasure";
 
@@ -44,5 +46,13 @@ describe("customerErasureDecision", () => {
 describe("ERASED_CUSTOMER_NAME", () => {
   it("is the display label after erasure", () => {
     expect(ERASED_CUSTOMER_NAME).toBe("Erased customer");
+  });
+
+  it("matches the SQL literal in 0055 so UI and RPC cannot drift", () => {
+    const sql = readFileSync(
+      fileURLToPath(new URL("../supabase/migrations/0055_erase_customer_pii.sql", import.meta.url)),
+      "utf8",
+    );
+    expect(sql).toContain(`set name = '${ERASED_CUSTOMER_NAME}'`);
   });
 });

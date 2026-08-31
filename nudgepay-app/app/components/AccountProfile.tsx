@@ -1,7 +1,8 @@
 // app/components/AccountProfile.tsx
 import { useState } from "react";
 import { Form, Link, useNavigation, useSearchParams } from "react-router";
-import { customerErasureDecision } from "../lib/customer-erasure";
+import { orgNameMatches } from "../lib/qbo-disconnect";
+import { useTwoStep } from "./TwoStepConfirm";
 import { Button, Input } from "./ui";
 import type { AccountStanding } from "../lib/accounts";
 import type { TimelineEntry } from "../lib/timeline";
@@ -189,6 +190,9 @@ export function AccountProfile(p: Props) {
           </label>
           <button type="submit" disabled={formBusy("/api/account-notes")} className="h-9 px-3 rounded bg-copper text-ink text-sm font-medium disabled:opacity-60 disabled:cursor-not-allowed">{formBusy("/api/account-notes") ? "Saving…" : "Save notes"}</button>
         </Form>}
+        {sp.get("noteError") === "erased" ? (
+          <p className="text-xs text-hot" role="alert">Personal data for this customer is erased, so notes cannot be saved.</p>
+        ) : null}
       </section>
 
       {/* Invoices */}
@@ -279,12 +283,8 @@ function EraseCustomerForm({
   eraseError: string | null;
 }) {
   const [typed, setTyped] = useState("");
-  const canSubmit = customerErasureDecision({
-    isOwner: true,
-    alreadyErased: erased,
-    typedName: typed,
-    customerName,
-  }).ok;
+  const { confirming, arm, disarm } = useTwoStep(5000);
+  const nameOk = orgNameMatches(typed, customerName);
 
   if (erased) return null;
 
@@ -307,18 +307,33 @@ function EraseCustomerForm({
             required
             autoComplete="off"
             value={typed}
-            onChange={(e) => setTyped(e.target.value)}
+            onChange={(e) => {
+              setTyped(e.target.value);
+              disarm();
+            }}
           />
         </label>
-        <Button
-          type="submit"
-          variant="destructive"
-          size="sm"
-          disabled={!canSubmit || busy}
-          className="w-fit"
-        >
-          {busy ? "Erasing…" : "Erase personal data"}
-        </Button>
+        {confirming ? (
+          <div className="flex items-center gap-2" role="alert">
+            <Button type="submit" variant="destructive" size="sm" disabled={busy || !nameOk} className="w-fit">
+              {busy ? "Erasing…" : "Confirm erase"}
+            </Button>
+            <Button type="button" variant="secondary" size="sm" onClick={disarm}>
+              Cancel
+            </Button>
+          </div>
+        ) : (
+          <Button
+            type="button"
+            variant="destructive"
+            size="sm"
+            disabled={!nameOk || busy}
+            className="w-fit"
+            onClick={arm}
+          >
+            Erase personal data
+          </Button>
+        )}
       </Form>
       {eraseError === "confirm" ? (
         <p className="mt-2 text-xs text-hot" role="alert">Type the customer name to confirm.</p>

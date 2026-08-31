@@ -107,11 +107,12 @@ export async function sendInvoiceText(
   if (!inv?.customer_id) throw new Error("Invoice has no linked customer");
 
   const { data: cust, error: custErr } = await deps.service.from("customers")
-    .select("id, phone, sms_consent, do_not_text")
+    .select("id, phone, sms_consent, do_not_text, erased_at")
     .eq("org_id", args.orgId)
     .eq("id", inv.customer_id as string)
     .maybeSingle();
   if (custErr) throw custErr;
+  if (cust?.erased_at) throw new Error("Customer personal data was erased");
   if (!cust?.phone) throw new Error("Customer has no phone number");
 
   // Org-level SMS switch (Phase 14). Absent row => enabled (default). This single

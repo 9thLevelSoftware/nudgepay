@@ -37,6 +37,15 @@ test("erase_customer_pii redacts PII, blocks JWT, and freezes QBO name restore",
     method: "call", notes: "spoke with AP",
   });
   expect(logErr).toBeNull();
+  const { data: inv } = await svc.from("invoices").insert({
+    org_id: orgId, customer_id: customerId, qbo_id: `inv-${Math.random()}`,
+    amount: 100, balance: 100,
+  }).select("id").single();
+  const { error: legacySmsErr } = await svc.from("text_messages").insert({
+    org_id: orgId, invoice_id: inv!.id, customer_id: null, direction: "outbound",
+    to_number: "+15555550100", body: "legacy invoice ping",
+  });
+  expect(legacySmsErr).toBeNull();
 
   const jwt = await member.client.rpc("erase_customer_pii", {
     p_org_id: orgId,
@@ -71,21 +80,24 @@ test("erase_customer_pii redacts PII, blocks JWT, and freezes QBO name restore",
   expect(rpcErr).toBeNull();
 
   const { data: after } = await svc.from("customers")
-    .select("name, email, phone, notes, erased_at, do_not_text, do_not_email")
+    .select("name, email, phone, notes, erased_at, do_not_call, do_not_text, do_not_email, sms_consent")
     .eq("id", customerId).single();
   expect(after).toMatchObject({
     name: ERASED_CUSTOMER_NAME,
     email: null,
     phone: null,
     notes: null,
+    do_not_call: true,
     do_not_text: true,
     do_not_email: true,
+    sms_consent: false,
   });
   expect(after!.erased_at).toBeTruthy();
 
   const { data: sms } = await svc.from("text_messages")
-    .select("body, to_number").eq("customer_id", customerId).single();
-  expect(sms).toEqual({ body: "[erased]", to_number: null });
+    .select("body, to_number").eq("org_id", orgId);
+  expect(sms).toHaveLength(2);
+  expect(sms!.every((row) => row.body === "[erased]" && row.to_number == null)).toBe(true);
   const { data: email } = await svc.from("email_messages")
     .select("body, subject, to_address").eq("customer_id", customerId).single();
   expect(email).toEqual({ body: "[erased]", subject: "[erased]", to_address: null });
@@ -112,4 +124,10 @@ test("erase_customer_pii redacts PII, blocks JWT, and freezes QBO name restore",
     p_customer_name: ERASED_CUSTOMER_NAME,
   });
   expect(again).not.toBeNull();
+
+  const { error: newLog } = await svc.from("contact_logs").insert({
+    org_id: orgId, customer_id: customerId, user_id: owner.userId,
+    method: "call", notes: "should not stick",
+  });
+  expect(newLog).not.toBeNull();
 });

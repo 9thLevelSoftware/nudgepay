@@ -18,9 +18,6 @@ export async function action({ request, context }: ActionFunctionArgs) {
   const form = await request.formData();
   const returnTo = safeReturnTo(form.get("returnTo"), "/accounts");
   const customerId = typeof form.get("customerId") === "string" ? form.get("customerId") as string : "";
-  if (!customerId) {
-    return redirect(flag(returnTo, "eraseError", "erase"), { headers });
-  }
 
   const service = createSupabaseServiceClient(env);
   const { data: cust } = await service

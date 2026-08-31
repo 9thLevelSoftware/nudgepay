@@ -99,7 +99,11 @@ begin
          to_number = null,
          from_number = null
    where org_id = p_org_id
-     and customer_id = p_customer_id;
+     and (
+       customer_id = p_customer_id
+       or invoice_id in (select id from public.invoices where org_id = p_org_id and customer_id = p_customer_id)
+       or case_id in (select id from public.collection_cases where org_id = p_org_id and customer_id = p_customer_id)
+     );
 
   update public.email_messages
      set body = '[erased]',
@@ -107,14 +111,70 @@ begin
          to_address = null,
          from_address = null
    where org_id = p_org_id
-     and customer_id = p_customer_id;
+     and (
+       customer_id = p_customer_id
+       or invoice_id in (select id from public.invoices where org_id = p_org_id and customer_id = p_customer_id)
+       or case_id in (select id from public.collection_cases where org_id = p_org_id and customer_id = p_customer_id)
+     );
 
   update public.contact_logs
      set notes = null
    where org_id = p_org_id
-     and customer_id = p_customer_id;
+     and (
+       customer_id = p_customer_id
+       or invoice_id in (select id from public.invoices where org_id = p_org_id and customer_id = p_customer_id)
+       or case_id in (select id from public.collection_cases where org_id = p_org_id and customer_id = p_customer_id)
+     );
 end;
 $$;
 
 revoke all on function public.erase_customer_pii(uuid, uuid, uuid, text) from public, anon, authenticated;
 grant execute on function public.erase_customer_pii(uuid, uuid, uuid, text) to service_role;
+
+-- Block new PII writes after erasure (contact logs / messages, including
+-- invoice- or case-linked rows whose customer_id is null).
+create or replace function public.reject_write_on_erased_customer()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  cid uuid;
+  erased timestamptz;
+begin
+  cid := new.customer_id;
+  if cid is null and new.invoice_id is not null then
+    select customer_id into cid from public.invoices where id = new.invoice_id;
+  end if;
+  if cid is null and new.case_id is not null then
+    select customer_id into cid from public.collection_cases where id = new.case_id;
+  end if;
+  if cid is null then
+    return new;
+  end if;
+  select erased_at into erased from public.customers where id = cid;
+  if erased is not null then
+    raise exception 'customer erased';
+  end if;
+  return new;
+end;
+$$;
+
+drop trigger if exists reject_write_on_erased_customer on public.contact_logs;
+create trigger reject_write_on_erased_customer
+  before insert on public.contact_logs
+  for each row
+  execute function public.reject_write_on_erased_customer();
+
+drop trigger if exists reject_write_on_erased_customer on public.text_messages;
+create trigger reject_write_on_erased_customer
+  before insert on public.text_messages
+  for each row
+  execute function public.reject_write_on_erased_customer();
+
+drop trigger if exists reject_write_on_erased_customer on public.email_messages;
+create trigger reject_write_on_erased_customer
+  before insert on public.email_messages
+  for each row
+  execute function public.reject_write_on_erased_customer();
