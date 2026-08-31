@@ -32,7 +32,7 @@ export async function action({ request, context }: ActionFunctionArgs) {
     orgName,
   });
   if (!decision.ok) {
-    return redirect(flag(returnTo, "error", decision.error), { headers });
+    return redirect(flag(returnTo, "deleteError", decision.error), { headers });
   }
 
   const { count: memberCount } = await service
@@ -69,7 +69,7 @@ export async function action({ request, context }: ActionFunctionArgs) {
     p_member_count: memberCount ?? 0,
   });
   if (error) {
-    return redirect(flag(returnTo, "error", "workspace"), { headers });
+    return redirect(flag(returnTo, "deleteError", "workspace"), { headers });
   }
 
   await supabase.auth.signOut();

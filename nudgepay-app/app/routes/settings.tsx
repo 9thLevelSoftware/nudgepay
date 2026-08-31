@@ -443,7 +443,7 @@ export default function Settings() {
                   orgName={d.orgName}
                   returnTo={returnTo}
                   busy={formBusy("/api/workspace/delete")}
-                  error={sp.get("error")}
+                  deleteError={sp.get("deleteError")}
                 />
               ) : null}
 
@@ -824,12 +824,12 @@ function DeleteWorkspaceForm({
   orgName,
   returnTo,
   busy,
-  error,
+  deleteError,
 }: {
   orgName: string;
   returnTo: string;
   busy: boolean;
-  error: string | null;
+  deleteError: string | null;
 }) {
   const [typed, setTyped] = useState("");
   const canSubmit = orgNameMatches(typed, orgName);
@@ -864,13 +864,13 @@ function DeleteWorkspaceForm({
           {busy ? "Deleting…" : "Delete workspace"}
         </button>
       </Form>
-      {error === "confirm" ? (
+      {deleteError === "confirm" ? (
         <p className="mt-2 text-xs text-hot" role="alert">Type the workspace name to confirm.</p>
       ) : null}
-      {error === "forbidden" ? (
+      {deleteError === "forbidden" ? (
         <p className="mt-2 text-xs text-hot" role="alert">Only owners can delete this workspace.</p>
       ) : null}
-      {error === "workspace" ? (
+      {deleteError === "workspace" ? (
         <p className="mt-2 text-xs text-hot" role="alert">Could not delete the workspace. Try again.</p>
       ) : null}
     </section>
