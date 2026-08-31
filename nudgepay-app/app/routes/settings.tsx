@@ -555,7 +555,7 @@ export default function Settings() {
                 {lastOwner ? (
                   <p className="mt-4 text-xs text-muted">The last owner cannot leave the workspace. Transfer ownership first.</p>
                 ) : (
-                  <p className="mt-4 text-xs text-muted">To leave, confirm in Account below. Workspace data is not deleted.</p>
+                  <p className="mt-4 text-xs text-muted">To leave, confirm in the Leave workspace section below. Workspace data is not deleted.</p>
                 )}
               </section>
             </>
