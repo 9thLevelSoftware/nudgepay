@@ -51,8 +51,7 @@ export default function Unsubscribe() {
   const token = a?.token ?? l.token;
 
   return (
-    <main id={MAIN_CONTENT_ID} tabIndex={-1} className="relative min-h-screen flex items-center justify-center bg-surface p-6">
-      <SkipLink />
+    <div className="relative">
       <SkipLink />
       <main id={MAIN_CONTENT_ID} tabIndex={-1} className="min-h-screen flex items-center justify-center bg-surface p-6">
         <div className="max-w-md rounded-lg border border-border bg-panel p-6 text-center">

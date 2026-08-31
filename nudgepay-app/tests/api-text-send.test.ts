@@ -18,6 +18,9 @@ test("smsSendReason maps sendInvoiceText's thrown messages to result codes", () 
   expect(smsSendReason("Customer has opted out of SMS")).toBe("optout");
   expect(smsSendReason("Customer has not consented to SMS")).toBe("noconsent");
   expect(smsSendReason("Invoice has no linked customer")).toBe("error");
+  expect(smsSendReason("Twilio send failed: 503")).toBe("error");
+  expect(smsSendReason("Twilio send failed: 500")).toBe("error");
+  expect(smsSendReason("Twilio send failed: 429")).toBe("error");
 });
 
 test("smsSendReason checks disabled and quiet before the generic blocked/consent checks", () => {

@@ -88,6 +88,15 @@ test("sendInvoiceText requireInventory refuses without inventory (no Twilio call
   expect(rows ?? []).toHaveLength(0);
 });
 
+test("sendInvoiceText does not insert a row when Twilio returns 503", async () => {
+  const { orgId, invoiceId, customerId } = await seed(true, "+12295550903");
+  const fetchFn = vi.fn(async () => jsonResponse({ message: "unavailable" }, 503));
+  await expect(sendInvoiceText(deps(fetchFn), { orgId, invoiceId, userId, body: "Past due" }))
+    .rejects.toThrow("Twilio send failed: 503");
+  const { data: rows } = await svc.from("text_messages").select("id").eq("customer_id", customerId);
+  expect(rows ?? []).toHaveLength(0);
+});
+
 test("sendInvoiceText sends and inserts an outbound row when the customer consented", async () => {
   const { orgId, customerId, invoiceId } = await seed(true, "+12295550101");
   const fetchFn = vi.fn(async () => jsonResponse({ sid: "SM10", status: "queued" }));

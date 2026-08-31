@@ -2,6 +2,9 @@
 // testability, mirroring twilio-client.server.ts.
 
 export type EmailConfig = { apiKey: string; allowedFrom?: string | null };
+
+/** Hung Resend must fail closed instead of waiting out the Worker. */
+export const EMAIL_SEND_TIMEOUT_MS = 10_000;
 export type SendEmailArgs = {
   from: string;
   to: string;
@@ -30,6 +33,7 @@ export async function sendEmail(
     method: "POST",
     headers,
     body: JSON.stringify(payload),
+    signal: AbortSignal.timeout(EMAIL_SEND_TIMEOUT_MS),
   });
   const text = await res.text();
   if (!res.ok) {

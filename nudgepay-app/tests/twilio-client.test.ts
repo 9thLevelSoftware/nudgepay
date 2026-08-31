@@ -1,5 +1,5 @@
 import { expect, test, vi } from "vitest";
-import { sendSms } from "../app/lib/twilio-client.server";
+import { sendSms, SMS_SEND_TIMEOUT_MS } from "../app/lib/twilio-client.server";
 
 const cfg = { accountSid: "AC123", authToken: "tok" };
 
@@ -41,4 +41,34 @@ test("sendSms throws on a non-2xx response", async () => {
   await expect(sendSms(fetchFn as any, cfg, {
     to: "+1", body: "x", sender: { from: "+2" },
   })).rejects.toThrow();
+});
+
+test("sendSms throws on a provider 503 without treating it as sent", async () => {
+  const fetchFn = vi.fn(async () => jsonResponse({ message: "unavailable" }, 503));
+  await expect(sendSms(fetchFn as any, cfg, {
+    to: "+1", body: "x", sender: { from: "+2" },
+  })).rejects.toThrow("Twilio send failed: 503");
+});
+
+test("sendSms fails closed when fetch rejects", async () => {
+  const fetchFn = vi.fn(async () => {
+    throw new TypeError("fetch failed");
+  });
+  await expect(sendSms(fetchFn as any, cfg, {
+    to: "+1", body: "x", sender: { from: "+2" },
+  })).rejects.toThrow(/fetch failed/);
+});
+
+test("sendSms aborts a hung provider", async () => {
+  const timeout = vi.spyOn(AbortSignal, "timeout");
+  try {
+    const fetchFn = vi.fn(async () => jsonResponse({ sid: "SM1", status: "queued" }));
+    await sendSms(fetchFn as any, cfg, {
+      to: "+1", body: "x", sender: { from: "+2" },
+    });
+    expect(timeout).toHaveBeenCalledWith(SMS_SEND_TIMEOUT_MS);
+    expect((fetchFn.mock.calls[0][1] as RequestInit).signal).toBeInstanceOf(AbortSignal);
+  } finally {
+    timeout.mockRestore();
+  }
 });

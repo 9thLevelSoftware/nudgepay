@@ -5,6 +5,9 @@ export type TwilioConfig = { accountSid: string; authToken: string };
 export type TwilioSender = { messagingServiceSid: string } | { from: string };
 export type TwilioSendResult = { sid: string; status: string };
 
+/** Hung Twilio must fail closed instead of waiting out the Worker. */
+export const SMS_SEND_TIMEOUT_MS = 10_000;
+
 export async function sendSms(
   fetchFn: typeof fetch,
   cfg: TwilioConfig,
@@ -32,6 +35,7 @@ export async function sendSms(
     method: "POST",
     headers,
     body: form.toString(),
+    signal: AbortSignal.timeout(SMS_SEND_TIMEOUT_MS),
   });
   if (!res.ok) throw new Error(`Twilio send failed: ${res.status}`);
   const data = (await res.json()) as { sid: string; status: string };

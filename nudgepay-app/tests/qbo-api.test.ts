@@ -192,6 +192,15 @@ test("qboQuery does not retry 401", async () => {
   expect(sleep).not.toHaveBeenCalled();
 });
 
+test("qboQuery does not retry 503 and throws", async () => {
+  const sleep = vi.fn(async () => {});
+  const fetchFn = vi.fn(async () => new Response("unavailable", { status: 503 }));
+  await expect(qboQuery(fetchFn as any, api, "AT", "r", "q", "Invoice", { sleep, now: () => 0 }))
+    .rejects.toThrow("QBO API request failed: 503");
+  expect(fetchFn).toHaveBeenCalledTimes(1);
+  expect(sleep).not.toHaveBeenCalled();
+});
+
 test("qboCdc requests payments + credit memos and flattens all four entities", async () => {
   let requestedUrl = "";
   const fetchFn = (async (url: string) => {
