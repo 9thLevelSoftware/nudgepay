@@ -51,6 +51,7 @@ export default [
   route("webhooks/resend", "routes/webhooks.resend.tsx"),
   route("api/profile", "routes/api.profile.tsx"),
   route("api/workspace/delete", "routes/api.workspace.delete.tsx"),
+  route("api/workspace/export", "routes/api.workspace.export.tsx"),
   route("api/account/delete", "routes/api.account.delete.tsx"),
   route("api/account/export", "routes/api.account.export.tsx"),
   route("api/customer/erase", "routes/api.customer.erase.tsx"),

@@ -12,6 +12,8 @@ Support: `support@nudgepay-ar.app`.
   shown; results are not silently complete.
 - Leave workspace removes membership and signs out. It does not delete the
   Auth user, the organization, or tenant data.
+- Owners can download a JSON copy of workspace customers, invoices, cases,
+  and messages from Settings. Lists cap at 5,000 rows each.
 - Owners can delete a workspace in Settings by typing its name. That revokes
   QuickBooks tokens, purges tenant rows, and writes `workspace_deletions`.
 - Owners can erase a customer's stored name, phone, email, notes, and
