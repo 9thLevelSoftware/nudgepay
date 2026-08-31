@@ -199,6 +199,21 @@ test("quiet hours copy does not promise future automation (FP-12)", () => {
   expect(src.toLowerCase()).not.toMatch(/future automation/);
 });
 
+test("Settings leave workspace is not labeled Delete account", () => {
+  const src = read("../app/routes/settings.tsx");
+  expect(src).toMatch(/Leave workspace/);
+  expect(src).toMatch(/does not delete the\s+workspace/i);
+  expect(src).not.toMatch(/Delete account/);
+  expect(src).not.toMatch(/Could not delete your account/);
+});
+
+test("privacy describes leave workspace, not self-serve account erasure", () => {
+  const privacy = read("../app/routes/privacy.tsx");
+  expect(privacy).toMatch(/leave this workspace/i);
+  expect(privacy).toMatch(/does not delete the\s+workspace/i);
+  expect(privacy).not.toMatch(/delete your account in Settings/);
+});
+
 test("PR CI runs unit, production check, supabase integration, and browser smoke", () => {
   const ci = readFileSync(fileURLToPath(new URL("../../.github/workflows/ci.yml", import.meta.url)), "utf8");
   expect(ci).toMatch(/name:\s*typecheck \+ unit tests/);

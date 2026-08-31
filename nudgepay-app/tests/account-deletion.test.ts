@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   DELETE_CONFIRM_TOKEN,
+  LEAVE_CONFIRM_TOKEN,
   accountDeletionDecision,
   deletionConfirmMatches,
   isLastOwnerMember,
@@ -15,7 +16,12 @@ describe("deletionConfirmMatches", () => {
     expect(deletionConfirmMatches("  OWNER@Example.COM  ", EMAIL)).toBe(true);
   });
 
-  it("matches the DELETE token exactly after trim", () => {
+  it("matches the LEAVE token exactly after trim", () => {
+    expect(deletionConfirmMatches(LEAVE_CONFIRM_TOKEN, EMAIL)).toBe(true);
+    expect(deletionConfirmMatches("  LEAVE  ", EMAIL)).toBe(true);
+  });
+
+  it("still accepts the previous DELETE token after trim", () => {
     expect(deletionConfirmMatches(DELETE_CONFIRM_TOKEN, EMAIL)).toBe(true);
     expect(deletionConfirmMatches("  DELETE  ", EMAIL)).toBe(true);
   });
@@ -26,6 +32,7 @@ describe("deletionConfirmMatches", () => {
     expect(deletionConfirmMatches(null, EMAIL)).toBe(false);
     expect(deletionConfirmMatches(undefined, EMAIL)).toBe(false);
     expect(deletionConfirmMatches("delete", EMAIL)).toBe(false);
+    expect(deletionConfirmMatches("leave", EMAIL)).toBe(false);
     expect(deletionConfirmMatches("owner", EMAIL)).toBe(false);
     expect(deletionConfirmMatches("other@example.com", EMAIL)).toBe(false);
   });
@@ -50,7 +57,12 @@ describe("accountDeletionDecision", () => {
     })).toEqual({ ok: false, error: "confirm" });
   });
 
-  it("blocks last-owner deletion even with a valid confirm token", () => {
+  it("blocks last-owner leave even with a valid confirm token", () => {
+    expect(accountDeletionDecision({
+      confirm: LEAVE_CONFIRM_TOKEN,
+      currentEmail: EMAIL,
+      isLastOwner: true,
+    })).toEqual({ ok: false, error: "last-owner" });
     expect(accountDeletionDecision({
       confirm: DELETE_CONFIRM_TOKEN,
       currentEmail: EMAIL,
@@ -64,6 +76,11 @@ describe("accountDeletionDecision", () => {
   });
 
   it("allows a non-last-owner with a valid confirm token", () => {
+    expect(accountDeletionDecision({
+      confirm: LEAVE_CONFIRM_TOKEN,
+      currentEmail: EMAIL,
+      isLastOwner: false,
+    })).toEqual({ ok: true });
     expect(accountDeletionDecision({
       confirm: DELETE_CONFIRM_TOKEN,
       currentEmail: EMAIL,
