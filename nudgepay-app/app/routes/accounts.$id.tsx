@@ -40,6 +40,7 @@ type CustomerRow = {
   do_not_text: boolean | null;
   do_not_email: boolean | null;
   notes: string | null;
+  erased_at: string | null;
 };
 
 type InvoiceRow = {
@@ -132,7 +133,7 @@ export async function loader({ request, params, context }: LoaderFunctionArgs) {
   const { data: custData } = await supabase
     .from("customers")
     .select(
-      "id, name, phone, email, owner, sms_consent, sms_consent_source, preferred_channel, do_not_call, do_not_text, do_not_email, notes",
+      "id, name, phone, email, owner, sms_consent, sms_consent_source, preferred_channel, do_not_call, do_not_text, do_not_email, notes, erased_at",
     )
     .eq("org_id", org.org_id)
     .eq("id", customerId)
@@ -309,6 +310,7 @@ export async function loader({ request, params, context }: LoaderFunctionArgs) {
         lifetimeInvoiced,
         activeCaseId,
         onHold,
+        erasedAt: customerRow.erased_at,
       },
       invoices,
       timeline,
@@ -360,6 +362,8 @@ export default function AccountProfilePage() {
         activeCaseId={d.activeCaseId}
         returnTo={d.returnTo}
         timeZone={d.timeZone}
+        isOwner={d.isOwner}
+        erasedAt={d.account.erasedAt}
       />
     </AppShell>
   );

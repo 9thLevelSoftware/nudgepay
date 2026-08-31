@@ -53,6 +53,7 @@ export default [
   route("api/workspace/delete", "routes/api.workspace.delete.tsx"),
   route("api/account/delete", "routes/api.account.delete.tsx"),
   route("api/account/export", "routes/api.account.export.tsx"),
+  route("api/customer/erase", "routes/api.customer.erase.tsx"),
   route("api/members", "routes/api.members.tsx"),
   route("api/notification-prefs", "routes/api.notification-prefs.tsx"),
   route("api/test-message", "routes/api.test-message.tsx"),

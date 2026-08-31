@@ -19,8 +19,9 @@ export async function action({ request, context }: ActionFunctionArgs) {
   // Explicit org-scope guard: bind to the resolved dashboard org — RLS alone permits every org
   // the caller is a member of, so a multi-org user could otherwise touch another org's customer.
   const { data: cust } = await supabase
-    .from("customers").select("id").eq("org_id", org.org_id).eq("id", customerId).maybeSingle();
+    .from("customers").select("id, erased_at").eq("org_id", org.org_id).eq("id", customerId).maybeSingle();
   if (!cust) return redirect(returnTo, { headers });
+  if (cust.erased_at) return redirect(returnTo, { headers });
 
   const { error } = await supabase.from("customers")
     .update({
