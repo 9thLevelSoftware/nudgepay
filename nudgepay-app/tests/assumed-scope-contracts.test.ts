@@ -279,6 +279,8 @@ test("PR CI runs unit, production check, supabase integration, and browser smoke
   expect(ci).toContain("npm run check");
   expect(ci).toContain("npx vitest run");
   expect(ci).toContain("npm run test:e2e");
+  expect(ci).toMatch(/name:\s*npm audit \(production\)/);
+  expect(ci).toContain("npm audit --omit=dev");
   expect(ci).not.toMatch(/if:\s*github\.event_name\s*!=\s*'pull_request'/);
   expect(ci).toMatch(/real-provider or staging proof/i);
   expect(ci).not.toMatch(/coverage-threshold|coverageThreshold|codecov/i);
