@@ -56,6 +56,7 @@ test("sendInvoiceEmail re-checks allowlist and quiet hours", () => {
   expect(src).toContain("assertFromAddressAllowed");
   expect(src).toContain("isWithinSendWindow");
   expect(src).toContain("Quiet hours:");
+  expect(src).toMatch(/assertEmailBudget\([\s\S]*now \}\)/);
 });
 
 test("bulk SMS pages overdue invoices and fails truncated totals", () => {
