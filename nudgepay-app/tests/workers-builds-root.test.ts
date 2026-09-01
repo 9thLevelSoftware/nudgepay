@@ -14,7 +14,8 @@ describe("Cloudflare Workers Builds at repo root", () => {
     expect(toml).toContain("nudgepay-app/build/server/index.js");
     const rootPkg = JSON.parse(read("../../package.json"));
     expect(rootPkg.scripts.postinstall).toBeUndefined();
-    expect(rootPkg.packageManager).toMatch(/^npm@/);
+    expect(rootPkg.packageManager).toBeUndefined();
+    expect(rootPkg.devDependencies).toBeUndefined();
     const prepare = read("../scripts/cf-builds-prepare.mjs");
     expect(prepare).toMatch(/CI:\s*"true"/);
     expect(prepare).not.toContain("WORKERS_CI");

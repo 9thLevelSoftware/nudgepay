@@ -2,15 +2,11 @@
   "name": "nudgepay",
   "private": true,
   "description": "Repo-root scripts for Cloudflare Workers Builds (Git connected at the repository, not nudgepay-app/).",
-  "packageManager": "npm@10.9.2",
   "engines": {
     "node": ">=22 <25"
   },
   "scripts": {
     "deploy": "npm run deploy --prefix nudgepay-app",
     "deploy:staging": "npm run deploy:staging --prefix nudgepay-app"
-  },
-  "devDependencies": {
-    "wrangler": "4.88.0"
   }
 }
