@@ -218,6 +218,14 @@ test("wrangler staging env and operator alert webhook are declared", () => {
   expect(wrangler).toContain("QBO_SANDBOX = \"true\"");
 });
 
+test("pilot-ops documents Worker rollback and that migrations are not undone", () => {
+  const ops = readFileSync(fileURLToPath(new URL("../../docs/pilot-ops.md", import.meta.url)), "utf8");
+  expect(ops).toContain("npx wrangler rollback");
+  expect(ops).toContain("npx wrangler deployments list");
+  expect(ops).toMatch(/does not undo a Supabase\s+migration/i);
+  expect(ops).toMatch(/Promote by deploying production/i);
+});
+
 test("Settings separates leave, workspace delete, export, and personal login delete", () => {
   const src = read("../app/routes/settings.tsx");
   expect(src).toMatch(/Leave workspace/);
