@@ -8,6 +8,7 @@ import { EXCEPTION_REASON_LABEL, formatUSD } from "../lib/format";
 import { NEXT_ACTION_LABEL as NEXT_STEP_LABEL, plural } from "../lib/labels";
 import { OUTCOME_LABELS } from "../lib/timeline";
 import { DrawerShell } from "./DrawerShell";
+import { ICON_HIT_CLASS } from "./ui";
 import type { action } from "../routes/api.contact-logs";
 
 const METHOD_LABEL: Record<string, string> = {
@@ -64,7 +65,7 @@ export function LogContactDrawer({
           <Link
             to={returnTo}
             aria-label="Close"
-            className="text-muted hover:text-text rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-copper p-1"
+            className={`${ICON_HIT_CLASS} text-muted hover:text-text rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-copper`}
           >
             <span aria-hidden="true" className="text-lg leading-none">×</span>
           </Link>
