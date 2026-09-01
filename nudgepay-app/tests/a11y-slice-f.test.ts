@@ -127,6 +127,21 @@ describe("consistent help (WCAG 3.2.6)", () => {
   });
 });
 
+describe("pointer target size (WCAG 2.5.8)", () => {
+  it("keeps icon-only chrome at least 32×32 CSS pixels", () => {
+    const ui = read("../app/components/ui.tsx");
+    expect(ui).toContain("export const ICON_HIT_CLASS");
+    expect(ui).toContain("w-8 h-8 min-w-8 min-h-8");
+    expect(ui).toMatch(/icon:\s*"w-9 h-9[\s\S]*min-w-9 min-h-9"/);
+    const shell = read("../app/components/AppShell.tsx");
+    expect(shell).toContain("ICON_HIT_CLASS");
+    expect(shell).not.toMatch(/w-7 h-7 rounded-full bg-copper\/20[\s\S]*aria-label=\{`Account menu/);
+    const detail = read("../app/components/DetailPanel.tsx");
+    expect(detail).toContain("ICON_HIT_CLASS");
+    expect(detail).not.toMatch(/w-6 h-6 rounded text-surface\/60[\s\S]*Close detail panel/);
+  });
+});
+
 describe("accessible authentication (WCAG 3.3.8)", () => {
   it("lets password managers fill login, signup, reset, and settings", () => {
     const login = read("../app/routes/login.tsx");

@@ -54,11 +54,14 @@ export const buttonVariants: Record<ButtonVariant, string> = {
 export const buttonBase =
   "rounded-md text-sm font-semibold disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-copper transition-colors";
 
+/** WCAG 2.2 2.5.8 minimum 24×24 CSS px. Icon-only chrome uses 32×32. */
+export const ICON_HIT_CLASS = "inline-flex items-center justify-center w-8 h-8 min-w-8 min-h-8";
+
 const buttonSizes: Record<ButtonSize, string> = {
   sm: "px-3 h-9 text-xs",
   md: "px-4 py-2 text-sm",
   lg: "px-5 h-11 text-sm",
-  icon: "w-9 h-9 inline-flex items-center justify-center",
+  icon: "w-9 h-9 inline-flex items-center justify-center min-w-9 min-h-9",
 };
 
 export function Button({
