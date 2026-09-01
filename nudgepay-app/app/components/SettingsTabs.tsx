@@ -8,6 +8,7 @@ import { ConfirmProvider, useConfirm } from "./Confirm";
 
 export const SETTINGS_TABS = [
   { id: "workspace",    label: "Workspace" },
+  { id: "billing",      label: "Billing" },
   { id: "integrations", label: "Integrations" },
   { id: "channels",     label: "Channels" },
   { id: "templates",    label: "Templates" },

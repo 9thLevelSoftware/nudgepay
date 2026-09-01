@@ -14,4 +14,5 @@ export const PILOT_LIMIT_LINES = [
   "You can download a copy of your NudgePay login data, then delete the login after leaving or deleting your workspace.",
   "NudgePay is a human follow-up queue, not automatic payment reminders, and is not a payment processor.",
   "A payment portal URL is your own page for message templates. NudgePay does not charge customers or queue quiet-hours blocks to send later.",
+  "Workspace owners pay NudgePay by card. That is the agency subscription, not a charge to the agency's customers.",
 ] as const;

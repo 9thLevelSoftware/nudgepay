@@ -30,6 +30,7 @@ describe("resolveSettingsTab", () => {
     expect(resolveSettingsTab("channels")).toBe("channels");
     expect(resolveSettingsTab("templates")).toBe("templates");
     expect(resolveSettingsTab("collections")).toBe("collections");
+    expect(resolveSettingsTab("billing")).toBe("billing");
   });
 });
 
@@ -43,6 +44,7 @@ describe("settingsReturnTo", () => {
     expect(settingsReturnTo("channels")).toBe("/settings?tab=channels");
     expect(settingsReturnTo("templates")).toBe("/settings?tab=templates");
     expect(settingsReturnTo("collections")).toBe("/settings?tab=collections");
+    expect(settingsReturnTo("billing")).toBe("/settings?tab=billing");
   });
 });
 
