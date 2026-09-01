@@ -137,6 +137,17 @@ test("throws when outside quiet hours (no provider call)", async () => {
   expect(rows ?? []).toHaveLength(0);
 });
 
+test("Resend 503 throws and does not insert an outbound row", async () => {
+  const { orgId, customerId, invoiceId } = await seed("outage@chancey.test");
+  const from = await enableEmail(orgId);
+  const f = vi.fn(async () => jsonResponse({ message: "unavailable" }, 503));
+  await expect(sendInvoiceEmail(deps(f, from), { orgId, invoiceId, userId, subject: "Hi", body: "Pay" }))
+    .rejects.toThrow(/Resend send failed \(503\)/);
+  expect(f).toHaveBeenCalledTimes(1);
+  const { data: rows } = await svc.from("email_messages").select("id").eq("customer_id", customerId);
+  expect(rows ?? []).toHaveLength(0);
+});
+
 test("happy path: provider called once, one outbound row, footer appended", async () => {
   const { orgId, customerId, invoiceId } = await seed("happy@chancey.test");
   const from = await enableEmail(orgId, { from_name: "Chancey" });
