@@ -19,6 +19,16 @@ test("resolveOrg returns the user's membership org and role", async () => {
   expect(result).toEqual({ org_id: orgId, role: "owner" });
 });
 
+test("resolveOrg prefers the cookie org when the user has two memberships", async () => {
+  const svc = serviceClient();
+  const second = await svc.from("organizations").insert({ name: "Session Org B" }).select("id").single();
+  await svc.from("memberships").insert({ org_id: second!.data!.id, user_id: user.userId, role: "member" });
+  const preferred = await resolveOrg(user.client, user.userId, second!.data!.id);
+  expect(preferred).toEqual({ org_id: second!.data!.id, role: "member" });
+  const fallback = await resolveOrg(user.client, user.userId);
+  expect(fallback?.org_id).toBe(orgId);
+});
+
 test("resolveOrg returns null for a user with no membership", async () => {
   const orphan = await makeUserClient("orphan@example.com");
   const result = await resolveOrg(orphan.client, orphan.userId);

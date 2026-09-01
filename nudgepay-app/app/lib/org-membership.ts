@@ -1,6 +1,5 @@
-// Single-tenant membership rules. Until an org switcher exists, a user may
-// belong to at most one workspace. Pure — no I/O — so create/accept and unit
-// tests share one decision.
+// Membership join rules. A user may belong to many workspaces; (org_id, user_id)
+// stays unique. Pure — no I/O — so create/accept and unit tests share one decision.
 
 export const ALREADY_IN_WORKSPACE = "already in a workspace";
 
@@ -14,15 +13,19 @@ export class AlreadyInWorkspaceError extends Error {
 
 export type JoinDecision = "join" | "already_member" | "already_in_workspace";
 
-// `targetOrgId` is the invite's org. Omit it when creating a new org — any
-// existing membership is a reject.
+// `existingOrgIds` are orgs the user already belongs to. `targetOrgId` is the
+// invite's org; omit it when creating a new workspace.
 export function canJoinOrg(
-  existingOrgId: string | null | undefined,
+  existingOrgIds: readonly string[] | string | null | undefined,
   targetOrgId?: string | null,
 ): JoinDecision {
-  if (!existingOrgId) return "join";
-  if (targetOrgId && existingOrgId === targetOrgId) return "already_member";
-  return "already_in_workspace";
+  const ids = Array.isArray(existingOrgIds)
+    ? existingOrgIds
+    : existingOrgIds
+      ? [existingOrgIds]
+      : [];
+  if (targetOrgId && ids.includes(targetOrgId)) return "already_member";
+  return "join";
 }
 
 const INVITE_ERROR_COPY: Record<string, string> = {

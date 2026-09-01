@@ -45,7 +45,7 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
   const {
     supabase, service, headers, isOwner, org,
     orgName, initials, userLabel, connected, syncLabel,
-    syncIssues,
+    syncIssues, workspaces,
   } = await loadWorkspaceChrome(request, env);
 
   // --- URL params ---
@@ -263,6 +263,8 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
   return data(
     {
       orgName,
+      orgId: org.org_id,
+      workspaces,
       initials,
       userLabel,
       syncLabel,
@@ -295,6 +297,8 @@ export default function Accounts() {
   return (
     <AppShell
       orgName={d.orgName}
+      orgId={d.orgId}
+      workspaces={d.workspaces}
       userInitials={d.initials}
       userLabel={d.userLabel}
       syncLabel={d.syncLabel}

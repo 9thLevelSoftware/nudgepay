@@ -20,7 +20,7 @@ export const meta: Route.MetaFunction = () => pageTitle("Invite a teammate");
 export async function loader({ request, context }: LoaderFunctionArgs) {
   const env = getEnv(context as any);
   const { supabase, headers, user } = await requireUser(request, env);
-  const org = await resolveOrg(supabase, user.id);
+  const org = await resolveOrg(supabase, user.id, request);
   if (!org) throw redirect("/onboarding", { headers });
   if (org.role !== "owner") throw redirect("/dashboard", { headers });
   return new Response(null, { headers });
@@ -29,7 +29,7 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
 export async function action({ request, context }: ActionFunctionArgs) {
   const env = getEnv(context as any);
   const { supabase, user } = await requireUser(request, env);
-  const org = await resolveOrg(supabase, user.id);
+  const org = await resolveOrg(supabase, user.id, request);
   if (!org || org.role !== "owner") return { error: "Only owners can invite" };
   const form = await request.formData();
   const raw = form.get("email");

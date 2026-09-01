@@ -27,17 +27,38 @@ export async function requireUser(request: Request, env: AppEnv) {
   return { supabase, headers, user: user as User };
 }
 
+export const ORG_COOKIE = "nudgepay-org";
+
+export function readPreferredOrgId(request: Request): string | null {
+  const raw = request.headers.get("Cookie") ?? "";
+  const m = raw.match(/(?:^|;\s*)nudgepay-org=([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})/i);
+  return m?.[1] ?? null;
+}
+
+export function orgCookieHeader(orgId: string): string {
+  return `${ORG_COOKIE}=${orgId}; Path=/; Max-Age=31536000; SameSite=Lax`;
+}
+
 export async function resolveOrg(
   supabase: SupabaseClient,
-  userId: string
+  userId: string,
+  preferred?: string | null | Request,
 ): Promise<{ org_id: string; role: string } | null> {
-  // At most one membership per user (unique on memberships.user_id).
+  const preferredOrgId = preferred instanceof Request
+    ? readPreferredOrgId(preferred)
+    : preferred ?? null;
   const { data } = await supabase
     .from("memberships")
     .select("org_id, role")
     .eq("user_id", userId)
-    .maybeSingle();
-  return data ? { org_id: data.org_id as string, role: data.role as string } : null;
+    .order("created_at", { ascending: true });
+  const rows = data ?? [];
+  if (rows.length === 0) return null;
+  const match = preferredOrgId
+    ? rows.find((r) => r.org_id === preferredOrgId)
+    : null;
+  const row = match ?? rows[0];
+  return { org_id: row.org_id as string, role: row.role as string };
 }
 
 // Composed helper for routes that require both an authenticated user and an
@@ -46,7 +67,7 @@ export async function resolveOrg(
 // data loads instead of serializing behind this helper.
 export async function requireOrgUser(request: Request, env: AppEnv) {
   const { supabase, headers, user } = await requireUser(request, env);
-  const org = await resolveOrg(supabase, user.id);
+  const org = await resolveOrg(supabase, user.id, request);
   if (!org) throw redirect("/onboarding", { headers });
   return { supabase, headers, user, org };
 }

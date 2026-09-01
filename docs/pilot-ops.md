@@ -9,7 +9,7 @@ Support: `support@nudgepay-ar.app`.
 
 ## Product limits
 
-- One workspace per user (`owner` / `member` only).
+- A user can belong to more than one workspace (`owner` / `member` only). Switch from the account menu. Cap 20 workspaces per user.
 - Staff send each text and email. There is no automatic reminder sequence.
   Quiet-hours blocks are not queued to send later.
 - A payment portal URL is the tenant's own page. NudgePay does not process
@@ -50,6 +50,12 @@ PagerDuty, etc.). A scheduled CDC/digest/retention throw POSTs:
 
 Missing or failing pager is fail-open. Cloudflare Workers Logs remain the
 structured log trail.
+
+## Branch protection
+
+`main` requires the five PR CI jobs (typecheck + unit tests, production check,
+supabase integration, browser smoke, npm audit) and rejects force-pushes and
+branch deletion. Merge still uses a merge commit after those checks are green.
 
 ## Staging
 

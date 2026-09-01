@@ -20,7 +20,7 @@ import { addCalendarDays } from "../lib/business-days";
 import { isCaseSuppressed } from "../lib/exceptions";
 import { loadOrgConfig } from "../lib/org-config.server";
 import { localMidnightUtcIso, todayInTz } from "../lib/tz";
-import type { OrgMember } from "../lib/orgs.server";
+import { listUserWorkspaces, type OrgMember } from "../lib/orgs.server";
 // worklist.ts is pure (no I/O, no node:*, no secrets) so it is safe in both the
 // client bundle and the server — buildCaseData is exported from this route
 // (for tests) and the UI components import its types directly.
@@ -263,6 +263,7 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
     { data: ecfg, error: ecfgErr },
     { data: syncErrorRows, error: syncErr },
     arSrc,
+    workspaces,
   ] = await Promise.all([
     loadCaseQueueSource({
       supabase, service, orgId: org.org_id, today, includePresence: true, orgConfig: orgConfigForToday,
@@ -277,6 +278,7 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
     loadArKpiSource({
       supabase, orgId: org.org_id, today, rangeDays: DASHBOARD_AR_RANGE_DAYS,
     }),
+    listUserWorkspaces(service, user.id),
   ]);
   if (orgErr) throw orgErr;
   if (connMetaErr) throw connMetaErr;
@@ -578,6 +580,8 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
   return data(
     {
       orgName: orgRow?.name ?? "(unknown)",
+      orgId: org.org_id,
+      workspaces,
       userInitials: initials,
       userLabel,
       isOwner: org.role === "owner",
@@ -660,6 +664,8 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
 export default function Dashboard() {
   const {
     orgName,
+    orgId,
+    workspaces,
     userInitials,
     userLabel,
     isOwner,
@@ -757,6 +763,8 @@ export default function Dashboard() {
   return (
     <AppShell
       orgName={orgName}
+      orgId={orgId}
+      workspaces={workspaces}
       userInitials={userInitials}
       userLabel={userLabel}
       syncLabel={syncLabel}

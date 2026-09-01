@@ -16,7 +16,7 @@ function qboCfg(qbo: QboEnv) {
 export async function action({ request, context }: ActionFunctionArgs) {
   const env = getEnv(context as any);
   const { supabase, headers, user } = await requireUser(request, env);
-  const org = await resolveOrg(supabase, user.id);
+  const org = await resolveOrg(supabase, user.id, request);
   if (!org || org.role !== "owner") return redirect("/dashboard?qbo=forbidden", { headers });
   const form = await request.formData();
   const returnTo = safeReturnTo(form.get("returnTo"));
@@ -50,7 +50,7 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
   // redirect to /login here (that would defeat the endpoint). Use the optional
   // primitive only to preserve normal auth-cookie headers.
   const { supabase, headers, user } = await getOptionalUser(request, env);
-  const org = user ? await resolveOrg(supabase, user.id) : null;
+  const org = user ? await resolveOrg(supabase, user.id, request) : null;
   const plan = intuitDisconnectPlan(org);
   void plan;
   const html =

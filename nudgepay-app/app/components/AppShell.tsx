@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { Form, Link, useNavigation } from "react-router";
+import { Form, Link, useLocation, useNavigation } from "react-router";
 import { Icon } from "./Icons";
 import { ToastProvider } from "./Toasts";
 import { CommandPalette } from "./CommandPalette";
@@ -9,6 +9,8 @@ import { SUPPORT_MAILTO } from "../lib/meta";
 
 interface AppShellProps {
   orgName: string;
+  orgId?: string;
+  workspaces?: { orgId: string; name: string }[];
   userInitials: string;
   /** Display name already resolved by the loader; initials are used if omitted. */
   userLabel?: string;
@@ -66,6 +68,8 @@ export function reportsNavLabel(isOwner: boolean): string {
  */
 export function AppShell({
   orgName,
+  orgId,
+  workspaces = [],
   userInitials,
   userLabel,
   syncLabel,
@@ -164,7 +168,7 @@ export function AppShell({
             <Icon name="settings" size={16} />
           </Link>
 
-          <UserMenu userInitials={userInitials} userLabel={userLabel} />
+          <UserMenu userInitials={userInitials} userLabel={userLabel} orgId={orgId} workspaces={workspaces} />
         </div>
       </header>
 
@@ -291,13 +295,25 @@ export function AppShell({
 const menuItemClass =
   "block w-full px-3 py-2 text-left text-[13px] font-sans text-surface/80 hover:bg-surface/5 hover:text-surface focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-copper focus-visible:ring-inset";
 
-function UserMenu({ userInitials, userLabel }: { userInitials: string; userLabel?: string }) {
+function UserMenu({
+  userInitials,
+  userLabel,
+  orgId,
+  workspaces,
+}: {
+  userInitials: string;
+  userLabel?: string;
+  orgId?: string;
+  workspaces: { orgId: string; name: string }[];
+}) {
   const [open, setOpen] = useState(false);
   const [confirmSignOut, setConfirmSignOut] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
   const triggerRef = useRef<HTMLButtonElement>(null);
   const confirmRef = useRef<HTMLButtonElement>(null);
   const displayName = userLabel?.trim() || userInitials;
+  const location = useLocation();
+  const returnTo = location.pathname + location.search;
 
   useEffect(() => {
     if (!open) {
@@ -342,7 +358,7 @@ function UserMenu({ userInitials, userLabel }: { userInitials: string; userLabel
       {open ? (
         <div
           id="account-menu"
-          className="absolute right-0 top-full mt-1.5 z-50 w-48 rounded-md border border-surface/10 bg-ink py-1 shadow-panel"
+          className="absolute right-0 top-full mt-1.5 z-50 w-56 rounded-md border border-surface/10 bg-ink py-1 shadow-panel"
         >
           <div className="flex items-center gap-2 px-3 py-2 border-b border-surface/10" role="presentation">
             <span
@@ -353,6 +369,35 @@ function UserMenu({ userInitials, userLabel }: { userInitials: string; userLabel
             </span>
             <span className="min-w-0 truncate text-[13px] font-sans font-medium text-surface">{displayName}</span>
           </div>
+          {workspaces.length > 0 ? (
+            <div className="border-b border-surface/10 py-1">
+              <p className="px-3 py-1 text-[10px] font-sans uppercase tracking-wide text-surface/40">Workspaces</p>
+              {workspaces.map((w) => {
+                const current = orgId ? w.orgId === orgId : false;
+                return (
+                  <Form key={w.orgId} method="post" action="/api/workspace/switch">
+                    <input type="hidden" name="orgId" value={w.orgId} />
+                    <input type="hidden" name="returnTo" value={returnTo} />
+                    <button
+                      type="submit"
+                      className={menuItemClass}
+                      aria-current={current ? "true" : undefined}
+                      onClick={() => setOpen(false)}
+                    >
+                      {w.name}{current ? " (current)" : ""}
+                    </button>
+                  </Form>
+                );
+              })}
+              <Link
+                to="/onboarding?new=1"
+                className={menuItemClass}
+                onClick={() => setOpen(false)}
+              >
+                Create workspace
+              </Link>
+            </div>
+          ) : null}
            <Link
              to="/settings"
              className={menuItemClass}

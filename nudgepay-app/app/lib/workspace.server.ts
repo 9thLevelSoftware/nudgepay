@@ -5,6 +5,7 @@ import { getConnectionStatus } from "./qbo-connection.server";
 import { connectionChrome, connectionSyncLabel } from "./connection-chrome";
 import type { AppEnv } from "./env.server";
 import { displayLabel, initialsFrom } from "./names";
+import { listUserWorkspaces, type UserWorkspace } from "./orgs.server";
 
 export type ChromeSyncIssue = {
   id: string;
@@ -50,13 +51,14 @@ export async function loadWorkspaceChrome(
   const service = createSupabaseServiceClient(env);
 
   // Parallel: org name + connection status + connection metadata + unresolved sync errors
-  const [orgRowRes, conn, connMetaRes, syncErrorRes] = await Promise.all([
+  const [orgRowRes, conn, connMetaRes, syncErrorRes, workspaces] = await Promise.all([
     supabase.from("organizations").select("name").eq("id", org.org_id).single(),
     getConnectionStatus(service, org.org_id),
     service.from("qbo_connections").select("last_sync_at").eq("org_id", org.org_id).maybeSingle(),
     supabase.from("sync_errors")
       .select("id, source, scope, message, occurred_at").eq("org_id", org.org_id)
       .is("resolved_at", null).order("occurred_at", { ascending: false }).limit(20),
+    listUserWorkspaces(service, user.id),
   ]);
 
   if (connMetaRes.error) throw connMetaRes.error;
@@ -78,10 +80,14 @@ export async function loadWorkspaceChrome(
 
   return {
     supabase, service, headers, user, org, isOwner,
+    orgId: org.org_id,
     orgName, initials, userLabel, connected, needsReconnect, connectionKind: chrome.kind,
     syncLabel, lastSyncAt,
     syncIssues: mapSyncIssues(syncErrorRes.data as {
       id: string; source: string; scope: string; message: string; occurred_at: string;
     }[] | null),
+    workspaces,
   };
 }
+
+export type { UserWorkspace };

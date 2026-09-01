@@ -20,13 +20,14 @@ test("canJoinOrg treats the same org as already a member", () => {
   expect(canJoinOrg(ORG_A, ORG_A)).toBe("already_member");
 });
 
-test("canJoinOrg rejects a second, different org", () => {
-  expect(canJoinOrg(ORG_A, ORG_B)).toBe("already_in_workspace");
+test("canJoinOrg allows a second, different org", () => {
+  expect(canJoinOrg(ORG_A, ORG_B)).toBe("join");
+  expect(canJoinOrg([ORG_A], ORG_B)).toBe("join");
 });
 
-test("canJoinOrg rejects creating an org when a membership already exists", () => {
-  expect(canJoinOrg(ORG_A)).toBe("already_in_workspace");
-  expect(canJoinOrg(ORG_A, null)).toBe("already_in_workspace");
+test("canJoinOrg allows creating an org when a membership already exists", () => {
+  expect(canJoinOrg(ORG_A)).toBe("join");
+  expect(canJoinOrg(ORG_A, null)).toBe("join");
 });
 
 test("canJoinOrg allows creating an org when the user has none", () => {

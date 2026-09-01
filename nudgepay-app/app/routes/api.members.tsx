@@ -12,7 +12,7 @@ function flag(returnTo: string, key: string, val: string): string {
 export async function action({ request, context }: ActionFunctionArgs) {
   const env = getEnv(context as any);
   const { supabase, headers, user } = await requireUser(request, env);
-  const org = await resolveOrg(supabase, user.id);
+  const org = await resolveOrg(supabase, user.id, request);
   if (!org) throw redirect("/onboarding", { headers });
 
   const form = await request.formData();

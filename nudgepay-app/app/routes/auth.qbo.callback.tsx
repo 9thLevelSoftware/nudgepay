@@ -30,7 +30,7 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
   try {
     const service = createSupabaseServiceClient(env);
     const oauthState = await consumeOAuthState(service, state); // throws on invalid/expired/replay
-    const org = await resolveOrg(supabase, user.id);
+    const org = await resolveOrg(supabase, user.id, request);
     if (!org || org.role !== "owner" || org.org_id !== oauthState.orgId || user.id !== oauthState.userId) {
       return redirect("/dashboard?qbo=forbidden", { headers });
     }
