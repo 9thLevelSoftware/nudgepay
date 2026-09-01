@@ -3,6 +3,7 @@ import { useLocation, useNavigate } from "react-router";
 import { Icon } from "./Icons";
 import { ModalShell } from "./ModalShell";
 import { Button, Input, Kbd } from "./ui";
+import { SUPPORT_MAILTO } from "../lib/meta";
 
 type PaletteMode = "commands" | "shortcuts" | null;
 
@@ -20,6 +21,7 @@ const NAV_COMMANDS: Command[] = [
   { label: "Go to Reports", hint: "Owner-only", href: "/reports" },
   { label: "Open Settings", hint: "Workspace", href: "/settings" },
   { label: "Open Focus Mode", hint: "Triage deck", href: "/focus" },
+  { label: "Contact Support", hint: "Email", href: SUPPORT_MAILTO },
 ];
 
 const SHORTCUTS = [
@@ -92,6 +94,10 @@ export function CommandPalette() {
 
   function choose(command: Command) {
     setMode(null);
+    if (command.href.startsWith("mailto:")) {
+      window.location.assign(command.href);
+      return;
+    }
     navigate(command.href);
   }
 

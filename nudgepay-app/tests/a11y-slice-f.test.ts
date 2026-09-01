@@ -124,6 +124,10 @@ describe("consistent help (WCAG 3.2.6)", () => {
     const focus = read("../app/routes/focus.tsx");
     expect(focus).toContain("SUPPORT_MAILTO");
     expect(focus).toContain("Support");
+    const palette = read("../app/components/CommandPalette.tsx");
+    expect(palette).toContain("SUPPORT_MAILTO");
+    expect(palette).toContain("Contact Support");
+    expect(palette).toContain('command.href.startsWith("mailto:")');
     const privacy = read("../app/routes/privacy.tsx");
     expect(privacy).toContain("SUPPORT_EMAIL");
     expect(privacy).not.toMatch(/const contact = "support@nudgepay-ar.app"/);
