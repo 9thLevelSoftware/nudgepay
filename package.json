@@ -7,7 +7,6 @@
     "node": ">=22 <25"
   },
   "scripts": {
-    "postinstall": "node scripts/cf-root-postinstall.mjs",
     "deploy": "npm run deploy --prefix nudgepay-app",
     "deploy:staging": "npm run deploy:staging --prefix nudgepay-app"
   },

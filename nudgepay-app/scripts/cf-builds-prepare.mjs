@@ -1,5 +1,5 @@
 // Prepares the Workers build output. Always cwd to this package, even when
-// invoked from the repo-root postinstall (Cloudflare Workers Builds).
+// Wrangler [build] is invoked from the repository root.
 import { existsSync } from "node:fs";
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
@@ -19,16 +19,6 @@ function run(cmd, args) {
   });
   if (r.status !== 0) process.exit(r.status ?? 1);
 }
-
-const built = new URL("../build/server/index.js", import.meta.url);
-// Workers Builds: postinstall already compiled the app. Do not rebuild as a
-// child of `wrangler deploy` — that trips the Vite plugin WebSocket assertion
-// on @cloudflare/vite-plugin < 1.25.
-const inCi =
-  process.env.WORKERS_CI === "1" ||
-  process.env.CI === "true" ||
-  process.env.CI === "1";
-if (inCi && existsSync(built)) process.exit(0);
 
 const nodeModules = new URL("../node_modules", import.meta.url);
 if (!existsSync(nodeModules)) run("npm", ["ci"]);
