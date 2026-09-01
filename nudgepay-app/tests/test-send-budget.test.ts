@@ -21,3 +21,21 @@ test("assertTestBudget refuses SMS when the test hour cap is already full", asyn
   await expect(assertTestBudget(svc, "text_messages", { orgId }))
     .rejects.toThrow(/test send rate cap/i);
 });
+
+test("assertTestBudget refuses email when the test hour cap is already full", async () => {
+  const { data: org } = await svc.from("organizations")
+    .insert({ name: `Test email cap ${Math.random()}` }).select("id").single();
+  const orgId = org!.id as string;
+  const rows = Array.from({ length: TEST_HOUR_CAP }, (_, i) => ({
+    org_id: orgId,
+    direction: "outbound",
+    to_address: "owner@chancey.test",
+    subject: `test ${i}`,
+    body: `test ${i}`,
+    status: "sent",
+  }));
+  const { error } = await svc.from("email_messages").insert(rows);
+  expect(error).toBeNull();
+  await expect(assertTestBudget(svc, "email_messages", { orgId }))
+    .rejects.toThrow(/test send rate cap/i);
+});
