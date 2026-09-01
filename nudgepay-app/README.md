@@ -55,10 +55,15 @@ npm run check           # tsc + build + wrangler deploy --dry-run
 Cloudflare Workers is production and owns both cron schedules (`wrangler.toml`).
 
 ```bash
+npx wrangler secret put <NAME> --env=""
 npx wrangler secret put <NAME> --env production
 npm run deploy
-npx wrangler deploy --env staging
+npm run deploy:staging
 ```
+
+`npm run deploy` strips `build/server/.dev.vars` so local Supabase keys are not
+uploaded. The live Worker is `nudgepay-app` on `nudgepay.9thlevelsoftware.com`.
+Staging is `nudgepay-app-staging` on workers.dev.
 
 Design-partner limits, `/readyz` provider flags, and operator paging: [`docs/pilot-ops.md`](../docs/pilot-ops.md).
 

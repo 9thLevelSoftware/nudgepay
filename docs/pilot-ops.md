@@ -61,12 +61,14 @@ branch deletion. Merge still uses a merge commit after those checks are green.
 ## Staging
 
 ```bash
-npx wrangler deploy --env staging
+npm run deploy:staging
 npx wrangler secret put <NAME> --env staging
 ```
 
-Use a separate Supabase project, Intuit sandbox (`QBO_SANDBOX=true`), and
-Twilio/Resend credentials pointed at owned destinations only.
+Staging Worker: `https://nudgepay-app-staging.dasblueeyeddevil.workers.dev`.
+`QBO_SANDBOX=true`. It currently uses the production Supabase project until a
+separate staging project exists. Twilio/Resend credentials should point at
+owned destinations only.
 
 Promote by deploying production only after the same candidate has been
 exercised on staging. There is no automatic promotion pipeline.
