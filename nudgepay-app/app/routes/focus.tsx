@@ -29,6 +29,7 @@ import { OUTCOME_LABELS } from "../lib/timeline";
 import { useFocusKeys, type FocusKey } from "../lib/use-focus-keys";
 import { FocusCard } from "../components/focus/FocusCard";
 import { MAIN_CONTENT_ID, SkipLink } from "../components/ui";
+import { SUPPORT_MAILTO } from "../lib/meta";
 import { LogCallMiniForm } from "../components/focus/LogCallMiniForm";
 import { SendTextMiniForm } from "../components/focus/SendTextMiniForm";
 import { formatDate, formatInstant } from "../lib/dates";
@@ -420,6 +421,9 @@ export default function FocusMode() {
         >
           ← Exit
         </Link>
+        <a href={SUPPORT_MAILTO} className="text-xs text-on-ink hover:text-surface">
+          Support
+        </a>
         <div className="flex items-center gap-2">
           <span className="font-display text-sm font-bold text-surface">NudgePay</span>
           <span className="rounded bg-copper/10 px-1.5 py-0.5 font-mono text-[10px] font-semibold uppercase tracking-wider text-copper">
