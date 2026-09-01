@@ -61,6 +61,23 @@ npx wrangler secret put <NAME> --env staging
 Use a separate Supabase project, Intuit sandbox (`QBO_SANDBOX=true`), and
 Twilio/Resend credentials pointed at owned destinations only.
 
+Promote by deploying production only after the same candidate has been
+exercised on staging. There is no automatic promotion pipeline.
+
+## Rollback
+
+```bash
+npx wrangler deployments list
+npx wrangler rollback
+npx wrangler deployments list --env staging
+npx wrangler rollback --env staging
+```
+
+Rollback restores the previous Worker version. It does not undo a Supabase
+migration. If a release includes a migration, restore the database from
+backup or PITR first, then roll the Worker back. Confirm `/healthz` and
+`/readyz` after rollback.
+
 ## Backup
 
 Supabase project backups and point-in-time recovery live in the Supabase
