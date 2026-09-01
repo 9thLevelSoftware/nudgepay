@@ -5,6 +5,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { listOrgMembers } from "./orgs.server";
 import { addCalendarDays } from "./business-days";
 import { loadOrgConfig } from "./org-config.server";
+import type { OrgConfig } from "./org-config";
 import { localMidnightUtcIso, todayInTz } from "./tz";
 import { isCaseSuppressed } from "./exceptions";
 import type { ExceptionReason } from "./contact-log";
@@ -32,15 +33,19 @@ export async function loadTeamReport(args: {
   service: SupabaseClient;
   orgId: string;
   range: ReportRange;
+  orgConfig?: OrgConfig;
 }): Promise<TeamReport & { truncated: boolean; loadError: string | null }> {
   const { supabase, service, orgId, range } = args;
 
-  const orgConfig = await loadOrgConfig(supabase, orgId);
+  const [orgConfig, rosterMembers] = await Promise.all([
+    args.orgConfig ? Promise.resolve(args.orgConfig) : loadOrgConfig(supabase, orgId),
+    listOrgMembers(service, orgId),
+  ]);
   const tz = orgConfig.companyProfile.timezone;
   const today = todayInTz(tz);
   const windowStartIso = localMidnightUtcIso(addCalendarDays(today, -range), tz);
 
-  const roster = (await listOrgMembers(service, orgId)).map((m) => ({ userId: m.userId, label: m.label }));
+  const roster = rosterMembers.map((m) => ({ userId: m.userId, label: m.label }));
 
   type LogRow = { user_id: string; case_id: string | null; created_at: string };
   type PromRow = { created_by: string | null; status: ReportPromise["status"]; resolved_at: string | null };
@@ -203,9 +208,10 @@ export async function loadReportArKpis(args: {
   supabase: SupabaseClient;
   orgId: string;
   range: ReportRange;
+  orgConfig?: OrgConfig;
 }): Promise<ArKpis & { loadError: string | null }> {
   const { supabase, orgId, range } = args;
-  const orgConfig = await loadOrgConfig(supabase, orgId);
+  const orgConfig = args.orgConfig ?? await loadOrgConfig(supabase, orgId);
   const tz = orgConfig.companyProfile.timezone;
   const today = todayInTz(tz);
   const windowStartIso = localMidnightUtcIso(addCalendarDays(today, -range), tz);

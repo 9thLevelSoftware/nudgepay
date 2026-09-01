@@ -66,23 +66,25 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
   const env = getEnv(context as any);
   const { supabase, headers, user, org } = await requireOrgUser(request, env);
 
-  // QBO-connected guard
   const service = createSupabaseServiceClient(env);
-  const conn = await getConnectionStatus(service, org.org_id);
-  const chrome = connectionChrome(conn?.status ?? null, null);
-  const connected = chrome.kind === "connected";
-  const needsReconnect = chrome.kind === "needs_reconnect";
   // Disconnected orgs can open Focus and see an empty deck instead of a bounce.
+  const orgConfigP = loadOrgConfig(supabase, org.org_id);
+  const connP = getConnectionStatus(service, org.org_id);
+  const orgRowP = supabase.from("organizations").select("name").eq("id", org.org_id).single();
 
-  const orgConfigForToday = await loadOrgConfig(supabase, org.org_id);
+  const orgConfigForToday = await orgConfigP;
   const today = todayInTz(orgConfigForToday.companyProfile.timezone);
 
-  const [src, { data: orgRow, error: orgErr }] = await Promise.all([
+  const [src, conn, { data: orgRow, error: orgErr }] = await Promise.all([
     loadCaseQueueSource({
       supabase, service, orgId: org.org_id, today, includePresence: true, orgConfig: orgConfigForToday,
     }),
-    supabase.from("organizations").select("name").eq("id", org.org_id).single(),
+    connP,
+    orgRowP,
   ]);
+  const chrome = connectionChrome(conn?.status ?? null, null);
+  const connected = chrome.kind === "connected";
+  const needsReconnect = chrome.kind === "needs_reconnect";
   if (orgErr) throw orgErr;
   const orgName = orgRow?.name ?? "";
 

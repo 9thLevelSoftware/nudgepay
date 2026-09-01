@@ -9,7 +9,6 @@ import { PILOT_LIMIT_LINES } from "../lib/pilot-limits";
 import { getEnv, getTwilioEnvOrNull, getEmailEnvOrNull, getPublicBaseUrls, getQboEnvOrNull, getStripeEnvOrNull, smsRequireInventory } from "../lib/env.server";
 import { loadWorkspaceChrome } from "../lib/workspace.server";
 import { listOrgMembers } from "../lib/orgs.server";
-import { loadOrgConfig } from "../lib/org-config.server";
 import { QBO_FLASH, SYNC_FLASH } from "../lib/flash-copy";
 import { AppShell } from "../components/AppShell";
 import { FlashBanner } from "../components/FlashBanner";
@@ -46,43 +45,12 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
   const {
     supabase, service, headers, isOwner, isAdmin, org, user,
     orgName, initials, userLabel, connected, needsReconnect, lastSyncAt, syncLabel: chromeSyncLabel, syncIssues, workspaces,
+    orgConfig: config,
   } = await loadWorkspaceChrome(request, env, { requireQbo: false });
 
   const qboConfigured = getQboEnvOrNull(context as any) !== null;
   const sp = new URL(request.url).searchParams;
-
-  const { data: msg } = await supabase.from("messaging_config")
-    .select("sender, messaging_service_sid, sms_enabled").eq("org_id", org.org_id).maybeSingle();
-  const { data: inventory } = await supabase.from("sms_sender_inventory")
-    .select("from_number, messaging_service_sid, status").eq("org_id", org.org_id).maybeSingle();
-  const senderSettings = resolveSmsSenderSettings(msg as any);
-  const messagingConfigured = Boolean(
-    inventory?.messaging_service_sid || inventory?.from_number || msg?.messaging_service_sid || msg?.sender,
-  );
-  const smsEnabled = resolveChannelSettings(msg as { sms_enabled?: boolean | null } | null).smsEnabled;
-
-  const { data: emailConfigRow } = await supabase.from("email_config")
-    .select("email_enabled, from_address, from_name, postal_address").eq("org_id", org.org_id).maybeSingle();
-  const emailSettings = resolveEmailSettings(emailConfigRow as any);
-
-  const config = await loadOrgConfig(supabase, org.org_id);
-
-  // Display-only holiday rows (date + label). resolveOrgConfig's holidays Set
-  // (used for business-day math) only needs the dates, so this is a separate,
-  // lightweight read rather than threading label through OrgConfig.
-  const { data: holidayRows, error: holidayErr } = await supabase.from("org_holidays")
-    .select("holiday_date, label").eq("org_id", org.org_id).order("holiday_date", { ascending: true });
-  if (holidayErr) throw holidayErr;
-
   const displayName = (user.user_metadata?.display_name as string | undefined) ?? "";
-
-  // Notification prefs (user client → RLS enforces self-only)
-  const { data: notifPrefs } = await supabase
-    .from("user_notification_prefs")
-    .select("broken_promise_email, daily_digest_email")
-    .eq("org_id", org.org_id)
-    .eq("user_id", user.id)
-    .maybeSingle();
 
   // Provider status: env booleans (NEVER leak secret values), webhook URLs,
   // last-sent timestamps, and failure counts for the status panels.
@@ -93,7 +61,35 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
 
   const since = new Date(Date.now() - 7 * 86_400_000).toISOString();
   const stripeConfigured = getStripeEnvOrNull(context as any) !== null;
-  const [smsLast, smsFailures, emailLast, emailFailures, templates, members, inviteRows, billingRow] = await Promise.all([
+  const [
+    { data: msg },
+    { data: inventory },
+    { data: emailConfigRow },
+    { data: holidayRows, error: holidayErr },
+    { data: notifPrefs },
+    smsLast,
+    smsFailures,
+    emailLast,
+    emailFailures,
+    templates,
+    members,
+    inviteRows,
+    billingRow,
+  ] = await Promise.all([
+    supabase.from("messaging_config")
+      .select("sender, messaging_service_sid, sms_enabled").eq("org_id", org.org_id).maybeSingle(),
+    supabase.from("sms_sender_inventory")
+      .select("from_number, messaging_service_sid, status").eq("org_id", org.org_id).maybeSingle(),
+    supabase.from("email_config")
+      .select("email_enabled, from_address, from_name, postal_address").eq("org_id", org.org_id).maybeSingle(),
+    supabase.from("org_holidays")
+      .select("holiday_date, label").eq("org_id", org.org_id).order("holiday_date", { ascending: true }),
+    supabase
+      .from("user_notification_prefs")
+      .select("broken_promise_email, daily_digest_email")
+      .eq("org_id", org.org_id)
+      .eq("user_id", user.id)
+      .maybeSingle(),
     supabase.from("text_messages")
       .select("created_at, status").eq("org_id", org.org_id).eq("direction", "outbound")
       .order("created_at", { ascending: false }).limit(1).maybeSingle(),
@@ -118,6 +114,13 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
       .eq("org_id", org.org_id)
       .maybeSingle(),
   ]);
+  if (holidayErr) throw holidayErr;
+  const senderSettings = resolveSmsSenderSettings(msg as any);
+  const messagingConfigured = Boolean(
+    inventory?.messaging_service_sid || inventory?.from_number || msg?.messaging_service_sid || msg?.sender,
+  );
+  const smsEnabled = resolveChannelSettings(msg as { sms_enabled?: boolean | null } | null).smsEnabled;
+  const emailSettings = resolveEmailSettings(emailConfigRow as any);
 
   return data({
     orgName,

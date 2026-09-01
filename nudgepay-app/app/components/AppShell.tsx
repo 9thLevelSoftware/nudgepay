@@ -35,6 +35,9 @@ interface NavItem {
   label: string;
 }
 
+/** Prefetch the destination loader on hover/focus so click-to-page does not wait cold. */
+const NAV_PREFETCH = "intent" as const;
+
 const NAV_ITEMS: NavItem[] = [
   { name: "collections", icon: "bookmark", label: "Collections" },
   { name: "accounts", icon: "user", label: "Accounts" },
@@ -124,6 +127,7 @@ export function AppShell({
         {/* Brand mark */}
         <Link
           to="/dashboard"
+          prefetch={NAV_PREFETCH}
           className="flex items-center gap-0 font-display text-[17px] font-semibold leading-none tracking-tight focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-copper rounded"
         >
           <span className="text-copper-bright">Nudge</span>
@@ -146,6 +150,7 @@ export function AppShell({
           {/* Sync chip → Settings */}
           <Link
             to="/settings"
+            prefetch={NAV_PREFETCH}
             className="hidden sm:flex items-center gap-1.5 px-2 py-1 rounded bg-surface/5 border border-surface/10 hover:border-copper transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-copper"
             aria-label={connected ? `Connected — ${syncLabel}` : `Disconnected — ${syncLabel}`}
           >
@@ -165,6 +170,7 @@ export function AppShell({
           {/* Settings */}
           <Link
             to="/settings"
+            prefetch={NAV_PREFETCH}
             className={`${ICON_HIT_CLASS} rounded text-surface/60 hover:text-surface focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-copper`}
             aria-label="Settings"
             title="Settings"
@@ -216,6 +222,7 @@ export function AppShell({
                   <li key={item.name} className="relative w-full">
                     <Link
                       to={target}
+                      prefetch={NAV_PREFETCH}
                       className="relative flex flex-col items-center justify-center w-full py-3 gap-1 text-surface focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-copper focus-visible:ring-inset"
                       aria-current="page"
                       aria-label={ariaLabel}
@@ -237,6 +244,7 @@ export function AppShell({
                   <li key={item.name} className="relative w-full">
                     <Link
                       to={to}
+                      prefetch={NAV_PREFETCH}
                       className="flex flex-col items-center justify-center w-full py-3 gap-1 text-surface/70 hover:text-surface focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-copper focus-visible:ring-inset"
                       aria-label={ariaLabel}
                       onClick={() => setNavOpen(false)}
@@ -270,6 +278,7 @@ export function AppShell({
             <li className="relative w-full md:hidden">
               <Link
                 to="/focus"
+                prefetch={NAV_PREFETCH}
                 className="flex flex-col items-center justify-center w-full py-3 gap-1 text-surface/70 hover:text-surface focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-copper focus-visible:ring-inset"
                 aria-label="Focus mode"
                 onClick={() => setNavOpen(false)}
@@ -404,6 +413,7 @@ function UserMenu({
           ) : null}
            <Link
              to="/settings"
+             prefetch={NAV_PREFETCH}
              className={menuItemClass}
              onClick={() => setOpen(false)}
            >

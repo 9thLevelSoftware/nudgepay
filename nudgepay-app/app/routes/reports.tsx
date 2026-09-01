@@ -22,14 +22,15 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
   const {
     supabase, service, headers, org,
     orgName, initials, userLabel, connected, needsReconnect, syncLabel, syncIssues, workspaces,
+    orgConfig,
   } = await loadWorkspaceChrome(request, env, { requireQbo: false, requireAdmin: true });
   // Admin+ surface gate is enforced inside the helper
   // (redirects to /dashboard?denied=reports for members).
 
   const range = parseReportRange(new URL(request.url).searchParams.get("range"));
   const [report, arKpis] = await Promise.all([
-    loadTeamReport({ supabase, service, orgId: org.org_id, range }),
-    loadReportArKpis({ supabase, orgId: org.org_id, range }),
+    loadTeamReport({ supabase, service, orgId: org.org_id, range, orgConfig }),
+    loadReportArKpis({ supabase, orgId: org.org_id, range, orgConfig }),
   ]);
 
   return data(

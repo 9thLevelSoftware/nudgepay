@@ -7,6 +7,7 @@ import type { AppEnv } from "./env.server";
 import { displayLabel, initialsFrom } from "./names";
 import { listUserWorkspaces, type UserWorkspace } from "./orgs.server";
 import { hasPermission, isAdminRole, isOwnerRole } from "./roles";
+import { loadOrgConfig } from "./org-config.server";
 
 export type ChromeSyncIssue = {
   id: string;
@@ -55,8 +56,9 @@ export async function loadWorkspaceChrome(
 
   const service = createSupabaseServiceClient(env);
 
-  // Parallel: org name + connection status + connection metadata + unresolved sync errors
-  const [orgRowRes, conn, connMetaRes, syncErrorRes, workspaces] = await Promise.all([
+  // Parallel: org name + connection status + connection metadata + unresolved
+  // sync errors + org config (so callers do not pay a second RTT).
+  const [orgRowRes, conn, connMetaRes, syncErrorRes, workspaces, orgConfig] = await Promise.all([
     supabase.from("organizations").select("name").eq("id", org.org_id).single(),
     getConnectionStatus(service, org.org_id),
     service.from("qbo_connections").select("last_sync_at").eq("org_id", org.org_id).maybeSingle(),
@@ -64,6 +66,7 @@ export async function loadWorkspaceChrome(
       .select("id, source, scope, message, occurred_at").eq("org_id", org.org_id)
       .is("resolved_at", null).order("occurred_at", { ascending: false }).limit(20),
     listUserWorkspaces(service, user.id),
+    loadOrgConfig(supabase, org.org_id),
   ]);
 
   if (connMetaRes.error) throw connMetaRes.error;
@@ -92,6 +95,7 @@ export async function loadWorkspaceChrome(
       id: string; source: string; scope: string; message: string; occurred_at: string;
     }[] | null),
     workspaces,
+    orgConfig,
   };
 }
 

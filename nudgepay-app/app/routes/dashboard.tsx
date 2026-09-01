@@ -248,26 +248,10 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
   // Service client for connection-status + roster (no RLS needed)
   const service = createSupabaseServiceClient(env);
 
-  // Org config loaded up front so "today" is the org's local calendar day
-  // (not UTC's) — passed into loadCaseQueueSource below to avoid a second
-  // org_settings read.
-  const orgConfigForToday = await loadOrgConfig(supabase, org.org_id);
-  const today = todayInTz(orgConfigForToday.companyProfile.timezone);
-
-  // Batch A: shared queue source + dashboard-only queries in parallel.
-  const [
-    src,
-    { data: orgRow, error: orgErr },
-    conn,
-    { data: connMeta, error: connMetaErr },
-    { data: ecfg, error: ecfgErr },
-    { data: syncErrorRows, error: syncErr },
-    arSrc,
-    workspaces,
-  ] = await Promise.all([
-    loadCaseQueueSource({
-      supabase, service, orgId: org.org_id, today, includePresence: true, orgConfig: orgConfigForToday,
-    }),
+  // Org config is needed for org-local "today" before the invoice window
+  // queries. Independent chrome reads start now and join after.
+  const orgConfigP = loadOrgConfig(supabase, org.org_id);
+  const chromeP = Promise.all([
     supabase.from("organizations").select("name").eq("id", org.org_id).single(),
     getConnectionStatus(service, org.org_id),
     service.from("qbo_connections").select("last_sync_at").eq("org_id", org.org_id).maybeSingle(),
@@ -275,11 +259,30 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
     supabase.from("sync_errors")
       .select("id, source, scope, message, occurred_at").eq("org_id", org.org_id)
       .is("resolved_at", null).order("occurred_at", { ascending: false }).limit(20),
+    listUserWorkspaces(service, user.id),
+  ]);
+
+  const orgConfigForToday = await orgConfigP;
+  const today = todayInTz(orgConfigForToday.companyProfile.timezone);
+
+  // Batch A: queue + AR (need today) join the in-flight chrome reads.
+  const [
+    src,
+    arSrc,
+    [orgRowRes, conn, connMetaRes, ecfgRes, syncErrorRes, workspaces],
+  ] = await Promise.all([
+    loadCaseQueueSource({
+      supabase, service, orgId: org.org_id, today, includePresence: true, orgConfig: orgConfigForToday,
+    }),
     loadArKpiSource({
       supabase, orgId: org.org_id, today, rangeDays: DASHBOARD_AR_RANGE_DAYS,
     }),
-    listUserWorkspaces(service, user.id),
+    chromeP,
   ]);
+  const { data: orgRow, error: orgErr } = orgRowRes;
+  const { data: connMeta, error: connMetaErr } = connMetaRes;
+  const { data: ecfg, error: ecfgErr } = ecfgRes;
+  const { data: syncErrorRows, error: syncErr } = syncErrorRes;
   if (orgErr) throw orgErr;
   if (connMetaErr) throw connMetaErr;
   if (ecfgErr) throw ecfgErr;

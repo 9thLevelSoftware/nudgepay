@@ -1,8 +1,8 @@
 @import "tailwindcss" source(".");
 
 @theme {
-	--font-display: "Space Grotesk", ui-sans-serif, system-ui, sans-serif;
-	--font-sans: "IBM Plex Sans", ui-sans-serif, system-ui, sans-serif;
+	--font-display: "Space Grotesk Variable", "Space Grotesk", ui-sans-serif, system-ui, sans-serif;
+	--font-sans: "IBM Plex Sans Variable", "IBM Plex Sans", ui-sans-serif, system-ui, sans-serif;
 	--font-mono: "IBM Plex Mono", ui-monospace, SFMono-Regular, monospace;
 
 	--color-ink: #16202b;
