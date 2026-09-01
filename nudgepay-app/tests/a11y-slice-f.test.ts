@@ -110,6 +110,23 @@ describe("TEMP-UX-019 TemplateEditor channel toggle", () => {
   });
 });
 
+describe("consistent help (WCAG 3.2.6)", () => {
+  it("exposes one Support mailto on public chrome and in the account menu", () => {
+    const meta = read("../app/lib/meta.ts");
+    expect(meta).toContain('export const SUPPORT_EMAIL = "support@nudgepay-ar.app"');
+    expect(meta).toContain("export const SUPPORT_MAILTO");
+    const pub = read("../app/components/PublicLayout.tsx");
+    expect(pub).toContain("SUPPORT_MAILTO");
+    expect(pub).toContain(">Support</a>");
+    const shell = read("../app/components/AppShell.tsx");
+    expect(shell).toContain("SUPPORT_MAILTO");
+    expect(shell).toContain("Support");
+    const privacy = read("../app/routes/privacy.tsx");
+    expect(privacy).toContain("SUPPORT_EMAIL");
+    expect(privacy).not.toMatch(/const contact = "support@nudgepay-ar.app"/);
+  });
+});
+
 describe("skip to content", () => {
   it("is a shared primitive targeting main-content", () => {
     const src = read("../app/components/ui.tsx");

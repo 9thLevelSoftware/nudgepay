@@ -1,4 +1,5 @@
 import { Link } from "react-router";
+import { SUPPORT_MAILTO } from "../lib/meta";
 import { MAIN_CONTENT_ID, SkipLink } from "./ui";
 
 export function PublicLayout({ title, width = "card", children }: {
@@ -30,10 +31,12 @@ export function PublicLayout({ title, width = "card", children }: {
         </div>
       </main>
       <footer className="border-t border-border px-6 py-4">
-        <nav className="flex items-center justify-center gap-4 text-xs text-muted" aria-label="Legal">
+        <nav className="flex items-center justify-center gap-4 text-xs text-muted" aria-label="Help and legal">
           <Link to="/privacy" className="hover:text-text">Privacy</Link>
           <span aria-hidden="true" className="text-border">·</span>
           <Link to="/eula" className="hover:text-text">Terms</Link>
+          <span aria-hidden="true" className="text-border">·</span>
+          <a href={SUPPORT_MAILTO} className="hover:text-text">Support</a>
         </nav>
       </footer>
     </div>

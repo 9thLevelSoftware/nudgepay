@@ -1,7 +1,7 @@
 import { expect, test } from "vitest";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
-import { PAGE_DESCRIPTION, pageTitle } from "../app/lib/meta";
+import { PAGE_DESCRIPTION, pageTitle, SUPPORT_EMAIL, SUPPORT_MAILTO } from "../app/lib/meta";
 
 const description = { name: "description", content: PAGE_DESCRIPTION };
 
@@ -12,6 +12,11 @@ test("pageTitle with a section returns the qualified title and description", () 
 test("pageTitle with no section falls back to the bare brand and description", () => {
   expect(pageTitle()).toEqual([{ title: "NudgePay" }, description]);
   expect(pageTitle(undefined)).toEqual([{ title: "NudgePay" }, description]);
+});
+
+test("SUPPORT_EMAIL is the operator mailbox used on public and in-app help", () => {
+  expect(SUPPORT_EMAIL).toBe("support@nudgepay-ar.app");
+  expect(SUPPORT_MAILTO).toBe("mailto:support@nudgepay-ar.app");
 });
 
 test("pageTitle includes a site description", () => {
