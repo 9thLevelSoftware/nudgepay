@@ -2,7 +2,7 @@
 // `.dev.vars` into build/server/; wrangler then overrides toml vars with
 // local Supabase. Strip that file before upload.
 import { spawnSync } from "node:child_process";
-import { existsSync, readFileSync, writeFileSync, unlinkSync } from "node:fs";
+import { readFileSync, writeFileSync } from "node:fs";
 
 const staging = process.argv.includes("--staging");
 const cwd = new URL("..", import.meta.url);
@@ -13,8 +13,7 @@ function run(cmd, args) {
 }
 
 run("npm", ["run", "build"]);
-const devVars = new URL("../build/server/.dev.vars", import.meta.url);
-if (existsSync(devVars)) unlinkSync(devVars);
+run("node", ["scripts/strip-build-dev-vars.mjs"]);
 
 if (!staging) {
   run("npx", ["wrangler", "deploy", "--env="]);
