@@ -21,6 +21,12 @@ test("signup page is reachable from login", async ({ page }) => {
   await expect(page.locator('input[name="email"]')).toBeVisible();
 });
 
+test("login password field allows password-manager autocomplete", async ({ page }) => {
+  await page.goto("/login");
+  await expect(page.locator('input[name="password"]')).toHaveAttribute("autocomplete", "current-password");
+  await expect(page.locator('input[name="email"]')).toHaveAttribute("autocomplete", "email");
+});
+
 test("login footer Support link uses the operator mailbox", async ({ page }) => {
   await page.goto("/login");
   const support = page.getByRole("link", { name: "Support" });

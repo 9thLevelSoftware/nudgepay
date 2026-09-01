@@ -127,6 +127,28 @@ describe("consistent help (WCAG 3.2.6)", () => {
   });
 });
 
+describe("accessible authentication (WCAG 3.3.8)", () => {
+  it("lets password managers fill login, signup, reset, and settings", () => {
+    const login = read("../app/routes/login.tsx");
+    expect(login).toContain('autoComplete="email"');
+    expect(login).toContain('autoComplete="current-password"');
+    expect(login).not.toMatch(/onPaste|onCopy|onCut/);
+    const signup = read("../app/routes/signup.tsx");
+    expect(signup).toContain('autoComplete="email"');
+    expect(signup).toContain('autoComplete="new-password"');
+    expect(signup).not.toMatch(/onPaste|onCopy|onCut/);
+    const forgot = read("../app/routes/forgot-password.tsx");
+    expect(forgot).toContain('autoComplete="email"');
+    const reset = read("../app/routes/reset-password.tsx");
+    expect(reset).toMatch(/name="password"[\s\S]*autoComplete="new-password"/);
+    expect(reset).toMatch(/name="confirm"[\s\S]*autoComplete="new-password"/);
+    expect(reset).not.toMatch(/onPaste|onCopy|onCut/);
+    const settings = read("../app/routes/settings.tsx");
+    expect(settings).toContain('autoComplete="current-password"');
+    expect(settings).toContain('autoComplete="new-password"');
+  });
+});
+
 describe("skip to content", () => {
   it("is a shared primitive targeting main-content", () => {
     const src = read("../app/components/ui.tsx");
