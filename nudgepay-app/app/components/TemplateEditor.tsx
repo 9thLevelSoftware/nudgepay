@@ -343,7 +343,7 @@ function TemplateForm({
             type="button"
             onClick={() => insertToken(k)}
             aria-label={`Insert {${k}}`}
-            className="rounded border border-border bg-panel px-1.5 py-0.5 font-mono text-[11px] text-text hover:border-copper hover:text-copper focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-copper"
+            className="inline-flex items-center min-h-6 rounded border border-border bg-panel px-2 py-1 font-mono text-[11px] text-text hover:border-copper hover:text-copper focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-copper"
           >
             {`{${k}}`}
           </button>

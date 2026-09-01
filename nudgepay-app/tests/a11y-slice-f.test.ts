@@ -153,6 +153,10 @@ describe("pointer target size (WCAG 2.5.8)", () => {
     expect(logContact).toContain("ICON_HIT_CLASS");
     expect(logContact).toContain('aria-label="Close"');
     expect(logContact).not.toMatch(/aria-label="Close"[\s\S]{0,200}p-1/);
+    const templates = read("../app/components/TemplateEditor.tsx");
+    expect(templates).toContain("aria-label={`Insert {${k}}`}");
+    expect(templates).toMatch(/aria-label=\{`Insert \{\$\{k\}\}`\}[\s\S]{0,220}min-h-6/);
+    expect(templates).not.toMatch(/aria-label=\{`Insert \{\$\{k\}\}`\}[\s\S]{0,220}py-0\.5/);
   });
 });
 
