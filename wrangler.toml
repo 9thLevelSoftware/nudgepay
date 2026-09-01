@@ -1,0 +1,53 @@
+# Cloudflare Workers Builds runs `npx wrangler deploy` from this repository
+# root (Git is connected to Worker `nudgepay-app` at the repo, not the
+# `nudgepay-app/` package). Without this file Wrangler auto-inits a static
+# site from `netlify/` and tries to overwrite the live SSR Worker.
+#
+# Preferred dashboard settings (Settings → Builds):
+#   Root directory:  nudgepay-app
+#   Build command:   npm ci
+#   Deploy command:  npm run deploy
+# Until those are set, this file makes the default `npx wrangler deploy`
+# build the real app instead of uploading Netlify redirects.
+
+name = "nudgepay-app"
+compatibility_date = "2025-06-01"
+compatibility_flags = ["nodejs_compat"]
+main = "nudgepay-app/build/server/index.js"
+workers_dev = true
+
+[vars]
+SUPABASE_URL = "https://epjumsnmpvilgasycpau.supabase.co"
+QBO_SANDBOX = "false"
+AUTH_RATE_LIMIT_REQUIRED = "true"
+
+[[routes]]
+pattern = "nudgepay.9thlevelsoftware.com"
+custom_domain = true
+
+[triggers]
+crons = ["*/30 * * * *", "0 * * * *"]
+
+[placement]
+mode = "smart"
+
+[observability]
+enabled = true
+head_sampling_rate = 1
+
+[observability.logs]
+enabled = true
+invocation_logs = true
+persist = true
+
+[[ratelimits]]
+name = "AUTH_RATE_LIMIT"
+namespace_id = "1001"
+simple = { limit = 20, period = 60 }
+
+[assets]
+directory = "nudgepay-app/build/client"
+
+[build]
+command = "node scripts/cf-builds-prepare.mjs"
+cwd = "nudgepay-app"

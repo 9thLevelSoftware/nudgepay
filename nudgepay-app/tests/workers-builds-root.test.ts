@@ -1,0 +1,21 @@
+import { readFileSync } from "node:fs";
+import { describe, expect, it } from "vitest";
+
+const read = (rel: string) => readFileSync(new URL(rel, import.meta.url), "utf8");
+
+describe("Cloudflare Workers Builds at repo root", () => {
+  it("has a root wrangler config so deploys do not auto-init from netlify/", () => {
+    const toml = read("../../wrangler.toml");
+    expect(toml).toContain('name = "nudgepay-app"');
+    expect(toml).toContain('cwd = "nudgepay-app"');
+    expect(toml).toContain("cf-builds-prepare");
+    expect(toml).not.toMatch(/directory\s*=\s*"netlify"/);
+    expect(toml).toContain("nudgepay-app/build/server/index.js");
+  });
+
+  it("legacy Netlify redirects stay Netlify-only and are not a Worker asset dir", () => {
+    const redirects = read("../../netlify/_redirects");
+    expect(redirects).toContain("Do not deploy this directory as a Cloudflare Worker");
+    expect(redirects).toContain("301!");
+  });
+});

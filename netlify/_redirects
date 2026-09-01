@@ -2,6 +2,9 @@
 # Worker production domain. The legacy SPA is retired; these redirects keep
 # Intuit app-card links (/privacy, /eula) working.
 #
+# Do not deploy this directory as a Cloudflare Worker. `301!` is Netlify
+# force-redirect syntax; Workers static `_redirects` reject it (status 0).
+#
 /privacy  https://nudgepay.9thlevelsoftware.com/privacy  301!
 /eula     https://nudgepay.9thlevelsoftware.com/eula     301!
 /*        https://nudgepay.9thlevelsoftware.com/          302
