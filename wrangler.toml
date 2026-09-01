@@ -5,7 +5,7 @@
 #
 # Preferred dashboard settings (Settings → Builds):
 #   Root directory:  nudgepay-app
-#   Build command:   npm ci
+#   Build command:   npm ci --include=dev
 #   Deploy command:  npm run deploy
 # Until those are set, this file makes the default `npx wrangler deploy`
 # build the real app instead of uploading Netlify redirects.
