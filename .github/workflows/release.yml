@@ -1,0 +1,22 @@
+name: Release
+
+# Tagging is not a production deploy. `v*` creates a GitHub Release with
+# generated notes. Promote the Worker after staging as in docs/pilot-ops.md.
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  github-release:
+    name: GitHub Release
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: gh release create "$GITHUB_REF_NAME" --generate-notes --verify-tag
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

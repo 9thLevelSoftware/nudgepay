@@ -64,6 +64,16 @@ Twilio/Resend credentials pointed at owned destinations only.
 Promote by deploying production only after the same candidate has been
 exercised on staging. There is no automatic promotion pipeline.
 
+## Releases
+
+Pushing a `v*` tag (for example `v0.1.0`) creates a GitHub Release with
+generated notes. Tagging is not a production deploy.
+
+```bash
+git tag v0.1.0
+git push origin v0.1.0
+```
+
 ## Rollback
 
 ```bash
