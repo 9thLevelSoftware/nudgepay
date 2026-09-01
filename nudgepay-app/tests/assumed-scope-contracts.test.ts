@@ -224,6 +224,17 @@ test("pilot-ops documents Worker rollback and that migrations are not undone", (
   expect(ops).toContain("npx wrangler deployments list");
   expect(ops).toMatch(/does not undo a Supabase\s+migration/i);
   expect(ops).toMatch(/Promote by deploying production/i);
+  expect(ops).toMatch(/Tagging is not a production deploy/i);
+  expect(ops).toContain("git push origin v0.1.0");
+});
+
+test("v* tags open a GitHub Release and do not deploy", () => {
+  const src = readFileSync(fileURLToPath(new URL("../../.github/workflows/release.yml", import.meta.url)), "utf8");
+  expect(src).toMatch(/tags:\s*\n\s*-\s*"v\*"/);
+  expect(src).toContain("gh release create");
+  expect(src).toContain("--generate-notes");
+  expect(src).toContain("Tagging is not a production deploy");
+  expect(src).not.toMatch(/wrangler deploy/);
 });
 
 test("Settings separates leave, workspace delete, export, and personal login delete", () => {
