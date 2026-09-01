@@ -214,6 +214,40 @@ test("sendInvoiceEmail refuses when the workspace hour cap is already full", asy
   expect(f).not.toHaveBeenCalled();
 });
 
+test("sendInvoiceEmail still sends when workspace-hour emails are older than 1h", async () => {
+  const { orgId, invoiceId } = await seed("stale-hour@chancey.test");
+  const from = await enableEmail(orgId);
+  const { data: other } = await svc.from("customers")
+    .insert({ org_id: orgId, name: "Other", email: "other-stale-hour@chancey.test" }).select("id").single();
+  const { data: otherInv } = await svc.from("invoices")
+    .insert({
+      org_id: orgId,
+      qbo_id: `i-stale-hour-${Math.random()}`,
+      qbo_doc_number: "2100",
+      customer_id: other!.id,
+      balance: 50,
+    }).select("id").single();
+  const stale = new Date(DAYTIME_NOW.getTime() - 65 * 60_000).toISOString();
+  const rows = Array.from({ length: EMAIL_ORG_HOUR_CAP }, (_, i) => ({
+    org_id: orgId,
+    invoice_id: otherInv!.id,
+    customer_id: other!.id,
+    direction: "outbound",
+    to_address: "other-stale-hour@chancey.test",
+    subject: `stale ${i}`,
+    body: `stale ${i}`,
+    status: "sent",
+    created_at: stale,
+  }));
+  const { error } = await svc.from("email_messages").insert(rows);
+  expect(error).toBeNull();
+  const providerId = `re_hour_stale_${Math.random().toString(16).slice(2)}`;
+  const f = vi.fn(async () => jsonResponse({ id: providerId }));
+  const res = await sendInvoiceEmail(deps(f, from), { orgId, invoiceId, userId, subject: "Hi", body: "Pay" });
+  expect(res.providerMessageId).toBe(providerId);
+  expect(f).toHaveBeenCalledTimes(1);
+});
+
 test("Resend 503 throws and does not insert an outbound row", async () => {
   const { orgId, customerId, invoiceId } = await seed("outage@chancey.test");
   const from = await enableEmail(orgId);
