@@ -6,6 +6,7 @@ import { chaseRecipientsFrom } from "~/lib/chase-recipients";
 import type { ViewId, SortId } from "~/lib/worklist";
 import { dashboardHref, dashboardSearchParams, type DensityId, type EntityMode } from "~/lib/queue-chrome";
 import { Icon } from "~/components/Icons";
+import { ICON_HIT_CLASS } from "~/components/ui";
 import { MessageBubbles } from "~/components/MessageBubbles";
 import { applyTemplate, type TemplateVars } from "~/lib/sms-templates";
 import { applyEmailTemplate } from "~/lib/email-templates";
@@ -811,7 +812,7 @@ export function DetailPanel({
           <Link
             to={dashboardHref({ view, sort, q: q || undefined, entity, density })}
             aria-label="Close detail panel"
-            className="hidden md:flex items-center justify-center w-6 h-6 rounded text-surface/60 hover:text-surface focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-copper"
+            className={`hidden md:flex ${ICON_HIT_CLASS} rounded text-surface/60 hover:text-surface focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-copper`}
           >
             <span aria-hidden="true" className="text-base leading-none">×</span>
           </Link>

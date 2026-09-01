@@ -4,7 +4,7 @@ import { Icon } from "./Icons";
 import { ToastProvider } from "./Toasts";
 import { CommandPalette } from "./CommandPalette";
 import { ThemeToggle } from "./ThemeToggle";
-import { MAIN_CONTENT_ID, SkipLink } from "./ui";
+import { ICON_HIT_CLASS, MAIN_CONTENT_ID, SkipLink } from "./ui";
 import { SUPPORT_MAILTO } from "../lib/meta";
 
 interface AppShellProps {
@@ -105,7 +105,7 @@ export function AppShell({
         {/* Mobile menu toggle */}
         <button
           type="button"
-          className="md:hidden flex items-center justify-center w-8 h-8 rounded text-surface/70 hover:text-surface focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-copper"
+          className={`md:hidden ${ICON_HIT_CLASS} rounded text-surface/70 hover:text-surface focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-copper`}
           aria-label="Toggle navigation"
           aria-expanded={navOpen}
           onClick={() => setNavOpen((v) => !v)}
@@ -157,7 +157,7 @@ export function AppShell({
           {/* Settings */}
           <Link
             to="/settings"
-            className="flex items-center justify-center w-8 h-8 rounded text-surface/60 hover:text-surface focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-copper"
+            className={`${ICON_HIT_CLASS} rounded text-surface/60 hover:text-surface focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-copper`}
             aria-label="Settings"
             title="Settings"
           >
@@ -328,7 +328,7 @@ function UserMenu({ userInitials, userLabel }: { userInitials: string; userLabel
       <button
         ref={triggerRef}
         type="button"
-        className="flex items-center justify-center w-7 h-7 rounded-full bg-copper/20 border border-copper/40 text-copper-bright font-sans text-[11px] font-semibold uppercase leading-none select-none hover:bg-copper/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-copper"
+        className={`${ICON_HIT_CLASS} rounded-full bg-copper/20 border border-copper/40 text-copper-bright font-sans text-[11px] font-semibold uppercase leading-none select-none hover:bg-copper/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-copper`}
         aria-haspopup="true"
         aria-expanded={open}
         aria-controls="account-menu"

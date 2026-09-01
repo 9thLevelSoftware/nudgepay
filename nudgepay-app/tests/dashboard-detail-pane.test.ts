@@ -71,7 +71,8 @@ describe("dashboard wiring (NP-AUD-2026-110)", () => {
     expect(detail).toContain("Back to queue");
     expect(detail).toContain('aria-label="Close detail panel"');
     expect(detail).toMatch(/md:hidden px-4 pt-3 pb-1/);
-    expect(detail).toContain("hidden md:flex items-center justify-center w-6 h-6");
+    expect(detail).toContain("ICON_HIT_CLASS");
+    expect(detail).toContain("hidden md:flex ${ICON_HIT_CLASS}");
     expect(detail).toContain("dashboardHref");
     expect(detail).toContain("dashboardSearchParams");
     const closeHref = /dashboardHref\(\{\s*view,\s*sort,\s*q:\s*q \|\| undefined,\s*entity,\s*density\s*\}\)/g;
