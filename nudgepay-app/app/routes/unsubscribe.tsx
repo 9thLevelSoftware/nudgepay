@@ -4,6 +4,7 @@ import { createSupabaseServiceClient } from "../lib/supabase.server";
 import { verifyUnsubscribeToken } from "../lib/unsubscribe-token";
 import { pageTitle } from "../lib/meta";
 import { MAIN_CONTENT_ID, SkipLink } from "../components/ui";
+import { SUPPORT_MAILTO } from "../lib/meta";
 import type { Route } from "./+types/unsubscribe";
 
 export const meta: Route.MetaFunction = () => pageTitle("Unsubscribe");
@@ -58,7 +59,7 @@ export default function Unsubscribe() {
           {!valid ? (
             <>
               <h1 className="text-lg font-semibold text-text">Link invalid or expired</h1>
-              <p className="mt-2 text-sm text-muted">We couldn't process this unsubscribe link. Please contact us directly to update your preferences.</p>
+              <p className="mt-2 text-sm text-muted">We couldn&apos;t process this unsubscribe link. Please contact us directly to update your preferences.</p>
             </>
           ) : done ? (
             <>
@@ -75,6 +76,9 @@ export default function Unsubscribe() {
               </Form>
             </>
           )}
+          <p className="mt-4 text-xs text-muted">
+            <a href={SUPPORT_MAILTO} className="underline hover:text-text">Support</a>
+          </p>
         </div>
       </main>
     </div>
