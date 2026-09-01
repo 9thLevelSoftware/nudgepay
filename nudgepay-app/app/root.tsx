@@ -9,6 +9,11 @@ import {
 } from "react-router";
 
 import type { Route } from "./+types/root";
+import "@fontsource-variable/ibm-plex-sans/wght.css";
+import "@fontsource-variable/space-grotesk/wght.css";
+import "@fontsource/ibm-plex-mono/latin-400.css";
+import "@fontsource/ibm-plex-mono/latin-500.css";
+import "@fontsource/ibm-plex-mono/latin-600.css";
 import "./app.css";
 import { PublicLayout } from "./components/PublicLayout";
 import { pageTitle } from "./lib/meta";
@@ -22,19 +27,6 @@ const secondaryLinkClass =
 	"focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-copper";
 
 export const meta: Route.MetaFunction = () => pageTitle();
-
-export const links: Route.LinksFunction = () => [
-	{ rel: "preconnect", href: "https://fonts.googleapis.com" },
-	{
-		rel: "preconnect",
-		href: "https://fonts.gstatic.com",
-		crossOrigin: "anonymous",
-	},
-	{
-		rel: "stylesheet",
-		href: "https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&display=swap",
-	},
-];
 
 export function Layout({ children }: { children: React.ReactNode }) {
 	return (

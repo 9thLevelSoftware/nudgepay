@@ -7,7 +7,7 @@ import { loadTeamReport, loadReportArKpis } from "../lib/reports.server";
 // Resource route: admin+ CSV of the current range (team per-rep or AR KPIs).
 export async function loader({ request, context }: LoaderFunctionArgs) {
   const env = getEnv(context as any);
-  const { supabase, service, headers, org } = await loadWorkspaceChrome(
+  const { supabase, service, headers, org, orgConfig } = await loadWorkspaceChrome(
     request, env, { requireQbo: false, requireAdmin: true },
   );
 
@@ -18,7 +18,7 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
   let csv: string;
   let filename: string;
   if (sheet === "ar") {
-    const arKpis = await loadReportArKpis({ supabase, orgId: org.org_id, range });
+    const arKpis = await loadReportArKpis({ supabase, orgId: org.org_id, range, orgConfig });
     if (arKpis.loadError) {
       return new Response(arKpis.loadError, { status: 503, headers });
     }
@@ -31,7 +31,7 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
     csv = arKpisToCsv(arKpis);
     filename = `nudgepay-ar-${range}d.csv`;
   } else {
-    const report = await loadTeamReport({ supabase, service, orgId: org.org_id, range });
+    const report = await loadTeamReport({ supabase, service, orgId: org.org_id, range, orgConfig });
     if (report.loadError) {
       return new Response(report.loadError, { status: 503, headers });
     }

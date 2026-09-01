@@ -20,6 +20,15 @@ test("account menu includes Support next to Settings", () => {
   expect(src).toContain("SUPPORT_MAILTO");
 });
 
+test("section navigation prefetches loaders on hover", () => {
+  const src = readFileSync(new URL("../app/components/AppShell.tsx", import.meta.url), "utf8");
+  expect(src).toContain('const NAV_PREFETCH = "intent"');
+  expect(src).toMatch(/to="\/dashboard"[\s\S]*prefetch=\{NAV_PREFETCH\}/);
+  expect(src).toMatch(/to="\/settings"[\s\S]*prefetch=\{NAV_PREFETCH\}/);
+  expect(src).toMatch(/to="\/focus"[\s\S]*prefetch=\{NAV_PREFETCH\}/);
+  expect(src).toContain("prefetch={NAV_PREFETCH}");
+});
+
 test("mobile drawer includes Focus without adding a sixth activeNav", () => {
   const src = readFileSync(new URL("../app/components/AppShell.tsx", import.meta.url), "utf8");
   expect(src).toContain('to="/focus"');

@@ -2,7 +2,6 @@ import { useLoaderData, data, type LoaderFunctionArgs } from "react-router";
 import { getEnv } from "../lib/env.server";
 import { loadWorkspaceChrome } from "../lib/workspace.server";
 import { listOrgMembers } from "../lib/orgs.server";
-import { loadOrgConfig } from "../lib/org-config.server";
 import { todayInTz } from "../lib/tz";
 import { isCaseSuppressed, type ExceptionState } from "../lib/exceptions";
 import { resolveCommPrefs } from "../lib/comm-prefs";
@@ -45,7 +44,7 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
   const {
     supabase, service, headers, isOwner, isAdmin, org,
     orgName, initials, userLabel, connected, syncLabel,
-    syncIssues, workspaces,
+    syncIssues, workspaces, orgConfig,
   } = await loadWorkspaceChrome(request, env);
 
   // --- URL params ---
@@ -63,7 +62,6 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
   const densityFromUrl = densityRaw != null;
   const density = parseAccountsDensity(densityRaw);
 
-  const orgConfig = await loadOrgConfig(supabase, org.org_id);
   const today = todayInTz(orgConfig.companyProfile.timezone);
 
   // --- Data loading (USER client, explicit org_id scope) ---
@@ -80,7 +78,9 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
     id: string; customer_id: string; status: string; exception_reason: string | null;
     next_action_at: string | null; closed_at: string | null;
   };
-  const [custPage, invPage, casePage] = await Promise.all([
+  type ContactRow = { customer_id: string | null; created_at: string; method: string | null };
+  type OutboundRow = { case_id: string | null; customer_id: string | null; created_at: string };
+  const [custPage, invPage, casePage, logPage, msgPage, emailPage, roster] = await Promise.all([
     pageAllHonest<CustRow>(
       (from, to) =>
         orderPage(
@@ -112,6 +112,40 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
         ).range(from, to),
       { maxRows: PAGE_ALL_MAX_ROWS },
     ),
+    pageAllHonest<ContactRow>(
+      (from, to) =>
+        orderPage(
+          supabase
+            .from("contact_logs")
+            .select("customer_id, created_at, method", { count: "exact" })
+            .eq("org_id", org.org_id)
+            .not("customer_id", "is", null),
+        ).range(from, to),
+      { maxRows: PAGE_ALL_MAX_ROWS },
+    ),
+    pageAllHonest<OutboundRow>(
+      (from, to) =>
+        orderPage(
+          supabase
+            .from("text_messages")
+            .select("case_id, customer_id, created_at", { count: "exact" })
+            .eq("org_id", org.org_id)
+            .eq("direction", "outbound"),
+        ).range(from, to),
+      { maxRows: PAGE_ALL_MAX_ROWS },
+    ),
+    pageAllHonest<OutboundRow>(
+      (from, to) =>
+        orderPage(
+          supabase
+            .from("email_messages")
+            .select("case_id, customer_id, created_at", { count: "exact" })
+            .eq("org_id", org.org_id)
+            .eq("direction", "outbound"),
+        ).range(from, to),
+      { maxRows: PAGE_ALL_MAX_ROWS },
+    ),
+    listOrgMembers(service, org.org_id),
   ]);
   const customersInput: CustomerInput[] = custPage.rows.map((r) => ({
     id: r.id,
@@ -155,43 +189,6 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
 
   // Last contact per customer: contact_logs + outbound text_messages
   const lastContactsInput: AccountLastContactInput[] = [];
-  type ContactRow = { customer_id: string | null; created_at: string; method: string | null };
-  type OutboundRow = { case_id: string | null; customer_id: string | null; created_at: string };
-  const [logPage, msgPage, emailPage] = await Promise.all([
-    pageAllHonest<ContactRow>(
-      (from, to) =>
-        orderPage(
-          supabase
-            .from("contact_logs")
-            .select("customer_id, created_at, method", { count: "exact" })
-            .eq("org_id", org.org_id)
-            .not("customer_id", "is", null),
-        ).range(from, to),
-      { maxRows: PAGE_ALL_MAX_ROWS },
-    ),
-    pageAllHonest<OutboundRow>(
-      (from, to) =>
-        orderPage(
-          supabase
-            .from("text_messages")
-            .select("case_id, customer_id, created_at", { count: "exact" })
-            .eq("org_id", org.org_id)
-            .eq("direction", "outbound"),
-        ).range(from, to),
-      { maxRows: PAGE_ALL_MAX_ROWS },
-    ),
-    pageAllHonest<OutboundRow>(
-      (from, to) =>
-        orderPage(
-          supabase
-            .from("email_messages")
-            .select("case_id, customer_id, created_at", { count: "exact" })
-            .eq("org_id", org.org_id)
-            .eq("direction", "outbound"),
-        ).range(from, to),
-      { maxRows: PAGE_ALL_MAX_ROWS },
-    ),
-  ]);
   const methodLabel: Record<string, string> = { call: "Call", email: "Email", text: "Text", note: "Note" };
   for (const r of logPage.rows) {
     if (r.customer_id) {
@@ -217,8 +214,6 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
   const loadError = listState.loadError ? "Could not load accounts" : null;
   const truncated = listState.truncated;
 
-  // Owner labels
-  const roster = await listOrgMembers(service, org.org_id);
   const ownerLabels = new Map(roster.map((m) => [m.userId, m.label]));
 
   const customerIds = customersInput.map((c) => c.id);

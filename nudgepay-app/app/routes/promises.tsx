@@ -4,7 +4,6 @@ import { useFlashCleanup } from "../lib/use-flash-cleanup";
 import { getEnv } from "../lib/env.server";
 import { loadWorkspaceChrome } from "../lib/workspace.server";
 import { listOrgMembers } from "../lib/orgs.server";
-import { loadOrgConfig } from "../lib/org-config.server";
 import { todayInTz } from "../lib/tz";
 import {
   buildPromiseRows,
@@ -38,7 +37,7 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
   const {
     supabase, service, headers, isOwner, isAdmin, org,
     orgName, initials, userLabel, connected, syncLabel,
-    syncIssues, workspaces,
+    syncIssues, workspaces, orgConfig,
   } = await loadWorkspaceChrome(request, env);
 
   // --- URL params ---
@@ -58,8 +57,6 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
   if (q) returnQs.set("q", q);
   const returnTo = `/promises?${returnQs.toString()}`;
 
-  // --- Org config for the due-soon business-day window + org-local "today" ---
-  const orgConfig = await loadOrgConfig(supabase, org.org_id);
   const today = todayInTz(orgConfig.companyProfile.timezone);
   const config: DayConfig = {
     workingDays: orgConfig.workingDays,
@@ -74,16 +71,19 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
     baseline_balance: number | string | null; promised_date: string; grace_until: string;
     created_at: string; contact_log_id: string | null;
   };
-  const promisePage = await pageAllHonest<PromiseDbRow>(
-    (from, to) =>
-      orderPage(
-        supabase
-          .from("promises")
-          .select("id, case_id, customer_id, status, promised_amount, amount_received, baseline_balance, promised_date, grace_until, created_at, contact_log_id", { count: "exact" })
-          .eq("org_id", org.org_id),
-      ).range(from, to),
-    { maxRows: PAGE_ALL_MAX_ROWS },
-  );
+  const [promisePage, roster] = await Promise.all([
+    pageAllHonest<PromiseDbRow>(
+      (from, to) =>
+        orderPage(
+          supabase
+            .from("promises")
+            .select("id, case_id, customer_id, status, promised_amount, amount_received, baseline_balance, promised_date, grace_until, created_at, contact_log_id", { count: "exact" })
+            .eq("org_id", org.org_id),
+        ).range(from, to),
+      { maxRows: PAGE_ALL_MAX_ROWS },
+    ),
+    listOrgMembers(service, org.org_id),
+  ]);
   const rawPromises = promisePage.rows;
 
   const customerIds = Array.from(new Set(rawPromises.map((r) => r.customer_id)));
@@ -188,7 +188,6 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
     };
   });
 
-  const roster = await listOrgMembers(service, org.org_id);
   const ownerLabels = new Map(roster.map((m) => [m.userId, m.label]));
 
   const allRows = buildPromiseRows(promisesInput, today, ownerLabels, {

@@ -10,7 +10,6 @@ import { isContactBlocked } from "../lib/exceptions";
 import { resolveChannelSettings } from "../lib/channel-settings";
 import { isWithinSendWindow, quietHoursWindowLabel } from "../lib/quiet-hours";
 import { resolveEmailSettings } from "../lib/email-settings";
-import { loadOrgConfig } from "../lib/org-config.server";
 import { loadTemplates } from "../lib/message-templates.server";
 import {
   buildThreadRows, applyMessageTab, sortThreadRows, computeMessageMetrics,
@@ -61,7 +60,7 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
   const {
     supabase, service, headers, isOwner, isAdmin, org, user,
     orgName, initials, userLabel, connected, needsReconnect, syncLabel,
-    syncIssues, workspaces,
+    syncIssues, workspaces, orgConfig,
   } = await loadWorkspaceChrome(request, env);
 
   // --- URL params ---
@@ -83,6 +82,21 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
     error_code: string | null; invoice_id: string | null; created_at: string;
   };
   type EmailRow = SmsRow & { subject: string | null };
+  const rosterP = listOrgMembers(service, org.org_id);
+  const templatesP = loadTemplates(supabase, org.org_id).catch(() => ({ sms: [], email: [] }));
+  const readP = pageAllHonest<{ customer_id: string; channel: "sms" | "email"; last_read_at: string }>(
+    (from, to) =>
+      supabase
+        .from("thread_reads")
+        .select("customer_id, channel, last_read_at", { count: "exact" })
+        .eq("org_id", org.org_id)
+        .eq("user_id", user.id)
+        .order("customer_id", { ascending: false })
+        .order("channel", { ascending: false })
+        .range(from, to),
+    { maxRows: PAGE_ALL_MAX_ROWS },
+  );
+
   const [msgPage, emailPage] = await Promise.all([
     pageAllHonest<SmsRow>(
       (from, to) =>
@@ -140,14 +154,10 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
     id: string; customer_id: string | null; qbo_doc_number: string | null; balance: number | string | null; due_date: string | null;
   };
   const emptyHonest = { rows: [] as never[], truncated: false, error: null };
-  const [custPage, casePage, invPage] = customerIds.length === 0
-    ? [
-        { ...emptyHonest, rows: [] as CustRow[] },
-        { ...emptyHonest, rows: [] as CaseLookupRow[] },
-        { ...emptyHonest, rows: [] as InvLookupRow[] },
-      ]
-    : await Promise.all([
-        pageAllChunkedHonest<CustRow>(
+  const [custPage, casePage, invPage, roster, templates, readPage] = await Promise.all([
+    customerIds.length === 0
+      ? Promise.resolve({ ...emptyHonest, rows: [] as CustRow[] })
+      : pageAllChunkedHonest<CustRow>(
           custChunks,
           (ids, from, to) =>
             orderPage(
@@ -159,7 +169,9 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
             ).range(from, to),
           { maxRows: PAGE_ALL_MAX_ROWS },
         ),
-        pageAllChunkedHonest<CaseLookupRow>(
+    customerIds.length === 0
+      ? Promise.resolve({ ...emptyHonest, rows: [] as CaseLookupRow[] })
+      : pageAllChunkedHonest<CaseLookupRow>(
           custChunks,
           (ids, from, to) =>
             orderPage(
@@ -172,7 +184,9 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
             ).range(from, to),
           { maxRows: PAGE_ALL_MAX_ROWS },
         ),
-        pageAllChunkedHonest<InvLookupRow>(
+    customerIds.length === 0
+      ? Promise.resolve({ ...emptyHonest, rows: [] as InvLookupRow[] })
+      : pageAllChunkedHonest<InvLookupRow>(
           custChunks,
           (ids, from, to) =>
             orderPage(
@@ -184,7 +198,10 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
             ).range(from, to),
           { maxRows: PAGE_ALL_MAX_ROWS },
         ),
-      ]);
+    rosterP,
+    templatesP,
+    readP,
+  ]);
   const custRows = custPage.rows;
 
   const openCaseByCustomer = new Map<string, string>();
@@ -223,11 +240,6 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
     contactBlocked: blockedByCustomer.get(c.id as string) ?? false,
   }));
 
-  const [roster, orgConfig, templates] = await Promise.all([
-    listOrgMembers(service, org.org_id),
-    loadOrgConfig(supabase, org.org_id),
-    loadTemplates(supabase, org.org_id).catch(() => ({ sms: [], email: [] })),
-  ]);
   const ownerLabels = new Map(roster.map((m) => [m.userId, m.label]));
   const orgVars = {
     company: orgName,
@@ -236,18 +248,6 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
   };
 
   const lastReadByKey = new Map<string, string>();
-  const readPage = await pageAllHonest<{ customer_id: string; channel: "sms" | "email"; last_read_at: string }>(
-    (from, to) =>
-      supabase
-        .from("thread_reads")
-        .select("customer_id, channel, last_read_at", { count: "exact" })
-        .eq("org_id", org.org_id)
-        .eq("user_id", user.id)
-        .order("customer_id", { ascending: false })
-        .order("channel", { ascending: false })
-        .range(from, to),
-    { maxRows: PAGE_ALL_MAX_ROWS },
-  );
   const listState = honestListState([msgPage, emailPage, custPage, casePage, invPage, readPage]);
   const loadError = listState.loadError ? "Could not load inbox" : null;
   const truncated = listState.truncated;
