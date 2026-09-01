@@ -27,7 +27,7 @@ export function CommPrefsDrawer({
     <DrawerShell label="Communication preferences" closeHref={closeHref}>
         <div className="flex items-center justify-between">
           <h2 className="font-sans text-sm font-semibold text-text">Communication preferences</h2>
-          <Link to={closeHref} className="text-xs text-muted hover:text-text">Close</Link>
+          <Link to={closeHref} className="inline-flex items-center min-h-6 text-xs text-muted hover:text-text rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-copper">Close</Link>
         </div>
         <p className="text-xs text-muted">{customerName}</p>
 

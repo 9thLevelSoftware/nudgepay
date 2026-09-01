@@ -71,7 +71,7 @@ export function BulkSmsDrawer({
           <h2 className="font-display text-lg font-semibold text-text">
             Send SMS to {plural(eligible.length, "customer")}
           </h2>
-          <button type="button" onClick={onClose} className="text-xs text-muted hover:text-text">
+          <button type="button" onClick={onClose} className="inline-flex items-center min-h-6 text-xs text-muted hover:text-text rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-copper">
             Close
           </button>
         </div>
