@@ -5,9 +5,11 @@ main = "./workers/app.ts"
 workers_dev = true
 
 [vars]
-# Non-secret defaults only. Secrets set via `wrangler secret put`.
-SUPABASE_URL = "http://127.0.0.1:54321"
-QBO_SANDBOX = "true"
+# Non-secret defaults for the live Worker (`npx wrangler deploy`). Local
+# `wrangler dev` / `npm run dev` override these from `.dev.vars`.
+SUPABASE_URL = "https://epjumsnmpvilgasycpau.supabase.co"
+QBO_SANDBOX = "false"
+AUTH_RATE_LIMIT_REQUIRED = "true"
 # Optional non-secret flags (not bindings; unset here, set in vars when enabling):
 #   RESEND_ALLOWED_FROM     comma-separated verified From addresses
 #   SMS_REQUIRE_INVENTORY   "true" requires sms_sender_inventory rows at send
@@ -118,6 +120,7 @@ name = "nudgepay-app-staging"
 workers_dev = true
 
 [env.staging.vars]
+SUPABASE_URL = "https://epjumsnmpvilgasycpau.supabase.co"
 QBO_SANDBOX = "true"
 AUTH_RATE_LIMIT_REQUIRED = "true"
 

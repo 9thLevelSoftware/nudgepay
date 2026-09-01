@@ -218,6 +218,10 @@ test("wrangler staging env and operator alert webhook are declared", () => {
   expect(wrangler).toContain("QBO_SANDBOX = \"true\"");
   expect(wrangler).toContain("STRIPE_SECRET_KEY");
   expect(wrangler).toContain("STRIPE_PRICE_ID");
+  const deploy = read("../scripts/deploy-worker.mjs");
+  expect(deploy).toContain(".dev.vars");
+  expect(deploy).toContain("unlinkSync");
+  expect(deploy).toContain("nudgepay-app-staging");
 });
 
 test("org_billing is agency subscription state", () => {
