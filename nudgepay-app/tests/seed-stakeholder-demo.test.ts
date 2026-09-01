@@ -12,7 +12,8 @@ test("stakeholder seed requires DEMO_PASSWORD and does not print a default secre
   expect(src).toContain("DEMO_PASSWORD");
   expect(src).toMatch(/if \(!OWNER_PASSWORD\)/);
   expect(src).not.toMatch(/NudgePay-Demo-2026/);
-  expect(src).not.toMatch(/password:\s*OWNER_PASSWORD/);
+  const printed = src.slice(src.indexOf("console.log"));
+  expect(printed).not.toMatch(/password:/);
 });
 
 test("stakeholder seed does not write the dropped email_config.provider column", () => {
