@@ -1,7 +1,7 @@
 import { beforeAll, expect, test, vi } from "vitest";
 import { serviceClient, makeUserClient } from "./helpers";
 import { sendInvoiceEmail, type EmailDeps } from "../app/lib/email-messaging.server";
-import { EMAIL_CUSTOMER_DAY_CAP } from "../app/lib/send-limits";
+import { EMAIL_CUSTOMER_DAY_CAP, EMAIL_ORG_HOUR_CAP } from "../app/lib/send-limits";
 
 let userId: string;
 beforeAll(async () => { ({ userId } = await makeUserClient("email-sender@example.com")); });
@@ -156,6 +156,37 @@ test("sendInvoiceEmail refuses when the customer day cap is already full", async
   const f = vi.fn();
   await expect(sendInvoiceEmail(deps(f, from), { orgId, invoiceId, userId, subject: "Hi", body: "Pay" }))
     .rejects.toThrow(/rate cap/i);
+  expect(f).not.toHaveBeenCalled();
+});
+
+test("sendInvoiceEmail refuses when the workspace hour cap is already full", async () => {
+  const { orgId, invoiceId } = await seed("hourcap@chancey.test");
+  const from = await enableEmail(orgId);
+  const { data: other } = await svc.from("customers")
+    .insert({ org_id: orgId, name: "Other", email: "other-hour@chancey.test" }).select("id").single();
+  const { data: otherInv } = await svc.from("invoices")
+    .insert({
+      org_id: orgId,
+      qbo_id: `i-hour-${Math.random()}`,
+      qbo_doc_number: "2099",
+      customer_id: other!.id,
+      balance: 50,
+    }).select("id").single();
+  const rows = Array.from({ length: EMAIL_ORG_HOUR_CAP }, (_, i) => ({
+    org_id: orgId,
+    invoice_id: otherInv!.id,
+    customer_id: other!.id,
+    direction: "outbound",
+    to_address: "other-hour@chancey.test",
+    subject: `prior ${i}`,
+    body: `prior ${i}`,
+    status: "sent",
+  }));
+  const { error } = await svc.from("email_messages").insert(rows);
+  expect(error).toBeNull();
+  const f = vi.fn();
+  await expect(sendInvoiceEmail(deps(f, from), { orgId, invoiceId, userId, subject: "Hi", body: "Pay" }))
+    .rejects.toThrow(/workspace/i);
   expect(f).not.toHaveBeenCalled();
 });
 
