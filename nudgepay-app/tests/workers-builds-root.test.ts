@@ -15,10 +15,15 @@ describe("Cloudflare Workers Builds at repo root", () => {
     const rootPkg = JSON.parse(read("../../package.json"));
     expect(rootPkg.scripts.postinstall).toContain("cf-root-postinstall");
     const postinstall = read("../../scripts/cf-root-postinstall.mjs");
-    expect(postinstall).toContain("WORKERS_CI");
+    expect(postinstall).toMatch(/WORKERS_CI/);
+    expect(postinstall).toMatch(/process\.env\.CI/);
     const prepare = read("../scripts/cf-builds-prepare.mjs");
-    expect(prepare).toContain('CI: "true"');
+    expect(prepare).toMatch(/CI:\s*"true"/);
     expect(prepare).toContain("WORKERS_CI");
+    const appPkg = JSON.parse(read("../package.json"));
+    const plugin = String(appPkg.devDependencies["@cloudflare/vite-plugin"]);
+    const [, minor] = plugin.replace(/^[^\d]*/, "").split(".").map(Number);
+    expect(minor, "vite-plugin 1.25+ skips the WebSocket-during-build assertion").toBeGreaterThanOrEqual(25);
   });
 
   it("legacy Netlify redirects stay Netlify-only and are not a Worker asset dir", () => {

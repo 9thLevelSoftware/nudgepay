@@ -22,8 +22,13 @@ function run(cmd, args) {
 
 const built = new URL("../build/server/index.js", import.meta.url);
 // Workers Builds: postinstall already compiled the app. Do not rebuild as a
-// child of `wrangler deploy` — that trips the Vite plugin WebSocket assertion.
-if (process.env.WORKERS_CI === "1" && existsSync(built)) process.exit(0);
+// child of `wrangler deploy` — that trips the Vite plugin WebSocket assertion
+// on @cloudflare/vite-plugin < 1.25.
+const inCi =
+  process.env.WORKERS_CI === "1" ||
+  process.env.CI === "true" ||
+  process.env.CI === "1";
+if (inCi && existsSync(built)) process.exit(0);
 
 const nodeModules = new URL("../node_modules", import.meta.url);
 if (!existsSync(nodeModules)) run("npm", ["ci"]);
