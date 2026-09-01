@@ -6,6 +6,7 @@ import { connectionChrome, connectionSyncLabel } from "./connection-chrome";
 import type { AppEnv } from "./env.server";
 import { displayLabel, initialsFrom } from "./names";
 import { listUserWorkspaces, type UserWorkspace } from "./orgs.server";
+import { hasPermission, isAdminRole, isOwnerRole } from "./roles";
 
 export type ChromeSyncIssue = {
   id: string;
@@ -39,12 +40,16 @@ export function mapSyncIssues(
 export async function loadWorkspaceChrome(
   request: Request,
   env: AppEnv,
-  opts?: { requireQbo?: boolean; requireOwner?: boolean },
+  opts?: { requireQbo?: boolean; requireOwner?: boolean; requireAdmin?: boolean },
 ) {
   const { supabase, headers, user, org } = await requireOrgUser(request, env);
-  const isOwner = org.role === "owner";
+  const isOwner = isOwnerRole(org.role);
+  const isAdmin = isAdminRole(org.role);
 
   if (opts?.requireOwner && !isOwner) {
+    throw redirect("/dashboard?denied=reports", { headers });
+  }
+  if (opts?.requireAdmin && !hasPermission(org.role, "viewReports")) {
     throw redirect("/dashboard?denied=reports", { headers });
   }
 
@@ -79,7 +84,7 @@ export async function loadWorkspaceChrome(
   const orgName = (orgRowRes.data?.name as string) ?? "Workspace";
 
   return {
-    supabase, service, headers, user, org, isOwner,
+    supabase, service, headers, user, org, isOwner, isAdmin,
     orgId: org.org_id,
     orgName, initials, userLabel, connected, needsReconnect, connectionKind: chrome.kind,
     syncLabel, lastSyncAt,

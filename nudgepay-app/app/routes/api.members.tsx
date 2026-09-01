@@ -4,6 +4,7 @@ import { requireUser, resolveOrg } from "../lib/session.server";
 import { createSupabaseServiceClient } from "../lib/supabase.server";
 import { safeReturnTo } from "../lib/return-to";
 import { trySendInviteEmail } from "../lib/invite-email.server";
+import { assignableRoles, hasPermission, parseRole } from "../lib/roles";
 
 function flag(returnTo: string, key: string, val: string): string {
   return `${returnTo}${returnTo.includes("?") ? "&" : "?"}${key}=${val}`;
@@ -21,7 +22,7 @@ export async function action({ request, context }: ActionFunctionArgs) {
   const service = createSupabaseServiceClient(env);
 
   if (intent === "invite") {
-    if (org.role !== "owner") return redirect(flag(returnTo, "error", "forbidden"), { headers });
+    if (!hasPermission(org.role, "manageMembers")) return redirect(flag(returnTo, "error", "forbidden"), { headers });
     const email = typeof form.get("email") === "string" ? (form.get("email") as string).trim().toLowerCase() : "";
     if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
       return redirect(flag(returnTo, "error", "invite"), { headers });
@@ -60,9 +61,14 @@ export async function action({ request, context }: ActionFunctionArgs) {
   }
 
   if (intent === "remove") {
-    if (org.role !== "owner") return redirect(flag(returnTo, "error", "forbidden"), { headers });
+    if (!hasPermission(org.role, "manageMembers")) return redirect(flag(returnTo, "error", "forbidden"), { headers });
     const memberId = typeof form.get("userId") === "string" ? (form.get("userId") as string) : "";
     if (!memberId || memberId === user.id) return redirect(flag(returnTo, "error", "member"), { headers });
+    const { data: target } = await service.from("memberships")
+      .select("role").eq("org_id", org.org_id).eq("user_id", memberId).maybeSingle();
+    if (target?.role === "owner" && !hasPermission(org.role, "manageOwners")) {
+      return redirect(flag(returnTo, "error", "forbidden"), { headers });
+    }
     const { error } = await service.from("memberships")
       .delete().eq("org_id", org.org_id).eq("user_id", memberId);
     if (error) return redirect(flag(returnTo, "error", "member"), { headers });
@@ -70,18 +76,25 @@ export async function action({ request, context }: ActionFunctionArgs) {
   }
 
   if (intent === "role") {
-    if (org.role !== "owner") return redirect(flag(returnTo, "error", "forbidden"), { headers });
+    if (!hasPermission(org.role, "manageMembers")) return redirect(flag(returnTo, "error", "forbidden"), { headers });
     const memberId = typeof form.get("userId") === "string" ? (form.get("userId") as string) : "";
-    const role = form.get("role") === "owner" ? "owner" : "member";
-    if (!memberId) return redirect(flag(returnTo, "error", "member"), { headers });
+    const nextRole = parseRole(typeof form.get("role") === "string" ? (form.get("role") as string) : "");
+    if (!memberId || !nextRole || !assignableRoles(org.role).includes(nextRole)) {
+      return redirect(flag(returnTo, "error", "member"), { headers });
+    }
+    const { data: target } = await service.from("memberships")
+      .select("role").eq("org_id", org.org_id).eq("user_id", memberId).maybeSingle();
+    if (target?.role === "owner" && !hasPermission(org.role, "manageOwners")) {
+      return redirect(flag(returnTo, "error", "forbidden"), { headers });
+    }
     const { error } = await service.from("memberships")
-      .update({ role }).eq("org_id", org.org_id).eq("user_id", memberId);
+      .update({ role: nextRole }).eq("org_id", org.org_id).eq("user_id", memberId);
     if (error) return redirect(flag(returnTo, "error", "member"), { headers });
     return redirect(flag(returnTo, "saved", "member"), { headers });
   }
 
   if (intent === "revoke") {
-    if (org.role !== "owner") return redirect(flag(returnTo, "error", "forbidden"), { headers });
+    if (!hasPermission(org.role, "manageMembers")) return redirect(flag(returnTo, "error", "forbidden"), { headers });
     const inviteId = String(form.get("inviteId") ?? "");
     if (!inviteId) return redirect(flag(returnTo, "error", "revoke"), { headers });
     const { data, error } = await service.from("invites")

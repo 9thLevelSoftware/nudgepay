@@ -6,6 +6,7 @@ import { disconnectConnection } from "../lib/qbo-connection.server";
 import { intuitDisconnectPlan } from "../lib/auth-flow.server";
 import { qboDisconnectDecision } from "../lib/qbo-disconnect";
 import { safeReturnTo } from "../lib/return-to";
+import { hasPermission } from "../lib/roles";
 
 function qboCfg(qbo: QboEnv) {
   return { clientId: qbo.QBO_CLIENT_ID, clientSecret: qbo.QBO_CLIENT_SECRET, redirectUri: qbo.QBO_REDIRECT_URI };
@@ -17,7 +18,7 @@ export async function action({ request, context }: ActionFunctionArgs) {
   const env = getEnv(context as any);
   const { supabase, headers, user } = await requireUser(request, env);
   const org = await resolveOrg(supabase, user.id, request);
-  if (!org || org.role !== "owner") return redirect("/dashboard?qbo=forbidden", { headers });
+  if (!org || !hasPermission(org.role, "manageSettings")) return redirect("/dashboard?qbo=forbidden", { headers });
   const form = await request.formData();
   const returnTo = safeReturnTo(form.get("returnTo"));
   const sep = returnTo.includes("?") ? "&" : "?";

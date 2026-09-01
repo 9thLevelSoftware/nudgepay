@@ -123,3 +123,63 @@ test("accepted invite is not deleted by revoke", async () => {
   expect(rows).toHaveLength(1);
   expect(rows![0].accepted_at).toBeTruthy();
 });
+
+test("admin can revoke a pending invite", async () => {
+  const svc = serviceClient();
+  const { data: org } = await svc.from("organizations")
+    .insert({ name: `Revoke admin ${Math.random()}` }).select("id").single();
+  const orgId = org!.id as string;
+  const owner = await makeUserClient(`revoke-admin-owner-${Math.random()}@example.com`);
+  const adminEmail = `revoke-admin-${Math.random()}@example.com`;
+  const admin = await makeUserClient(adminEmail);
+  await svc.from("memberships").insert([
+    { org_id: orgId, user_id: owner.userId, role: "owner" },
+    { org_id: orgId, user_id: admin.userId, role: "admin" },
+  ]);
+  const { data: inv } = await svc.from("invites")
+    .insert({ org_id: orgId, email: `pending-admin-${Math.random()}@example.com` })
+    .select("id").single();
+
+  const cookie = sessionCookie(await signInSession(adminEmail));
+  const res = await postMembers(cookie, {
+    intent: "revoke",
+    inviteId: inv!.id,
+    returnTo: "/settings",
+  });
+
+  expect(res.status).toBe(302);
+  expect(res.headers.get("Location") ?? "").not.toContain("error=forbidden");
+  const { data: rows } = await svc.from("invites").select("id").eq("id", inv!.id);
+  expect(rows ?? []).toHaveLength(0);
+});
+
+test("admin cannot grant owner", async () => {
+  const svc = serviceClient();
+  const { data: org } = await svc.from("organizations")
+    .insert({ name: `Admin grant owner ${Math.random()}` }).select("id").single();
+  const orgId = org!.id as string;
+  const owner = await makeUserClient(`admin-grant-owner-${Math.random()}@example.com`);
+  const adminEmail = `admin-grant-${Math.random()}@example.com`;
+  const admin = await makeUserClient(adminEmail);
+  const member = await makeUserClient(`admin-grant-mem-${Math.random()}@example.com`);
+  await svc.from("memberships").insert([
+    { org_id: orgId, user_id: owner.userId, role: "owner" },
+    { org_id: orgId, user_id: admin.userId, role: "admin" },
+    { org_id: orgId, user_id: member.userId, role: "member" },
+  ]);
+
+  const cookie = sessionCookie(await signInSession(adminEmail));
+  const res = await postMembers(cookie, {
+    intent: "role",
+    userId: member.userId,
+    role: "owner",
+    returnTo: "/settings",
+  });
+
+  expect(res.status).toBe(302);
+  expect(res.headers.get("Location") ?? "").toContain("error=");
+  const { data: mem } = await svc.from("memberships")
+    .select("role").eq("org_id", orgId).eq("user_id", member.userId).single();
+  expect(mem?.role).toBe("member");
+});
+

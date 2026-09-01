@@ -43,7 +43,7 @@ export const meta: Route.MetaFunction = () => pageTitle("Accounts");
 export async function loader({ request, context }: LoaderFunctionArgs) {
   const env = getEnv(context as any);
   const {
-    supabase, service, headers, isOwner, org,
+    supabase, service, headers, isOwner, isAdmin, org,
     orgName, initials, userLabel, connected, syncLabel,
     syncIssues, workspaces,
   } = await loadWorkspaceChrome(request, env);
@@ -270,6 +270,7 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
       syncLabel,
       connected,
       isOwner,
+      isAdmin,
       syncIssues,
       rows: loadError ? [] : rows,
       metrics,
@@ -304,6 +305,7 @@ export default function Accounts() {
       syncLabel={d.syncLabel}
       connected={d.connected}
       isOwner={d.isOwner}
+      isAdmin={d.isAdmin}
       activeNav="accounts"
       syncIssues={<SyncIssues issues={d.syncIssues} returnTo="/accounts" />}
     >

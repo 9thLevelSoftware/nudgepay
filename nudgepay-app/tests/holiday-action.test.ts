@@ -152,4 +152,31 @@ describe("add_holiday", () => {
     const { data: rows } = await svc.from("org_holidays").select("holiday_date").eq("org_id", orgId);
     expect(rows).toEqual([]);
   });
+
+  it("an admin can add a holiday", async () => {
+    const svc = serviceClient();
+    const { data: org } = await svc.from("organizations")
+      .insert({ name: `Holiday-admin ${Math.random()}` }).select("id").single();
+    const orgId = org!.id as string;
+    const owner = await makeUserClient(`holiday-admin-owner-${Math.random()}@example.com`);
+    const email = `holiday-admin-${Math.random()}@example.com`;
+    const admin = await makeUserClient(email);
+    await svc.from("memberships").insert([
+      { org_id: orgId, user_id: owner.userId, role: "owner" },
+      { org_id: orgId, user_id: admin.userId, role: "admin" },
+    ]);
+    const cookie = sessionCookie(await signInSession(email));
+
+    const res = await postOrgSettings(cookie, {
+      intent: "add_holiday",
+      returnTo: "/settings?tab=collections",
+      holiday_date: "2026-07-04",
+      holiday_label: "Independence Day",
+    });
+
+    expect(res.status).toBe(302);
+    const { data: rows } = await svc.from("org_holidays")
+      .select("holiday_date, label").eq("org_id", orgId);
+    expect(rows).toEqual([{ holiday_date: "2026-07-04", label: "Independence Day" }]);
+  });
 });

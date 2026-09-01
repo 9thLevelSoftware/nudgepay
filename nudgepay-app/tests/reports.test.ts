@@ -311,9 +311,9 @@ test("arKpisToCsv is reused from ar-kpis (blank nulls, coverage column)", () => 
 
 // ── Reports page / CSV wiring ────────────────────────────────────────────────
 
-test("reports page renders ArKpiBand for the selected range and stays owner-only", () => {
+test("reports page renders ArKpiBand for the selected range and stays admin-only", () => {
   const page = readFileSync(new URL("../app/routes/reports.tsx", import.meta.url), "utf8");
-  expect(page).toContain("requireOwner: true");
+  expect(page).toContain("requireAdmin: true");
   expect(page).toContain("loadReportArKpis");
   expect(page).toContain("loadTeamReport");
   expect(page).toContain("<ArKpiBand");
@@ -345,7 +345,7 @@ test("reports.server loads AR KPIs with the selected range, not Stage-2 last-con
 
 test("reports.csv sheet=ar uses arKpisToCsv; default team skips AR queries", () => {
   const csvRoute = readFileSync(new URL("../app/routes/reports.csv.tsx", import.meta.url), "utf8");
-  expect(csvRoute).toContain("requireOwner: true");
+  expect(csvRoute).toContain("requireAdmin: true");
   expect(csvRoute).toContain("parseReportSheet");
   expect(csvRoute).toContain('sheet === "ar"');
   expect(csvRoute).toContain("arKpisToCsv");

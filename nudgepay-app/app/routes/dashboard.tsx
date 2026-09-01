@@ -585,6 +585,7 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
       userInitials: initials,
       userLabel,
       isOwner: org.role === "owner",
+      isAdmin: org.role === "owner" || org.role === "admin",
       connected,
       needsReconnect,
       syncIssues: mapSyncIssues(syncErrorRows as {
@@ -669,6 +670,7 @@ export default function Dashboard() {
     userInitials,
     userLabel,
     isOwner,
+    isAdmin,
     connected,
     needsReconnect,
     syncIssues,
@@ -770,6 +772,7 @@ export default function Dashboard() {
       syncLabel={syncLabel}
       connected={connected}
       isOwner={isOwner}
+      isAdmin={isAdmin}
       activeNav="collections"
       headerActions={
         <Link
@@ -789,7 +792,7 @@ export default function Dashboard() {
       ) : null}
       {!connected ? (
         <FirstRunBanner
-          isOwner={isOwner}
+          isOwner={isAdmin}
           qboConfigured={qboConfigured}
           kind={needsReconnect ? "needs_reconnect" : "not_connected"}
         />
@@ -826,7 +829,7 @@ export default function Dashboard() {
       ) : null}
       {denied === "reports" ? (
         <div className="px-6 py-2 bg-hot/10 border-b border-hot/30 text-sm font-sans font-medium text-hot" role="status">
-          Reports are available to workspace owners only.
+          Reports are available to workspace owners and admins.
         </div>
       ) : null}
 
@@ -835,7 +838,7 @@ export default function Dashboard() {
           <div className="px-6 py-3 border-b border-border bg-panel shrink-0 space-y-3">
             {loadError ? <LoadErrorBanner message={loadError} /> : null}
             {queueTruncatedMessage ? <TruncationBanner message={queueTruncatedMessage} /> : null}
-            <ArKpiBand kpis={arKpis} isOwner={isOwner} connected={connected} needsReconnect={needsReconnect} />
+            <ArKpiBand kpis={arKpis} isOwner={isAdmin} connected={connected} needsReconnect={needsReconnect} />
             <KpiBand metrics={metrics} view={view} sort={sort} search={q} entity={hrefEntity} density={hrefDensity} scopeLabel={scopeLabel} clearHref={clearHref} lastContactTruncated={lastContactTruncated || !!loadError} />
           </div>
 
@@ -894,7 +897,7 @@ export default function Dashboard() {
                   messages={selectedMessages}
                   consent={selectedConsent}
                   smsConsentSource={selectedSmsConsentSource}
-                  isOwner={isOwner}
+                  isOwner={isAdmin}
                   prefs={selectedPrefs}
                   phone={selectedPhone}
                   selectedPromiseId={selectedPromiseId}

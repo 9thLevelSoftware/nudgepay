@@ -28,7 +28,7 @@ export async function action({ request, context }: ActionFunctionArgs) {
     .maybeSingle();
   const customerName = typeof cust?.name === "string" ? cust.name : "";
   const decision = customerErasureDecision({
-    isOwner: org.role === "owner",
+    isOwner: org.role === "owner" || org.role === "admin",
     alreadyErased: cust?.erased_at != null,
     typedName: form.get("confirm"),
     customerName,

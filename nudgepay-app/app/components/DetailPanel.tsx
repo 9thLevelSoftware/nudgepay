@@ -239,7 +239,7 @@ function MessagesTab({
             Communication preferences
           </Link>
           {!consent && smsConsentSource === "inbound_stop" && !isOwner ? (
-            <p className="text-xs font-sans text-hot">Stopped by inbound STOP. Owner override required.</p>
+            <p className="text-xs font-sans text-hot">Stopped by inbound STOP. Admin override required.</p>
           ) : (
             <form method="post" action="/api/sms-consent">
               <div className="flex flex-wrap items-center gap-2">

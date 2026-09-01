@@ -159,7 +159,7 @@ export function AccountProfile(p: Props) {
             <input type="checkbox" name="do_not_text" value="true" defaultChecked={p.commPrefs.doNotText || p.smsConsentSource === "inbound_stop"} disabled={p.smsConsentSource === "inbound_stop"} /> Do not text
           </label>
           {p.smsConsentSource === "inbound_stop" ? (
-            <span className="text-xs text-hot">Stopped by inbound STOP. Owner override required.</span>
+            <span className="text-xs text-hot">Stopped by inbound STOP. Admin override required.</span>
           ) : p.commPrefs.doNotText ? (
             <label className="flex items-center gap-1.5 text-sm">
               <input type="checkbox" name="confirm_resubscribe_sms" value="true" /> Confirm re-enable texts
@@ -339,7 +339,7 @@ function EraseCustomerForm({
         <p className="mt-2 text-xs text-hot" role="alert">Type the customer name to confirm.</p>
       ) : null}
       {eraseError === "forbidden" ? (
-        <p className="mt-2 text-xs text-hot" role="alert">Only owners can erase customer personal data.</p>
+        <p className="mt-2 text-xs text-hot" role="alert">Only owners and admins can erase customer personal data.</p>
       ) : null}
       {eraseError === "already" ? (
         <p className="mt-2 text-xs text-hot" role="alert">Personal data for this customer is already erased.</p>

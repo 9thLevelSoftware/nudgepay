@@ -51,9 +51,10 @@ export async function action({ request, context }: ActionFunctionArgs) {
 
   const reason = typeof form.get("reason") === "string" ? (form.get("reason") as string).trim() : "";
   const stopLocked = current.sms_consent_source === "inbound_stop";
-  const overrideStop = stopLocked && consent === true && org.role === "owner" && reason.length >= 3;
+  const canOverrideStop = org.role === "owner" || org.role === "admin";
+  const overrideStop = stopLocked && consent === true && canOverrideStop && reason.length >= 3;
   if (stopLocked && !overrideStop) {
-    if (org.role === "owner" && consent === true) {
+    if (canOverrideStop && consent === true) {
       return redirect(withSms(returnTo, "consent_locked"), { headers });
     }
     // Stale revoke (or member write) must not rewrite inbound_stop → staff.

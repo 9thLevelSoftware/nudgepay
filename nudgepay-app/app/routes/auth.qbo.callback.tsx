@@ -10,6 +10,7 @@ import { isSupportedQboCompany } from "../lib/qbo-company";
 import { syncOverdueInvoices, type SyncDeps } from "../lib/qbo-sync.server";
 import { sendBrokenPromiseAlerts } from "../lib/notifications.server";
 import { recordSyncError } from "../lib/sync-errors.server";
+import { hasPermission } from "../lib/roles";
 
 export async function loader({ request, context }: LoaderFunctionArgs) {
   const env = getEnv(context as any);
@@ -31,7 +32,7 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
     const service = createSupabaseServiceClient(env);
     const oauthState = await consumeOAuthState(service, state); // throws on invalid/expired/replay
     const org = await resolveOrg(supabase, user.id, request);
-    if (!org || org.role !== "owner" || org.org_id !== oauthState.orgId || user.id !== oauthState.userId) {
+    if (!org || !hasPermission(org.role, "manageSettings") || org.org_id !== oauthState.orgId || user.id !== oauthState.userId) {
       return redirect("/dashboard?qbo=forbidden", { headers });
     }
     const tokens = await exchangeCodeForTokens(fetch, cfg, code);

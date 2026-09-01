@@ -59,7 +59,7 @@ function mapSms(r: any): Omit<ThreadMessageInput, "channel" | "subject"> {
 export async function loader({ request, context }: LoaderFunctionArgs) {
   const env = getEnv(context as any);
   const {
-    supabase, service, headers, isOwner, org, user,
+    supabase, service, headers, isOwner, isAdmin, org, user,
     orgName, initials, userLabel, connected, needsReconnect, syncLabel,
     syncIssues, workspaces,
   } = await loadWorkspaceChrome(request, env);
@@ -347,7 +347,7 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
   if (ecfgErr) throw ecfgErr;
   const emailEnabled = resolveEmailSettings(ecfg as any).emailEnabled;
 
-  const unmatchedStops = isOwner
+  const unmatchedStops = isAdmin
     ? await listRecentUnmatchedStops(service)
     : { rows: [], loadError: null };
 
@@ -355,7 +355,7 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
     {
       orgName,
       workspaces,
-      initials, userLabel, syncLabel, connected, needsReconnect, isOwner, syncIssues,
+      initials, userLabel, syncLabel, connected, needsReconnect, isOwner, isAdmin, syncIssues,
       rows, metrics, counts, tab, sort, q,
       channel, channelCounts, emailEnabled, lastInboundAt,
       selected, selectedMessages, selectedEmailMessages,
@@ -492,17 +492,18 @@ export default function Messages() {
       syncLabel={d.syncLabel}
       connected={d.connected}
       isOwner={d.isOwner}
+      isAdmin={d.isAdmin}
       activeNav="messages"
       syncIssues={<SyncIssues issues={d.syncIssues} returnTo="/messages" />}
     >
       <div className="p-4 sm:p-6 space-y-4 sm:space-y-6">
         {d.loadError ? <LoadErrorBanner message={d.loadError} /> : d.truncated ? <TruncationBanner /> : null}
-        {d.isOwner ? (
+        {d.isAdmin ? (
           <p className="text-xs text-warm" role="status">
             All workspaces share this sender. STOP applies to every customer with this phone.
           </p>
         ) : null}
-        {d.isOwner ? <UnmatchedStopList stops={d.unmatchedStops.rows} loadError={d.unmatchedStops.loadError} /> : null}
+        {d.isAdmin ? <UnmatchedStopList stops={d.unmatchedStops.rows} loadError={d.unmatchedStops.loadError} /> : null}
         <MessagesMetrics metrics={d.metrics} truncated={d.truncated || !!d.loadError} />
         {(() => {
           const threadPanel = (
@@ -512,7 +513,7 @@ export default function Messages() {
               emailMessages={d.selectedEmailMessages}
               consent={d.selectedConsent}
               smsConsentSource={d.selectedSmsConsentSource}
-              isOwner={d.isOwner}
+              isOwner={d.isAdmin}
               phone={d.selectedPhone}
               vars={d.selectedVars}
               sms={d.sms}
