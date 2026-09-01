@@ -548,6 +548,13 @@ test("first-connect heal backfills before CDC and skips CDC on backfill failure"
   expect(query).toContain("last_sync_at");
 });
 
+test("CDC cron skips connected rows with no refresh token (demo chrome)", () => {
+  const src = read("../app/lib/qbo-cron.server.ts");
+  const query = src.slice(src.indexOf("pageAll"), src.indexOf("if (conns.truncated)"));
+  expect(query).toContain('.eq("status", "connected")');
+  expect(query).toContain('.not("refresh_token_enc", "is", null)');
+});
+
 test("inbound email routing includes disabled from-addresses and treats multiples as ambiguous", () => {
   const src = read("../app/lib/email-messaging.server.ts");
   const inbound = src.slice(
