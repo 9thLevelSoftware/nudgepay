@@ -29,7 +29,7 @@ export function WebhookUrlField({ label, url }: { label: string; url: string | n
           type="button"
           onClick={copy}
           aria-label={`Copy ${label} URL`}
-          className="shrink-0 rounded-md border border-border px-2 py-1 text-[11px] font-medium text-text hover:border-copper"
+          className="inline-flex items-center min-h-6 shrink-0 rounded-md border border-border px-2 py-1 text-[11px] font-medium text-text hover:border-copper"
         >
           {copied ? "Copied" : "Copy"}
         </button>
