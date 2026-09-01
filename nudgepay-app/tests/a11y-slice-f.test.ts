@@ -158,6 +158,10 @@ describe("pointer target size (WCAG 2.5.8)", () => {
     expect(templates).toContain("aria-label={`Insert {${k}}`}");
     expect(templates).toMatch(/aria-label=\{`Insert \{\$\{k\}\}`\}[\s\S]{0,220}min-h-6/);
     expect(templates).not.toMatch(/aria-label=\{`Insert \{\$\{k\}\}`\}[\s\S]{0,220}py-0\.5/);
+    const bulk = read("../app/components/BulkSmsDrawer.tsx");
+    expect(bulk).toMatch(/onClose[\s\S]{0,120}min-h-6/);
+    const comm = read("../app/components/CommPrefsDrawer.tsx");
+    expect(comm).toMatch(/min-h-6[\s\S]{0,160}>Close<\/Link>/);
   });
 });
 
