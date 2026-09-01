@@ -108,6 +108,28 @@ test("sendInvoiceText refuses when the customer day cap is already full", async 
   expect(fetchFn).not.toHaveBeenCalled();
 });
 
+test("sendInvoiceText still sends when prior customer texts are older than 24h", async () => {
+  const { orgId, invoiceId, customerId } = await seed(true, "+12295550925");
+  const stale = new Date(DAYTIME_NOW.getTime() - 25 * 60 * 60 * 1000).toISOString();
+  const rows = Array.from({ length: SMS_CUSTOMER_DAY_CAP }, (_, i) => ({
+    org_id: orgId,
+    invoice_id: invoiceId,
+    customer_id: customerId,
+    direction: "outbound",
+    to_number: "+12295550925",
+    body: `stale ${i}`,
+    status: "sent",
+    created_at: stale,
+  }));
+  const { error } = await svc.from("text_messages").insert(rows);
+  expect(error).toBeNull();
+  const sid = `SM-stale-${Math.random().toString(16).slice(2)}`;
+  const fetchFn = vi.fn(async () => jsonResponse({ sid, status: "queued" }));
+  const res = await sendInvoiceText(deps(fetchFn), { orgId, invoiceId, userId, body: "Past due" });
+  expect(res.sid).toBe(sid);
+  expect(fetchFn).toHaveBeenCalledOnce();
+});
+
 test("sendInvoiceText refuses when the workspace hour cap is already full", async () => {
   const { orgId, invoiceId } = await seed(true, "+12295550920");
   const { data: other } = await svc.from("customers")
