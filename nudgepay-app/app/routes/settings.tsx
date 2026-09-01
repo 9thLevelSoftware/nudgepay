@@ -444,7 +444,7 @@ export default function Settings() {
                   <h2 className="font-display text-base font-semibold text-text">Download workspace data</h2>
                   <p className="mt-0.5 text-xs text-muted">
                     JSON copy of this workspace&apos;s customers, invoices, cases,
-                    and messages. QuickBooks tokens are not included. Lists cap
+                    promises, and messages. QuickBooks tokens are not included. Lists cap
                     at 5,000 rows each; truncation is marked in the file.
                   </p>
                   <Form method="get" action="/api/workspace/export" className="mt-3">

@@ -30,6 +30,15 @@ export type WorkspaceDataExport = {
     status: string | null;
     closedAt: string | null;
   }>;
+  promises: WorkspaceExportTable<{
+    id: string;
+    customerId: string | null;
+    caseId: string | null;
+    status: string | null;
+    promisedAmount: number | null;
+    promisedDate: string | null;
+    resolvedAt: string | null;
+  }>;
   contactLogs: WorkspaceExportTable<{
     id: string;
     customerId: string | null;
