@@ -216,6 +216,15 @@ test("wrangler staging env and operator alert webhook are declared", () => {
   expect(wrangler).toContain("[env.staging]");
   expect(wrangler).toContain('name = "nudgepay-app-staging"');
   expect(wrangler).toContain("QBO_SANDBOX = \"true\"");
+  expect(wrangler).toContain("STRIPE_SECRET_KEY");
+  expect(wrangler).toContain("STRIPE_PRICE_ID");
+});
+
+test("org_billing is agency subscription state", () => {
+  const sql = read("../supabase/migrations/0058_org_billing.sql");
+  expect(sql).toContain("create table public.org_billing");
+  expect(sql).toContain("stripe_customer_id");
+  expect(sql).toMatch(/org_billing_member_read/);
 });
 
 test("pilot-ops documents Worker rollback and that migrations are not undone", () => {
@@ -311,10 +320,22 @@ test("scheduled jobs do not send customer SMS or collection email", () => {
   expect(worker).not.toMatch(/runBulkSms/);
   expect(worker).not.toMatch(/api\.text\.send/);
   expect(worker).not.toMatch(/api\.email\.send/);
+});
+
+test("Stripe is agency SaaS billing, not debtor payments", () => {
   const routes = read("../app/routes.ts");
-  expect(routes.toLowerCase()).not.toMatch(/stripe|checkout|\/billing/);
+  expect(routes).toContain("webhooks/stripe");
+  expect(routes).toContain("api/billing/checkout");
+  expect(routes).toContain("api/billing/portal");
+  const checkout = read("../app/routes/api.billing.checkout.tsx");
+  expect(checkout).toContain("createCheckoutSession");
+  expect(checkout).not.toMatch(/customer invoice|pay now|charge the customer/i);
+  const billing = read("../app/lib/billing.ts");
+  expect(billing).toMatch(/does not charge your customers/i);
   const pkg = JSON.parse(read("../package.json"));
   expect(JSON.stringify(pkg.dependencies ?? {})).not.toMatch(/stripe/i);
+  const eula = read("../app/routes/eula.tsx");
+  expect(eula).toMatch(/we do not charge your customers/i);
 });
 
 test("PR CI runs unit, production check, supabase integration, and browser smoke", () => {

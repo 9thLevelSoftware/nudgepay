@@ -6,7 +6,7 @@ import { orgNameMatches } from "../lib/qbo-disconnect";
 import { LEAVE_CONFIRM_TOKEN, deletionConfirmMatches, isLastOwnerMember } from "../lib/account-deletion";
 import { PERSONAL_DELETE_TOKEN, personalAccountConfirmMatches } from "../lib/personal-account-deletion";
 import { PILOT_LIMIT_LINES } from "../lib/pilot-limits";
-import { getEnv, getTwilioEnvOrNull, getEmailEnvOrNull, getPublicBaseUrls, getQboEnvOrNull, smsRequireInventory } from "../lib/env.server";
+import { getEnv, getTwilioEnvOrNull, getEmailEnvOrNull, getPublicBaseUrls, getQboEnvOrNull, getStripeEnvOrNull, smsRequireInventory } from "../lib/env.server";
 import { loadWorkspaceChrome } from "../lib/workspace.server";
 import { listOrgMembers } from "../lib/orgs.server";
 import { loadOrgConfig } from "../lib/org-config.server";
@@ -34,6 +34,8 @@ import { resolveChannelSettings, resolveSmsSenderSettings } from "../lib/channel
 import { resolveEmailSettings } from "../lib/email-settings";
 import { deriveWebhookUrls } from "../lib/provider-status";
 import { loadTemplates } from "../lib/message-templates.server";
+import { BillingSettingsSection } from "../components/BillingSettingsSection";
+import { parseBillingStatus } from "../lib/billing";
 import { pageTitle } from "../lib/meta";
 import type { Route } from "./+types/settings";
 
@@ -90,7 +92,8 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
   const webhookUrls = deriveWebhookUrls(twilioBaseUrl, appBaseUrl);
 
   const since = new Date(Date.now() - 7 * 86_400_000).toISOString();
-  const [smsLast, smsFailures, emailLast, emailFailures, templates, members, inviteRows] = await Promise.all([
+  const stripeConfigured = getStripeEnvOrNull(context as any) !== null;
+  const [smsLast, smsFailures, emailLast, emailFailures, templates, members, inviteRows, billingRow] = await Promise.all([
     supabase.from("text_messages")
       .select("created_at, status").eq("org_id", org.org_id).eq("direction", "outbound")
       .order("created_at", { ascending: false }).limit(1).maybeSingle(),
@@ -110,6 +113,10 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
       .eq("org_id", org.org_id)
       .is("accepted_at", null)
       .order("created_at", { ascending: false }),
+    supabase.from("org_billing")
+      .select("status, current_period_end")
+      .eq("org_id", org.org_id)
+      .maybeSingle(),
   ]);
 
   return data({
@@ -121,6 +128,10 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
     ownerEmail: user.email ?? "",
     initials, userLabel, isOwner, isAdmin, connected, needsReconnect, lastSyncAt, chromeSyncLabel, syncIssues,
     qboConfigured,
+    stripeConfigured,
+    billingStatus: parseBillingStatus(billingRow.data?.status as string | undefined),
+    billingPeriodEnd: (billingRow.data?.current_period_end as string | null) ?? null,
+    billingFlash: sp.get("billing"),
     qboRedirectHint: appBaseUrl
       ? `${appBaseUrl.replace(/\/$/, "")}/auth/qbo/callback`
       : "/auth/qbo/callback",
@@ -317,6 +328,17 @@ export default function Settings() {
         <div className="mx-auto flex max-w-3xl flex-col gap-5">
           <h1 className="font-display text-xl font-semibold text-text">Settings</h1>
           <SettingsTabs />
+
+          {tab === "billing" && (
+            <BillingSettingsSection
+              isOwner={d.isOwner}
+              configured={d.stripeConfigured}
+              status={d.billingStatus}
+              currentPeriodEnd={d.billingPeriodEnd}
+              returnTo={returnTo}
+              flash={d.billingFlash}
+            />
+          )}
 
           {/* ── Workspace tab ────────────────────────────────────── */}
           {tab === "workspace" && (

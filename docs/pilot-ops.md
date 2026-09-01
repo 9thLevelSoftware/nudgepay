@@ -13,7 +13,8 @@ Support: `support@nudgepay-ar.app`.
 - Staff send each text and email. There is no automatic reminder sequence.
   Quiet-hours blocks are not queued to send later.
 - A payment portal URL is the tenant's own page. NudgePay does not process
-  payments or charge customers.
+  payments or charge customers. Workspace owners pay NudgePay (agency
+  subscription) from Settings → Billing.
 - Queue, reports, and sync pages cap at 5,000 rows per list. Truncation is
   shown; results are not silently complete.
 - Leave workspace removes membership and signs out. It does not delete the

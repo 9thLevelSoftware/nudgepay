@@ -174,3 +174,22 @@ export function getTwilioEnv(context: { cloudflare: { env: Record<string, string
 export function smsRequireInventory(env: Record<string, string | undefined>): boolean {
   return env.SMS_REQUIRE_INVENTORY === "true";
 }
+
+export type StripeEnv = {
+  STRIPE_SECRET_KEY: string;
+  STRIPE_WEBHOOK_SECRET: string;
+  STRIPE_PRICE_ID: string;
+};
+
+/** Agency SaaS billing. Null when secrets are not set — Settings degrades, no 500. */
+export function getStripeEnvOrNull(
+  context: { cloudflare: { env: Record<string, string> } },
+): StripeEnv | null {
+  const e = context.cloudflare.env;
+  if (!e.STRIPE_SECRET_KEY || !e.STRIPE_WEBHOOK_SECRET || !e.STRIPE_PRICE_ID) return null;
+  return {
+    STRIPE_SECRET_KEY: e.STRIPE_SECRET_KEY,
+    STRIPE_WEBHOOK_SECRET: e.STRIPE_WEBHOOK_SECRET,
+    STRIPE_PRICE_ID: e.STRIPE_PRICE_ID,
+  };
+}
