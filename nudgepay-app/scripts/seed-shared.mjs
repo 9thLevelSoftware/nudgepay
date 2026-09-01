@@ -80,11 +80,11 @@ export function demoContactLogSpecs() {
   ];
 }
 
-/** Page GoTrue admin users until an exact email match. First-page-only lookups miss after ~200 users. */
+/** Page GoTrue admin users until an exact email match. A single page misses anyone past perPage. */
 export async function findUserByEmail(svc, email) {
   const needle = email.toLowerCase();
-  const perPage = 200;
-  for (let page = 1; page <= 50; page++) {
+  const perPage = 1000;
+  for (let page = 1; ; page++) {
     const { data, error } = await svc.auth.admin.listUsers({ page, perPage });
     if (error) throw error;
     const users = data?.users ?? [];
@@ -92,7 +92,6 @@ export async function findUserByEmail(svc, email) {
     if (found) return found;
     if (users.length < perPage) return null;
   }
-  return null;
 }
 
 export async function wipeOrgWorkItems(svc, orgId) {

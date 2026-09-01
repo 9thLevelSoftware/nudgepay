@@ -32,9 +32,11 @@ test("stakeholder seed is a thin driver over shared fixtures", () => {
   expect(driver).not.toContain("Riverside Apartments LLC");
 });
 
-test("shared seed pages listUsers until a match (does not stop at page 1)", () => {
+test("shared seed pages listUsers until a match or a short page", () => {
   const shared = read("../scripts/seed-shared.mjs");
   expect(shared).toContain("export async function findUserByEmail");
-  expect(shared).toMatch(/for \(let page = 1;/);
+  expect(shared).toMatch(/for \(let page = 1; ; page\+\+\)/);
   expect(shared).toContain("listUsers({ page, perPage })");
+  expect(shared).toContain("users.length < perPage");
+  expect(shared).not.toMatch(/page <= 50/);
 });
