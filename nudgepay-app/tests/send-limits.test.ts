@@ -2,6 +2,7 @@ import { expect, test } from "vitest";
 import {
   evaluateSendBudget, evaluateTestBudget, sendIdempotencyKey,
   SMS_ORG_HOUR_CAP, SMS_CUSTOMER_DAY_CAP, TEST_HOUR_CAP,
+  EMAIL_ORG_HOUR_CAP, EMAIL_CUSTOMER_DAY_CAP,
 } from "../app/lib/send-limits";
 
 test("evaluateSendBudget allows under both caps", () => {
@@ -22,6 +23,28 @@ test("evaluateSendBudget rejects per-customer daily cap", () => {
     orgCount: 1, customerCount: SMS_CUSTOMER_DAY_CAP,
     orgCap: SMS_ORG_HOUR_CAP, customerCap: SMS_CUSTOMER_DAY_CAP,
   })).toEqual({ ok: false, reason: "customer_cap" });
+});
+
+test("evaluateSendBudget applies the same helper to email caps", () => {
+  expect(evaluateSendBudget({
+    orgCount: EMAIL_ORG_HOUR_CAP - 1, customerCount: EMAIL_CUSTOMER_DAY_CAP - 1,
+    orgCap: EMAIL_ORG_HOUR_CAP, customerCap: EMAIL_CUSTOMER_DAY_CAP,
+  })).toEqual({ ok: true });
+  expect(evaluateSendBudget({
+    orgCount: EMAIL_ORG_HOUR_CAP, customerCount: 0,
+    orgCap: EMAIL_ORG_HOUR_CAP, customerCap: EMAIL_CUSTOMER_DAY_CAP,
+  })).toEqual({ ok: false, reason: "org_cap" });
+  expect(evaluateSendBudget({
+    orgCount: 0, customerCount: EMAIL_CUSTOMER_DAY_CAP,
+    orgCap: EMAIL_ORG_HOUR_CAP, customerCap: EMAIL_CUSTOMER_DAY_CAP,
+  })).toEqual({ ok: false, reason: "customer_cap" });
+});
+
+test("evaluateSendBudget checks org cap before customer cap", () => {
+  expect(evaluateSendBudget({
+    orgCount: SMS_ORG_HOUR_CAP, customerCount: SMS_CUSTOMER_DAY_CAP,
+    orgCap: SMS_ORG_HOUR_CAP, customerCap: SMS_CUSTOMER_DAY_CAP,
+  })).toEqual({ ok: false, reason: "org_cap" });
 });
 
 test("evaluateTestBudget rejects at the hourly cap", () => {
