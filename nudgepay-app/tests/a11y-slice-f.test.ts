@@ -66,6 +66,7 @@ describe("TEMP-UX-016 live regions", () => {
     const src = read("../app/components/WebhookUrlField.tsx");
     expect(src).toContain("aria-label={`Copy ${label} URL`}");
     expect(src).toContain('aria-live="polite"');
+    expect(src).toMatch(/min-h-6[\s\S]{0,80}Copy \$\{label\} URL|Copy \$\{label\} URL[\s\S]{0,200}min-h-6/);
   });
 
   it("exposes BulkActionBar count as a status", () => {
