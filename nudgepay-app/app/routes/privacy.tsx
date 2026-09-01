@@ -1,11 +1,11 @@
 import { PublicLayout } from "../components/PublicLayout";
-import { pageTitle } from "../lib/meta";
+import { pageTitle, SUPPORT_EMAIL } from "../lib/meta";
 import type { Route } from "./+types/privacy";
 
 export const meta: Route.MetaFunction = () => pageTitle("Privacy Policy");
 
 const updated = "August 31, 2026";
-const contact = "support@nudgepay-ar.app";
+const contact = SUPPORT_EMAIL;
 
 export default function Privacy() {
   return (

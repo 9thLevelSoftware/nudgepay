@@ -11,6 +11,15 @@ test("reportsNavLabel is Owner only for members", () => {
   expect(reportsNavLabel(false)).not.toMatch(/coming soon/i);
 });
 
+test("account menu includes Support next to Settings", () => {
+  const src = readFileSync(new URL("../app/components/AppShell.tsx", import.meta.url), "utf8");
+  const settings = src.indexOf("Settings");
+  const support = src.indexOf("Support");
+  expect(settings).toBeGreaterThan(-1);
+  expect(support).toBeGreaterThan(settings);
+  expect(src).toContain("SUPPORT_MAILTO");
+});
+
 test("mobile drawer includes Focus without adding a sixth activeNav", () => {
   const src = readFileSync(new URL("../app/components/AppShell.tsx", import.meta.url), "utf8");
   expect(src).toContain('to="/focus"');

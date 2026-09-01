@@ -21,6 +21,13 @@ test("signup page is reachable from login", async ({ page }) => {
   await expect(page.locator('input[name="email"]')).toBeVisible();
 });
 
+test("login footer Support link uses the operator mailbox", async ({ page }) => {
+  await page.goto("/login");
+  const support = page.getByRole("link", { name: "Support" });
+  await expect(support).toBeVisible();
+  await expect(support).toHaveAttribute("href", "mailto:support@nudgepay-ar.app");
+});
+
 test("login skip link moves focus to main", async ({ page }) => {
   await page.goto("/login");
   const skip = page.getByRole("link", { name: "Skip to content" });

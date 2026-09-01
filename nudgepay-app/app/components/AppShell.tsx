@@ -5,6 +5,7 @@ import { ToastProvider } from "./Toasts";
 import { CommandPalette } from "./CommandPalette";
 import { ThemeToggle } from "./ThemeToggle";
 import { MAIN_CONTENT_ID, SkipLink } from "./ui";
+import { SUPPORT_MAILTO } from "../lib/meta";
 
 interface AppShellProps {
   orgName: string;
@@ -359,6 +360,13 @@ function UserMenu({ userInitials, userLabel }: { userInitials: string; userLabel
            >
              Settings
            </Link>
+           <a
+             href={SUPPORT_MAILTO}
+             className={menuItemClass}
+             onClick={() => setOpen(false)}
+           >
+             Support
+           </a>
            <ThemeToggle />
            {confirmSignOut ? (
             <Form method="post" action="/logout">
