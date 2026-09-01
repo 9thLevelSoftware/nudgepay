@@ -1,12 +1,21 @@
-// Used by the repo-root wrangler.toml [build] command when Cloudflare
-// Workers Builds runs `npx wrangler deploy` from the Git repository root.
+// Prepares the Workers build output. Always cwd to this package, even when
+// Wrangler [build] is invoked from the repository root.
 import { existsSync } from "node:fs";
 import { spawnSync } from "node:child_process";
+import { fileURLToPath } from "node:url";
+
+const appRoot = fileURLToPath(new URL("..", import.meta.url));
 
 function run(cmd, args) {
   const r = spawnSync(cmd, args, {
+    cwd: appRoot,
     stdio: "inherit",
     shell: process.platform === "win32",
+    env: {
+      ...process.env,
+      CI: "true",
+      NODE_ENV: "production",
+    },
   });
   if (r.status !== 0) process.exit(r.status ?? 1);
 }
