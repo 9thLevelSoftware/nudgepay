@@ -149,6 +149,10 @@ describe("pointer target size (WCAG 2.5.8)", () => {
     const detail = read("../app/components/DetailPanel.tsx");
     expect(detail).toContain("ICON_HIT_CLASS");
     expect(detail).not.toMatch(/w-6 h-6 rounded text-surface\/60[\s\S]*Close detail panel/);
+    const logContact = read("../app/components/LogContactDrawer.tsx");
+    expect(logContact).toContain("ICON_HIT_CLASS");
+    expect(logContact).toContain('aria-label="Close"');
+    expect(logContact).not.toMatch(/aria-label="Close"[\s\S]{0,200}p-1/);
   });
 });
 
