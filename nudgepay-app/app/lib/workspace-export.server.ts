@@ -41,6 +41,7 @@ export async function loadWorkspaceDataExport(
     customers,
     invoices,
     cases,
+    promises,
     contactLogs,
     textMessages,
     emailMessages,
@@ -49,6 +50,7 @@ export async function loadWorkspaceDataExport(
     takeRows(service, "customers", "id, name, email, phone, erased_at", orgId),
     takeRows(service, "invoices", "id, customer_id, qbo_doc_number, amount, balance, due_date, status", orgId),
     takeRows(service, "collection_cases", "id, customer_id, status, closed_at", orgId),
+    takeRows(service, "promises", "id, customer_id, case_id, status, promised_amount, promised_date, resolved_at", orgId),
     takeRows(service, "contact_logs", "id, customer_id, created_at, method, outcome", orgId),
     takeRows(service, "text_messages", "id, customer_id, created_at, direction, body", orgId),
     takeRows(service, "email_messages", "id, customer_id, created_at, direction, subject, body", orgId),
@@ -58,8 +60,8 @@ export async function loadWorkspaceDataExport(
     exportedAt,
     truncated:
       memberships.truncated || customers.truncated || invoices.truncated ||
-      cases.truncated || contactLogs.truncated || textMessages.truncated ||
-      emailMessages.truncated,
+      cases.truncated || promises.truncated || contactLogs.truncated ||
+      textMessages.truncated || emailMessages.truncated,
     workspace: { id: orgId, name: orgName },
     memberships: {
       truncated: memberships.truncated,
@@ -97,6 +99,18 @@ export async function loadWorkspaceDataExport(
         customerId: typeof r.customer_id === "string" ? r.customer_id : null,
         status: typeof r.status === "string" ? r.status : null,
         closedAt: typeof r.closed_at === "string" ? r.closed_at : null,
+      })),
+    },
+    promises: {
+      truncated: promises.truncated,
+      rows: promises.rows.map((r) => ({
+        id: String(r.id),
+        customerId: typeof r.customer_id === "string" ? r.customer_id : null,
+        caseId: typeof r.case_id === "string" ? r.case_id : null,
+        status: typeof r.status === "string" ? r.status : null,
+        promisedAmount: num(r.promised_amount),
+        promisedDate: typeof r.promised_date === "string" ? r.promised_date : null,
+        resolvedAt: typeof r.resolved_at === "string" ? r.resolved_at : null,
       })),
     },
     contactLogs: {

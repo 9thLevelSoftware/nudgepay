@@ -25,6 +25,7 @@ describe("buildWorkspaceDataExport", () => {
       customers: emptyTable,
       invoices: emptyTable,
       cases: emptyTable,
+      promises: emptyTable,
       contactLogs: emptyTable,
       textMessages: emptyTable,
       emailMessages: emptyTable,
