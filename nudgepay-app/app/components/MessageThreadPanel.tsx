@@ -133,7 +133,7 @@ export function MessageThreadPanel({
             {phone ? <span className="text-muted"> · {phone}</span> : null}
           </span>
           {!consent && smsConsentSource === "inbound_stop" && !isOwner ? (
-            <p className="text-xs text-hot">Stopped by inbound STOP. Owner override required.</p>
+            <p className="text-xs text-hot">Stopped by inbound STOP. Admin override required.</p>
           ) : (
             <Form method="post" action="/api/sms-consent" className="flex flex-wrap items-center gap-2">
               <input type="hidden" name="invoiceId" value={thread.anchorInvoiceId ?? ""} />

@@ -42,7 +42,7 @@ export const meta: Route.MetaFunction = () => pageTitle("Settings");
 export async function loader({ request, context }: LoaderFunctionArgs) {
   const env = getEnv(context as any);
   const {
-    supabase, service, headers, isOwner, org, user,
+    supabase, service, headers, isOwner, isAdmin, org, user,
     orgName, initials, userLabel, connected, needsReconnect, lastSyncAt, syncLabel: chromeSyncLabel, syncIssues, workspaces,
   } = await loadWorkspaceChrome(request, env, { requireQbo: false });
 
@@ -119,7 +119,7 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
     currentUserId: user.id,
     displayName,
     ownerEmail: user.email ?? "",
-    initials, userLabel, isOwner, connected, needsReconnect, lastSyncAt, chromeSyncLabel, syncIssues,
+    initials, userLabel, isOwner, isAdmin, connected, needsReconnect, lastSyncAt, chromeSyncLabel, syncIssues,
     qboConfigured,
     qboRedirectHint: appBaseUrl
       ? `${appBaseUrl.replace(/\/$/, "")}/auth/qbo/callback`
@@ -159,7 +159,7 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
       brokenPromiseEmail: notifPrefs?.broken_promise_email ?? true,
       dailyDigestEmail: notifPrefs?.daily_digest_email ?? true,
     },
-    unmatchedStops: isOwner ? await listRecentUnmatchedStops(service) : { rows: [], loadError: null },
+    unmatchedStops: isAdmin ? await listRecentUnmatchedStops(service) : { rows: [], loadError: null },
     providerStatus: {
       twilioConfigured,
       resendConfigured,
@@ -299,6 +299,7 @@ export default function Settings() {
       syncLabel={syncLabel}
       connected={d.connected}
       isOwner={d.isOwner}
+      isAdmin={d.isAdmin}
       activeNav="settings"
       syncIssues={<SyncIssues issues={d.syncIssues} returnTo={returnTo} />}
     >
@@ -442,7 +443,7 @@ export default function Settings() {
                 error={sp.get("error")}
               />
 
-              {d.isOwner ? (
+              {d.isAdmin ? (
                 <section className="rounded-lg border border-border bg-surface p-5">
                   <h2 className="font-display text-base font-semibold text-text">Download workspace data</h2>
                   <p className="mt-0.5 text-xs text-muted">
@@ -495,7 +496,7 @@ export default function Settings() {
                 orgName={d.orgName}
                 profile={d.companyProfile}
                 digestHourLocal={d.digestHourLocal}
-                isOwner={d.isOwner}
+                isOwner={d.isAdmin}
                 returnTo={returnTo}
               />
 
@@ -510,7 +511,7 @@ export default function Settings() {
               <section className="rounded-lg border border-border bg-surface p-5">
                 <h2 className="font-display text-base font-semibold text-text">Workspace members</h2>
                 <p className="mt-0.5 text-xs text-muted">
-                  Owners can invite teammates and change roles. The last owner cannot leave or be removed.
+                  Owners and admins can invite teammates and change roles. Only an owner can grant owner. The last owner cannot leave or be removed.
                 </p>
                 <ul className="mt-3 flex flex-col gap-2" role="list">
                   {d.members.map((m) => (
@@ -518,7 +519,7 @@ export default function Settings() {
                       <span className="font-medium text-text">{m.label}</span>
                       <span className="text-xs text-muted">{m.email}</span>
                       <span className="text-xs capitalize text-muted">{m.role}</span>
-                      {d.isOwner && m.userId !== d.currentUserId ? (
+                      {d.isAdmin && m.userId !== d.currentUserId && (d.isOwner || m.role !== "owner") ? (
                         <>
                           <Form method="post" action="/api/members" className="ml-auto flex items-center gap-2">
                             <input type="hidden" name="returnTo" value={returnTo} />
@@ -532,7 +533,8 @@ export default function Settings() {
                                 className="h-8 rounded-md border border-border bg-panel px-2 text-xs text-text"
                               >
                                 <option value="member">Member</option>
-                                <option value="owner">Owner</option>
+                                <option value="admin">Admin</option>
+                                {d.isOwner ? <option value="owner">Owner</option> : null}
                               </select>
                             </label>
                             <button type="submit" className="text-xs font-medium text-copper hover:underline">
@@ -562,7 +564,7 @@ export default function Settings() {
                             {inv.email}
                             {inv.expiresAt ? ` · expires ${inv.expiresAt.slice(0, 10)}` : ""}
                           </span>
-                          {d.isOwner ? (
+                          {d.isAdmin ? (
                             <RevokeInviteButton
                               inviteId={inv.id}
                               returnTo={returnTo}
@@ -575,7 +577,7 @@ export default function Settings() {
                     </ul>
                   </div>
                 ) : null}
-                {d.isOwner ? (
+                {d.isAdmin ? (
                   <Form method="post" action="/api/members" className="mt-4 flex items-end gap-3">
                     <input type="hidden" name="returnTo" value={returnTo} />
                     <input type="hidden" name="intent" value="invite" />
@@ -605,7 +607,7 @@ export default function Settings() {
                   <p className="mt-2 text-xs text-cool" role="status">Member updated.</p>
                 ) : null}
                 {memberError === "forbidden" ? (
-                  <p className="mt-2 text-xs text-hot" role="alert">Only owners can manage members.</p>
+                  <p className="mt-2 text-xs text-hot" role="alert">Only owners and admins can manage members.</p>
                 ) : null}
                 {memberError === "invite" ? (
                   <p className="mt-2 text-xs text-hot" role="alert">Could not create that invite. Check the email and try again.</p>
@@ -654,7 +656,7 @@ export default function Settings() {
                           {formBusy("/api/qbo/refresh") ? "Refreshing…" : "Refresh"}
                         </button>
                       </Form>
-                      {d.isOwner ? (
+                      {d.isAdmin ? (
                         <>
                           {d.qboConfigured ? (
                             <Form method="post" action="/api/qbo/connect">
@@ -671,20 +673,20 @@ export default function Settings() {
                         </>
                       ) : null}
                     </>
-                  ) : d.needsReconnect && d.qboConfigured && d.isOwner ? (
+                  ) : d.needsReconnect && d.qboConfigured && d.isAdmin ? (
                     <Form method="post" action="/api/qbo/connect">
                       <button type="submit" disabled={formBusy("/api/qbo/connect")} className="rounded-md bg-copper px-3 py-1.5 text-xs font-semibold text-ink hover:bg-copper/90 disabled:opacity-60 disabled:cursor-not-allowed">
                         {formBusy("/api/qbo/connect") ? "Reconnecting…" : "Reconnect QuickBooks"}
                       </button>
                     </Form>
-                  ) : !d.qboConfigured ? null : d.isOwner ? (
+                  ) : !d.qboConfigured ? null : d.isAdmin ? (
                     <Form method="post" action="/api/qbo/connect">
                       <button type="submit" disabled={formBusy("/api/qbo/connect")} className="rounded-md bg-copper px-3 py-1.5 text-xs font-semibold text-ink hover:bg-copper/90 disabled:opacity-60 disabled:cursor-not-allowed">
                         {formBusy("/api/qbo/connect") ? "Connecting…" : "Connect QuickBooks"}
                       </button>
                     </Form>
                   ) : (
-                    <p className="text-sm text-muted">{d.needsReconnect ? "Needs reconnect — ask an owner to reconnect QuickBooks." : "Not connected — ask an owner to connect QuickBooks."}</p>
+                    <p className="text-sm text-muted">{d.needsReconnect ? "Needs reconnect — ask an owner or admin to reconnect QuickBooks." : "Not connected — ask an owner or admin to connect QuickBooks."}</p>
                   )}
                 </div>
               </section>
@@ -718,10 +720,10 @@ export default function Settings() {
           {/* ── Channels tab ─────────────────────────────────────── */}
           {tab === "channels" && (
             <>
-              {d.isOwner ? <UnmatchedStopList stops={d.unmatchedStops.rows} loadError={d.unmatchedStops.loadError} /> : null}
+              {d.isAdmin ? <UnmatchedStopList stops={d.unmatchedStops.rows} loadError={d.unmatchedStops.loadError} /> : null}
               <SmsSettingsSection
                 key={d.orgId}
-                isOwner={d.isOwner}
+                isOwner={d.isAdmin}
                 smsEnabled={d.messaging.smsEnabled}
                 sender={d.messaging.sender}
                 messagingServiceSid={d.messaging.messagingServiceSid}
@@ -740,7 +742,7 @@ export default function Settings() {
               />
               <EmailSettingsSection
                 key={d.orgId}
-                isOwner={d.isOwner}
+                isOwner={d.isAdmin}
                 emailEnabled={d.emailSettings.emailEnabled}
                 fromAddress={d.emailSettings.fromAddress}
                 fromName={d.emailSettings.fromName}
@@ -753,7 +755,7 @@ export default function Settings() {
                 resendWebhook={ps.webhookUrls.resendWebhook}
                 returnTo={returnTo}
               />
-              {d.isOwner && <QuietHoursForm key={d.orgId} quietHours={d.quietHours} returnTo={returnTo} />}
+              {d.isAdmin && <QuietHoursForm key={d.orgId} quietHours={d.quietHours} returnTo={returnTo} />}
             </>
           )}
 
@@ -763,7 +765,7 @@ export default function Settings() {
               key={d.orgId}
               smsTemplates={d.smsTemplates}
               emailTemplates={d.emailTemplates}
-              isOwner={d.isOwner}
+              isOwner={d.isAdmin}
               returnTo={returnTo}
               orgId={d.orgId}
               orgCompany={d.orgName}
@@ -780,12 +782,12 @@ export default function Settings() {
                 workingDays={d.rules.workingDays}
                 cadence={d.rules.cadence}
                 holidays={d.rules.holidays}
-                isOwner={d.isOwner}
+                isOwner={d.isAdmin}
                 returnTo={returnTo}
               />
-              {d.isOwner && <LateFeesForm key={d.orgId} lateFee={d.lateFee} returnTo={returnTo} />}
-              {d.isOwner && <PriorityThresholdsForm key={d.orgId} priority={d.priority} returnTo={returnTo} />}
-              {d.isOwner && <WorkflowSettingsForm key={d.orgId} workflow={d.workflow} returnTo={returnTo} />}
+              {d.isAdmin && <LateFeesForm key={d.orgId} lateFee={d.lateFee} returnTo={returnTo} />}
+              {d.isAdmin && <PriorityThresholdsForm key={d.orgId} priority={d.priority} returnTo={returnTo} />}
+              {d.isAdmin && <WorkflowSettingsForm key={d.orgId} workflow={d.workflow} returnTo={returnTo} />}
             </>
           )}
         </div>

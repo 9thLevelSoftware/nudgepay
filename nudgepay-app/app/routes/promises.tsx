@@ -36,7 +36,7 @@ export const meta: Route.MetaFunction = () => pageTitle("Promises");
 export async function loader({ request, context }: LoaderFunctionArgs) {
   const env = getEnv(context as any);
   const {
-    supabase, service, headers, isOwner, org,
+    supabase, service, headers, isOwner, isAdmin, org,
     orgName, initials, userLabel, connected, syncLabel,
     syncIssues, workspaces,
   } = await loadWorkspaceChrome(request, env);
@@ -276,7 +276,7 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
       orgName,
       orgId: org.org_id,
       workspaces,
-      initials, userLabel, syncLabel, connected, isOwner, syncIssues,
+      initials, userLabel, syncLabel, connected, isOwner, isAdmin, syncIssues,
       rows: loadError ? [] : rows,
       metrics, counts, tab, sort, q, returnTo,
       selected: loadError ? null : selected,
@@ -324,6 +324,7 @@ export default function Promises() {
       syncLabel={d.syncLabel}
       connected={d.connected}
       isOwner={d.isOwner}
+      isAdmin={d.isAdmin}
       activeNav="promises"
       syncIssues={<SyncIssues issues={d.syncIssues} returnTo="/promises" />}
     >

@@ -242,7 +242,7 @@ export async function runDailyDigest(
     .select("user_id, role")
     .eq("org_id", orgId);
   const ownerUserIds = new Set(
-    (membershipRows ?? []).filter((m: any) => m.role === "owner").map((m: any) => m.user_id as string)
+    (membershipRows ?? []).filter((m: any) => m.role === "owner" || m.role === "admin").map((m: any) => m.user_id as string)
   );
 
   // Group entries by owner

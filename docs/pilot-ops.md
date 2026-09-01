@@ -9,7 +9,7 @@ Support: `support@nudgepay-ar.app`.
 
 ## Product limits
 
-- A user can belong to more than one workspace (`owner` / `member` only). Switch from the account menu. Cap 20 workspaces per user.
+- A user can belong to more than one workspace (`owner` / `admin` / `member`). Switch from the account menu. Cap 20 workspaces per user. Admins run settings and reports; only owners delete a workspace or grant owner.
 - Staff send each text and email. There is no automatic reminder sequence.
   Quiet-hours blocks are not queued to send later.
 - A payment portal URL is the tenant's own page. NudgePay does not process

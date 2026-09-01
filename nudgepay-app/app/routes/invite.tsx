@@ -13,6 +13,7 @@ import { trySendInviteEmail } from "../lib/invite-email.server";
 import { PublicLayout } from "../components/PublicLayout";
 import { Button, inputClass } from "../components/ui";
 import { pageTitle } from "../lib/meta";
+import { hasPermission } from "../lib/roles";
 import type { Route } from "./+types/invite";
 
 export const meta: Route.MetaFunction = () => pageTitle("Invite a teammate");
@@ -22,7 +23,7 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
   const { supabase, headers, user } = await requireUser(request, env);
   const org = await resolveOrg(supabase, user.id, request);
   if (!org) throw redirect("/onboarding", { headers });
-  if (org.role !== "owner") throw redirect("/dashboard", { headers });
+  if (!hasPermission(org.role, "manageMembers")) throw redirect("/dashboard", { headers });
   return new Response(null, { headers });
 }
 
@@ -30,7 +31,7 @@ export async function action({ request, context }: ActionFunctionArgs) {
   const env = getEnv(context as any);
   const { supabase, user } = await requireUser(request, env);
   const org = await resolveOrg(supabase, user.id, request);
-  if (!org || org.role !== "owner") return { error: "Only owners can invite" };
+  if (!org || !hasPermission(org.role, "manageMembers")) return { error: "Only owners and admins can invite" };
   const form = await request.formData();
   const raw = form.get("email");
   const email = typeof raw === "string" ? raw.trim().toLowerCase() : "";

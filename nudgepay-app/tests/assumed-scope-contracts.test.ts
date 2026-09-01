@@ -20,7 +20,7 @@ test("STOP-locked consent hides Mark consented for members; owner override requi
     /!consent && smsConsentSource === "inbound_stop" && !isOwner \? \([\s\S]*?\) : \(/,
   );
   expect(memberPath, "member STOP-locked branch missing").toBeTruthy();
-  expect(memberPath![0]).toContain("Stopped by inbound STOP. Owner override required.");
+  expect(memberPath![0]).toContain("Stopped by inbound STOP. Admin override required.");
   expect(memberPath![0]).not.toMatch(/Mark consented/);
   expect(memberPath![0]).not.toMatch(/type="submit"/);
 
@@ -240,6 +240,16 @@ test("memberships allow more than one workspace per user", () => {
   expect(shell).toContain("/onboarding?new=1");
   const switchRoute = read("../app/routes/api.workspace.switch.tsx");
   expect(switchRoute).toContain("orgCookieHeader");
+});
+
+test("admin role sits between owner and member", () => {
+  const sql = read("../supabase/migrations/0057_admin_role.sql");
+  expect(sql).toContain("check (role in ('owner', 'admin', 'member'))");
+  expect(sql).toContain("is_org_admin");
+  expect(sql).toContain("only owners can change owner memberships");
+  const roles = read("../app/lib/roles.ts");
+  expect(roles).toContain("manageWorkspace");
+  expect(roles).toContain("manageOwners");
 });
 
 test("v* tags open a GitHub Release and do not deploy", () => {

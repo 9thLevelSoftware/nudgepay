@@ -22,9 +22,9 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
   const {
     supabase, service, headers, org,
     orgName, initials, userLabel, connected, needsReconnect, syncLabel, syncIssues, workspaces,
-  } = await loadWorkspaceChrome(request, env, { requireQbo: false, requireOwner: true });
-  // Owner-only surface gate is enforced inside the helper
-  // (redirects to /dashboard?denied=reports for non-owners).
+  } = await loadWorkspaceChrome(request, env, { requireQbo: false, requireAdmin: true });
+  // Admin+ surface gate is enforced inside the helper
+  // (redirects to /dashboard?denied=reports for members).
 
   const range = parseReportRange(new URL(request.url).searchParams.get("range"));
   const [report, arKpis] = await Promise.all([
@@ -69,7 +69,7 @@ export default function Reports() {
   }));
 
   return (
-    <AppShell orgName={orgName} orgId={orgId} workspaces={workspaces} userInitials={initials} userLabel={userLabel} syncLabel={syncLabel} connected={connected} isOwner={true} activeNav="reports" syncIssues={<SyncIssues issues={syncIssues} returnTo="/reports" />}>
+    <AppShell orgName={orgName} orgId={orgId} workspaces={workspaces} userInitials={initials} userLabel={userLabel} syncLabel={syncLabel} connected={connected} isOwner={true} isAdmin={true} activeNav="reports" syncIssues={<SyncIssues issues={syncIssues} returnTo="/reports" />}>
       <ContentShell type="workspace" className="flex flex-col gap-6">
         <div className="flex items-center justify-between gap-3">
           <h1 className="font-display text-xl font-semibold text-text">Team performance</h1>

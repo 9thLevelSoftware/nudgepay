@@ -13,6 +13,7 @@ import { loadOrgConfig } from "../lib/org-config.server";
 import { isWithinSendWindow } from "../lib/quiet-hours";
 import { resolveChannelSettings } from "../lib/channel-settings";
 import { assertTestBudget } from "../lib/send-limits.server";
+import { hasPermission } from "../lib/roles";
 
 function flag(returnTo: string, key: string, val: string): string {
   return `${returnTo}${returnTo.includes("?") ? "&" : "?"}${key}=${val}`;
@@ -31,8 +32,8 @@ export async function action({ request, context }: ActionFunctionArgs) {
 
   const form = await request.formData();
   const returnTo = safeReturnTo(form.get("returnTo"), "/settings");
-  // Owner-only surface gate; RLS is the real boundary.
-  if (org.role !== "owner") return redirect(returnTo, { headers });
+  // Admin+ surface gate; RLS is the real boundary.
+  if (!hasPermission(org.role, "sendTest")) return redirect(returnTo, { headers });
 
   const intent = form.get("intent");
   const service = createSupabaseServiceClient(env);

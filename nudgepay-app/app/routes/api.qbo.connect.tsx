@@ -4,12 +4,13 @@ import { createSupabaseServiceClient } from "../lib/supabase.server";
 import { requireUser, resolveOrg } from "../lib/session.server";
 import { createOAuthState } from "../lib/oauth-state.server";
 import { buildAuthorizeUrl } from "../lib/qbo-client.server";
+import { hasPermission } from "../lib/roles";
 
 export async function action({ request, context }: ActionFunctionArgs) {
   const env = getEnv(context as any);
   const { supabase, headers, user } = await requireUser(request, env);
   const org = await resolveOrg(supabase, user.id, request);
-  if (!org || org.role !== "owner") {
+  if (!org || !hasPermission(org.role, "manageSettings")) {
     return redirect("/dashboard?qbo=forbidden", { headers });
   }
   const qbo = getQboEnvOrNull(context as any);

@@ -64,7 +64,7 @@ export type WorkspaceDataExport = {
 };
 
 export function workspaceExportAllowed(role: string): boolean {
-  return role === "owner";
+  return role === "owner" || role === "admin";
 }
 
 export function buildWorkspaceDataExport(input: WorkspaceDataExport): WorkspaceDataExport {

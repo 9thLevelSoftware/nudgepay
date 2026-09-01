@@ -16,8 +16,10 @@ interface AppShellProps {
   userLabel?: string;
   syncLabel: string;
   connected: boolean;
-  /** Reserved for future owner-gated header actions (Task 6+). */
+  /** True workspace owner (delete workspace, grant owner). */
   isOwner: boolean;
+  /** Owner or admin — settings, reports, STOP override. Defaults to isOwner. */
+  isAdmin?: boolean;
   /** Which primary section is active (drives the nav rail + topbar title). */
   activeNav?: "collections" | "accounts" | "promises" | "messages" | "reports" | "settings";
   /** Optional controls rendered in the topbar right-controls group. */
@@ -41,9 +43,9 @@ const NAV_ITEMS: NavItem[] = [
   { name: "reports", icon: "note", label: "Reports" },
 ];
 
-/** Accessible name for Reports in the side nav. Members hear owner-gating, not "coming soon". */
-export function reportsNavLabel(isOwner: boolean): string {
-  return isOwner ? "Reports" : "Reports (Owner only)";
+/** Accessible name for Reports in the side nav. Members hear admin-gating, not "coming soon". */
+export function reportsNavLabel(canViewReports: boolean): string {
+  return canViewReports ? "Reports" : "Reports (Admin only)";
 }
 
 /**
@@ -62,8 +64,8 @@ export function reportsNavLabel(isOwner: boolean): string {
  * top bar. A backdrop overlay closes the drawer on mobile.
  *
  * Accessibility: copper focus rings on all interactive elements,
- * aria-disabled on restricted nav items (Reports for non-owners, labeled
- * "Owner only"), aria-label on icon-only controls, aria-expanded on the
+ * aria-disabled on restricted nav items (Reports for members, labeled
+ * "Admin only"), aria-label on icon-only controls, aria-expanded on the
  * menu toggle and account menu.
  */
 export function AppShell({
@@ -75,11 +77,13 @@ export function AppShell({
   syncLabel,
   connected,
   isOwner,
+  isAdmin,
   activeNav = "collections",
   headerActions,
   syncIssues,
   children,
 }: AppShellProps) {
+  const canViewReports = isAdmin ?? isOwner;
   const [navOpen, setNavOpen] = useState(false);
   const busy = useNavigation().state !== "idle";
 
@@ -200,12 +204,12 @@ export function AppShell({
           <ul className="flex flex-col items-center gap-1 pt-3" role="list">
             {NAV_ITEMS.map((item) => {
               const isActive = item.name === activeNav;
-              const isReportsForOwner = item.name === "reports" && isOwner;
-              // Reports is owner-only and absent from NAV_TARGETS; give it a
-              // target for owners so it can show the copper active state, while
-              // non-owners still fall through to the disabled item below.
-              const target = NAV_TARGETS[item.name] ?? (isReportsForOwner ? "/reports" : undefined);
-              const ariaLabel = item.name === "reports" ? reportsNavLabel(isOwner) : item.label;
+              const isReportsForAdmin = item.name === "reports" && canViewReports;
+              // Reports is admin-only and absent from NAV_TARGETS; give it a
+              // target for admins so it can show the copper active state, while
+              // members still fall through to the disabled item below.
+              const target = NAV_TARGETS[item.name] ?? (isReportsForAdmin ? "/reports" : undefined);
+              const ariaLabel = item.name === "reports" ? reportsNavLabel(canViewReports) : item.label;
 
               if (isActive && target) {
                 return (
@@ -227,7 +231,7 @@ export function AppShell({
                 );
               }
 
-              if (target || isReportsForOwner) {
+              if (target || isReportsForAdmin) {
                 const to = target ?? "/reports";
                 return (
                   <li key={item.name} className="relative w-full">
@@ -252,7 +256,7 @@ export function AppShell({
                     className="flex flex-col items-center justify-center w-full py-3 gap-1 text-surface/40 cursor-default focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-copper focus-visible:ring-inset"
                     aria-disabled="true"
                     aria-label={ariaLabel}
-                    title="Owner only"
+                    title="Admin only"
                     tabIndex={-1}
                     onClick={(e) => e.preventDefault()}
                   >

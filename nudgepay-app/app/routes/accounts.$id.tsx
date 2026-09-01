@@ -123,6 +123,7 @@ export async function loader({ request, params, context }: LoaderFunctionArgs) {
   }[] | null);
 
   const isOwner = org.role === "owner";
+  const isAdmin = org.role === "owner" || org.role === "admin";
   const orgConfig = await loadOrgConfig(supabase, org.org_id);
   const today = todayInTz(orgConfig.companyProfile.timezone);
   const customerId = params.id as string;
@@ -292,6 +293,7 @@ export async function loader({ request, params, context }: LoaderFunctionArgs) {
       syncLabel,
       connected,
       isOwner,
+      isAdmin,
       syncIssues,
       account: {
         id: customerRow.id,
@@ -342,6 +344,7 @@ export default function AccountProfilePage() {
       syncLabel={d.syncLabel}
       connected={d.connected}
       isOwner={d.isOwner}
+      isAdmin={d.isAdmin}
       activeNav="accounts"
       syncIssues={<SyncIssues issues={d.syncIssues} returnTo={d.returnTo} />}
     >
@@ -367,7 +370,7 @@ export default function AccountProfilePage() {
         activeCaseId={d.activeCaseId}
         returnTo={d.returnTo}
         timeZone={d.timeZone}
-        isOwner={d.isOwner}
+        isOwner={d.isAdmin}
         erasedAt={d.account.erasedAt}
       />
     </AppShell>

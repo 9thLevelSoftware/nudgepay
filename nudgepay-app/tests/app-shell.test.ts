@@ -6,8 +6,8 @@ test("reportsNavLabel is Reports for owners", () => {
   expect(reportsNavLabel(true)).toBe("Reports");
 });
 
-test("reportsNavLabel is Owner only for members", () => {
-  expect(reportsNavLabel(false)).toBe("Reports (Owner only)");
+test("reportsNavLabel is Admin only for members", () => {
+  expect(reportsNavLabel(false)).toBe("Reports (Admin only)");
   expect(reportsNavLabel(false)).not.toMatch(/coming soon/i);
 });
 

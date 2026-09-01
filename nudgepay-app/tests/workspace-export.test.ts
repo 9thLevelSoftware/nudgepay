@@ -8,8 +8,9 @@ import {
 const emptyTable = { rows: [], truncated: false };
 
 describe("workspaceExportAllowed", () => {
-  it("is owner-only", () => {
+  it("is owner or admin", () => {
     expect(workspaceExportAllowed("owner")).toBe(true);
+    expect(workspaceExportAllowed("admin")).toBe(true);
     expect(workspaceExportAllowed("member")).toBe(false);
     expect(workspaceExportAllowed("")).toBe(false);
   });

@@ -13,7 +13,7 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
     return new Response("No workspace", { status: 403, headers });
   }
   if (!workspaceExportAllowed(org.role)) {
-    return new Response("Only owners can download workspace data.", { status: 403, headers });
+    return new Response("Only owners and admins can download workspace data.", { status: 403, headers });
   }
 
   const service = createSupabaseServiceClient(env);

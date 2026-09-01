@@ -7,6 +7,7 @@ import { parseChannelSettingsUpdate, parseQuietHoursUpdate } from "../lib/channe
 import { parseEmailSettingsUpdate, emailConfigUpsertRow } from "../lib/email-settings";
 import { parseCompanyProfileUpdate } from "../lib/org-profile";
 import { parseTemplateUpsert, parseTemplateDelete } from "../lib/message-templates";
+import { hasPermission } from "../lib/roles";
 import { DEFAULT_SMS_TEMPLATES } from "../lib/sms-templates";
 import { DEFAULT_EMAIL_TEMPLATES } from "../lib/email-templates";
 
@@ -22,8 +23,8 @@ export async function action({ request, context }: ActionFunctionArgs) {
 
   const form = await request.formData();
   const returnTo = safeReturnTo(form.get("returnTo"), "/settings");
-  // Owner-only surface gate; RLS (is_org_owner) is the real boundary.
-  if (org.role !== "owner") return redirect(returnTo, { headers });
+  // Admin+ surface gate; RLS (is_org_admin) is the real boundary.
+  if (!hasPermission(org.role, "manageSettings")) return redirect(returnTo, { headers });
 
   const intent = form.get("intent");
 

@@ -60,7 +60,7 @@ export function CommPrefsDrawer({
               Do not text <span className="text-[11px] text-muted">(blocks SMS sending)</span>
             </label>
             {stopLocked ? (
-              <p className="text-xs text-hot">Stopped by inbound STOP. Owner override required.</p>
+              <p className="text-xs text-hot">Stopped by inbound STOP. Admin override required.</p>
             ) : prefs.doNotText ? (
               <label className="flex items-center gap-2 text-sm text-text">
                 <input type="checkbox" name="confirm_resubscribe_sms" value="true" className="h-4 w-4 rounded border-border text-copper" />
