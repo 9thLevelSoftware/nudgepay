@@ -2,7 +2,7 @@ import { beforeAll, expect, test, vi } from "vitest";
 import { serviceClient, makeUserClient } from "./helpers";
 import { resolveSender, sendInvoiceText, normalizePhone, type MessagingDeps } from "../app/lib/twilio-messaging.server";
 import { ensureStopLanguage } from "../app/lib/sms-keywords";
-import { SMS_CUSTOMER_DAY_CAP } from "../app/lib/send-limits";
+import { SMS_CUSTOMER_DAY_CAP, SMS_ORG_HOUR_CAP } from "../app/lib/send-limits";
 
 let userId: string;
 beforeAll(async () => { ({ userId } = await makeUserClient("sms-sender@example.com")); });
@@ -105,6 +105,31 @@ test("sendInvoiceText refuses when the customer day cap is already full", async 
   const fetchFn = vi.fn();
   await expect(sendInvoiceText(deps(fetchFn), { orgId, invoiceId, userId, body: "Past due" }))
     .rejects.toThrow(/rate cap/i);
+  expect(fetchFn).not.toHaveBeenCalled();
+});
+
+test("sendInvoiceText refuses when the workspace hour cap is already full", async () => {
+  const { orgId, invoiceId } = await seed(true, "+12295550920");
+  const { data: other } = await svc.from("customers")
+    .insert({ org_id: orgId, qbo_id: "c-hour", name: "Other", phone: "+12295550921", sms_consent: true })
+    .select("id").single();
+  const { data: otherInv } = await svc.from("invoices")
+    .insert({ org_id: orgId, qbo_id: "i-hour", qbo_doc_number: "2099", customer_id: other!.id, balance: 50 })
+    .select("id").single();
+  const rows = Array.from({ length: SMS_ORG_HOUR_CAP }, (_, i) => ({
+    org_id: orgId,
+    invoice_id: otherInv!.id,
+    customer_id: other!.id,
+    direction: "outbound",
+    to_number: "+12295550921",
+    body: `prior ${i}`,
+    status: "sent",
+  }));
+  const { error } = await svc.from("text_messages").insert(rows);
+  expect(error).toBeNull();
+  const fetchFn = vi.fn();
+  await expect(sendInvoiceText(deps(fetchFn), { orgId, invoiceId, userId, body: "Past due" }))
+    .rejects.toThrow(/workspace/i);
   expect(fetchFn).not.toHaveBeenCalled();
 });
 
