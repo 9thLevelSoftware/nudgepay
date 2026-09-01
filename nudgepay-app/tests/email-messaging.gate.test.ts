@@ -162,7 +162,7 @@ test("sendInvoiceEmail refuses when the customer day cap is already full", async
 test("sendInvoiceEmail still sends when prior customer emails are older than 24h", async () => {
   const { orgId, customerId, invoiceId } = await seed("stale-day@chancey.test");
   const from = await enableEmail(orgId);
-  const stale = new Date(Date.now() - 25 * 60 * 60 * 1000).toISOString();
+  const stale = new Date(DAYTIME_NOW.getTime() - 25 * 60 * 60 * 1000).toISOString();
   const rows = Array.from({ length: EMAIL_CUSTOMER_DAY_CAP }, (_, i) => ({
     org_id: orgId,
     invoice_id: invoiceId,
