@@ -124,6 +124,9 @@ describe("consistent help (WCAG 3.2.6)", () => {
     const focus = read("../app/routes/focus.tsx");
     expect(focus).toContain("SUPPORT_MAILTO");
     expect(focus).toContain("Support");
+    const unsub = read("../app/routes/unsubscribe.tsx");
+    expect(unsub).toContain("SUPPORT_MAILTO");
+    expect(unsub).toContain("Support");
     const palette = read("../app/components/CommandPalette.tsx");
     expect(palette).toContain("SUPPORT_MAILTO");
     expect(palette).toContain("Contact Support");
