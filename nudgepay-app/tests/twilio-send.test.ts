@@ -2,6 +2,7 @@ import { beforeAll, expect, test, vi } from "vitest";
 import { serviceClient, makeUserClient } from "./helpers";
 import { resolveSender, sendInvoiceText, normalizePhone, type MessagingDeps } from "../app/lib/twilio-messaging.server";
 import { ensureStopLanguage } from "../app/lib/sms-keywords";
+import { SMS_CUSTOMER_DAY_CAP } from "../app/lib/send-limits";
 
 let userId: string;
 beforeAll(async () => { ({ userId } = await makeUserClient("sms-sender@example.com")); });
@@ -86,6 +87,25 @@ test("sendInvoiceText requireInventory refuses without inventory (no Twilio call
   expect(fetchFn).not.toHaveBeenCalled();
   const { data: rows } = await svc.from("text_messages").select("id").eq("customer_id", customerId);
   expect(rows ?? []).toHaveLength(0);
+});
+
+test("sendInvoiceText refuses when the customer day cap is already full", async () => {
+  const { orgId, invoiceId, customerId } = await seed(true, "+12295550908");
+  const rows = Array.from({ length: SMS_CUSTOMER_DAY_CAP }, (_, i) => ({
+    org_id: orgId,
+    invoice_id: invoiceId,
+    customer_id: customerId,
+    direction: "outbound",
+    to_number: "+12295550908",
+    body: `prior ${i}`,
+    status: "sent",
+  }));
+  const { error } = await svc.from("text_messages").insert(rows);
+  expect(error).toBeNull();
+  const fetchFn = vi.fn();
+  await expect(sendInvoiceText(deps(fetchFn), { orgId, invoiceId, userId, body: "Past due" }))
+    .rejects.toThrow(/rate cap/i);
+  expect(fetchFn).not.toHaveBeenCalled();
 });
 
 test("sendInvoiceText does not insert a row when Twilio returns 503", async () => {
