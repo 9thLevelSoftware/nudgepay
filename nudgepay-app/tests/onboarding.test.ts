@@ -1,6 +1,6 @@
 import { expect, test } from "vitest";
 import { makeUserClient, serviceClient } from "./helpers";
-import { createOrgForUser, acceptInvite } from "../app/lib/orgs.server";
+import { createOrgForUser, acceptInvite, listUserWorkspaces } from "../app/lib/orgs.server";
 
 test("createOrgForUser creates an org and an owner membership", async () => {
   const svc = serviceClient();
@@ -13,6 +13,21 @@ test("createOrgForUser creates an org and an owner membership", async () => {
   const { data: mem } = await svc.from("memberships")
     .select("role").eq("org_id", orgId).eq("user_id", user.userId).single();
   expect(mem?.role).toBe("owner");
+});
+
+test("acceptInvite adds a user who already owns another workspace", async () => {
+  const svc = serviceClient();
+  const owner = await makeUserClient("owner-multi@example.com");
+  const orgId = await createOrgForUser(svc, owner.userId, "Invite Multi Org");
+  const { data: inv } = await svc.from("invites")
+    .insert({ org_id: orgId, email: "already-owner@example.com" }).select("token").single();
+
+  const invitee = await makeUserClient("already-owner@example.com");
+  const first = await createOrgForUser(svc, invitee.userId, "Invitee First Org");
+  const joined = await acceptInvite(svc, inv!.token, invitee.userId, "already-owner@example.com");
+  expect(joined).toBe(orgId);
+  const { data: mems } = await svc.from("memberships").select("org_id").eq("user_id", invitee.userId);
+  expect((mems ?? []).map((m) => m.org_id).sort()).toEqual([first, orgId].sort());
 });
 
 test("acceptInvite adds the invited user to the org", async () => {
@@ -47,18 +62,18 @@ test("acceptInvite rejects when the user's email differs from the invite", async
   expect(mem).toBeNull();
 });
 
-test("createOrgForUser rejects a second org and does not insert it", async () => {
+test("createOrgForUser allows a second org for the same user", async () => {
   const svc = serviceClient();
   const user = await makeUserClient("onboard-second@example.com");
-  const orgId = await createOrgForUser(svc, user.userId, "First Workspace");
+  const firstId = await createOrgForUser(svc, user.userId, "First Workspace");
   const secondName = `Second Workspace ${user.userId}`;
+  const secondId = await createOrgForUser(svc, user.userId, secondName);
 
-  await expect(createOrgForUser(svc, user.userId, secondName)).rejects.toThrow(/already in a workspace/i);
-
-  const { data: extra } = await svc.from("organizations").select("id").eq("name", secondName);
-  expect(extra ?? []).toHaveLength(0);
+  expect(secondId).not.toBe(firstId);
   const { data: mems } = await svc.from("memberships").select("org_id").eq("user_id", user.userId);
-  expect(mems).toEqual([{ org_id: orgId }]);
+  expect((mems ?? []).map((m) => m.org_id).sort()).toEqual([firstId, secondId].sort());
+  const listed = await listUserWorkspaces(svc, user.userId);
+  expect(listed.map((w) => w.orgId).sort()).toEqual([firstId, secondId].sort());
 });
 
 test("acceptInvite rejects when either email is empty (no empty-string bypass)", async () => {

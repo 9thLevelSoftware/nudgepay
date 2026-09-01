@@ -10,7 +10,7 @@ import {
 } from "react-router";
 import { getEnv } from "../lib/env.server";
 import { createSupabaseServiceClient } from "../lib/supabase.server";
-import { requireUser } from "../lib/session.server";
+import { orgCookieHeader, requireUser } from "../lib/session.server";
 import { acceptInvite } from "../lib/orgs.server";
 import { humanInviteError } from "../lib/org-membership";
 import { PublicLayout } from "../components/PublicLayout";
@@ -54,7 +54,8 @@ export async function action({ request, params, context }: ActionFunctionArgs) {
   const { headers, user } = await requireUser(request, env);
   const service = createSupabaseServiceClient(env);
   try {
-    await acceptInvite(service, String(params.token), user.id, user.email ?? "");
+    const orgId = await acceptInvite(service, String(params.token), user.id, user.email ?? "");
+    headers.append("Set-Cookie", orgCookieHeader(orgId));
   } catch (e) {
     return data({ error: humanInviteError(e) }, { headers });
   }

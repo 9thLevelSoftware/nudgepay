@@ -12,9 +12,10 @@ import {
 } from "react-router";
 import { getEnv } from "../lib/env.server";
 import { createSupabaseServiceClient } from "../lib/supabase.server";
-import { requireUser, resolveOrg } from "../lib/session.server";
+import { orgCookieHeader, requireUser, resolveOrg } from "../lib/session.server";
 import { createOrgForUser } from "../lib/orgs.server";
 import { isAlreadyInWorkspaceError } from "../lib/org-membership";
+import { WORKSPACES_PER_USER_CAP } from "../lib/pilot-limits";
 import { PERSONAL_DELETE_TOKEN, personalAccountConfirmMatches } from "../lib/personal-account-deletion";
 import { PublicLayout } from "../components/PublicLayout";
 import { Button, Input, inputClass } from "../components/ui";
@@ -26,24 +27,27 @@ export const meta: Route.MetaFunction = () => pageTitle("Onboarding");
 export async function loader({ request, context }: LoaderFunctionArgs) {
   const env = getEnv(context as any);
   const { supabase, headers, user } = await requireUser(request, env);
-  const org = await resolveOrg(supabase, user.id);
-  if (org) throw redirect("/dashboard", { headers });
-  return data({ email: user.email ?? "" }, { headers });
+  const org = await resolveOrg(supabase, user.id, request);
+  const creatingAnother = new URL(request.url).searchParams.get("new") === "1";
+  if (org && !creatingAnother) throw redirect("/dashboard", { headers });
+  return data({ email: user.email ?? "", creatingAnother: creatingAnother && !!org }, { headers });
 }
 
 export async function action({ request, context }: ActionFunctionArgs) {
   const env = getEnv(context as any);
   const { supabase, headers, user } = await requireUser(request, env);
-  const existing = await resolveOrg(supabase, user.id);
-  if (existing) return redirect("/dashboard", { headers });
   const form = await request.formData();
   const raw = form.get("orgName");
   const name = typeof raw === "string" ? raw.trim() : "";
   if (!name) return { error: "Organization name is required" };
   const service = createSupabaseServiceClient(env);
   try {
-    await createOrgForUser(service, user.id, name);
+    const orgId = await createOrgForUser(service, user.id, name);
+    headers.append("Set-Cookie", orgCookieHeader(orgId));
   } catch (e) {
+    if (e instanceof Error && e.message === "Workspace limit reached") {
+      return { error: `You can belong to at most ${WORKSPACES_PER_USER_CAP} workspaces.` };
+    }
     if (isAlreadyInWorkspaceError(e)) return redirect("/dashboard", { headers });
     throw e;
   }
@@ -64,7 +68,7 @@ export default function Onboarding() {
   const canDelete = personalAccountConfirmMatches(typed, d.email);
 
   return (
-    <PublicLayout title="Name your organization" width="card">
+    <PublicLayout title={d.creatingAnother ? "Create another workspace" : "Name your organization"} width="card">
       <Form method="post" className="grid gap-4">
         {actionData?.error && <p role="alert" className="text-sm text-hot">{actionData.error}</p>}
         <label className="grid gap-1 text-sm font-medium text-text">
@@ -73,6 +77,7 @@ export default function Onboarding() {
         </label>
         <Button type="submit" disabled={creating}>{creating ? "Creating organization…" : "Create organization"}</Button>
       </Form>
+      {d.creatingAnother ? null : <>
       <Form method="get" action="/api/account/export" className="mt-6">
         <Button type="submit" variant="secondary" size="sm" className="w-fit">
           Download my data
@@ -115,6 +120,7 @@ export default function Onboarding() {
           <p className="mt-2 text-xs text-hot" role="alert">Could not delete your NudgePay login. Try again.</p>
         ) : null}
       </section>
+      </>}
     </PublicLayout>
   );
 }

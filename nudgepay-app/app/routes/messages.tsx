@@ -61,7 +61,7 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
   const {
     supabase, service, headers, isOwner, org, user,
     orgName, initials, userLabel, connected, needsReconnect, syncLabel,
-    syncIssues,
+    syncIssues, workspaces,
   } = await loadWorkspaceChrome(request, env);
 
   // --- URL params ---
@@ -354,6 +354,7 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
   return data(
     {
       orgName,
+      workspaces,
       initials, userLabel, syncLabel, connected, needsReconnect, isOwner, syncIssues,
       rows, metrics, counts, tab, sort, q,
       channel, channelCounts, emailEnabled, lastInboundAt,
@@ -483,7 +484,9 @@ export default function Messages() {
   }, [d.selected?.customerId, d.selected?.channel]);
   return (
     <AppShell
+      orgId={d.orgId}
       orgName={d.orgName}
+      workspaces={d.workspaces}
       userInitials={d.initials}
       userLabel={d.userLabel}
       syncLabel={d.syncLabel}

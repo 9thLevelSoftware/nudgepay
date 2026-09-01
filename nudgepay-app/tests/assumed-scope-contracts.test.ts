@@ -226,6 +226,20 @@ test("pilot-ops documents Worker rollback and that migrations are not undone", (
   expect(ops).toMatch(/Promote by deploying production/i);
   expect(ops).toMatch(/Tagging is not a production deploy/i);
   expect(ops).toContain("git push origin v0.1.0");
+  expect(ops).toMatch(/Branch protection/i);
+  expect(ops).toMatch(/rejects force-pushes/i);
+});
+
+test("memberships allow more than one workspace per user", () => {
+  const sql = read("../supabase/migrations/0056_multiple_memberships.sql");
+  expect(sql).toContain("drop index if exists memberships_user_id_key");
+  expect(sql).not.toMatch(/raise exception 'already in a workspace'/);
+  const shell = read("../app/components/AppShell.tsx");
+  expect(shell).toContain("/api/workspace/switch");
+  expect(shell).toContain("w.orgId === orgId");
+  expect(shell).toContain("/onboarding?new=1");
+  const switchRoute = read("../app/routes/api.workspace.switch.tsx");
+  expect(switchRoute).toContain("orgCookieHeader");
 });
 
 test("v* tags open a GitHub Release and do not deploy", () => {

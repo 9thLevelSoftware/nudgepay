@@ -43,7 +43,7 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
   const env = getEnv(context as any);
   const {
     supabase, service, headers, isOwner, org, user,
-    orgName, initials, userLabel, connected, needsReconnect, lastSyncAt, syncLabel: chromeSyncLabel, syncIssues,
+    orgName, initials, userLabel, connected, needsReconnect, lastSyncAt, syncLabel: chromeSyncLabel, syncIssues, workspaces,
   } = await loadWorkspaceChrome(request, env, { requireQbo: false });
 
   const qboConfigured = getQboEnvOrNull(context as any) !== null;
@@ -114,6 +114,7 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
 
   return data({
     orgName,
+    workspaces,
     orgId: org.org_id,
     currentUserId: user.id,
     displayName,
@@ -291,6 +292,8 @@ export default function Settings() {
   return (
     <AppShell
       orgName={d.orgName}
+      orgId={d.orgId}
+      workspaces={d.workspaces}
       userInitials={d.initials}
       userLabel={d.userLabel}
       syncLabel={syncLabel}

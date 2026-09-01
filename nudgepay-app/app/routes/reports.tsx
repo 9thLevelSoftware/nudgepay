@@ -21,7 +21,7 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
   const env = getEnv(context as any);
   const {
     supabase, service, headers, org,
-    orgName, initials, userLabel, connected, needsReconnect, syncLabel, syncIssues,
+    orgName, initials, userLabel, connected, needsReconnect, syncLabel, syncIssues, workspaces,
   } = await loadWorkspaceChrome(request, env, { requireQbo: false, requireOwner: true });
   // Owner-only surface gate is enforced inside the helper
   // (redirects to /dashboard?denied=reports for non-owners).
@@ -33,7 +33,7 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
   ]);
 
   return data(
-    { report, arKpis, orgName, initials, userLabel, connected, needsReconnect, syncLabel, syncIssues },
+    { report, arKpis, orgName, orgId: org.org_id, initials, userLabel, connected, needsReconnect, syncLabel, syncIssues, workspaces },
     { headers },
   );
 }
@@ -49,7 +49,7 @@ function fmtHours(x: number | null): string {
 }
 
 export default function Reports() {
-  const { report, arKpis, orgName, initials, userLabel, connected, needsReconnect, syncLabel, syncIssues } = useLoaderData<typeof loader>();
+  const { report, arKpis, orgName, orgId, initials, userLabel, connected, needsReconnect, syncLabel, syncIssues, workspaces } = useLoaderData<typeof loader>();
   const loadError = report.loadError || arKpis.loadError;
   const truncated = report.truncated || arKpis.truncated;
   const hideTeam = !!report.loadError || report.truncated;
@@ -69,7 +69,7 @@ export default function Reports() {
   }));
 
   return (
-    <AppShell orgName={orgName} userInitials={initials} userLabel={userLabel} syncLabel={syncLabel} connected={connected} isOwner={true} activeNav="reports" syncIssues={<SyncIssues issues={syncIssues} returnTo="/reports" />}>
+    <AppShell orgName={orgName} orgId={orgId} workspaces={workspaces} userInitials={initials} userLabel={userLabel} syncLabel={syncLabel} connected={connected} isOwner={true} activeNav="reports" syncIssues={<SyncIssues issues={syncIssues} returnTo="/reports" />}>
       <ContentShell type="workspace" className="flex flex-col gap-6">
         <div className="flex items-center justify-between gap-3">
           <h1 className="font-display text-xl font-semibold text-text">Team performance</h1>

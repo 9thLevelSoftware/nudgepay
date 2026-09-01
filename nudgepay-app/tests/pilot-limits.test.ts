@@ -1,11 +1,11 @@
 import { expect, test } from "vitest";
-import { PILOT_LIMIT_LINES, PILOT_MAX_LIST_ROWS, PILOT_WORKSPACES_PER_USER } from "../app/lib/pilot-limits";
+import { PILOT_LIMIT_LINES, PILOT_MAX_LIST_ROWS, WORKSPACES_PER_USER_CAP } from "../app/lib/pilot-limits";
 import { PAGE_ALL_MAX_ROWS } from "../app/lib/page-all";
 
 test("pilot list cap is the shared page-all cap", () => {
   expect(PILOT_MAX_LIST_ROWS).toBe(PAGE_ALL_MAX_ROWS);
   expect(PILOT_MAX_LIST_ROWS).toBe(5000);
-  expect(PILOT_WORKSPACES_PER_USER).toBe(1);
+  expect(WORKSPACES_PER_USER_CAP).toBe(20);
 });
 
 test("pilot limit copy is explicit and not automation", () => {

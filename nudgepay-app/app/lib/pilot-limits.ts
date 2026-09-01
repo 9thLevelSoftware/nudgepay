@@ -4,11 +4,11 @@
 import { PAGE_ALL_MAX_ROWS } from "./page-all";
 
 export const PILOT_MAX_LIST_ROWS = PAGE_ALL_MAX_ROWS;
-export const PILOT_WORKSPACES_PER_USER = 1;
+export const WORKSPACES_PER_USER_CAP = 20;
 
 export const PILOT_LIMIT_LINES = [
   `Queue, reports, and sync pages cap at ${PILOT_MAX_LIST_ROWS.toLocaleString("en-US")} rows per list. Truncated results are marked; they are not silently complete.`,
-  "Each signed-in user belongs to one workspace.",
+  `A signed-in user can belong to up to ${WORKSPACES_PER_USER_CAP} workspaces.`,
   "Roles are owner and member only.",
   "Owners can download workspace customers, invoices, promises, and messages as JSON (5,000-row cap per list).",
   "You can download a copy of your NudgePay login data, then delete the login after leaving or deleting your workspace.",

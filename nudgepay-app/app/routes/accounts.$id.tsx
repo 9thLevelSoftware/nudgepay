@@ -8,7 +8,7 @@ import { requireUser, resolveOrg } from "../lib/session.server";
 import { getConnectionStatus } from "../lib/qbo-connection.server";
 import { connectionChrome, connectionSyncLabel } from "../lib/connection-chrome";
 import { createSupabaseServiceClient } from "../lib/supabase.server";
-import { listOrgMembers } from "../lib/orgs.server";
+import { listOrgMembers, listUserWorkspaces } from "../lib/orgs.server";
 import { loadOrgConfig } from "../lib/org-config.server";
 import { todayInTz } from "../lib/tz";
 import { buildTimeline, type TimelineLogInput, type TimelineSmsInput } from "../lib/timeline";
@@ -88,7 +88,7 @@ export async function loader({ request, params, context }: LoaderFunctionArgs) {
   // --- Prelude: mirrors accounts.tsx / dashboard.tsx verbatim ---
   const env = getEnv(context as any);
   const { supabase, headers, user } = await requireUser(request, env);
-  const org = await resolveOrg(supabase, user.id);
+  const org = await resolveOrg(supabase, user.id, request);
   if (!org) throw redirect("/onboarding", { headers });
 
   // Org name
@@ -106,11 +106,12 @@ export async function loader({ request, params, context }: LoaderFunctionArgs) {
   const service = createSupabaseServiceClient(env);
   const conn = await getConnectionStatus(service, org.org_id);
 
-  const [{ data: connMeta, error: connMetaErr }, { data: syncErrorRows }] = await Promise.all([
+  const [{ data: connMeta, error: connMetaErr }, { data: syncErrorRows }, workspaces] = await Promise.all([
     service.from("qbo_connections").select("last_sync_at").eq("org_id", org.org_id).maybeSingle(),
     supabase.from("sync_errors")
       .select("id, source, scope, message, occurred_at").eq("org_id", org.org_id)
       .is("resolved_at", null).order("occurred_at", { ascending: false }).limit(20),
+    listUserWorkspaces(service, user.id),
   ]);
   if (connMetaErr) throw connMetaErr;
   const lastSyncAt = (connMeta?.last_sync_at as string | null) ?? null;
@@ -284,6 +285,8 @@ export async function loader({ request, params, context }: LoaderFunctionArgs) {
   return data(
     {
       orgName: orgRow?.name ?? "(unknown)",
+      orgId: org.org_id,
+      workspaces,
       initials,
       userLabel,
       syncLabel,
@@ -332,6 +335,8 @@ export default function AccountProfilePage() {
   return (
     <AppShell
       orgName={d.orgName}
+      orgId={d.orgId}
+      workspaces={d.workspaces}
       userInitials={d.initials}
       userLabel={d.userLabel}
       syncLabel={d.syncLabel}

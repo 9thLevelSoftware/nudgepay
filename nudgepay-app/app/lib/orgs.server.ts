@@ -2,6 +2,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { displayLabel } from "./names";
 import { DEFAULT_SMS_TEMPLATES } from "./sms-templates";
 import { DEFAULT_EMAIL_TEMPLATES } from "./email-templates";
+import { WORKSPACES_PER_USER_CAP } from "./pilot-limits";
 import {
   AlreadyInWorkspaceError,
   canJoinOrg,
@@ -11,11 +12,34 @@ function isUniqueViolation(err: { code?: string } | null | undefined): boolean {
   return err?.code === "23505";
 }
 
-async function existingOrgId(service: SupabaseClient, userId: string): Promise<string | null> {
+async function existingOrgIds(service: SupabaseClient, userId: string): Promise<string[]> {
   const { data, error } = await service
-    .from("memberships").select("org_id").eq("user_id", userId).maybeSingle();
+    .from("memberships").select("org_id").eq("user_id", userId);
   if (error) throw error;
-  return (data?.org_id as string | undefined) ?? null;
+  return (data ?? []).map((r) => r.org_id as string);
+}
+
+export type UserWorkspace = { orgId: string; name: string; role: string };
+
+export async function listUserWorkspaces(
+  service: SupabaseClient,
+  userId: string,
+): Promise<UserWorkspace[]> {
+  const { data, error } = await service
+    .from("memberships")
+    .select("org_id, role, organizations(name)")
+    .eq("user_id", userId)
+    .order("created_at", { ascending: true });
+  if (error) throw error;
+  return (data ?? []).map((r) => {
+    const org = r.organizations as { name: string } | { name: string }[] | null;
+    const name = Array.isArray(org) ? org[0]?.name : org?.name;
+    return {
+      orgId: r.org_id as string,
+      name: (name ?? "").trim() || "Workspace",
+      role: r.role as string,
+    };
+  });
 }
 
 export async function acceptInvite(
@@ -51,7 +75,11 @@ export async function createOrgForUser(
   userId: string,
   name: string
 ): Promise<string> {
-  if (canJoinOrg(await existingOrgId(service, userId)) !== "join") {
+  const ids = await existingOrgIds(service, userId);
+  if (ids.length >= WORKSPACES_PER_USER_CAP) {
+    throw new Error("Workspace limit reached");
+  }
+  if (canJoinOrg(ids) !== "join") {
     throw new AlreadyInWorkspaceError();
   }
 
