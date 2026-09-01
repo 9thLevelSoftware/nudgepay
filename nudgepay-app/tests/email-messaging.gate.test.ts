@@ -1,6 +1,7 @@
 import { beforeAll, expect, test, vi } from "vitest";
 import { serviceClient, makeUserClient } from "./helpers";
 import { sendInvoiceEmail, type EmailDeps } from "../app/lib/email-messaging.server";
+import { EMAIL_CUSTOMER_DAY_CAP } from "../app/lib/send-limits";
 
 let userId: string;
 beforeAll(async () => { ({ userId } = await makeUserClient("email-sender@example.com")); });
@@ -135,6 +136,27 @@ test("throws when outside quiet hours (no provider call)", async () => {
   expect(f).not.toHaveBeenCalled();
   const { data: rows } = await svc.from("email_messages").select("id").eq("customer_id", customerId);
   expect(rows ?? []).toHaveLength(0);
+});
+
+test("sendInvoiceEmail refuses when the customer day cap is already full", async () => {
+  const { orgId, customerId, invoiceId } = await seed("daycap@chancey.test");
+  const from = await enableEmail(orgId);
+  const rows = Array.from({ length: EMAIL_CUSTOMER_DAY_CAP }, (_, i) => ({
+    org_id: orgId,
+    invoice_id: invoiceId,
+    customer_id: customerId,
+    direction: "outbound",
+    to_address: "daycap@chancey.test",
+    subject: `prior ${i}`,
+    body: `prior ${i}`,
+    status: "sent",
+  }));
+  const { error } = await svc.from("email_messages").insert(rows);
+  expect(error).toBeNull();
+  const f = vi.fn();
+  await expect(sendInvoiceEmail(deps(f, from), { orgId, invoiceId, userId, subject: "Hi", body: "Pay" }))
+    .rejects.toThrow(/rate cap/i);
+  expect(f).not.toHaveBeenCalled();
 });
 
 test("Resend 503 throws and does not insert an outbound row", async () => {
