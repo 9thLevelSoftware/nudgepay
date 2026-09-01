@@ -59,12 +59,16 @@ export async function runScheduledCdc(
   const qbo = getQboEnv(context);
   const service = createSupabaseServiceClient(env);
 
+  // Real connections have a refresh token. Display-only demo chrome
+  // (status=connected, tokens null) must not enter CDC — getValidAccessToken
+  // would throw and recordSyncError every tick.
   const conns = await pageAll<{ org_id: string; last_sync_at: string | null }>(
     (from, to) =>
       orderPage(
         service.from("qbo_connections")
           .select("org_id, last_sync_at", { count: "exact" })
-          .eq("status", "connected"),
+          .eq("status", "connected")
+          .not("refresh_token_enc", "is", null),
       ).range(from, to),
     { maxRows: PAGE_ALL_MAX_ROWS },
   );
