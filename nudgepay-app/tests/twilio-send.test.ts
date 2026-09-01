@@ -155,6 +155,34 @@ test("sendInvoiceText refuses when the workspace hour cap is already full", asyn
   expect(fetchFn).not.toHaveBeenCalled();
 });
 
+test("sendInvoiceText still sends when workspace-hour texts are older than 1h", async () => {
+  const { orgId, invoiceId } = await seed(true, "+12295550922");
+  const { data: other } = await svc.from("customers")
+    .insert({ org_id: orgId, qbo_id: "c-stale-hour", name: "Other", phone: "+12295550923", sms_consent: true })
+    .select("id").single();
+  const { data: otherInv } = await svc.from("invoices")
+    .insert({ org_id: orgId, qbo_id: "i-stale-hour", qbo_doc_number: "2100", customer_id: other!.id, balance: 50 })
+    .select("id").single();
+  const stale = new Date(DAYTIME_NOW.getTime() - 65 * 60_000).toISOString();
+  const rows = Array.from({ length: SMS_ORG_HOUR_CAP }, (_, i) => ({
+    org_id: orgId,
+    invoice_id: otherInv!.id,
+    customer_id: other!.id,
+    direction: "outbound",
+    to_number: "+12295550923",
+    body: `stale ${i}`,
+    status: "sent",
+    created_at: stale,
+  }));
+  const { error } = await svc.from("text_messages").insert(rows);
+  expect(error).toBeNull();
+  const sid = `SM-hour-stale-${Math.random().toString(16).slice(2)}`;
+  const fetchFn = vi.fn(async () => jsonResponse({ sid, status: "queued" }));
+  const res = await sendInvoiceText(deps(fetchFn), { orgId, invoiceId, userId, body: "Past due" });
+  expect(res.sid).toBe(sid);
+  expect(fetchFn).toHaveBeenCalledOnce();
+});
+
 test("sendInvoiceText does not insert a row when Twilio returns 503", async () => {
   const { orgId, invoiceId, customerId } = await seed(true, "+12295550903");
   const fetchFn = vi.fn(async () => jsonResponse({ message: "unavailable" }, 503));
