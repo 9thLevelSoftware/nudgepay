@@ -15,6 +15,13 @@ compatibility_date = "2025-06-01"
 compatibility_flags = ["nodejs_compat"]
 main = "nudgepay-app/build/server/index.js"
 workers_dev = true
+# Vite already bundled the Worker. Re-bundling under the parent Wrangler
+# process is what failed `react-router build` on main (WebSocket is undefined).
+no_bundle = true
+
+[[rules]]
+type = "ESModule"
+globs = ["**/*.js", "**/*.mjs"]
 
 [vars]
 SUPABASE_URL = "https://epjumsnmpvilgasycpau.supabase.co"
@@ -48,6 +55,8 @@ simple = { limit = 20, period = 60 }
 [assets]
 directory = "nudgepay-app/build/client"
 
+# If postinstall already built (WORKERS_CI=1), this is a no-op. Otherwise
+# (local dry-run) it builds without skipping.
 [build]
 command = "node scripts/cf-builds-prepare.mjs"
 cwd = "nudgepay-app"
