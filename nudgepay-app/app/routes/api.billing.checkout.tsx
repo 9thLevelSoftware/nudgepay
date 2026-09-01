@@ -4,6 +4,7 @@ import { requireUser, resolveOrg } from "../lib/session.server";
 import { createSupabaseServiceClient } from "../lib/supabase.server";
 import { createCheckoutSession, createStripeCustomer } from "../lib/stripe.server";
 import { safeReturnTo } from "../lib/return-to";
+import { hasPermission } from "../lib/roles";
 
 function flag(returnTo: string, key: string, val: string): string {
   return `${returnTo}${returnTo.includes("?") ? "&" : "?"}${key}=${val}`;
@@ -16,7 +17,7 @@ export async function action({ request, context }: ActionFunctionArgs) {
   if (!org) throw redirect("/onboarding", { headers });
   const form = await request.formData();
   const returnTo = safeReturnTo(form.get("returnTo"), "/settings?tab=billing");
-  if (org.role !== "owner") return redirect(flag(returnTo, "billing", "forbidden"), { headers });
+  if (!hasPermission(org.role, "manageWorkspace")) return redirect(flag(returnTo, "billing", "forbidden"), { headers });
 
   const stripe = getStripeEnvOrNull(context as any);
   if (!stripe) return redirect(flag(returnTo, "billing", "unconfigured"), { headers });
