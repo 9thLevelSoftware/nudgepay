@@ -4,7 +4,10 @@ import { sendInvoiceEmail, type EmailDeps } from "../app/lib/email-messaging.ser
 import { EMAIL_CUSTOMER_DAY_CAP, EMAIL_ORG_HOUR_CAP } from "../app/lib/send-limits";
 
 let userId: string;
-beforeAll(async () => { ({ userId } = await makeUserClient("email-sender@example.com")); });
+let userClient: Awaited<ReturnType<typeof makeUserClient>>["client"];
+beforeAll(async () => {
+  ({ userId, client: userClient } = await makeUserClient("email-sender@example.com"));
+});
 
 const svc = serviceClient();
 
@@ -12,6 +15,7 @@ async function seed(email: string | null, doNotEmail = false) {
   const { data: org } = await svc.from("organizations")
     .insert({ name: `Email Org ${Math.random()}` }).select("id").single();
   const orgId = org!.id as string;
+  await svc.from("memberships").insert({ org_id: orgId, user_id: userId, role: "owner" });
   const { data: cust } = await svc.from("customers")
     .insert({ org_id: orgId, name: "Acme", email }).select("id").single();
   const customerId = cust!.id as string;
@@ -248,15 +252,150 @@ test("sendInvoiceEmail still sends when workspace-hour emails are older than 1h"
   expect(f).toHaveBeenCalledTimes(1);
 });
 
-test("Resend 503 throws and does not insert an outbound row", async () => {
+test("Resend 400 releases the reserved outbound row", async () => {
   const { orgId, customerId, invoiceId } = await seed("outage@chancey.test");
   const from = await enableEmail(orgId);
-  const f = vi.fn(async () => jsonResponse({ message: "unavailable" }, 503));
+  const f = vi.fn(async () => jsonResponse({ message: "invalid" }, 400));
   await expect(sendInvoiceEmail(deps(f, from), { orgId, invoiceId, userId, subject: "Hi", body: "Pay" }))
-    .rejects.toThrow(/Resend send failed \(503\)/);
+    .rejects.toThrow(/Resend send failed \(400\)/);
   expect(f).toHaveBeenCalledTimes(1);
   const { data: rows } = await svc.from("email_messages").select("id").eq("customer_id", customerId);
   expect(rows ?? []).toHaveLength(0);
+});
+
+test("membership removal before reservation denies the email provider call", async () => {
+  const { orgId, customerId, invoiceId } = await seed("removed@chancey.test");
+  const from = await enableEmail(orgId);
+  const backup = await makeUserClient(`email-backup-${crypto.randomUUID()}@example.com`);
+  await svc.from("memberships").insert({ org_id: orgId, user_id: backup.userId, role: "owner" });
+  const { error: removeError } = await svc.from("memberships")
+    .delete().eq("org_id", orgId).eq("user_id", userId);
+  expect(removeError).toBeNull();
+  const fetchFn = vi.fn();
+  await expect(sendInvoiceEmail(deps(fetchFn, from), {
+    orgId, invoiceId, userId, subject: "Hi", body: "Pay",
+  })).rejects.toMatchObject({ code: "42501" });
+  expect(fetchFn).not.toHaveBeenCalled();
+  const { data: rows } = await svc.from("email_messages").select("id").eq("customer_id", customerId);
+  expect(rows ?? []).toHaveLength(0);
+});
+
+test("authenticated owners cannot mutate outbound email provider-attempt fields", async () => {
+  const { orgId, invoiceId } = await seed("immutable@chancey.test");
+  const from = await enableEmail(orgId);
+  const fetchFn = vi.fn(async () => jsonResponse({ id: "re_immutable" }));
+  const sent = await sendInvoiceEmail(deps(fetchFn, from), {
+    orgId, invoiceId, userId, subject: "Hi", body: "Original",
+  });
+  const { data: changed, error } = await userClient.from("email_messages").update({
+    body: "tampered",
+    customer_id: null,
+    send_dedupe_key: "cleared",
+    created_at: "2000-01-01T00:00:00.000Z",
+  }).eq("id", sent.id).select("id");
+  expect(error?.code === "42501" || (changed ?? []).length === 0).toBe(true);
+  const { data: preserved } = await svc.from("email_messages")
+    .select("body, customer_id, send_dedupe_key, created_at").eq("id", sent.id).single();
+  expect(preserved?.body).not.toBe("tampered");
+  expect(preserved?.customer_id).not.toBeNull();
+  expect(preserved?.send_dedupe_key).not.toBe("cleared");
+  expect(preserved?.created_at).not.toBe("2000-01-01T00:00:00+00:00");
+});
+
+test("a Resend 503 is durable and blocks a blind retry", async () => {
+  const { orgId, customerId, invoiceId } = await seed("server-error@chancey.test");
+  const from = await enableEmail(orgId);
+  const firstFetch = vi.fn(async () => jsonResponse({ message: "unavailable" }, 503));
+  const args = { orgId, invoiceId, userId, subject: "Hi", body: "Provider 500 reminder" };
+  await expect(sendInvoiceEmail(deps(firstFetch, from), args)).rejects.toThrow(/status is unknown/i);
+  const { data: rows } = await svc.from("email_messages")
+    .select("status, error_code").eq("customer_id", customerId);
+  expect(rows).toEqual([{ status: "unknown", error_code: "transport_ambiguous" }]);
+
+  const retryFetch = vi.fn();
+  await expect(sendInvoiceEmail(deps(retryFetch, from), args)).rejects.toThrow(/status is unknown/i);
+  expect(retryFetch).not.toHaveBeenCalled();
+});
+
+test("an ambiguous email transport failure is durable and blocks a blind retry", async () => {
+  const { orgId, customerId, invoiceId } = await seed("ambiguous@chancey.test");
+  const from = await enableEmail(orgId);
+  const firstFetch = vi.fn(async () => {
+    throw new TypeError("connection closed after request write");
+  });
+  await expect(sendInvoiceEmail(
+    deps(firstFetch, from),
+    { orgId, invoiceId, userId, subject: "Hi", body: "Ambiguous reminder" },
+  )).rejects.toThrow(/status is unknown/i);
+
+  const { data: attempts } = await svc.from("email_messages")
+    .select("status")
+    .eq("customer_id", customerId);
+  expect(attempts).toEqual([{ status: "unknown" }]);
+
+  const retryFetch = vi.fn();
+  await expect(sendInvoiceEmail(
+    deps(retryFetch, from, {
+      unsubscribeBaseUrl: "https://new.example.com",
+      unsubscribeSecret: "rotated-secret",
+    }),
+    { orgId, invoiceId, userId, subject: "Hi", body: "Ambiguous reminder" },
+  )).rejects.toThrow(/status is unknown/i);
+  expect(retryFetch).not.toHaveBeenCalled();
+});
+
+test("concurrent duplicate email actions reserve one provider send", async () => {
+  const { orgId, customerId, invoiceId } = await seed("concurrent@chancey.test");
+  const from = await enableEmail(orgId);
+  const fetchFn = vi.fn(async () => {
+    await new Promise((resolve) => setTimeout(resolve, 25));
+    return jsonResponse({ id: "re_concurrent" });
+  });
+  const args = { orgId, invoiceId, userId, subject: "Hi", body: "Concurrent reminder" };
+  const outcomes = await Promise.allSettled([
+    sendInvoiceEmail(deps(fetchFn, from), args),
+    sendInvoiceEmail(deps(fetchFn, from), args),
+  ]);
+
+  expect(outcomes.filter((outcome) => outcome.status === "fulfilled")).toHaveLength(1);
+  expect(outcomes.filter((outcome) => outcome.status === "rejected")).toHaveLength(1);
+  expect(fetchFn).toHaveBeenCalledOnce();
+  const { data: rows } = await svc.from("email_messages")
+    .select("status, provider_message_id").eq("customer_id", customerId);
+  expect(rows).toEqual([{ status: "sent", provider_message_id: "re_concurrent" }]);
+});
+
+test("a corrected email destination is a distinct same-day provider request", async () => {
+  const { orgId, customerId, invoiceId } = await seed("old-destination@chancey.test");
+  const from = await enableEmail(orgId);
+  const fetchFn = vi
+    .fn()
+    .mockResolvedValueOnce(jsonResponse({ id: "re_old_dest" }))
+    .mockResolvedValueOnce(jsonResponse({ id: "re_new_dest" }));
+  const args = { orgId, invoiceId, userId, subject: "Hi", body: "Destination correction" };
+  await sendInvoiceEmail(deps(fetchFn, from), args);
+  await svc.from("customers").update({ email: "new-destination@chancey.test" }).eq("id", customerId);
+  await sendInvoiceEmail(deps(fetchFn, from), args);
+  expect(fetchFn).toHaveBeenCalledTimes(2);
+});
+
+test("a known failed email can be explicitly retried with a new provider key", async () => {
+  const { orgId, invoiceId } = await seed("retryable@chancey.test");
+  const from = await enableEmail(orgId);
+  const fetchFn = vi
+    .fn()
+    .mockResolvedValueOnce(jsonResponse({ id: "re_failed" }))
+    .mockResolvedValueOnce(jsonResponse({ id: "re_retry" }));
+  const args = { orgId, invoiceId, userId, subject: "Hi", body: "Retryable reminder" };
+  const first = await sendInvoiceEmail(deps(fetchFn, from), args);
+  await svc.from("email_messages").update({ status: "failed", error_code: "bounce" }).eq("id", first.id);
+  const second = await sendInvoiceEmail(deps(fetchFn, from), args);
+
+  expect(second.providerMessageId).toBe("re_retry");
+  expect(fetchFn).toHaveBeenCalledTimes(2);
+  const firstHeaders = (fetchFn.mock.calls[0][1] as RequestInit).headers as Record<string, string>;
+  const retryHeaders = (fetchFn.mock.calls[1][1] as RequestInit).headers as Record<string, string>;
+  expect(retryHeaders["Idempotency-Key"]).not.toBe(firstHeaders["Idempotency-Key"]);
 });
 
 test("happy path: provider called once, one outbound row, footer appended", async () => {

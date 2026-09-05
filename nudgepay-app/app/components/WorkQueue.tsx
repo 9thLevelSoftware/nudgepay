@@ -440,7 +440,7 @@ function QueueRow({
                 <span className={`inline-flex items-center gap-1.5 rounded-md px-2 py-0.5 text-[11.5px] font-sans font-semibold ${CHIP[tone]}`}>
                   <span aria-hidden="true" className={`w-1.5 h-1.5 rounded-full ${CHIP_DOT[tone]}`} />
                   {STATUS_LABEL[item.status] ?? item.status}
-                  {item.nextActionAt ? <span className="font-normal opacity-80"> · {formatDate(item.nextActionAt)}</span> : null}
+                  {item.nextActionAt ? <span className="font-normal"> · {formatDate(item.nextActionAt)}</span> : null}
                 </span>
               );
             })()}
@@ -1085,7 +1085,7 @@ export function WorkQueue({
               ? `${invoiceItems.length} matching invoices · ${totalCount} open invoices`
               : `${items.length} matching · ${totalCount} open`}
           </p>
-          <p className="hidden md:block font-mono text-[10px] text-muted/60">
+          <p className="hidden md:block font-mono text-[10px] text-muted">
             <kbd className="px-0.5">j</kbd>/<kbd className="px-0.5">k</kbd> move · <kbd className="px-0.5">x</kbd> select
           </p>
         </div>
@@ -1109,7 +1109,7 @@ export function WorkQueue({
                   tab,
                   invoice,
                 })}
-                aria-pressed={entity === id}
+                aria-current={entity === id ? "true" : undefined}
                 className={[
                   "px-2.5 h-8 inline-flex items-center rounded text-xs font-sans font-medium transition-colors",
                   "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-copper",
@@ -1127,7 +1127,7 @@ export function WorkQueue({
             <Link
               key={id}
               to={dashboardHref({ view, sort, q: search || undefined, entity, density: id, case: selectedCaseId, tab, invoice })}
-              aria-pressed={density === id}
+              aria-current={density === id ? "true" : undefined}
               onClick={() => persistDensity(id)}
               className={[
                 "px-2.5 h-8 inline-flex items-center rounded text-xs font-sans font-medium transition-colors",
@@ -1141,7 +1141,7 @@ export function WorkQueue({
         </div>
 
         {/* GET form; submit preserves view + entity + density via hidden inputs (not sort). */}
-        <Form method="get" className="flex min-w-0 flex-[1_1_420px] flex-wrap items-center justify-end gap-2">
+        <Form method="get" action="/dashboard" className="flex min-w-0 flex-[1_1_420px] flex-wrap items-center justify-end gap-2">
           <input type="hidden" name="view" value={view} />
           {entity !== "customers" ? <input type="hidden" name="entity" value={entity} /> : null}
           {hrefDensity ? <input type="hidden" name="density" value={hrefDensity} /> : null}

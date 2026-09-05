@@ -71,7 +71,7 @@ export function MessageThreadPanel({
   if (!thread) {
     return (
       <aside className="hidden lg:flex flex-col items-center justify-center bg-surface border border-border rounded-card p-8 text-center text-muted">
-        <Icon name="message" size={28} className="mb-2 text-muted/60" aria-hidden />
+        <Icon name="message" size={28} className="mb-2 text-muted" aria-hidden />
         <p className="text-sm">Select a thread to preview it here.</p>
       </aside>
     );
@@ -268,7 +268,7 @@ export function MessageThreadPanel({
               <button
                 type="submit"
                 disabled={!emailEnabled || !thread.canReply || formBusy("/api/email/send")}
-                className="inline-flex items-center gap-1.5 rounded-md bg-copper px-3 py-1.5 text-xs font-semibold text-ink hover:bg-copper/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-copper disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                className="inline-flex items-center gap-1.5 rounded-md bg-copper px-3 py-1.5 text-xs font-semibold text-on-copper hover:bg-copper/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-copper disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
               >
                 <Icon name="mail" size={14} aria-hidden /> {formBusy("/api/email/send") ? "Sending…" : "Send email"}
               </button>
@@ -332,7 +332,7 @@ export function MessageThreadPanel({
               </span>
               <button
                 type="submit" disabled={smsSendDisabled || formBusy("/api/text/send")}
-                className="inline-flex items-center gap-1.5 rounded-md bg-copper px-3 py-1.5 text-xs font-semibold text-ink hover:bg-copper/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-copper disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                className="inline-flex items-center gap-1.5 rounded-md bg-copper px-3 py-1.5 text-xs font-semibold text-on-copper hover:bg-copper/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-copper disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
               >
                 <Icon name="message" size={14} aria-hidden /> {formBusy("/api/text/send") ? "Sending…" : "Send text"}
               </button>

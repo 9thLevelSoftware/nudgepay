@@ -6,6 +6,7 @@ import { CommandPalette } from "./CommandPalette";
 import { ThemeToggle } from "./ThemeToggle";
 import { ICON_HIT_CLASS, MAIN_CONTENT_ID, SkipLink } from "./ui";
 import { SUPPORT_MAILTO } from "../lib/meta";
+import { hasOpenDialogs } from "../lib/dialog-manager";
 
 interface AppShellProps {
   orgName: string;
@@ -334,7 +335,7 @@ function UserMenu({
       return;
     }
     function onKey(e: KeyboardEvent) {
-      if (e.key === "Escape") setOpen(false);
+      if (e.key === "Escape" && !hasOpenDialogs()) setOpen(false);
     }
     function onPointer(e: MouseEvent) {
       if (rootRef.current && !rootRef.current.contains(e.target as Node)) setOpen(false);

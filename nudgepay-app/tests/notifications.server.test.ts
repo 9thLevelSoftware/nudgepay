@@ -156,6 +156,27 @@ describe("sendBrokenPromiseAlerts operator gate (NP-AUD-2026-049)", () => {
     );
     expect(fetchFn).not.toHaveBeenCalled();
   });
+
+  it("logs only safe correlation and error fields when an alert send fails", async () => {
+    const error = vi.spyOn(console, "error").mockImplementation(() => {});
+    const fetchFn = mockFetch(422, { message: "owner@example.com token=provider-secret" });
+    const { service } = serviceForAlerts({ fromAddress: "alerts@x.com" });
+    await sendBrokenPromiseAlerts(
+      { fetchFn: fetchFn as any, service, email: { apiKey: "key", allowedFrom: "alerts@x.com" }, appUrl: "https://app.nudgepay.test" },
+      "org-1",
+      broken,
+      "2026-07-02",
+    );
+    expect(error).toHaveBeenCalledWith(expect.objectContaining({
+      event: "broken_promise_email_failed",
+      orgId: "org-1",
+      recipientUserId: "u1",
+      promiseId: "p1",
+      errorName: "ProviderSendRejectedError",
+      status: 422,
+    }));
+    expect(JSON.stringify(error.mock.calls[0][0])).not.toMatch(/owner@example\.com|provider-secret/);
+  });
 });
 
 describe("runDailyDigest operator gate (NP-AUD-2026-049)", () => {
@@ -207,5 +228,24 @@ describe("runDailyDigest operator gate (NP-AUD-2026-049)", () => {
       "2026-07-02",
     )).resolves.toBeUndefined();
     expect(fetchFn).not.toHaveBeenCalled();
+  });
+
+  it("logs no email or provider body when a digest send fails", async () => {
+    const error = vi.spyOn(console, "error").mockImplementation(() => {});
+    const fetchFn = mockFetch(422, { message: "owner@example.com token=provider-secret" });
+    const { service } = serviceForDigest({ fromAddress: "alerts@x.com" });
+    await runDailyDigest(
+      { fetchFn: fetchFn as any, service, email: { apiKey: "key", allowedFrom: "alerts@x.com" }, appUrl: "https://app.nudgepay.test" },
+      "org-1",
+      "2026-07-02",
+    );
+    expect(error).toHaveBeenCalledWith(expect.objectContaining({
+      event: "digest_email_failed",
+      orgId: "org-1",
+      recipientUserId: "u1",
+      errorName: "ProviderSendRejectedError",
+      status: 422,
+    }));
+    expect(JSON.stringify(error.mock.calls[0][0])).not.toMatch(/owner@example\.com|provider-secret/);
   });
 });

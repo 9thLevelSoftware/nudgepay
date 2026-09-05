@@ -1,11 +1,31 @@
 import { createClient, SupabaseClient } from "@supabase/supabase-js";
-import { loadTestEnv } from "./load-env";
+import { execFileSync } from "node:child_process";
+import { writeFileSync, unlinkSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { assertSafeTestEnv, loadTestEnv } from "./load-env";
 
 const env = loadTestEnv();
 
 export const TEST_ENV = env;
 
 export const SUPABASE_URL = env.SUPABASE_URL;
+
+/** Execute fixture-only SQL against the verified local Supabase database. */
+export function runLocalTestSql(sql: string): void {
+  assertSafeTestEnv(env);
+  const sqlPath = join(tmpdir(), `nudgepay-test-${crypto.randomUUID()}.sql`);
+  writeFileSync(sqlPath, sql);
+  try {
+    execFileSync("npx", ["supabase", "db", "query", "--local", "--file", sqlPath], {
+      cwd: process.cwd(),
+      stdio: "pipe",
+      shell: true,
+    });
+  } finally {
+    unlinkSync(sqlPath);
+  }
+}
 
 export function serviceClient(): SupabaseClient {
   return createClient(env.SUPABASE_URL, env.SUPABASE_SERVICE_KEY, {

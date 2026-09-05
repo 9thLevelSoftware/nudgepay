@@ -92,7 +92,7 @@ test("accounts density control is General | Risk only", () => {
   expect(src).toContain("ACCOUNTS_DENSITY_IDS");
   expect(src).toContain("General");
   expect(src).toContain("Risk");
-  expect(src).toContain("aria-pressed");
+  expect(src).toContain('aria-current={pressed ? "true" : undefined}');
   expect(src).not.toContain('role="tablist"');
 });
 

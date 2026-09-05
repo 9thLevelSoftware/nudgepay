@@ -45,7 +45,7 @@ type ButtonVariant = "primary" | "secondary" | "destructive" | "ghost";
 type ButtonSize = "sm" | "md" | "lg" | "icon";
 
 export const buttonVariants: Record<ButtonVariant, string> = {
-  primary: "bg-copper text-ink hover:bg-copper/90",
+  primary: "bg-copper text-on-copper hover:bg-copper/90",
   secondary: "border border-border font-medium text-text hover:border-copper",
   destructive: "bg-hot text-surface hover:bg-hot/90",
   ghost: "text-text hover:bg-ink/5",
@@ -88,7 +88,7 @@ export function SkipLink() {
   return (
     <a
       href={`#${MAIN_CONTENT_ID}`}
-      className="sr-only focus:not-sr-only focus:absolute focus:top-2 focus:left-2 focus:z-50 rounded-md bg-copper px-3 py-2 text-sm font-semibold text-ink"
+      className="sr-only focus:not-sr-only focus:absolute focus:top-2 focus:left-2 focus:z-50 rounded-md bg-copper px-3 py-2 text-sm font-semibold text-on-copper"
     >
       Skip to content
     </a>

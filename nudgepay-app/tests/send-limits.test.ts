@@ -1,6 +1,6 @@
 import { expect, test } from "vitest";
 import {
-  evaluateSendBudget, evaluateTestBudget, sendIdempotencyKey,
+  evaluateSendBudget, evaluateTestBudget, sendAttemptIdentity, sendIdempotencyKey,
   SMS_ORG_HOUR_CAP, SMS_CUSTOMER_DAY_CAP, TEST_HOUR_CAP,
   EMAIL_ORG_HOUR_CAP, EMAIL_CUSTOMER_DAY_CAP,
 } from "../app/lib/send-limits";
@@ -61,4 +61,26 @@ test("sendIdempotencyKey is stable across minutes and hashes the body", () => {
   expect(a.startsWith("sms:org:inv:")).toBe(true);
   expect(a).not.toMatch(/:\d{5,}$/);
   expect(a.length).toBeLessThanOrEqual(128);
+});
+
+test("sendAttemptIdentity deduplicates one action day without blocking a next-day reminder", () => {
+  const first = sendAttemptIdentity(
+    "sms",
+    ["org", "inv", "hello"],
+    new Date("2027-01-15T08:00:00.000Z"),
+  );
+  const duplicate = sendAttemptIdentity(
+    "sms",
+    ["org", "inv", "hello"],
+    new Date("2027-01-15T23:59:59.000Z"),
+  );
+  const nextDay = sendAttemptIdentity(
+    "sms",
+    ["org", "inv", "hello"],
+    new Date("2027-01-16T00:00:00.000Z"),
+  );
+
+  expect(duplicate).toEqual(first);
+  expect(nextDay.fingerprint).toBe(first.fingerprint);
+  expect(nextDay.dedupeKey).not.toBe(first.dedupeKey);
 });

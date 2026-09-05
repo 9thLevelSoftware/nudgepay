@@ -1,7 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { useFetcher, useLoaderData, useNavigation, useSearchParams, Form, data, type LoaderFunctionArgs } from "react-router";
 import { useFlashCleanup } from "../lib/use-flash-cleanup";
-import { useDialog } from "../lib/use-dialog";
 import { orgNameMatches } from "../lib/qbo-disconnect";
 import { LEAVE_CONFIRM_TOKEN, deletionConfirmMatches, isLastOwnerMember } from "../lib/account-deletion";
 import { PERSONAL_DELETE_TOKEN, personalAccountConfirmMatches } from "../lib/personal-account-deletion";
@@ -11,14 +10,13 @@ import { loadWorkspaceChrome } from "../lib/workspace.server";
 import { listOrgMembers } from "../lib/orgs.server";
 import { QBO_FLASH, SYNC_FLASH } from "../lib/flash-copy";
 import { AppShell } from "../components/AppShell";
+import { ModalShell } from "../components/ModalShell";
 import { FlashBanner } from "../components/FlashBanner";
 import { SyncIssues } from "../components/SyncIssues";
 import { SettingsTabs, SettingsDirtyProvider, resolveSettingsTab, settingsReturnTo } from "../components/SettingsTabs";
 import { CollectionsRulesForm } from "../components/CollectionsRulesForm";
 import { SmsSettingsSection } from "../components/SmsSettingsSection";
 import { EmailSettingsSection } from "../components/EmailSettingsSection";
-import { UnmatchedStopList } from "../components/UnmatchedStopList";
-import { listRecentUnmatchedStops } from "../lib/inbound-orphans.server";
 import { LateFeesForm } from "../components/LateFeesForm";
 import { PriorityThresholdsForm } from "../components/PriorityThresholdsForm";
 import { WorkflowSettingsForm } from "../components/WorkflowSettingsForm";
@@ -173,7 +171,6 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
       brokenPromiseEmail: notifPrefs?.broken_promise_email ?? true,
       dailyDigestEmail: notifPrefs?.daily_digest_email ?? true,
     },
-    unmatchedStops: isAdmin ? await listRecentUnmatchedStops(service) : { rows: [], loadError: null },
     providerStatus: {
       twilioConfigured,
       resendConfigured,
@@ -361,7 +358,7 @@ export default function Settings() {
                   </label>
                   <button
                     type="submit" disabled={profileBusy("profile")}
-                    className="h-9 rounded-md bg-copper px-4 text-sm font-medium text-ink hover:bg-copper/90 disabled:opacity-60 disabled:cursor-not-allowed"
+                    className="h-9 rounded-md bg-copper px-4 text-sm font-medium text-on-copper hover:bg-copper/90 disabled:opacity-60 disabled:cursor-not-allowed"
                   >
                     {profileBusy("profile") ? "Saving…" : "Save"}
                   </button>
@@ -399,7 +396,7 @@ export default function Settings() {
                   </label>
                   <button
                     type="submit" disabled={profileBusy("password")}
-                    className="h-9 w-fit rounded-md bg-copper px-4 text-sm font-medium text-ink hover:bg-copper/90 disabled:opacity-60 disabled:cursor-not-allowed"
+                    className="h-9 w-fit rounded-md bg-copper px-4 text-sm font-medium text-on-copper hover:bg-copper/90 disabled:opacity-60 disabled:cursor-not-allowed"
                   >
                     {profileBusy("password") ? "Updating…" : "Update password"}
                   </button>
@@ -435,7 +432,7 @@ export default function Settings() {
                   </label>
                   <button
                     type="submit" disabled={profileBusy("email")}
-                    className="h-9 w-fit rounded-md bg-copper px-4 text-sm font-medium text-ink hover:bg-copper/90 disabled:opacity-60 disabled:cursor-not-allowed"
+                    className="h-9 w-fit rounded-md bg-copper px-4 text-sm font-medium text-on-copper hover:bg-copper/90 disabled:opacity-60 disabled:cursor-not-allowed"
                   >
                     {profileBusy("email") ? "Sending…" : "Change email"}
                   </button>
@@ -496,7 +493,7 @@ export default function Settings() {
               <section className="rounded-lg border border-border bg-surface p-5">
                 <h2 className="font-display text-base font-semibold text-text">Download my data</h2>
                 <p className="mt-0.5 text-xs text-muted">
-                  JSON copy of your NudgePay login, membership, notification
+                  JSON copy of your NudgePay login, workspace memberships, notification
                   preferences, and contact-log activity. Workspace invoices and
                   customer records are not included.
                 </p>
@@ -517,7 +514,7 @@ export default function Settings() {
 
               {/* Company profile */}
               <CompanyProfileForm
-                key={d.orgId}
+                key={`company-profile-${d.orgId}`}
                 orgName={d.orgName}
                 profile={d.companyProfile}
                 digestHourLocal={d.digestHourLocal}
@@ -527,7 +524,7 @@ export default function Settings() {
 
               {/* Notifications */}
               <NotificationPrefsForm
-                key={d.orgId}
+                key={`notification-prefs-${d.orgId}`}
                 orgId={d.orgId}
                 alertsReady={Boolean(d.providerStatus.resendConfigured && d.emailSettings.fromAddress)}
                 prefs={d.notificationPrefs}
@@ -619,7 +616,7 @@ export default function Settings() {
                     <button
                       type="submit"
                       disabled={formBusy("/api/members")}
-                      className="h-9 rounded-md bg-copper px-4 text-sm font-medium text-ink hover:bg-copper/90 disabled:opacity-60 disabled:cursor-not-allowed"
+                      className="h-9 rounded-md bg-copper px-4 text-sm font-medium text-on-copper hover:bg-copper/90 disabled:opacity-60 disabled:cursor-not-allowed"
                     >
                       {formBusy("/api/members") ? "Creating…" : "Create invite link"}
                     </button>
@@ -700,13 +697,13 @@ export default function Settings() {
                     </>
                   ) : d.needsReconnect && d.qboConfigured && d.isAdmin ? (
                     <Form method="post" action="/api/qbo/connect">
-                      <button type="submit" disabled={formBusy("/api/qbo/connect")} className="rounded-md bg-copper px-3 py-1.5 text-xs font-semibold text-ink hover:bg-copper/90 disabled:opacity-60 disabled:cursor-not-allowed">
+                      <button type="submit" disabled={formBusy("/api/qbo/connect")} className="rounded-md bg-copper px-3 py-1.5 text-xs font-semibold text-on-copper hover:bg-copper/90 disabled:opacity-60 disabled:cursor-not-allowed">
                         {formBusy("/api/qbo/connect") ? "Reconnecting…" : "Reconnect QuickBooks"}
                       </button>
                     </Form>
                   ) : !d.qboConfigured ? null : d.isAdmin ? (
                     <Form method="post" action="/api/qbo/connect">
-                      <button type="submit" disabled={formBusy("/api/qbo/connect")} className="rounded-md bg-copper px-3 py-1.5 text-xs font-semibold text-ink hover:bg-copper/90 disabled:opacity-60 disabled:cursor-not-allowed">
+                      <button type="submit" disabled={formBusy("/api/qbo/connect")} className="rounded-md bg-copper px-3 py-1.5 text-xs font-semibold text-on-copper hover:bg-copper/90 disabled:opacity-60 disabled:cursor-not-allowed">
                         {formBusy("/api/qbo/connect") ? "Connecting…" : "Connect QuickBooks"}
                       </button>
                     </Form>
@@ -745,9 +742,8 @@ export default function Settings() {
           {/* ── Channels tab ─────────────────────────────────────── */}
           {tab === "channels" && (
             <>
-              {d.isAdmin ? <UnmatchedStopList stops={d.unmatchedStops.rows} loadError={d.unmatchedStops.loadError} /> : null}
               <SmsSettingsSection
-                key={d.orgId}
+                key={`sms-settings-${d.orgId}`}
                 isOwner={d.isAdmin}
                 smsEnabled={d.messaging.smsEnabled}
                 sender={d.messaging.sender}
@@ -766,7 +762,7 @@ export default function Settings() {
                 returnTo={returnTo}
               />
               <EmailSettingsSection
-                key={d.orgId}
+                key={`email-settings-${d.orgId}`}
                 isOwner={d.isAdmin}
                 emailEnabled={d.emailSettings.emailEnabled}
                 fromAddress={d.emailSettings.fromAddress}
@@ -780,14 +776,14 @@ export default function Settings() {
                 resendWebhook={ps.webhookUrls.resendWebhook}
                 returnTo={returnTo}
               />
-              {d.isAdmin && <QuietHoursForm key={d.orgId} quietHours={d.quietHours} returnTo={returnTo} />}
+              {d.isAdmin && <QuietHoursForm key={`quiet-hours-${d.orgId}`} quietHours={d.quietHours} returnTo={returnTo} />}
             </>
           )}
 
           {/* ── Templates tab ────────────────────────────────────── */}
           {tab === "templates" && (
             <TemplateEditor
-              key={d.orgId}
+              key={`templates-${d.orgId}`}
               smsTemplates={d.smsTemplates}
               emailTemplates={d.emailTemplates}
               isOwner={d.isAdmin}
@@ -810,9 +806,9 @@ export default function Settings() {
                 isOwner={d.isAdmin}
                 returnTo={returnTo}
               />
-              {d.isAdmin && <LateFeesForm key={d.orgId} lateFee={d.lateFee} returnTo={returnTo} />}
-              {d.isAdmin && <PriorityThresholdsForm key={d.orgId} priority={d.priority} returnTo={returnTo} />}
-              {d.isAdmin && <WorkflowSettingsForm key={d.orgId} workflow={d.workflow} returnTo={returnTo} />}
+              {d.isAdmin && <LateFeesForm key={`late-fees-${d.orgId}`} lateFee={d.lateFee} returnTo={returnTo} />}
+              {d.isAdmin && <PriorityThresholdsForm key={`priority-thresholds-${d.orgId}`} priority={d.priority} returnTo={returnTo} />}
+              {d.isAdmin && <WorkflowSettingsForm key={`workflow-settings-${d.orgId}`} workflow={d.workflow} returnTo={returnTo} />}
             </>
           )}
         </div>
@@ -943,6 +939,21 @@ function DeleteWorkspaceForm({
       {deleteError === "workspace" ? (
         <p className="mt-2 text-xs text-hot" role="alert">Could not delete the workspace. Try again.</p>
       ) : null}
+      {deleteError === "billing" ? (
+        <p className="mt-2 text-xs text-hot" role="alert">
+          Cancel the workspace subscription and wait for Stripe to confirm the cancellation before deleting.
+        </p>
+      ) : null}
+      {deleteError === "pending" ? (
+        <p className="mt-2 text-xs text-hot" role="alert">
+          Finish or reconcile the pending checkout or message delivery before deleting this workspace.
+        </p>
+      ) : null}
+      {deleteError === "qbo-revoke" ? (
+        <p className="mt-2 text-xs text-hot" role="alert">
+          QuickBooks could not be disconnected. Restore the QuickBooks configuration or retry the disconnect before deleting.
+        </p>
+      ) : null}
     </section>
   );
 }
@@ -1032,12 +1043,6 @@ function QboDisconnectConfirm({
     setTyped("");
   }
 
-  const { panelRef } = useDialog({
-    onClose: close,
-    enabled: open,
-    initialFocusRef: inputRef as React.RefObject<HTMLElement | null>,
-  });
-
   const canSubmit = orgNameMatches(typed, orgName);
 
   return (
@@ -1050,19 +1055,14 @@ function QboDisconnectConfirm({
         Disconnect
       </button>
       {open ? (
-        <div
-          role="dialog"
-          aria-modal="true"
-          aria-labelledby="qbo-disconnect-title"
-          aria-describedby="qbo-disconnect-desc"
-          className="fixed inset-0 z-40 flex items-end sm:items-center justify-center bg-ink/40 p-4"
-          onClick={close}
+        <ModalShell
+          label="Disconnect QuickBooks"
+          labelledBy="qbo-disconnect-title"
+          describedBy="qbo-disconnect-desc"
+          onClose={close}
+          maxWidth="max-w-md"
+          initialFocusRef={inputRef as React.RefObject<HTMLElement | null>}
         >
-          <div
-            ref={panelRef}
-            className="w-full max-w-md rounded-lg border border-border bg-surface p-4 shadow-panel"
-            onClick={(e) => e.stopPropagation()}
-          >
             <h3 id="qbo-disconnect-title" className="font-display text-base font-semibold text-text">
               Disconnect QuickBooks
             </h3>
@@ -1102,8 +1102,7 @@ function QboDisconnectConfirm({
                 </button>
               </div>
             </Form>
-          </div>
-        </div>
+        </ModalShell>
       ) : null}
     </>
   );

@@ -1,6 +1,6 @@
 import { redirect, type ActionFunctionArgs } from "react-router";
 import { getEnv, getQboEnvOrNull } from "../lib/env.server";
-import { requireUser, resolveOrg } from "../lib/session.server";
+import { clearOrgCookieHeader, requireUser, resolveOrg } from "../lib/session.server";
 import { createSupabaseServiceClient } from "../lib/supabase.server";
 import { safeReturnTo } from "../lib/return-to";
 import { passwordChangeDecision, passwordChangeVerifyFlash } from "../lib/password-change";
@@ -19,7 +19,7 @@ function flag(returnTo: string, key: string, val: string): string {
 export async function action({ request, context }: ActionFunctionArgs) {
   const env = getEnv(context as any);
   const { supabase, headers, user } = await requireUser(request, env);
-  const org = await resolveOrg(supabase, user.id, request);
+  const org = await resolveOrg(supabase, user.id, request, headers);
   if (!org) throw redirect("/onboarding", { headers });
 
   const form = await request.formData();
@@ -82,11 +82,16 @@ export async function action({ request, context }: ActionFunctionArgs) {
       }
     }
 
-    const { error } = await service.from("memberships").delete().eq("user_id", user.id);
+    const { error } = await service
+      .from("memberships")
+      .delete()
+      .eq("user_id", user.id)
+      .eq("org_id", org.org_id);
     if (error) {
       const lastOwnerRace = /last owner/i.test(error.message ?? "");
       return redirect(flag(returnTo, "error", lastOwnerRace ? "last-owner" : "delete"), { headers });
     }
+    headers.append("Set-Cookie", clearOrgCookieHeader());
     await supabase.auth.signOut();
     return redirect("/login", { headers });
   }

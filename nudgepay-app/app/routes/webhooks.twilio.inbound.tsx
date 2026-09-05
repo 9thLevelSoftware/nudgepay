@@ -3,6 +3,7 @@ import { getEnv, getTwilioEnv } from "../lib/env.server";
 import { createSupabaseServiceClient } from "../lib/supabase.server";
 import { verifyTwilioSignature, parseTwilioForm } from "../lib/twilio-webhook.server";
 import { recordInboundMessage } from "../lib/twilio-messaging.server";
+import { requestIdFromContext, safeErrorDetails } from "../lib/log-redaction";
 
 // Twilio signs the exact public URL it called. Behind a tunnel/Workers the
 // internal request.url may differ, so prefer the configured public origin.
@@ -36,7 +37,11 @@ export async function action({ request, context }: ActionFunctionArgs) {
     const xml = result.twiml ?? "<Response></Response>";
     return new Response(xml, { status: 200, headers: { "Content-Type": "text/xml" } });
   } catch (err) {
-    console.error("Twilio inbound processing failed", err);
+    console.error({
+      event: "twilio_inbound_processing_failed",
+      requestId: requestIdFromContext(context),
+      ...safeErrorDetails(err),
+    });
     return new Response("processing error", { status: 500 });
   }
 }

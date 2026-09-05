@@ -220,7 +220,7 @@ test("wrangler staging env and operator alert webhook are declared", () => {
   expect(wrangler).toContain("STRIPE_PRICE_ID");
   const deploy = read("../scripts/deploy-worker.mjs");
   expect(deploy).toContain("strip-build-dev-vars");
-  expect(deploy).toContain("nudgepay-app-staging");
+  expect(deploy).toContain("stagingConfigFromToml");
   const strip = read("../scripts/strip-build-dev-vars.mjs");
   expect(strip).toContain(".dev.vars");
   expect(strip).toContain("unlinkSync");
@@ -237,7 +237,7 @@ test("pilot-ops documents Worker rollback and that migrations are not undone", (
   const ops = readFileSync(fileURLToPath(new URL("../../docs/pilot-ops.md", import.meta.url)), "utf8");
   expect(ops).toContain("npx wrangler rollback");
   expect(ops).toContain("npx wrangler deployments list");
-  expect(ops).toMatch(/does not undo a Supabase\s+migration/i);
+  expect(ops).toMatch(/does\s+not\s+undo a Supabase\s+migration/i);
   expect(ops).toMatch(/Promote by deploying production/i);
   expect(ops).toMatch(/Tagging is not a production deploy/i);
   expect(ops).toContain("git push origin v0.1.0");

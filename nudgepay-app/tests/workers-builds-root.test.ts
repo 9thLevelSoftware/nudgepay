@@ -21,7 +21,10 @@ describe("Cloudflare Workers Builds at repo root", () => {
     expect(prepare).toMatch(/CI:\s*['"]true['"]/);
     expect(prepare).toContain("--include=dev");
     expect(prepare).toMatch(/NODE_ENV:\s*['"]production['"]/);
-    expect(prepare).not.toContain("WORKERS_CI");
+    expect(prepare).toContain("assertDeployConfig");
+    expect(prepare).toContain("assertProductionConfigParity");
+    expect(prepare).toContain("build/server/.dev.vars");
+    expect(prepare).toContain("productionDeployShaForEnvironment");
     const appPkg = JSON.parse(read("../package.json"));
     const plugin = String(appPkg.devDependencies["@cloudflare/vite-plugin"]);
     const [, minor] = plugin.replace(/^[^\d]*/, "").split(".").map(Number);

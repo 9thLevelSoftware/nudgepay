@@ -11,7 +11,7 @@ function ctx() {
   return { cloudflare: { env: TEST_ENV } } as any;
 }
 
-function sessionCookie(session: object): string {
+function sessionCookie(session: object, orgId?: string): string {
   const host = new URL(TEST_ENV.SUPABASE_URL).hostname.split(".")[0];
   const json = JSON.stringify(session);
   const b64url = Buffer.from(json, "utf8")
@@ -19,7 +19,8 @@ function sessionCookie(session: object): string {
     .replace(/\+/g, "-")
     .replace(/\//g, "_")
     .replace(/=+$/, "");
-  return `sb-${host}-auth-token=base64-${b64url}`;
+  const authCookie = `sb-${host}-auth-token=base64-${b64url}`;
+  return orgId ? `${authCookie}; nudgepay-org=${orgId}` : authCookie;
 }
 
 async function signInSession(email: string): Promise<object> {
@@ -58,7 +59,7 @@ describe("save_workflow", () => {
     await svc.from("memberships").insert({ org_id: orgId, user_id: owner.userId, role: "owner" });
 
     const session = await signInSession(email);
-    const cookie = sessionCookie(session);
+    const cookie = sessionCookie(session, orgId);
 
     const res = await postOrgSettings(cookie, {
       intent: "save_workflow",
@@ -91,7 +92,7 @@ describe("save_workflow", () => {
     await svc.from("memberships").insert({ org_id: orgId, user_id: owner.userId, role: "owner" });
 
     const session = await signInSession(email);
-    const cookie = sessionCookie(session);
+    const cookie = sessionCookie(session, orgId);
 
     const res = await postOrgSettings(cookie, {
       intent: "save_workflow",
@@ -122,7 +123,7 @@ describe("save_workflow", () => {
     await svc.from("memberships").insert({ org_id: orgId, user_id: member.userId, role: "member" });
 
     const session = await signInSession(email);
-    const cookie = sessionCookie(session);
+    const cookie = sessionCookie(session, orgId);
 
     const res = await postOrgSettings(cookie, {
       intent: "save_workflow",

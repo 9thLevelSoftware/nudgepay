@@ -10,15 +10,16 @@ export type PersonalDataExport = {
     displayName: string | null;
     createdAt: string | null;
   };
-  membership: {
+  memberships: Array<{
     orgId: string;
     orgName: string;
     role: string;
-  } | null;
-  notificationPrefs: {
+  }>;
+  notificationPrefs: Array<{
+    orgId: string;
     brokenPromiseEmail: boolean;
     dailyDigestEmail: boolean;
-  } | null;
+  }>;
   contactLogs: Array<{
     id: string;
     createdAt: string;
@@ -31,7 +32,7 @@ export function buildPersonalDataExport(input: {
   exportedAt: string;
   truncated: boolean;
   account: PersonalDataExport["account"];
-  membership: PersonalDataExport["membership"];
+  memberships: PersonalDataExport["memberships"];
   notificationPrefs: PersonalDataExport["notificationPrefs"];
   contactLogs: PersonalDataExport["contactLogs"];
 }): PersonalDataExport {
@@ -39,7 +40,7 @@ export function buildPersonalDataExport(input: {
     exportedAt: input.exportedAt,
     truncated: input.truncated,
     account: input.account,
-    membership: input.membership,
+    memberships: input.memberships,
     notificationPrefs: input.notificationPrefs,
     contactLogs: input.contactLogs,
   };

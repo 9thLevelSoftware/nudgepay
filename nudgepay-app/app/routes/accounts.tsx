@@ -306,7 +306,7 @@ export default function Accounts() {
     >
       <div className="p-4 sm:p-6 space-y-4 sm:space-y-6">
         {d.loadError ? <LoadErrorBanner message={d.loadError} /> : d.truncated ? <TruncationBanner /> : null}
-        <AccountsMetrics metrics={d.metrics} truncated={d.truncated || !!d.loadError} />
+        <AccountsMetrics metrics={d.metrics} truncated={d.truncated || !!d.loadError} matching={d.q.trim().length > 0} />
         <div className="grid gap-4 lg:grid-cols-[1fr_360px]">
           <AccountsDirectory
             rows={d.rows}
@@ -332,6 +332,7 @@ export default function Accounts() {
               label={`Account — ${d.selected.name}`}
               closeHref={accountsHref({ filter: d.filter, sort: d.sort, q: d.q || undefined, density: d.densityFromUrl ? d.density : undefined })}
               maxWidth="max-w-[420px]"
+              mobileOnly
             >
               <AccountQuickPanel account={d.selected} />
             </DrawerShell>

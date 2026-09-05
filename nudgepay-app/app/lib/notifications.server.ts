@@ -11,6 +11,7 @@ import { isCaseSuppressed } from "./exceptions";
 import type { ExceptionReason } from "./contact-log";
 import { shouldSkipBrokenPromiseSend } from "./alert-retry";
 import { fromAddressAllowed } from "./email-settings";
+import { safeErrorDetails } from "./log-redaction";
 
 // ---------------------------------------------------------------------------
 // Deps
@@ -116,7 +117,13 @@ export async function sendBrokenPromiseAlerts(
           .from("notification_log")
           .insert({ org_id: orgId, kind: "broken_promise", dedupe_key: dedupeKey, recipient_email: member.email });
       } catch (e) {
-        console.error(`broken-promise email failed for ${member.email}`, e);
+        console.error({
+          event: "broken_promise_email_failed",
+          orgId,
+          recipientUserId: member.userId,
+          promiseId: detail.promiseId,
+          ...safeErrorDetails(e),
+        });
         // No success ledger row — retryUnsentBrokenPromiseAlerts will send again.
       }
     }
@@ -300,7 +307,12 @@ export async function runDailyDigest(
         .from("notification_log")
         .insert({ org_id: orgId, kind: "daily_digest", dedupe_key: dedupeKey, recipient_email: member.email });
     } catch (e) {
-      console.error(`digest email failed for ${member.email}`, e);
+      console.error({
+        event: "digest_email_failed",
+        orgId,
+        recipientUserId: member.userId,
+        ...safeErrorDetails(e),
+      });
       // No ledger row — next cron invocation within the same day can retry
     }
   }

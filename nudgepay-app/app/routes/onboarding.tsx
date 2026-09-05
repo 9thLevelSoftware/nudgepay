@@ -15,7 +15,7 @@ import { createSupabaseServiceClient } from "../lib/supabase.server";
 import { orgCookieHeader, requireUser, resolveOrg } from "../lib/session.server";
 import { createOrgForUser } from "../lib/orgs.server";
 import { isAlreadyInWorkspaceError } from "../lib/org-membership";
-import { WORKSPACES_PER_USER_CAP } from "../lib/pilot-limits";
+import { PILOT_WORKSPACE_CAP } from "../lib/pilot-limits";
 import { PERSONAL_DELETE_TOKEN, personalAccountConfirmMatches } from "../lib/personal-account-deletion";
 import { PublicLayout } from "../components/PublicLayout";
 import { Button, Input, inputClass } from "../components/ui";
@@ -27,7 +27,7 @@ export const meta: Route.MetaFunction = () => pageTitle("Onboarding");
 export async function loader({ request, context }: LoaderFunctionArgs) {
   const env = getEnv(context as any);
   const { supabase, headers, user } = await requireUser(request, env);
-  const org = await resolveOrg(supabase, user.id, request);
+  const org = await resolveOrg(supabase, user.id, request, headers);
   const creatingAnother = new URL(request.url).searchParams.get("new") === "1";
   if (org && !creatingAnother) throw redirect("/dashboard", { headers });
   return data({ email: user.email ?? "", creatingAnother: creatingAnother && !!org }, { headers });
@@ -45,8 +45,8 @@ export async function action({ request, context }: ActionFunctionArgs) {
     const orgId = await createOrgForUser(service, user.id, name);
     headers.append("Set-Cookie", orgCookieHeader(orgId));
   } catch (e) {
-    if (e instanceof Error && e.message === "Workspace limit reached") {
-      return { error: `You can belong to at most ${WORKSPACES_PER_USER_CAP} workspaces.` };
+    if (e instanceof Error && e.message === "Pilot workspace capacity reached") {
+      return { error: `The ${PILOT_WORKSPACE_CAP}-workspace pilot is currently full.` };
     }
     if (isAlreadyInWorkspaceError(e)) return redirect("/dashboard", { headers });
     throw e;

@@ -45,6 +45,19 @@ export function sendIdempotencyKey(kind: string, parts: string[]): string {
   return `${kind}:${org}:${invoice}:${bodyHash}`.slice(0, 128);
 }
 
+export function sendAttemptIdentity(
+  kind: string,
+  parts: string[],
+  now = new Date(),
+): { fingerprint: string; dedupeKey: string } {
+  const fingerprint = sendIdempotencyKey(kind, parts);
+  const utcDay = now.toISOString().slice(0, 10);
+  return {
+    fingerprint,
+    dedupeKey: `${fingerprint.slice(0, 117)}:${utcDay}`,
+  };
+}
+
 export function hourAgoIso(now = new Date()): string {
   return new Date(now.getTime() - 60 * 60_000).toISOString();
 }

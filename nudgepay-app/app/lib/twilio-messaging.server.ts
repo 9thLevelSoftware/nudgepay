@@ -1,7 +1,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { sendSms, type TwilioConfig, type TwilioSender } from "./twilio-client.server";
-import { assertSmsBudget } from "./send-limits.server";
-import { sendIdempotencyKey } from "./send-limits";
+import { sendAttemptIdentity } from "./send-limits";
+import { AmbiguousSendError, ProviderSendRejectedError } from "./provider-send-error";
 import { isContactBlocked, type ExceptionState } from "./exceptions";
 import { isWithinSendWindow, resolveQuietHours, quietHoursWindowLabel } from "./quiet-hours";
 import { DEFAULT_COMPANY_PROFILE } from "./org-profile";
@@ -151,29 +151,89 @@ export async function sendInvoiceText(
   });
   const caseId = activeCase.id;
   const body = ensureStopLanguage(args.body);
-  await assertSmsBudget(deps.service, { orgId: args.orgId, customerId: cust.id as string, now });
-  const result = await sendSms(deps.fetchFn, deps.twilio, {
-    to: cust.phone as string, body, sender, statusCallback: deps.statusCallback ?? null,
-    idempotencyKey: sendIdempotencyKey("sms", [args.orgId, args.invoiceId, body]),
+  const senderIdentity = "from" in sender
+    ? `from:${sender.from}`
+    : `messaging-service:${sender.messagingServiceSid}`;
+  const safetyIdentity = sendAttemptIdentity("sms", [
+    args.orgId,
+    args.invoiceId,
+    cust.phone as string,
+    body,
+  ], now);
+  const providerIdentity = sendAttemptIdentity("sms-provider", [
+    args.orgId,
+    args.invoiceId,
+    cust.phone as string,
+    senderIdentity,
+    body,
+    deps.statusCallback ?? "",
+  ], now);
+  const { data: reserved, error: reserveError } = await deps.service.rpc("reserve_sms_send", {
+    p_org_id: args.orgId,
+    p_invoice_id: args.invoiceId,
+    p_customer_id: cust.id as string,
+    p_case_id: caseId,
+    p_sent_by_user_id: args.userId,
+    p_to_number: cust.phone as string,
+    p_body: body,
+    p_from_number: "from" in sender ? sender.from : null,
+    p_messaging_service_sid: "messagingServiceSid" in sender ? sender.messagingServiceSid : null,
+    p_send_fingerprint: safetyIdentity.fingerprint,
+    p_send_dedupe_key: safetyIdentity.dedupeKey,
+    p_provider_idempotency_key: providerIdentity.dedupeKey,
+    p_now: now.toISOString(),
   });
+  if (reserveError) throw reserveError;
+  const attempt = reserved as {
+    state?: "reserved" | "recorded" | "terminal" | "unknown" | "org_cap" | "customer_cap";
+    id?: string;
+    provider_id?: string | null;
+    provider_status?: string | null;
+    provider_key?: string | null;
+  } | null;
+  if (attempt?.state === "org_cap") throw new Error("Send rate cap reached for this workspace");
+  if (attempt?.state === "customer_cap") throw new Error("Send rate cap reached for this customer");
+  if (attempt?.state === "recorded" && attempt.id && attempt.provider_id) {
+    return { id: attempt.id, sid: attempt.provider_id, status: attempt.provider_status ?? "sent" };
+  }
+  if (attempt?.state === "terminal") {
+    throw new Error("Previous delivery failed; operator reconciliation is required before retry");
+  }
+  if (attempt?.state !== "reserved" || !attempt.id) throw new AmbiguousSendError();
 
-  const { data: row, error: insErr } = await deps.service.from("text_messages").insert({
-    org_id: args.orgId,
-    invoice_id: args.invoiceId,
-    customer_id: cust.id as string,
-    case_id: caseId,
-    sent_by_user_id: args.userId,
-    direction: "outbound",
+  let result: Awaited<ReturnType<typeof sendSms>>;
+  try {
+    result = await sendSms(deps.fetchFn, deps.twilio, {
+      to: cust.phone as string, body, sender, statusCallback: deps.statusCallback ?? null,
+      idempotencyKey: attempt.provider_key ?? providerIdentity.dedupeKey,
+    });
+  } catch (err) {
+    if (err instanceof ProviderSendRejectedError) {
+      const { data: deleted, error } = await deps.service.from("text_messages")
+        .delete().eq("org_id", args.orgId).eq("id", attempt.id).eq("status", "sending")
+        .select("id").maybeSingle();
+      if (error || !deleted) throw new AmbiguousSendError();
+      throw err;
+    }
+    const { data: markedUnknown, error: unknownError } = await deps.service.from("text_messages")
+      .update({ status: "unknown", error_code: "transport_ambiguous" })
+      .eq("org_id", args.orgId).eq("id", attempt.id).eq("status", "sending")
+      .select("id").maybeSingle();
+    if (unknownError || !markedUnknown) {
+      console.error({ event: "sms_ambiguous_attempt_persist_failed", attemptId: attempt.id });
+    }
+    throw new AmbiguousSendError();
+  }
+
+  const { data: updated, error: updateError } = await deps.service.from("text_messages").update({
     twilio_message_sid: result.sid,
     status: result.status,
-    from_number: "from" in sender ? sender.from : null,
-    messaging_service_sid: "messagingServiceSid" in sender ? sender.messagingServiceSid : null,
-    to_number: cust.phone as string,
-    body,
-  }).select("id").single();
-  if (insErr) throw insErr;
+    error_code: null,
+  }).eq("org_id", args.orgId).eq("id", attempt.id).eq("status", "sending")
+    .select("id").maybeSingle();
+  if (updateError || !updated) throw new AmbiguousSendError();
 
-  return { id: row!.id as string, sid: result.sid, status: result.status };
+  return { id: attempt.id, sid: result.sid, status: result.status };
 }
 
 /** Distinct-org probe that does not page past PostgREST max_rows=1000. */
@@ -444,12 +504,14 @@ async function persistOrphan(
   });
   if (error && (error as { code?: string }).code !== "23505") throw error;
   if (!error && args.keyword === "stop") {
-    (args.onOrphanStop ?? console.error)({
+    const info: OrphanStopInfo = {
       event: "inbound_orphan_stop",
       from: args.from,
       to: args.to,
       sid: args.messageSid,
-    });
+    };
+    if (args.onOrphanStop) args.onOrphanStop(info);
+    else console.error({ event: info.event, sid: info.sid });
   }
 }
 
@@ -575,8 +637,24 @@ export async function updateMessageStatus(
   service: SupabaseClient,
   args: { messageSid: string; status: string; errorCode: string | null },
 ): Promise<void> {
+  const predecessors: Record<string, readonly string[]> = {
+    accepted: ["sending", "unknown", "accepted"],
+    scheduled: ["sending", "unknown", "accepted", "scheduled"],
+    queued: ["sending", "unknown", "accepted", "scheduled", "queued"],
+    sending: ["sending", "unknown", "accepted", "scheduled", "queued"],
+    sent: ["sending", "unknown", "accepted", "scheduled", "queued", "sent"],
+    delivered: ["sending", "unknown", "accepted", "scheduled", "queued", "sent", "delivered"],
+    read: ["sending", "unknown", "accepted", "scheduled", "queued", "sent", "delivered", "read"],
+    failed: ["sending", "unknown", "accepted", "scheduled", "queued", "sent", "failed"],
+    undelivered: ["sending", "unknown", "accepted", "scheduled", "queued", "sent", "failed", "undelivered"],
+    canceled: ["sending", "unknown", "accepted", "scheduled", "queued", "canceled"],
+  };
+  const status = args.status.trim().toLowerCase();
+  const allowed = predecessors[status];
+  if (!args.messageSid || !allowed) return;
   const { error } = await service.from("text_messages")
-    .update({ status: args.status, error_code: args.errorCode })
-    .eq("twilio_message_sid", args.messageSid);
+    .update({ status, error_code: args.errorCode })
+    .eq("twilio_message_sid", args.messageSid)
+    .or(`status.is.null,status.in.(${allowed.join(",")})`);
   if (error) throw error;
 }

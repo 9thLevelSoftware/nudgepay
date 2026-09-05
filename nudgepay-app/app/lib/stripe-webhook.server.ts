@@ -23,16 +23,18 @@ export async function verifyStripeSignature(
   nowMs: number = Date.now(),
 ): Promise<boolean> {
   if (!secret || !header) return false;
-  const parts: Record<string, string> = {};
+  let timestamp = "";
+  const signatures: string[] = [];
   for (const piece of header.split(",")) {
     const i = piece.indexOf("=");
     if (i <= 0) continue;
-    parts[piece.slice(0, i).trim()] = piece.slice(i + 1).trim();
+    const key = piece.slice(0, i).trim();
+    const value = piece.slice(i + 1).trim();
+    if (key === "t") timestamp = value;
+    if (key === "v1") signatures.push(value);
   }
-  const t = parts.t;
-  const v1 = parts.v1;
-  if (!t || !v1) return false;
-  const ts = Number(t);
+  if (!timestamp || signatures.length === 0) return false;
+  const ts = Number(timestamp);
   if (!Number.isFinite(ts)) return false;
   if (Math.abs(nowMs - ts * 1000) > FIVE_MIN_MS) return false;
 
@@ -46,17 +48,23 @@ export async function verifyStripeSignature(
   const sig = await crypto.subtle.sign(
     "HMAC",
     key,
-    new TextEncoder().encode(`${t}.${rawBody}`),
+    new TextEncoder().encode(`${timestamp}.${rawBody}`),
   );
-  return timingSafeEqual(toHex(new Uint8Array(sig)), v1.toLowerCase());
+  const expected = toHex(new Uint8Array(sig));
+  return signatures.some((candidate) => timingSafeEqual(expected, candidate.toLowerCase()));
 }
 
 export type StripeBillingPatch = {
+  eventId: string;
+  eventCreatedAt: string;
+  eventType: string;
   orgId: string;
   stripeCustomerId: string | null;
   stripeSubscriptionId: string | null;
   status: string;
   currentPeriodEnd: string | null;
+  checkoutAttemptId: string | null;
+  checkoutSessionId: string | null;
 };
 
 function str(v: unknown): string {
@@ -72,21 +80,30 @@ function unixToIso(v: unknown): string | null {
 /** Pull org billing fields from a signed Stripe event object. */
 export function billingPatchFromStripeEvent(event: unknown): StripeBillingPatch | null {
   if (!event || typeof event !== "object") return null;
-  const type = str((event as { type?: unknown }).type);
-  const obj = (event as { data?: { object?: Record<string, unknown> } }).data?.object;
-  if (!obj) return null;
+  const envelope = event as { id?: unknown; created?: unknown; type?: unknown; data?: { object?: Record<string, unknown> } };
+  const eventId = str(envelope.id);
+  const eventCreatedAt = unixToIso(envelope.created);
+  const type = str(envelope.type);
+  const obj = envelope.data?.object;
+  if (!eventId || !eventCreatedAt || !obj) return null;
 
   if (type === "checkout.session.completed") {
-    const orgId = str(obj.client_reference_id) || str((obj.metadata as { org_id?: unknown } | undefined)?.org_id);
+    const metadata = obj.metadata as { org_id?: unknown; attempt_id?: unknown } | undefined;
+    const orgId = str(obj.client_reference_id) || str(metadata?.org_id);
     if (!orgId) return null;
     const sub = obj.subscription;
     const subId = typeof sub === "string" ? sub : str((sub as { id?: unknown } | undefined)?.id);
     return {
+      eventId,
+      eventCreatedAt,
+      eventType: type,
       orgId,
       stripeCustomerId: typeof obj.customer === "string" ? obj.customer : str((obj.customer as { id?: unknown } | undefined)?.id) || null,
       stripeSubscriptionId: subId || null,
       status: obj.mode === "subscription" ? "active" : "none",
       currentPeriodEnd: null,
+      checkoutAttemptId: str(metadata?.attempt_id) || null,
+      checkoutSessionId: str(obj.id) || null,
     };
   }
 
@@ -95,31 +112,47 @@ export function billingPatchFromStripeEvent(event: unknown): StripeBillingPatch 
     || type === "customer.subscription.updated"
     || type === "customer.subscription.deleted"
   ) {
-    const orgId = str((obj.metadata as { org_id?: unknown } | undefined)?.org_id);
+    const metadata = obj.metadata as { org_id?: unknown; attempt_id?: unknown } | undefined;
+    const orgId = str(metadata?.org_id);
     if (!orgId) return null;
     const status = type === "customer.subscription.deleted" ? "canceled" : str(obj.status) || "none";
     return {
+      eventId,
+      eventCreatedAt,
+      eventType: type,
       orgId,
       stripeCustomerId: typeof obj.customer === "string" ? obj.customer : null,
       stripeSubscriptionId: str(obj.id) || null,
       status,
       currentPeriodEnd: unixToIso(obj.current_period_end),
+      checkoutAttemptId: str(metadata?.attempt_id) || null,
+      checkoutSessionId: null,
     };
   }
 
   if (type === "invoice.paid" || type === "invoice.payment_failed") {
-    const parent = obj.parent as { subscription_details?: { metadata?: { org_id?: unknown } } } | undefined;
+    const parent = obj.parent as {
+      subscription_details?: {
+        metadata?: { org_id?: unknown };
+        subscription?: unknown;
+      };
+    } | undefined;
     const orgId = str((obj.metadata as { org_id?: unknown } | undefined)?.org_id)
       || str(parent?.subscription_details?.metadata?.org_id);
     if (!orgId) return null;
-    const sub = obj.subscription;
+    const sub = obj.subscription ?? parent?.subscription_details?.subscription;
     const subId = typeof sub === "string" ? sub : str((sub as { id?: unknown } | undefined)?.id);
     return {
+      eventId,
+      eventCreatedAt,
+      eventType: type,
       orgId,
       stripeCustomerId: typeof obj.customer === "string" ? obj.customer : null,
       stripeSubscriptionId: subId || null,
       status: type === "invoice.paid" ? "active" : "past_due",
       currentPeriodEnd: unixToIso(obj.period_end),
+      checkoutAttemptId: null,
+      checkoutSessionId: null,
     };
   }
 

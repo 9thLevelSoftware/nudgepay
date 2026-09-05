@@ -71,7 +71,7 @@ export function CollectionsRulesForm({
 
         {isOwner ? (
           <div className="flex items-center gap-3">
-            <button type="submit" disabled={intentBusy("save_rules")} className="rounded-md bg-copper px-3 py-1.5 text-xs font-semibold text-ink hover:bg-copper/90 disabled:opacity-60 disabled:cursor-not-allowed">
+            <button type="submit" disabled={intentBusy("save_rules")} className="rounded-md bg-copper px-3 py-1.5 text-xs font-semibold text-on-copper hover:bg-copper/90 disabled:opacity-60 disabled:cursor-not-allowed">
               {intentBusy("save_rules") ? "Saving…" : "Save rules"}
             </button>
             {saved === "rules" && <span className="text-xs text-cool" role="status">Saved.</span>}

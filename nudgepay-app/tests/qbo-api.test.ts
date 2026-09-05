@@ -1,7 +1,9 @@
 import { expect, test, vi } from "vitest";
 import {
   qboApiBaseUrl, qboQuery, qboQueryAll, qboReadEntity, qboReadCompanyInfo, qboCdc,
-  retryAfterWaitMs, QBO_429_WAIT_CAP_MS, QBO_QUERY_MAX_PAGES, isQboObjectNotFound,
+  fetchWithIntuitRetry, retryAfterWaitMs, QBO_429_WAIT_CAP_MS,
+  QBO_API_REQUEST_TIMEOUT_MS, QBO_QUERY_MAX_PAGES, QboApiTimeoutError,
+  isQboObjectNotFound,
 } from "../app/lib/qbo-api.server";
 
 const api = { baseUrl: "https://sandbox-quickbooks.api.intuit.com" };
@@ -226,4 +228,65 @@ test("qboCdc requests payments + credit memos and flattens all four entities", a
   expect(res.customers.map((c) => c.Id)).toEqual(["9"]);
   expect(res.payments.map((p) => p.Id)).toEqual(["501"]);
   expect(res.creditMemos.map((c) => c.Id)).toEqual(["777"]);
+});
+
+test("qboQuery aborts a hung request at the total request deadline without leaking timers", async () => {
+  vi.useFakeTimers();
+  try {
+    let requestSignal: AbortSignal | undefined;
+    const fetchFn = vi.fn((_url: string, init?: RequestInit) => {
+      requestSignal = init?.signal ?? undefined;
+      return new Promise<Response>(() => {});
+    });
+    const pending = qboQuery(fetchFn as any, api, "AT", "r", "q", "Invoice").catch((cause) => cause);
+    await vi.advanceTimersByTimeAsync(QBO_API_REQUEST_TIMEOUT_MS);
+    const error = await pending;
+
+    expect(error).toBeInstanceOf(QboApiTimeoutError);
+    expect(requestSignal?.aborted).toBe(true);
+    expect(fetchFn).toHaveBeenCalledTimes(1);
+    expect(vi.getTimerCount()).toBe(0);
+  } finally {
+    vi.useRealTimers();
+  }
+});
+
+test("qboQuery bounds response-body parsing under the same total deadline", async () => {
+  vi.useFakeTimers();
+  try {
+    const fetchFn = vi.fn(async () => ({
+      ok: true,
+      status: 200,
+      json: () => new Promise<unknown>(() => {}),
+    } as Response));
+    const pending = qboQuery(fetchFn as any, api, "AT", "r", "q", "Invoice").catch((cause) => cause);
+    await vi.advanceTimersByTimeAsync(QBO_API_REQUEST_TIMEOUT_MS);
+
+    await expect(pending).resolves.toBeInstanceOf(QboApiTimeoutError);
+    expect(fetchFn).toHaveBeenCalledTimes(1);
+    expect(vi.getTimerCount()).toBe(0);
+  } finally {
+    vi.useRealTimers();
+  }
+});
+
+test("caller abort interrupts the 429 delay and prevents another attempt", async () => {
+  vi.useFakeTimers();
+  try {
+    const controller = new AbortController();
+    const fetchFn = vi.fn(async () =>
+      new Response("throttled", { status: 429, headers: { "Retry-After": "2" } }));
+    const pending = fetchWithIntuitRetry(fetchFn as any, "https://example.test", {
+      signal: controller.signal,
+    }, { timeoutMs: null }).catch((cause) => cause);
+    await vi.advanceTimersByTimeAsync(0);
+    controller.abort(new DOMException("caller stopped", "AbortError"));
+    const error = await pending;
+
+    expect(error).toMatchObject({ name: "AbortError" });
+    expect(fetchFn).toHaveBeenCalledTimes(1);
+    expect(vi.getTimerCount()).toBe(0);
+  } finally {
+    vi.useRealTimers();
+  }
 });

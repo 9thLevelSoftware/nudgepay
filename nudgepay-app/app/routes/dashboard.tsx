@@ -780,7 +780,7 @@ export default function Dashboard() {
       headerActions={
         <Link
           to="/focus"
-          className="flex items-center gap-1.5 px-2.5 py-1 rounded border border-copper/40 text-copper text-[11px] font-sans font-semibold hover:bg-copper/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-copper"
+          className="flex items-center gap-1.5 px-2.5 py-1 rounded border border-copper-bright/40 text-copper-bright text-[11px] font-sans font-semibold hover:bg-copper/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-copper"
         >
           Focus mode
         </Link>

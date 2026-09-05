@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Form } from "react-router";
 import { Icon } from "./Icons";
+import { hasOpenDialogs } from "../lib/dialog-manager";
 
 export type SyncIssue = {
   id: string;
@@ -35,7 +36,7 @@ export function SyncIssues({ issues, returnTo }: { issues: SyncIssue[]; returnTo
   useEffect(() => {
     if (!open) return;
     function onKey(e: KeyboardEvent) {
-      if (e.key === "Escape") setOpen(false);
+      if (e.key === "Escape" && !hasOpenDialogs()) setOpen(false);
     }
     function onPointer(e: MouseEvent) {
       if (rootRef.current && !rootRef.current.contains(e.target as Node)) setOpen(false);

@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import {
   operatorAlertPayload,
   operatorAlertWebhookOk,
+  providerAttemptStaleAlertPayload,
 } from "../app/lib/operator-alert";
 import { postOperatorAlert } from "../app/lib/operator-alert.server";
 
@@ -19,17 +20,27 @@ describe("operatorAlertWebhookOk", () => {
 });
 
 describe("operatorAlertPayload", () => {
-  it("truncates message and includes cron", () => {
+  it("uses allowlisted error details and a redacted URL", () => {
     const payload = operatorAlertPayload({
       handler: "scheduled",
       cron: "*/30 * * * *",
-      err: new Error("x".repeat(600)),
+      err: new Error("token=secret@example.com"),
+      url: "https://app.example/accept/private-token?code=secret",
     });
     expect(payload.source).toBe("nudgepay");
     expect(payload.event).toBe("unhandled_worker_error");
+    if (payload.event !== "unhandled_worker_error") throw new Error("wrong alert");
     expect(payload.handler).toBe("scheduled");
     expect(payload.cron).toBe("*/30 * * * *");
-    expect(payload.message.length).toBe(500);
+    expect(payload.error).toEqual({ errorName: "Error" });
+    expect(payload.url).toBe("https://app.example/accept/[REDACTED]");
+    expect(JSON.stringify(payload)).not.toContain("secret");
+  });
+
+  it("limits provider alerts to a channel and opaque attempt ID", () => {
+    expect(providerAttemptStaleAlertPayload({ channel: "sms", attemptId: "00000000-0000-4000-8000-000000000001" })).toEqual({
+      source: "nudgepay", event: "provider_attempt_stale", channel: "sms", attemptId: "00000000-0000-4000-8000-000000000001",
+    });
   });
 });
 
@@ -54,7 +65,7 @@ describe("postOperatorAlert", () => {
     expect(JSON.parse(String(init?.body))).toMatchObject({
       source: "nudgepay",
       handler: "scheduled",
-      message: "cdc down",
+      error: { errorName: "UnknownError" },
     });
   });
 

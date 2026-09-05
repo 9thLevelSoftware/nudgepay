@@ -8,7 +8,7 @@ function ctx() {
   return { cloudflare: { env: TEST_ENV } } as any;
 }
 
-function sessionCookie(session: object): string {
+function sessionCookie(session: object, orgId?: string): string {
   const host = new URL(TEST_ENV.SUPABASE_URL).hostname.split(".")[0];
   const json = JSON.stringify(session);
   const b64url = Buffer.from(json, "utf8")
@@ -16,7 +16,8 @@ function sessionCookie(session: object): string {
     .replace(/\+/g, "-")
     .replace(/\//g, "_")
     .replace(/=+$/, "");
-  return `sb-${host}-auth-token=base64-${b64url}`;
+  const authCookie = `sb-${host}-auth-token=base64-${b64url}`;
+  return orgId ? `${authCookie}; nudgepay-org=${orgId}` : authCookie;
 }
 
 async function signInSession(email: string): Promise<object> {
@@ -132,7 +133,7 @@ test("action rejects an invoice from another org", async () => {
     .single();
 
   const session = await signInSession(email);
-  const res = await postSmsConsent(sessionCookie(session), {
+  const res = await postSmsConsent(sessionCookie(session, orgA!.id as string), {
     returnTo: "/dashboard",
     invoiceId: invB!.id as string,
     consent: "false",
@@ -167,7 +168,7 @@ test("owner restore after inbound STOP still updates via the action", async () =
     .select("id").single();
 
   const session = await signInSession(email);
-  const res = await postSmsConsent(sessionCookie(session), {
+  const res = await postSmsConsent(sessionCookie(session, org!.id as string), {
     returnTo: "/dashboard",
     customerId: cust!.id as string,
     consent: "true",

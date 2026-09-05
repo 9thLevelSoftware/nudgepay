@@ -350,6 +350,7 @@ export default function Promises() {
               label={`Promise — ${d.selected.customerName}`}
               closeHref={d.returnTo.replace(/[?&]promiseId=[^&]*/, "").replace(/\?$/, "")}
               maxWidth="max-w-[420px]"
+              mobileOnly
             >
               {quickPanel}
             </DrawerShell>

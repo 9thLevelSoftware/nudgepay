@@ -2,7 +2,7 @@ import { Form } from "react-router";
 import { Button } from "./ui";
 import {
   BILLING_COPY,
-  billingIsCurrent,
+  billingCanManage,
   billingStatusLabel,
   type BillingStatus,
 } from "../lib/billing";
@@ -33,7 +33,7 @@ export function BillingSettingsSection(d: {
           </p>
           {d.isOwner ? (
             <div className="mt-3 flex flex-wrap gap-2">
-              {billingIsCurrent(d.status) ? (
+              {billingCanManage(d.status) ? (
                 <Form method="post" action="/api/billing/portal">
                   <input type="hidden" name="returnTo" value={d.returnTo} />
                   <Button type="submit" variant="secondary" size="sm">
@@ -59,6 +59,12 @@ export function BillingSettingsSection(d: {
       ) : null}
       {d.flash === "cancel" ? (
         <p className="mt-2 text-xs text-muted" role="status">Checkout canceled.</p>
+      ) : null}
+      {d.flash === "pending" ? (
+        <p className="mt-2 text-xs text-warm" role="status">A checkout attempt is already in progress or needs operator reconciliation.</p>
+      ) : null}
+      {d.flash === "existing" ? (
+        <p className="mt-2 text-xs text-muted" role="status">This workspace already has a subscription.</p>
       ) : null}
       {d.flash === "forbidden" ? (
         <p className="mt-2 text-xs text-hot" role="alert">Only owners can manage billing.</p>
