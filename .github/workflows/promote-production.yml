@@ -1,0 +1,371 @@
+name: Promote production
+
+on:
+  workflow_dispatch:
+    inputs:
+      staging_run_id:
+        description: Successful Deploy staging workflow run ID
+        required: true
+        type: string
+      source_sha:
+        description: Exact current main SHA recorded by staging
+        required: true
+        type: string
+      manifest_sha256:
+        description: Independently recorded sealed manifest SHA-256
+        required: true
+        type: string
+      staging_config_sha256:
+        description: Independently recorded staging config SHA-256
+        required: true
+        type: string
+      production_config_sha256:
+        description: Independently recorded production config SHA-256
+        required: true
+        type: string
+      staging_receipt_sha256:
+        description: Independently recorded successful staging receipt SHA-256
+        required: true
+        type: string
+      operator_attests_remaining_gates:
+        description: I attest the seven remaining release gates have current evidence for this SHA
+        required: true
+        default: false
+        type: boolean
+      operator_evidence_reference:
+        description: External evidence or change-control reference for the seven remaining gates
+        required: true
+        type: string
+
+permissions:
+  actions: read
+  contents: read
+  deployments: write
+
+defaults:
+  run:
+    working-directory: nudgepay-app
+
+jobs:
+  authorize:
+    name: authorize qualified artifact
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    outputs:
+      staging_run_id: ${{ steps.bootstrap.outputs.staging_run_id }}
+      source_sha: ${{ steps.bootstrap.outputs.source_sha }}
+      manifest_sha256: ${{ steps.bootstrap.outputs.manifest_sha256 }}
+      staging_config_sha256: ${{ steps.bootstrap.outputs.staging_config_sha256 }}
+      production_config_sha256: ${{ steps.bootstrap.outputs.production_config_sha256 }}
+      staging_receipt_sha256: ${{ steps.bootstrap.outputs.staging_receipt_sha256 }}
+    steps:
+      - name: Require production enablement and operator attestation
+        id: bootstrap
+        working-directory: ${{ runner.temp }}
+        env:
+          PRODUCTION_PROMOTION_ENABLED: ${{ vars.PRODUCTION_PROMOTION_ENABLED }}
+          OPERATOR_ATTESTATION: ${{ inputs.operator_attests_remaining_gates }}
+          EVIDENCE_REFERENCE: ${{ inputs.operator_evidence_reference }}
+          STAGING_RUN_ID: ${{ inputs.staging_run_id }}
+          SOURCE_SHA: ${{ inputs.source_sha }}
+          MANIFEST_SHA: ${{ inputs.manifest_sha256 }}
+          STAGING_CONFIG_SHA: ${{ inputs.staging_config_sha256 }}
+          PRODUCTION_CONFIG_SHA: ${{ inputs.production_config_sha256 }}
+          STAGING_RECEIPT_SHA: ${{ inputs.staging_receipt_sha256 }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if [ "$GITHUB_RUN_ATTEMPT" != "1" ]; then echo "Production promotion attempts are immutable. Dispatch a new workflow after reviewing the retained attempt evidence." >&2; exit 1; fi
+          if [ "$GITHUB_REF" != "refs/heads/main" ]; then echo "Production workflow must be dispatched from refs/heads/main." >&2; exit 1; fi
+          if [ "$PRODUCTION_PROMOTION_ENABLED" != "true" ]; then echo "Repository variable PRODUCTION_PROMOTION_ENABLED is absent or not true; production was not uploaded." >&2; exit 1; fi
+          if [ "$OPERATOR_ATTESTATION" != "true" ]; then echo "Operator attestation for the seven remaining gates is required." >&2; exit 1; fi
+          if [ -z "$EVIDENCE_REFERENCE" ] || [ "${#EVIDENCE_REFERENCE}" -gt 200 ]; then echo "A concise operator evidence reference is required." >&2; exit 1; fi
+          if ! [[ "$STAGING_RUN_ID" =~ ^[0-9]+$ && "$SOURCE_SHA" =~ ^[0-9a-f]{40}$ && "$MANIFEST_SHA" =~ ^[0-9a-f]{64}$ && "$STAGING_CONFIG_SHA" =~ ^[0-9a-f]{64}$ && "$PRODUCTION_CONFIG_SHA" =~ ^[0-9a-f]{64}$ && "$STAGING_RECEIPT_SHA" =~ ^[0-9a-f]{64}$ ]]; then echo "Production release identity inputs are invalid." >&2; exit 1; fi
+          CURRENT_SHA="$(gh api "repos/$GITHUB_REPOSITORY/git/ref/heads/main" --jq .object.sha)"
+          if [ "$SOURCE_SHA" != "$CURRENT_SHA" ]; then echo "Production candidate is stale because main advanced." >&2; exit 1; fi
+          {
+            echo "staging_run_id=$STAGING_RUN_ID"
+            echo "source_sha=$SOURCE_SHA"
+            echo "manifest_sha256=$MANIFEST_SHA"
+            echo "staging_config_sha256=$STAGING_CONFIG_SHA"
+            echo "production_config_sha256=$PRODUCTION_CONFIG_SHA"
+            echo "staging_receipt_sha256=$STAGING_RECEIPT_SHA"
+          } >> "$GITHUB_OUTPUT"
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          ref: ${{ steps.bootstrap.outputs.source_sha }}
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: nudgepay-app/package-lock.json
+      - run: npm ci
+      - name: Verify current main and successful staging workflow
+        env:
+          GH_TOKEN: ${{ github.token }}
+          STAGING_RUN_ID: ${{ steps.bootstrap.outputs.staging_run_id }}
+          EXPECTED_SHA: ${{ steps.bootstrap.outputs.source_sha }}
+        run: |
+          CURRENT_SHA="$(gh api "repos/$GITHUB_REPOSITORY/git/ref/heads/main" --jq .object.sha)"
+          node scripts/release-workflow.mjs verify-current-main --expected-sha "$EXPECTED_SHA" --current-sha "$CURRENT_SHA"
+          gh api "repos/$GITHUB_REPOSITORY/actions/runs/$STAGING_RUN_ID" > "$RUNNER_TEMP/staging-run.json"
+          gh api "repos/$GITHUB_REPOSITORY/actions/runs/$STAGING_RUN_ID/jobs?per_page=100" > "$RUNNER_TEMP/staging-jobs.json"
+          node scripts/release-workflow.mjs verify-staging-run --run "$RUNNER_TEMP/staging-run.json" --jobs "$RUNNER_TEMP/staging-jobs.json" --repository "$GITHUB_REPOSITORY"
+      - name: Verify production environment configuration before approval job
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_OWNER: ${{ vars.RELEASE_OWNER }}
+        run: |
+          gh api "repos/$GITHUB_REPOSITORY/environments/production" > "$RUNNER_TEMP/environment.json"
+          gh api "repos/$GITHUB_REPOSITORY/environments/production/deployment-branch-policies?per_page=100" > "$RUNNER_TEMP/environment-policies.json"
+          node scripts/release-workflow.mjs verify-environment --environment "$RUNNER_TEMP/environment.json" --policies "$RUNNER_TEMP/environment-policies.json" --expected-name production --require-reviewer true --release-owner "$RELEASE_OWNER"
+
+  requalify-staging:
+    name: requalify retained staging artifact
+    needs: authorize
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    environment:
+      name: staging
+      url: https://nudgepay-app-staging.dasblueeyeddevil.workers.dev
+    steps:
+      - name: Reject staging requalification reruns
+        working-directory: ${{ runner.temp }}
+        run: |
+          if [ "$GITHUB_RUN_ATTEMPT" != "1" ]; then
+            echo "Production promotion attempts are immutable. Dispatch a new workflow after reviewing the retained attempt evidence." >&2
+            exit 1
+          fi
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          ref: ${{ needs.authorize.outputs.source_sha }}
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: nudgepay-app/package-lock.json
+      - run: npm ci
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: nudgepay-release-${{ needs.authorize.outputs.source_sha }}
+          path: ${{ runner.temp }}/release-candidate
+          run-id: ${{ needs.authorize.outputs.staging_run_id }}
+          github-token: ${{ github.token }}
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: nudgepay-staging-evidence-${{ needs.authorize.outputs.source_sha }}
+          path: ${{ runner.temp }}/staging-evidence
+          run-id: ${{ needs.authorize.outputs.staging_run_id }}
+          github-token: ${{ github.token }}
+      - name: Verify retained artifact and receipt
+        id: receipt
+        env:
+          SOURCE_SHA: ${{ needs.authorize.outputs.source_sha }}
+          MANIFEST_SHA: ${{ needs.authorize.outputs.manifest_sha256 }}
+          STAGING_CONFIG_SHA: ${{ needs.authorize.outputs.staging_config_sha256 }}
+          PRODUCTION_CONFIG_SHA: ${{ needs.authorize.outputs.production_config_sha256 }}
+          STAGING_RECEIPT_SHA: ${{ needs.authorize.outputs.staging_receipt_sha256 }}
+        run: |
+          node scripts/release-workflow.mjs metadata --artifact-dir "$RUNNER_TEMP/release-candidate" --expected-sha "$SOURCE_SHA" --expected-manifest-sha "$MANIFEST_SHA" --expected-staging-config-sha "$STAGING_CONFIG_SHA" --expected-production-config-sha "$PRODUCTION_CONFIG_SHA" --github-output "$GITHUB_OUTPUT"
+          node scripts/release-workflow.mjs locate-receipt --directory "$RUNNER_TEMP/staging-evidence" --environment staging --expected-receipt-sha "$STAGING_RECEIPT_SHA" --expected-sha "$SOURCE_SHA" --expected-manifest-sha "$MANIFEST_SHA" --expected-config-sha "$STAGING_CONFIG_SHA" --github-output "$GITHUB_OUTPUT"
+      - name: Require staging credentials for requalification
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
+          MONITOR_TOKEN: ${{ secrets.MONITOR_TOKEN }}
+        run: |
+          for name in CLOUDFLARE_API_TOKEN CLOUDFLARE_ACCOUNT_ID SUPABASE_ACCESS_TOKEN SUPABASE_DB_PASSWORD MONITOR_TOKEN; do
+            if [ -z "${!name}" ]; then echo "Missing staging environment credential $name; production was not uploaded." >&2; exit 1; fi
+          done
+      - name: Link exact sealed staging database
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
+        run: npx --no-install supabase link --project-ref "${{ steps.receipt.outputs.staging_project_ref }}"
+      - name: Requalify staging immediately before production approval
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
+          MONITOR_TOKEN: ${{ secrets.MONITOR_TOKEN }}
+        run: >-
+          node scripts/release-qualifier.mjs
+          --environment staging
+          --artifact-dir "$RUNNER_TEMP/release-candidate"
+          --receipt "${{ steps.receipt.outputs.receipt_path }}"
+          --base-url "https://nudgepay-app-staging.dasblueeyeddevil.workers.dev"
+          --expected-sha "${{ needs.authorize.outputs.source_sha }}"
+          --expected-migration "${{ steps.receipt.outputs.latest_migration }}"
+          --expected-manifest-sha "${{ needs.authorize.outputs.manifest_sha256 }}"
+          --expected-config-sha "${{ needs.authorize.outputs.staging_config_sha256 }}"
+
+  production:
+    name: approve, deploy, and qualify production
+    needs: [authorize, requalify-staging]
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    environment:
+      name: production
+      url: https://nudgepay.9thlevelsoftware.com
+    concurrency:
+      group: nudgepay-worker-release
+      cancel-in-progress: false
+    steps:
+      - name: Reject production deployment reruns
+        working-directory: ${{ runner.temp }}
+        run: |
+          if [ "$GITHUB_RUN_ATTEMPT" != "1" ]; then
+            echo "Production promotion attempts are immutable. Dispatch a new workflow after reviewing the retained attempt evidence." >&2
+            exit 1
+          fi
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          ref: ${{ needs.authorize.outputs.source_sha }}
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: nudgepay-app/package-lock.json
+      - run: npm ci
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: nudgepay-release-${{ needs.authorize.outputs.source_sha }}
+          path: ${{ runner.temp }}/release-candidate
+          run-id: ${{ needs.authorize.outputs.staging_run_id }}
+          github-token: ${{ github.token }}
+      - name: Verify retained production artifact identity
+        id: metadata
+        env:
+          SOURCE_SHA: ${{ needs.authorize.outputs.source_sha }}
+          MANIFEST_SHA: ${{ needs.authorize.outputs.manifest_sha256 }}
+          STAGING_CONFIG_SHA: ${{ needs.authorize.outputs.staging_config_sha256 }}
+          PRODUCTION_CONFIG_SHA: ${{ needs.authorize.outputs.production_config_sha256 }}
+        run: >-
+          node scripts/release-workflow.mjs metadata
+          --artifact-dir "$RUNNER_TEMP/release-candidate"
+          --expected-sha "$SOURCE_SHA"
+          --expected-manifest-sha "$MANIFEST_SHA"
+          --expected-staging-config-sha "$STAGING_CONFIG_SHA"
+          --expected-production-config-sha "$PRODUCTION_CONFIG_SHA"
+          --github-output "$GITHUB_OUTPUT"
+      - name: Require production credentials before any upload
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
+          MONITOR_TOKEN: ${{ secrets.MONITOR_TOKEN }}
+        run: |
+          for name in CLOUDFLARE_API_TOKEN CLOUDFLARE_ACCOUNT_ID SUPABASE_ACCESS_TOKEN SUPABASE_DB_PASSWORD MONITOR_TOKEN; do
+            if [ -z "${!name}" ]; then echo "Missing production environment secret $name; production was not uploaded." >&2; exit 1; fi
+          done
+      - name: Reverify production environment protection
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_OWNER: ${{ vars.RELEASE_OWNER }}
+        run: |
+          gh api "repos/$GITHUB_REPOSITORY/environments/production" > "$RUNNER_TEMP/environment.json"
+          gh api "repos/$GITHUB_REPOSITORY/environments/production/deployment-branch-policies?per_page=100" > "$RUNNER_TEMP/environment-policies.json"
+          node scripts/release-workflow.mjs verify-environment --environment "$RUNNER_TEMP/environment.json" --policies "$RUNNER_TEMP/environment-policies.json" --expected-name production --require-reviewer true --release-owner "$RELEASE_OWNER"
+      - name: Link exact sealed production database
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
+        run: npx --no-install supabase link --project-ref "${{ steps.metadata.outputs.production_project_ref }}"
+      - name: Verify production migration ledger before upload
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
+          SOURCE_SHA: ${{ needs.authorize.outputs.source_sha }}
+          MANIFEST_SHA: ${{ needs.authorize.outputs.manifest_sha256 }}
+          PRODUCTION_CONFIG_SHA: ${{ needs.authorize.outputs.production_config_sha256 }}
+        run: >-
+          npm run release:predeploy --
+          --environment production
+          --artifact-dir "$RUNNER_TEMP/release-candidate"
+          --expected-sha "$SOURCE_SHA"
+          --expected-migration "${{ steps.metadata.outputs.latest_migration }}"
+          --expected-manifest-sha "$MANIFEST_SHA"
+          --expected-config-sha "$PRODUCTION_CONFIG_SHA"
+      - name: Record prior production version for manual rollback
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
+          SOURCE_SHA: ${{ needs.authorize.outputs.source_sha }}
+          MANIFEST_SHA: ${{ needs.authorize.outputs.manifest_sha256 }}
+          PRODUCTION_CONFIG_SHA: ${{ needs.authorize.outputs.production_config_sha256 }}
+        run: >-
+          node scripts/record-deployment-attempt.mjs
+          --environment production
+          --artifact-dir "$RUNNER_TEMP/release-candidate"
+          --evidence-dir "$RUNNER_TEMP/production-evidence/attempts"
+          --expected-sha "$SOURCE_SHA"
+          --expected-migration "${{ steps.metadata.outputs.latest_migration }}"
+          --expected-manifest-sha "$MANIFEST_SHA"
+          --expected-config-sha "$PRODUCTION_CONFIG_SHA"
+          --attempt-id "$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
+      - name: Reject a stale candidate immediately before production upload
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EXPECTED_SHA: ${{ needs.authorize.outputs.source_sha }}
+        run: |
+          CURRENT_SHA="$(gh api "repos/$GITHUB_REPOSITORY/git/ref/heads/main" --jq .object.sha)"
+          node scripts/release-workflow.mjs verify-current-main --expected-sha "$EXPECTED_SHA" --current-sha "$CURRENT_SHA"
+      - name: Upload same sealed candidate to production
+        env:
+          EXPECTED_DEPLOY_SHA: ${{ needs.authorize.outputs.source_sha }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
+          MANIFEST_SHA: ${{ needs.authorize.outputs.manifest_sha256 }}
+          PRODUCTION_CONFIG_SHA: ${{ needs.authorize.outputs.production_config_sha256 }}
+        run: >-
+          npm run deploy --
+          --artifact-dir "$RUNNER_TEMP/release-candidate"
+          --receipt-dir "$RUNNER_TEMP/production-evidence"
+          --expected-manifest-sha "$MANIFEST_SHA"
+          --expected-config-sha "$PRODUCTION_CONFIG_SHA"
+      - name: Locate production receipt
+        id: receipt
+        run: >-
+          node scripts/release-workflow.mjs locate-receipt
+          --directory "$RUNNER_TEMP/production-evidence"
+          --environment production
+          --expected-sha "${{ needs.authorize.outputs.source_sha }}"
+          --expected-manifest-sha "${{ needs.authorize.outputs.manifest_sha256 }}"
+          --expected-config-sha "${{ needs.authorize.outputs.production_config_sha256 }}"
+          --github-output "$GITHUB_OUTPUT"
+      - name: Qualify production configuration and runtime status
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
+          MONITOR_TOKEN: ${{ secrets.MONITOR_TOKEN }}
+          SOURCE_SHA: ${{ needs.authorize.outputs.source_sha }}
+          MANIFEST_SHA: ${{ needs.authorize.outputs.manifest_sha256 }}
+          PRODUCTION_CONFIG_SHA: ${{ needs.authorize.outputs.production_config_sha256 }}
+        run: >-
+          node scripts/release-qualifier.mjs
+          --environment production
+          --artifact-dir "$RUNNER_TEMP/release-candidate"
+          --receipt "${{ steps.receipt.outputs.receipt_path }}"
+          --base-url "https://nudgepay.9thlevelsoftware.com"
+          --expected-sha "$SOURCE_SHA"
+          --expected-migration "${{ steps.metadata.outputs.latest_migration }}"
+          --expected-manifest-sha "$MANIFEST_SHA"
+          --expected-config-sha "$PRODUCTION_CONFIG_SHA"
+          > "$RUNNER_TEMP/production-evidence/qualification.json"
+      - name: Retain production receipt, qualification, and rollback identity
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: nudgepay-production-evidence-${{ needs.authorize.outputs.source_sha }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/production-evidence
+          if-no-files-found: error
+          overwrite: false
+          retention-days: 90

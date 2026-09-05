@@ -14,6 +14,7 @@ import {
 } from "./deploy-preflight.mjs";
 import { readAndVerifyReleaseArtifact } from "./release-artifact.mjs";
 import {
+  createDeploymentAttempt,
   createDeploymentReceipt,
   latestMigrationFilename,
   parseReleaseDeploymentArgs,
@@ -137,6 +138,22 @@ try {
     throw new Error("Sealed release changed before Worker upload");
   }
   if (!staging) assertProductionReleaseGuard({ expectedSha: expectedProductionSha, cwd });
+  const outputDirectory = resolveReceiptDirectory({ artifactDir, receiptDir });
+  const attemptDirectory = join(outputDirectory, "attempts");
+  mkdirSync(attemptDirectory, { recursive: true });
+  const uploadAttempt = createDeploymentAttempt({
+    environment,
+    sourceCommit: manifest.sourceCommit,
+    manifestSha256: manifest.manifestSha256,
+    configSha256: target.configSha256,
+    workerName: target.workerName,
+    previousDeployment: before,
+    attemptId: releaseAnnotation.split(":").at(-1),
+  });
+  writeDeploymentReceipt({
+    receiptPath: join(attemptDirectory, `${environment}-upload-attempt-${uploadAttempt.attemptId}.json`),
+    receipt: uploadAttempt,
+  });
   runWrangler([
     "deploy",
     "-c", targetConfigPath,
@@ -170,14 +187,12 @@ try {
     manifestSha256: manifest.manifestSha256,
     configSha256: target.configSha256,
     workerName: target.workerName,
-    previousVersionId: before?.versionId,
+    previousDeployment: before,
     deployment: verifiedAfterRedaction,
     queryStringRedactionVerified: true,
     providerConfiguration,
     releaseAnnotation,
   });
-  const outputDirectory = resolveReceiptDirectory({ artifactDir, receiptDir });
-  mkdirSync(outputDirectory, { recursive: true });
   const receiptPath = join(outputDirectory, `${environment}-${verifiedAfterRedaction.versionId}.json`);
   const finallyVerified = readAndVerifyReleaseArtifact({
     artifactDir,
