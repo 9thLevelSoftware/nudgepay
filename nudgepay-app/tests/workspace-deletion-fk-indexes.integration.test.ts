@@ -5,6 +5,7 @@ import { join, resolve } from "node:path";
 import { expect, test } from "vitest";
 import { assertSafeTestEnv } from "./load-env";
 import { TEST_ENV } from "./helpers";
+import { parseLocalQueryRows } from "./local-query-json";
 
 type IndexRow = {
   schema_name: string;
@@ -88,7 +89,7 @@ function queryLocalIndexes(): IndexRow[] {
         windowsHide: true,
       },
     );
-    return (JSON.parse(raw) as { rows: IndexRow[] }).rows;
+    return parseLocalQueryRows<IndexRow>(raw);
   } finally {
     unlinkSync(sqlPath);
   }

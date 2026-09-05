@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { expect, test } from "vitest";
 import { makeUserClient, runLocalTestSql, serviceClient } from "./helpers";
+import { parseLocalQueryRows } from "./local-query-json";
 
 function queryLocalRows<T>(sql: string): T[] {
   const sqlPath = join(tmpdir(), `nudgepay-query-${crypto.randomUUID()}.sql`);
@@ -14,7 +15,7 @@ function queryLocalRows<T>(sql: string): T[] {
       ["supabase", "db", "query", "--local", "--file", sqlPath, "--output", "json"],
       { cwd: process.cwd(), encoding: "utf8", shell: true, stdio: ["ignore", "pipe", "pipe"] },
     );
-    return (JSON.parse(raw) as { rows: T[] }).rows;
+    return parseLocalQueryRows<T>(raw);
   } finally {
     unlinkSync(sqlPath);
   }
