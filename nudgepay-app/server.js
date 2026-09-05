@@ -74,10 +74,6 @@ const SAFE_ERROR_NAMES = new Set([
 	"ProviderSendRejectedError", "ProviderResponseAmbiguousError", "AmbiguousSendError",
 	"QboTokenRequestError", "QboTokenTimeoutError", "QboRevokeTimeoutError", "QboApiTimeoutError",
 ]);
-	"Error", "TypeError", "RangeError", "SyntaxError", "AbortError", "TimeoutError",
-	"ProviderSendRejectedError", "ProviderResponseAmbiguousError", "AmbiguousSendError",
-	"QboTokenRequestError",
-]);
 
 function safeErrorDetails(error) {
 	const candidateName = error && typeof error === "object" && typeof error.name === "string"
