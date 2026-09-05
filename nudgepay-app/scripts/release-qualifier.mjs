@@ -115,23 +115,8 @@ export function parseSecretInventory(output) {
   return inventory.map((entry) => entry.name);
 }
 
-export function parsePredeploySecretInventory({
-  result,
-  environment,
-  qualification,
-  workerName,
-}) {
+export function parsePredeploySecretInventory({ result }) {
   if (result?.status === 0) return parseSecretInventory(result.stdout);
-  const stderr = typeof result?.stderr === "string"
-    ? result.stderr.replace(/\u001b\[[0-9;]*m/g, "").replace(/\r\n/g, "\n")
-    : "";
-  const newWorkerMessage = `Worker "${workerName}" not found.\n\nIf this is a new Worker, run \`wrangler deploy\` first to create it.\nOtherwise, check that the Worker name is correct and you're logged into the right account.`;
-  if (
-    environment === "staging"
-    && qualification === "bootstrap"
-    && /^[a-z0-9][a-z0-9_-]*$/i.test(workerName ?? "")
-    && stderr.includes(newWorkerMessage)
-  ) return [];
   throw qualificationError("could not read Worker secret inventory before upload");
 }
 
@@ -198,6 +183,17 @@ export function assertConfiguredProviders(secretNames) {
     throw qualificationError(`twilio configuration is missing secret names: ${missingTwilioBase.join(", ")}`);
   }
   if (missingTwilio.length > 0) throw qualificationError("Twilio sender configuration is missing");
+  return inspection.configured;
+}
+
+export function bootstrapProviderConfiguration(secretNames) {
+  const inspection = inspectConfiguredProviders(secretNames);
+  const missingApplication = inspection.missing.application;
+  if (missingApplication?.length > 0) {
+    throw qualificationError(
+      `application configuration is missing secret names: ${missingApplication.join(", ")}`,
+    );
+  }
   return inspection.configured;
 }
 

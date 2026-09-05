@@ -19,6 +19,7 @@ import {
   fetchReadyzDatabase,
   monitorzRuntimeEvidence,
   inspectConfiguredProviders,
+  bootstrapProviderConfiguration,
   verifyReceiptDigest,
 } from "../scripts/release-qualifier.mjs";
 
@@ -105,14 +106,14 @@ describe("release qualification", () => {
     expect(() => parseSecretInventory('[{"name":42}]')).toThrow(/secret inventory/);
   });
 
-  it("treats only Wrangler's exact new-Worker bootstrap result as an empty secret inventory", () => {
+  it("requires a provisioned Worker before staging bootstrap", () => {
     const stderr = `X [ERROR] Worker "nudgepay-app-staging" not found.\n\nIf this is a new Worker, run \`wrangler deploy\` first to create it.\nOtherwise, check that the Worker name is correct and you're logged into the right account.\n`;
-    expect(parsePredeploySecretInventory({
+    expect(() => parsePredeploySecretInventory({
       result: { status: 1, stdout: "", stderr },
       environment: "staging",
       qualification: "bootstrap",
       workerName: "nudgepay-app-staging",
-    })).toEqual([]);
+    })).toThrow(/secret inventory before upload/);
     expect(() => parsePredeploySecretInventory({
       result: { status: 1, stdout: "", stderr },
       environment: "staging",
@@ -187,6 +188,16 @@ describe("release qualification", () => {
         stripe: ["STRIPE_SECRET_KEY", "STRIPE_WEBHOOK_SECRET", "STRIPE_PRICE_ID"],
       },
     });
+  });
+
+  it("requires application database secrets before bootstrap while leaving providers pending", () => {
+    expect(bootstrapProviderConfiguration([
+      "SUPABASE_ANON_KEY",
+      "SUPABASE_SERVICE_KEY",
+    ])).toMatchObject({ application: true, qbo: false, twilio: false });
+    expect(() => bootstrapProviderConfiguration(["SUPABASE_ANON_KEY"])).toThrow(
+      /application.*SUPABASE_SERVICE_KEY/i,
+    );
   });
 
   it("parses the documented Supabase migration table and rejects any local/remote drift", () => {

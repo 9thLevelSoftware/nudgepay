@@ -24,7 +24,7 @@ import {
 } from "./release-deployment.mjs";
 import {
   assertConfiguredProviders,
-  inspectConfiguredProviders,
+  bootstrapProviderConfiguration,
   parseDeploymentStatus,
   parsePreviousDeploymentStatus,
   parsePredeploySecretInventory,
@@ -60,6 +60,7 @@ function runCaptureResult(cmd, args) {
     encoding: "utf8",
     windowsHide: true,
     maxBuffer: 1024 * 1024,
+    timeout: 30_000,
   });
 }
 
@@ -82,7 +83,7 @@ function readProviderConfiguration({ targetConfigPath, workerName, environment, 
   assertNoInvariantSecrets(secretNames, environment);
   return qualification === "strict"
     ? assertConfiguredProviders(secretNames)
-    : inspectConfiguredProviders(secretNames).configured;
+    : bootstrapProviderConfiguration(secretNames);
 }
 
 try {

@@ -290,7 +290,8 @@ npm run release:prepare -- --artifact-dir "$RELEASE_ARTIFACT"
 
 Apply the expected database migrations through the separately approved database
 procedure. Then deploy staging from the sealed artifact. The deploy refuses to
-rebuild. Bootstrap mode inventories configured application and provider secret
+rebuild and requires an already provisioned Worker with `SUPABASE_ANON_KEY` and
+`SUPABASE_SERVICE_KEY`. Bootstrap mode inventories the remaining provider secret
 names without treating missing groups as qualified. Capture `receiptPath` from
 its JSON output.
 

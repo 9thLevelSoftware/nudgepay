@@ -97,8 +97,9 @@ Both deploy commands require that explicit artifact. They refuse plaintext
 provider bindings, verify the exact target, inventory configured secret names, upload
 without rebuilding, map the artifact/config digests to the active Worker
 version, and write an external receipt only after Cloudflare query-string
-redaction passes readback. Staging bootstrap permits missing provider secrets and
-marks them pending in its receipt; production deployment remains strict and requires
+redaction passes readback. Staging bootstrap requires a provisioned Worker with
+both Supabase application keys, permits missing provider secrets, and marks them
+pending in its receipt; production deployment remains strict and requires
 all provider secret groups. `release:qualify --qualification strict` separately
 verifies the receipt, active version, expected migration, `/readyz`, and provider
 configuration, including Stripe. It also requires a locally supplied `MONITOR_TOKEN` to read
