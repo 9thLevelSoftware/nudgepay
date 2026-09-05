@@ -21,6 +21,7 @@ function parseValueOptions(argv, { allowStaging }) {
     if (
       arg !== "--artifact-dir"
       && arg !== "--receipt-dir"
+      && arg !== "--qualification"
       && arg !== "--expected-manifest-sha"
       && arg !== "--expected-config-sha"
     ) {
@@ -38,15 +39,21 @@ function parseValueOptions(argv, { allowStaging }) {
 
 export function parseReleaseDeploymentArgs(argv) {
   const { environment, values } = parseValueOptions(argv, { allowStaging: true });
+  const qualification = values["--qualification"];
   if (
     !values["--artifact-dir"]
+    || (qualification !== "bootstrap" && qualification !== "strict")
     || !/^[a-f0-9]{64}$/.test(values["--expected-manifest-sha"] ?? "")
     || !/^[a-f0-9]{64}$/.test(values["--expected-config-sha"] ?? "")
   ) {
     throw deploymentError("production and staging deploys require an explicit sealed artifact and independently recorded lowercase SHA-256 manifest/config digests");
   }
+  if (qualification === "bootstrap" && environment !== "staging") {
+    throw deploymentError("bootstrap deployment evidence is allowed only for staging");
+  }
   return {
     environment,
+    qualification,
     artifactDir: values["--artifact-dir"],
     receiptDir: values["--receipt-dir"],
     expectedManifestSha: values["--expected-manifest-sha"],
@@ -58,6 +65,7 @@ export function parseReleasePreparationArgs(argv) {
   const { values } = parseValueOptions(argv, { allowStaging: false });
   if (
     values["--receipt-dir"]
+    || values["--qualification"]
     || values["--expected-manifest-sha"]
     || values["--expected-config-sha"]
     || !values["--artifact-dir"]
@@ -229,6 +237,7 @@ export function createDeploymentAttempt({
 
 export function createDeploymentReceipt({
   environment,
+  qualification,
   sourceCommit,
   artifactSha256,
   manifestSha256,
@@ -244,6 +253,12 @@ export function createDeploymentReceipt({
 }) {
   if (environment !== "production" && environment !== "staging") {
     throw deploymentError("receipt environment is invalid");
+  }
+  if (qualification !== "bootstrap" && qualification !== "strict") {
+    throw deploymentError("receipt qualification mode is invalid");
+  }
+  if (qualification === "bootstrap" && environment !== "staging") {
+    throw deploymentError("bootstrap deployment evidence is allowed only for staging");
   }
   const predecessorVersionId = previousDeployment?.versionId ?? previousVersionId;
   if (!deployment?.versionId || deployment.versionId === predecessorVersionId) {
@@ -262,7 +277,10 @@ export function createDeploymentReceipt({
     throw deploymentError("query-string redaction must pass before recording deployment evidence");
   }
   const requiredProviderGroups = ["application", "qbo", "twilio", "email", "operatorAlert", "stripe", "monitoring"];
-  if (requiredProviderGroups.some((name) => providerConfiguration?.[name] !== true)) {
+  if (requiredProviderGroups.some((name) => typeof providerConfiguration?.[name] !== "boolean")) {
+    throw deploymentError("provider configuration evidence is malformed");
+  }
+  if (qualification === "strict" && requiredProviderGroups.some((name) => providerConfiguration[name] !== true)) {
     throw deploymentError("provider configuration evidence is incomplete");
   }
   if (
@@ -289,6 +307,7 @@ export function createDeploymentReceipt({
     schemaVersion: 1,
     recordedAt,
     environment,
+    qualification,
     sourceCommit: sourceCommit.toLowerCase(),
     artifactSha256,
     manifestSha256,
@@ -301,7 +320,9 @@ export function createDeploymentReceipt({
     queryStringRedactionVerified: true,
     providerConfiguration,
     releaseAnnotation,
-    evidenceScope: "configuration_verified_not_provider_integration",
+    evidenceScope: qualification === "strict"
+      ? "configuration_verified_not_provider_integration"
+      : "deployment_verified_pending_qualification",
   };
   receipt.receiptSha256 = receiptDigest(receipt);
   return receipt;

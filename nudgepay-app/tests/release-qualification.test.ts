@@ -12,9 +12,13 @@ import {
   parseVersionList,
   parseQualificationArgs,
   parseSecretInventory,
+  parsePredeploySecretInventory,
   parseMigrationList,
   readyzConfigurationEvidence,
+  readyzDatabaseEvidence,
+  fetchReadyzDatabase,
   monitorzRuntimeEvidence,
+  inspectConfiguredProviders,
   verifyReceiptDigest,
 } from "../scripts/release-qualifier.mjs";
 
@@ -48,6 +52,7 @@ describe("release qualification", () => {
   it("requires explicit release identity and target inputs", () => {
     expect(parseQualificationArgs([
       "--environment", "production",
+      "--qualification", "strict",
       "--artifact-dir", "C:/evidence/release-a",
       "--receipt", "C:/evidence/receipts/production.json",
       "--base-url", "https://nudgepay.example",
@@ -57,6 +62,7 @@ describe("release qualification", () => {
       "--expected-config-sha", "c".repeat(64),
     ])).toEqual({
       environment: "production",
+      qualification: "strict",
       artifactDir: "C:/evidence/release-a",
       receiptPath: "C:/evidence/receipts/production.json",
       baseUrl: "https://nudgepay.example",
@@ -68,6 +74,7 @@ describe("release qualification", () => {
     expect(() => parseQualificationArgs([])).toThrow(/required options/);
     expect(() => parseQualificationArgs([
       "--environment", "prod",
+      "--qualification", "strict",
       "--artifact-dir", "x",
       "--receipt", "y",
       "--base-url", "https://example.com",
@@ -76,6 +83,17 @@ describe("release qualification", () => {
       "--expected-manifest-sha", "b".repeat(64),
       "--expected-config-sha", "c".repeat(64),
     ])).toThrow(/environment/);
+    expect(() => parseQualificationArgs([
+      "--environment", "production",
+      "--qualification", "bootstrap",
+      "--artifact-dir", "x",
+      "--receipt", "y",
+      "--base-url", "https://example.com",
+      "--expected-sha", "a".repeat(40),
+      "--expected-migration", "0064_x.sql",
+      "--expected-manifest-sha", "b".repeat(64),
+      "--expected-config-sha", "c".repeat(64),
+    ])).toThrow(/bootstrap.*staging/i);
   });
 
   it("accepts only Wrangler's documented secret-list JSON records", () => {
@@ -85,6 +103,28 @@ describe("release qualification", () => {
     ]))).toEqual(["SUPABASE_ANON_KEY", "STRIPE_PRICE_ID"]);
     expect(() => parseSecretInventory('{"SUPABASE_ANON_KEY":true}')).toThrow(/secret inventory/);
     expect(() => parseSecretInventory('[{"name":42}]')).toThrow(/secret inventory/);
+  });
+
+  it("treats only Wrangler's exact new-Worker bootstrap result as an empty secret inventory", () => {
+    const stderr = `X [ERROR] Worker "nudgepay-app-staging" not found.\n\nIf this is a new Worker, run \`wrangler deploy\` first to create it.\nOtherwise, check that the Worker name is correct and you're logged into the right account.\n`;
+    expect(parsePredeploySecretInventory({
+      result: { status: 1, stdout: "", stderr },
+      environment: "staging",
+      qualification: "bootstrap",
+      workerName: "nudgepay-app-staging",
+    })).toEqual([]);
+    expect(() => parsePredeploySecretInventory({
+      result: { status: 1, stdout: "", stderr },
+      environment: "staging",
+      qualification: "strict",
+      workerName: "nudgepay-app-staging",
+    })).toThrow(/secret inventory before upload/);
+    expect(() => parsePredeploySecretInventory({
+      result: { status: 1, stdout: "", stderr: "X [ERROR] Authentication failed.\n" },
+      environment: "staging",
+      qualification: "bootstrap",
+      workerName: "nudgepay-app-staging",
+    })).toThrow(/secret inventory before upload/);
   });
 
   it("requires every provider configuration group, including Stripe and a Twilio sender", () => {
@@ -105,6 +145,48 @@ describe("release qualification", () => {
       ...allSecretNames.filter((name) => name !== "TWILIO_MESSAGING_SERVICE_SID"),
       "TWILIO_FROM_NUMBER",
     ])).not.toThrow();
+  });
+
+  it("records missing provider configuration during staging bootstrap without treating it as qualified", () => {
+    expect(inspectConfiguredProviders([
+      "SUPABASE_ANON_KEY",
+      "SUPABASE_SERVICE_KEY",
+      "MONITOR_TOKEN",
+    ])).toEqual({
+      configured: {
+        application: true,
+        qbo: false,
+        twilio: false,
+        email: false,
+        operatorAlert: false,
+        stripe: false,
+        monitoring: true,
+      },
+      missing: {
+        qbo: [
+          "QBO_CLIENT_ID",
+          "QBO_CLIENT_SECRET",
+          "QBO_REDIRECT_URI",
+          "QBO_ENCRYPTION_KEY",
+          "QBO_WEBHOOK_VERIFIER_TOKEN",
+        ],
+        twilio: [
+          "TWILIO_ACCOUNT_SID",
+          "TWILIO_AUTH_TOKEN",
+          "TWILIO_PUBLIC_BASE_URL",
+          "TWILIO_MESSAGING_SERVICE_SID or TWILIO_FROM_NUMBER",
+        ],
+        email: [
+          "RESEND_API_KEY",
+          "RESEND_WEBHOOK_SECRET",
+          "RESEND_ALLOWED_FROM",
+          "UNSUBSCRIBE_SECRET",
+          "APP_PUBLIC_BASE_URL",
+        ],
+        operatorAlert: ["OPERATOR_ALERT_WEBHOOK"],
+        stripe: ["STRIPE_SECRET_KEY", "STRIPE_WEBHOOK_SECRET", "STRIPE_PRICE_ID"],
+      },
+    });
   });
 
   it("parses the documented Supabase migration table and rejects any local/remote drift", () => {
@@ -267,6 +349,15 @@ describe("release qualification", () => {
   });
 
   it("requires readyz database/config success and each provider it can inspect", () => {
+    expect(readyzDatabaseEvidence({
+      ok: true,
+      providers: { qbo: false, twilio: false, email: false, operatorAlert: false },
+    })).toEqual({ database: true });
+    expect(() => readyzDatabaseEvidence({
+      ok: false,
+      reason: "db",
+      providers: { qbo: false, twilio: false, email: false, operatorAlert: false },
+    })).toThrow(/readyz.*database/i);
     expect(readyzConfigurationEvidence({
       ok: true,
       providers: { qbo: true, twilio: true, email: true, operatorAlert: true },
@@ -275,6 +366,19 @@ describe("release qualification", () => {
       ok: true,
       providers: { qbo: true, twilio: true, email: false, operatorAlert: true },
     })).toThrow(/readyz.*email/i);
+  });
+
+  it("accepts bootstrap readiness only with a live database and a non-cacheable response", async () => {
+    const body = {
+      ok: true,
+      providers: { qbo: false, twilio: false, email: false, operatorAlert: false },
+    };
+    await expect(fetchReadyzDatabase("https://staging.example", async () => Response.json(body, {
+      headers: { "Cache-Control": "no-store" },
+    }))).resolves.toEqual({ database: true });
+    await expect(fetchReadyzDatabase("https://staging.example", async () => Response.json(body))).rejects.toThrow(
+      /Cache-Control: no-store/,
+    );
   });
 
   it("requires every authenticated monitor check to be healthy", () => {

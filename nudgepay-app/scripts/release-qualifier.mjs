@@ -13,6 +13,10 @@ import {
   assertProductionConfigParity,
   productionConfigFromToml,
 } from "./deploy-preflight.mjs";
+import {
+  fetchSupabaseMigrationInventory,
+  projectRefFromSupabaseUrl,
+} from "./supabase-migration-inventory.mjs";
 
 function qualificationError(message) {
   return new Error(`Release qualification failed: ${message}`);
@@ -20,6 +24,7 @@ function qualificationError(message) {
 
 const QUALIFICATION_OPTIONS = [
   "--environment",
+  "--qualification",
   "--artifact-dir",
   "--receipt",
   "--base-url",
@@ -46,6 +51,13 @@ export function parseQualificationArgs(argv) {
   const environment = values["--environment"];
   if (environment !== "production" && environment !== "staging") {
     throw qualificationError("environment must be production or staging");
+  }
+  const qualification = values["--qualification"];
+  if (qualification !== "bootstrap" && qualification !== "strict") {
+    throw qualificationError("qualification must be bootstrap or strict");
+  }
+  if (qualification === "bootstrap" && environment !== "staging") {
+    throw qualificationError("bootstrap qualification is allowed only for staging");
   }
   const expectedSha = values["--expected-sha"];
   if (!/^[a-f0-9]{40}$/i.test(expectedSha)) throw qualificationError("expected SHA is invalid");
@@ -76,6 +88,7 @@ export function parseQualificationArgs(argv) {
   }
   return {
     environment,
+    qualification,
     artifactDir: values["--artifact-dir"],
     receiptPath: values["--receipt"],
     baseUrl: values["--base-url"].replace(/\/$/, ""),
@@ -102,6 +115,26 @@ export function parseSecretInventory(output) {
   return inventory.map((entry) => entry.name);
 }
 
+export function parsePredeploySecretInventory({
+  result,
+  environment,
+  qualification,
+  workerName,
+}) {
+  if (result?.status === 0) return parseSecretInventory(result.stdout);
+  const stderr = typeof result?.stderr === "string"
+    ? result.stderr.replace(/\u001b\[[0-9;]*m/g, "").replace(/\r\n/g, "\n")
+    : "";
+  const newWorkerMessage = `Worker "${workerName}" not found.\n\nIf this is a new Worker, run \`wrangler deploy\` first to create it.\nOtherwise, check that the Worker name is correct and you're logged into the right account.`;
+  if (
+    environment === "staging"
+    && qualification === "bootstrap"
+    && /^[a-z0-9][a-z0-9_-]*$/i.test(workerName ?? "")
+    && stderr.includes(newWorkerMessage)
+  ) return [];
+  throw qualificationError("could not read Worker secret inventory before upload");
+}
+
 const REQUIRED_SECRET_GROUPS = {
   application: ["SUPABASE_ANON_KEY", "SUPABASE_SERVICE_KEY"],
   qbo: [
@@ -123,35 +156,49 @@ const REQUIRED_SECRET_GROUPS = {
   monitoring: ["MONITOR_TOKEN"],
 };
 
-export function assertConfiguredProviders(secretNames) {
+export function inspectConfiguredProviders(secretNames) {
   if (!Array.isArray(secretNames) || secretNames.some((name) => typeof name !== "string")) {
     throw qualificationError("secret inventory is invalid");
   }
   const names = new Set(secretNames);
-  const evidence = {};
+  const missing = {};
   for (const [group, required] of Object.entries(REQUIRED_SECRET_GROUPS)) {
-    const missing = required.filter((name) => !names.has(name));
-    if (missing.length > 0) {
+    const absent = required.filter((name) => !names.has(name));
+    if (absent.length > 0) missing[group] = absent;
+  }
+  const missingTwilio = [
+    "TWILIO_ACCOUNT_SID",
+    "TWILIO_AUTH_TOKEN",
+    "TWILIO_PUBLIC_BASE_URL",
+  ].filter((name) => !names.has(name));
+  if (!names.has("TWILIO_MESSAGING_SERVICE_SID") && !names.has("TWILIO_FROM_NUMBER")) {
+    missingTwilio.push("TWILIO_MESSAGING_SERVICE_SID or TWILIO_FROM_NUMBER");
+  }
+  if (missingTwilio.length > 0) missing.twilio = missingTwilio;
+
+  return {
+    configured: Object.fromEntries(
+      [...Object.keys(REQUIRED_SECRET_GROUPS), "twilio"].map((group) => [group, !missing[group]]),
+    ),
+    missing,
+  };
+}
+
+export function assertConfiguredProviders(secretNames) {
+  const inspection = inspectConfiguredProviders(secretNames);
+  for (const group of Object.keys(REQUIRED_SECRET_GROUPS)) {
+    const missing = inspection.missing[group];
+    if (missing?.length > 0) {
       throw qualificationError(`${group} configuration is missing secret names: ${missing.join(", ")}`);
     }
-    evidence[group] = true;
   }
-  const hasTwilioSender = names.has("TWILIO_MESSAGING_SERVICE_SID") || names.has("TWILIO_FROM_NUMBER");
-  const twilioRequired = ["TWILIO_ACCOUNT_SID", "TWILIO_AUTH_TOKEN", "TWILIO_PUBLIC_BASE_URL"];
-  const missingTwilio = twilioRequired.filter((name) => !names.has(name));
-  if (missingTwilio.length > 0) {
-    throw qualificationError(`twilio configuration is missing secret names: ${missingTwilio.join(", ")}`);
+  const missingTwilio = inspection.missing.twilio ?? [];
+  const missingTwilioBase = missingTwilio.filter((name) => !name.includes(" or "));
+  if (missingTwilioBase.length > 0) {
+    throw qualificationError(`twilio configuration is missing secret names: ${missingTwilioBase.join(", ")}`);
   }
-  if (!hasTwilioSender) throw qualificationError("Twilio sender configuration is missing");
-  return {
-    application: evidence.application,
-    qbo: evidence.qbo,
-    twilio: true,
-    email: evidence.email,
-    operatorAlert: evidence.operatorAlert,
-    stripe: evidence.stripe,
-    monitoring: evidence.monitoring,
-  };
+  if (missingTwilio.length > 0) throw qualificationError("Twilio sender configuration is missing");
+  return inspection.configured;
 }
 
 export function parseMigrationList(output) {
@@ -298,10 +345,15 @@ export function assertQualificationBaseUrl({ environment, baseUrl, workerName, t
   }
 }
 
-export function readyzConfigurationEvidence(body) {
+export function readyzDatabaseEvidence(body) {
   if (!body || typeof body !== "object" || body.ok !== true) {
     throw qualificationError("readyz did not verify database and application configuration");
   }
+  return { database: true };
+}
+
+export function readyzConfigurationEvidence(body) {
+  const database = readyzDatabaseEvidence(body);
   const providerNames = ["qbo", "twilio", "email", "operatorAlert"];
   for (const name of providerNames) {
     if (body.providers?.[name] !== true) {
@@ -309,7 +361,7 @@ export function readyzConfigurationEvidence(body) {
     }
   }
   return {
-    database: true,
+    ...database,
     qbo: true,
     twilio: true,
     email: true,
@@ -415,7 +467,7 @@ function runReadOnlyCli(binary, args, cwd) {
   return result.stdout;
 }
 
-async function fetchReadyz(baseUrl, fetchFn = fetch) {
+async function fetchReadyzEvidence(baseUrl, evidenceFn, fetchFn = fetch) {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 15_000);
   try {
@@ -434,11 +486,22 @@ async function fetchReadyz(baseUrl, fetchFn = fetch) {
     } catch {
       throw qualificationError("readyz returned invalid JSON");
     }
+    if (response.headers.get("cache-control")?.toLowerCase() !== "no-store") {
+      throw qualificationError("readyz response did not include Cache-Control: no-store");
+    }
     if (!response.ok) throw qualificationError(`readyz returned HTTP ${response.status}`);
-    return readyzConfigurationEvidence(body);
+    return evidenceFn(body);
   } finally {
     clearTimeout(timeout);
   }
+}
+
+async function fetchReadyz(baseUrl, fetchFn = fetch) {
+  return fetchReadyzEvidence(baseUrl, readyzConfigurationEvidence, fetchFn);
+}
+
+export async function fetchReadyzDatabase(baseUrl, fetchFn = fetch) {
+  return fetchReadyzEvidence(baseUrl, readyzDatabaseEvidence, fetchFn);
 }
 
 async function fetchMonitorz(baseUrl, monitorToken, fetchFn = fetch) {
@@ -483,7 +546,6 @@ async function main() {
   const options = parseQualificationArgs(process.argv.slice(2));
   const appRoot = fileURLToPath(new URL("..", import.meta.url));
   const wranglerBin = fileURLToPath(new URL("../node_modules/wrangler/bin/wrangler.js", import.meta.url));
-  const supabaseBin = fileURLToPath(new URL("../node_modules/supabase/dist/supabase.js", import.meta.url));
   const migrationFiles = validatedMigrationFilenames(
     readdirSync(new URL("../supabase/migrations", import.meta.url)),
   );
@@ -519,16 +581,7 @@ async function main() {
     workerName: target.workerName,
     targetConfig,
   });
-  let linkedProjectRef;
-  try {
-    linkedProjectRef = readFileSync(new URL("../supabase/.temp/project-ref", import.meta.url), "utf8");
-  } catch {
-    throw qualificationError("linked Supabase project ref is unavailable");
-  }
-  assertLinkedSupabaseProject({
-    targetSupabaseUrl: targetConfig.vars?.SUPABASE_URL,
-    linkedProjectRef,
-  });
+  const supabaseProjectRef = projectRefFromSupabaseUrl(targetConfig.vars?.SUPABASE_URL);
 
   resolveReceiptDirectory({
     artifactDir: options.artifactDir,
@@ -555,30 +608,35 @@ async function main() {
   const secretNames = parseSecretInventory(runReadOnlyCli(wranglerBin, [
     "secret", "list", "-c", targetConfigPath, "--name", target.workerName,
   ], appRoot));
-  const providerConfiguration = assertConfiguredProviders(secretNames);
-  const migrationRows = parseMigrationList(runReadOnlyCli(supabaseBin, [
-    "--workdir", appRoot,
-    "migration", "list", "--linked",
-  ], appRoot));
-  let linkedProjectRefAfterMigration;
-  try {
-    linkedProjectRefAfterMigration = readFileSync(
-      new URL("../supabase/.temp/project-ref", import.meta.url),
-      "utf8",
-    );
-  } catch {
-    throw qualificationError("linked Supabase project ref became unavailable during migration qualification");
-  }
-  assertLinkedSupabaseProject({
-    targetSupabaseUrl: targetConfig.vars?.SUPABASE_URL,
-    linkedProjectRef: linkedProjectRefAfterMigration,
+  const providerInspection = inspectConfiguredProviders(secretNames);
+  const migrationRows = await fetchSupabaseMigrationInventory({
+    projectRef: supabaseProjectRef,
+    accessToken: process.env.SUPABASE_ACCESS_TOKEN,
   });
-  if (linkedProjectRefAfterMigration.trim() !== linkedProjectRef.trim()) {
-    throw qualificationError("linked Supabase project changed during migration qualification");
-  }
   assertMigrationParity(migrationRows, manifest.migrationFiles);
-  const readyz = await fetchReadyz(options.baseUrl);
-  const monitorz = await fetchMonitorz(options.baseUrl, process.env.MONITOR_TOKEN);
+  let providerConfiguration;
+  let readyz;
+  let monitorz;
+  let pendingQualification;
+  if (options.qualification === "strict") {
+    providerConfiguration = assertConfiguredProviders(secretNames);
+    readyz = await fetchReadyz(options.baseUrl);
+    monitorz = await fetchMonitorz(options.baseUrl, process.env.MONITOR_TOKEN);
+  } else {
+    providerConfiguration = providerInspection.configured;
+    readyz = await fetchReadyzDatabase(options.baseUrl);
+    monitorz = { status: "pending_strict_qualification" };
+    pendingQualification = {
+      status: "pending",
+      missingProviderSecrets: providerInspection.missing,
+      requiredBeforeProduction: [
+        "strict_staging_requalification",
+        "readyz_configuration",
+        "monitorz_runtime_health",
+        "provider_integration_and_operator_gates",
+      ],
+    };
+  }
   assertReceiptMatchesRelease({
     receipt,
     manifest,
@@ -595,8 +653,13 @@ async function main() {
   assertDeploymentUnchanged(activeDeployment, finalActiveDeployment);
 
   console.log(JSON.stringify({
-    status: "configuration_verified",
-    evidenceScope: "configuration_verified_not_provider_integration",
+    status: options.qualification === "strict"
+      ? "configuration_verified"
+      : "deployment_verified_pending_qualification",
+    evidenceScope: options.qualification === "strict"
+      ? "configuration_verified_not_provider_integration"
+      : "staging_bootstrap_pending_strict_qualification",
+    qualification: options.qualification,
     environment: options.environment,
     workerName: target.workerName,
     sourceCommit: manifest.sourceCommit,
@@ -610,6 +673,7 @@ async function main() {
     providerConfiguration,
     readyz,
     monitorz,
+    ...(pendingQualification ? { pendingQualification } : {}),
   }, null, 2));
 }
 
