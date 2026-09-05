@@ -11,14 +11,11 @@ describe("Supabase Management API migration inventory", () => {
     expect(() => projectRefFromSupabaseUrl("https://example.com")).toThrow(/hosted Supabase URL/);
   });
 
-  it("parses the documented migration history response into parity rows", () => {
+  it("parses the documented migration history response into versions", () => {
     expect(parseSupabaseMigrationInventory([
       { version: "0001", name: "tenancy_schema" },
       { version: "0002", name: "rls_policies" },
-    ])).toEqual([
-      { local: "0001", remote: "0001" },
-      { local: "0002", remote: "0002" },
-    ]);
+    ])).toEqual(["0001", "0002"]);
     expect(() => parseSupabaseMigrationInventory([{ version: "../bad", name: "x" }])).toThrow(/invalid schema/);
   });
 
@@ -36,7 +33,7 @@ describe("Supabase Management API migration inventory", () => {
       projectRef: "ajffjukmvltqxxtkkplq",
       accessToken: token,
       fetchFn,
-    })).resolves.toEqual([{ local: "0001", remote: "0001" }]);
+    })).resolves.toEqual(["0001"]);
 
     await expect(fetchSupabaseMigrationInventory({
       projectRef: "ajffjukmvltqxxtkkplq",

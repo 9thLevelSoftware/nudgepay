@@ -29,7 +29,7 @@ export function parseSupabaseMigrationInventory(body) {
       || entry.name.length === 0
     ))
   ) throw inventoryError("Management API response has an invalid schema");
-  return body.map((entry) => ({ local: entry.version, remote: entry.version }));
+  return body.map((entry) => entry.version);
 }
 
 export async function fetchSupabaseMigrationInventory({

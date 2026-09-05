@@ -215,10 +215,11 @@ describe("release qualification", () => {
       { local: "0064", remote: "0064" },
     ]);
     const expected = ["0062_a.sql", "0063_b.sql", "0064_c.sql"];
-    expect(() => assertMigrationParity(rows, expected)).not.toThrow();
-    expect(() => assertMigrationParity([...rows, { local: "0065", remote: "" }], [...expected, "0065_d.sql"])).toThrow(/migration history differs/);
-    expect(() => assertMigrationParity([rows[0], rows[2]], expected)).toThrow(/exactly match/);
-    expect(() => assertMigrationParity([...rows, rows[2]], expected)).toThrow(/exactly match/);
+    const versions = rows.map((row) => row.remote);
+    expect(() => assertMigrationParity(versions, expected)).not.toThrow();
+    expect(() => assertMigrationParity(["0062", "0064"], expected)).toThrow(/exactly match/);
+    expect(() => assertMigrationParity([...versions, "0064"], expected)).toThrow(/exactly match/);
+    expect(() => assertMigrationParity(["0062", "bad"], expected)).toThrow(/inventory is invalid/);
     expect(() => parseMigrationList(`${table}\n unexpected | row |`)).toThrow(/unrecognized data row/);
   });
 

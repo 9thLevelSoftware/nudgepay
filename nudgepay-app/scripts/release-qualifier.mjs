@@ -216,21 +216,18 @@ export function parseMigrationList(output) {
   return rows;
 }
 
-export function assertMigrationParity(rows, expectedMigrationFiles) {
+export function assertMigrationParity(actualVersions, expectedMigrationFiles) {
   if (
-    !Array.isArray(rows)
+    !Array.isArray(actualVersions)
     || !Array.isArray(expectedMigrationFiles)
+    || actualVersions.some((version) => !/^\d+$/.test(version))
     || expectedMigrationFiles.some((filename) => !/^\d+_[a-z0-9_]+\.sql$/i.test(filename))
   ) {
     throw qualificationError("expected migration inventory is invalid");
   }
-  if (rows.some((row) => !row.local || !row.remote || row.local !== row.remote)) {
-    throw qualificationError("local and remote migration history differs");
-  }
-  const actualVersions = rows.map((row) => row.remote);
   const expectedVersions = expectedMigrationFiles.map((filename) => filename.split("_", 1)[0]);
   if (JSON.stringify(actualVersions) !== JSON.stringify(expectedVersions)) {
-    throw qualificationError("local and remote migration history does not exactly match the sealed migration inventory");
+    throw qualificationError("remote migration history does not exactly match the sealed migration inventory");
   }
 }
 

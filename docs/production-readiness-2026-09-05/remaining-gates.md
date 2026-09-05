@@ -82,7 +82,7 @@ External evidence: `hosted-gates-recheck-2026-09-05.json`,
   build triggers (empty), and production subdomain settings (both disabled).
   The former staging-quota blocker is superseded: staging project
   `ajffjukmvltqxxtkkplq` is active in east1. Remaining GATE-01 work is schedule
-  restoration only through the new artifact pipeline, rendered
-  schedule read-back and authenticated isolation verification.
+  restoration through the new artifact pipeline, plus schedule read-back and
+  authenticated isolation verification.
   The removed/recreated raw Cloudflare trigger configuration is retained
   externally as `cloudflare-trigger-before-canonical-pipeline.json`.
