@@ -10,7 +10,7 @@ export type SubmissionStorage = {
   removeItem(key: string): void;
 };
 
-function fnv1a64Hex(input: string): string {
+import { fnv1a64Hex } from "./hash";
   let h = 0xcbf29ce484222325n;
   for (let i = 0; i < input.length; i++) {
     h ^= BigInt(input.charCodeAt(i));
