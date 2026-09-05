@@ -72,6 +72,10 @@ function cspPolicy(nonce) {
 const SAFE_ERROR_NAMES = new Set([
 	"Error", "TypeError", "RangeError", "SyntaxError", "AbortError", "TimeoutError",
 	"ProviderSendRejectedError", "ProviderResponseAmbiguousError", "AmbiguousSendError",
+	"QboTokenRequestError", "QboTokenTimeoutError", "QboRevokeTimeoutError", "QboApiTimeoutError",
+]);
+	"Error", "TypeError", "RangeError", "SyntaxError", "AbortError", "TimeoutError",
+	"ProviderSendRejectedError", "ProviderResponseAmbiguousError", "AmbiguousSendError",
 	"QboTokenRequestError",
 ]);
 
