@@ -58,6 +58,25 @@ Read-only GitHub checks succeeded. `gh auth status` reports the authenticated `9
 
 No secrets, tokens, provider payloads, production deployment, authenticated browser run, backup/restore drill, or external operational gate was inspected or claimed here.
 
+## Current hosted recheck — 2026-09-05
+
+The historical quota observation above is superseded. A separate staging project
+`ajffjukmvltqxxtkkplq` is active in east1; production remains
+`epjumsnmpvilgasycpau`. Staging has migrations `0001`–`0066`, public-table RLS
+is enabled, and the database has zero organizations. The staging Worker
+`SUPABASE_URL` and Supabase keys now point to the staging project. `/readyz`
+returns HTTP 200 with `ok: true`, while `qbo`, `twilio`, `email`, and
+`operatorAlert` configuration flags are false. Staging cron schedules remain
+removed pending deployment of the new artifact. Cloudflare, Supabase, and
+monitor GitHub staging/production secrets are set; the scoped Supabase PATs
+expire approximately 2026-12-04 (exact expiry evidence remains to be recorded).
+The verified staging site URL is
+`https://nudgepay-app-staging.dasblueeyeddevil.workers.dev`, with the exact
+recovery redirect `/auth/confirm?next=/reset-password` configured.
+PR [#142](https://github.com/9thLevelSoftware/nudgepay/pull/142) at `f1d4129`
+is pending automated checks, and no new application deployment has occurred.
+This is partial GATE-01 evidence and does not establish pilot readiness.
+
 ## Current worktree delta — request security
 
 This section records verification performed after the immutable baseline above.

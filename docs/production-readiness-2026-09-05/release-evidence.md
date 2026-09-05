@@ -183,6 +183,16 @@ review conclusion, not a certification of the entire product or hosted setup.
 
 ## Open release gates
 
+Current hosted state supersedes the earlier staging-quota note: staging project
+`ajffjukmvltqxxtkkplq` (east1) is active and separate from production
+`epjumsnmpvilgasycpau`; migrations `0001`–`0066` are applied, and RLS is
+enabled on all public tables. The staging database is empty of organizations. Staging Worker
+secrets now target the new project and `/readyz` returns HTTP 200, but its
+provider flags (`qbo`, `twilio`, `email`, `operatorAlert`) are false. Staging
+cron schedules remain removed until the new artifact is deployed. PR [#142](https://github.com/9thLevelSoftware/nudgepay/pull/142)
+(`f1d4129`) is pending automated checks; no new application deployment exists.
+GATE-01 is therefore partial and pilot readiness must not be claimed.
+
 Continuation after the implementation commit: the Cloudflare API confirmed the
 deployed staging Worker still shared production's database and had hourly plus
 half-hourly schedules. At `2026-09-05T16:52:45Z`, its schedules were removed and
@@ -275,7 +285,7 @@ boundary behavior only.
 
 | Gate | Current evidence / blocker |
 |---|---|
-| Separate staging database | Supabase rejected creation at the account's active-free-project limit. The existing deployed staging configuration shares production's project and is not isolated. |
+| Separate staging database | **Partial** — isolated staging project `ajffjukmvltqxxtkkplq` is active in east1; all 66 migrations are applied and RLS is enabled on all public tables, and Worker secrets target it. Schedules remain disabled pending new artifact deployment; schedule read-back and authenticated isolation verification remain open. |
 | Provider readiness | Hosted readiness and secret-name checks show incomplete provider/operator configuration. Controlled QBO, Twilio, Resend, and Stripe end-to-end exercises remain unperformed. |
 | Hosted release protections | `main` now has all eight required GitHub Actions checks with strict and administrator enforcement, evidenced by before/after readbacks. [CI run 33986502649](https://github.com/9thLevelSoftware/nudgepay/actions/runs/33986502649) passed all eight planned checks on `3c2aff3458c327b0a0fbb051f83e77db0208f053`; candidate artifact promotion, deployed configuration, and enforced CSP evidence remain outstanding. |
 | Performance and soak | No 60-minute staging load run or 24-hour staging soak has been completed. Fixture and load tools do not establish capacity. |
