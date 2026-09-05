@@ -124,7 +124,6 @@ export function CommandPalette() {
               <Icon name="search" size={16} className="text-muted" />
               <span className="sr-only">Search commands</span>
               <Input
-                autoFocus
                 value={query}
                 onChange={(event) => setQuery(event.target.value)}
                 onKeyDown={onCommandKeyDown}

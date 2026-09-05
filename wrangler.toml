@@ -1,32 +1,33 @@
-# Cloudflare Workers Builds runs `npx wrangler deploy` from this repository
-# root (Git is connected to Worker `nudgepay-app` at the repo, not the
-# `nudgepay-app/` package). Without this file Wrangler auto-inits a static
-# site from `netlify/` and tries to overwrite the live SSR Worker.
+# Cloudflare Workers Builds triggers are disabled. A successful main CI run
+# drives the sealed-artifact staging workflow, while protected manual production
+# promotion reuses that exact artifact. See nudgepay-app/README.md and
+# docs/pilot-ops.md. Without this file, an accidental root `npx wrangler deploy`
+# can auto-init a static site from `netlify/` and overwrite the live SSR Worker.
 #
-# Preferred dashboard settings (Settings → Builds):
-#   Root directory:  nudgepay-app
-#   Build command:   npm ci --include=dev
-#   Deploy command:  npm run deploy
-# Until those are set, this file makes the default `npx wrangler deploy`
-# build the real app instead of uploading Netlify redirects.
+# Keep Workers Builds production and preview triggers disabled to avoid a
+# duplicate raw-upload path. This build hook intentionally keeps direct root
+# Wrangler uploads fail-closed; it cannot perform post-upload redaction and
+# active-version verification.
 
 name = "nudgepay-app"
 compatibility_date = "2025-06-01"
 compatibility_flags = ["nodejs_compat"]
 main = "nudgepay-app/build/server/index.js"
-workers_dev = true
+# Production is available only through its custom domain.
+workers_dev = false
 
 [vars]
 SUPABASE_URL = "https://epjumsnmpvilgasycpau.supabase.co"
 QBO_SANDBOX = "false"
 AUTH_RATE_LIMIT_REQUIRED = "true"
+CSP_MODE = "report-only"
 
 [[routes]]
 pattern = "nudgepay.9thlevelsoftware.com"
 custom_domain = true
 
 [triggers]
-crons = ["*/30 * * * *", "0 * * * *"]
+crons = ["*/5 * * * *", "*/30 * * * *", "0 * * * *"]
 
 [placement]
 mode = "smart"
@@ -49,5 +50,5 @@ simple = { limit = 20, period = 60 }
 directory = "nudgepay-app/build/client"
 
 [build]
-command = "node scripts/cf-builds-prepare.mjs"
+command = "node scripts/reject-direct-worker-deploy.mjs"
 cwd = "nudgepay-app"

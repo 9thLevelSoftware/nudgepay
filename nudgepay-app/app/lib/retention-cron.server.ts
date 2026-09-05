@@ -7,6 +7,9 @@ import { getEnv } from "./env.server";
 import { createSupabaseServiceClient } from "./supabase.server";
 
 export const RETENTION_DAYS = 90;
+export const STRIPE_WEBHOOK_RETENTION_DAYS = 90;
+export const BILLING_ATTEMPT_RETENTION_DAYS = 90;
+export const PROVIDER_RECONCILIATION_RETENTION_DAYS = 90;
 const MS_PER_DAY = 24 * 60 * 60 * 1000;
 
 export function retentionCutoffIso(now: Date, days: number): string {
@@ -18,19 +21,23 @@ export type RetentionCounts = {
   notificationLog: number;
   syncErrors: number;
   invites: number;
+  stripeWebhookEvents: number;
+  billingCheckoutAttempts: number;
+  providerReconciliations: number;
+  failures: number;
 };
 
 async function purgeTable(
   label: string,
   run: () => PromiseLike<{ count: number | null; error: { message?: string } | null }>,
-): Promise<number> {
+): Promise<{ count: number; failed: boolean }> {
   try {
     const { count, error } = await run();
     if (error) throw error;
-    return count ?? 0;
+    return { count: count ?? 0, failed: false };
   } catch (err) {
     console.error(`[retention] ${label} failed:`, err);
-    return 0;
+    return { count: 0, failed: true };
   }
 }
 
@@ -40,21 +47,24 @@ export async function runRetention(
 ): Promise<RetentionCounts> {
   const nowIso = now.toISOString();
   const cutoff90 = retentionCutoffIso(now, RETENTION_DAYS);
+  const stripeWebhookCutoff = retentionCutoffIso(now, STRIPE_WEBHOOK_RETENTION_DAYS);
+  const billingAttemptCutoff = retentionCutoffIso(now, BILLING_ATTEMPT_RETENTION_DAYS);
+  const reconciliationCutoff = retentionCutoffIso(now, PROVIDER_RECONCILIATION_RETENTION_DAYS);
 
-  const oauthStates = await purgeTable("oauth_states", () =>
+  const oauthStatesResult = await purgeTable("oauth_states", () =>
     service.from("oauth_states").delete({ count: "exact" }).lt("expires_at", nowIso),
   );
-  const notificationLog = await purgeTable("notification_log", () =>
+  const notificationLogResult = await purgeTable("notification_log", () =>
     service.from("notification_log").delete({ count: "exact" }).lt("sent_at", cutoff90),
   );
-  const syncErrors = await purgeTable("sync_errors", () =>
+  const syncErrorsResult = await purgeTable("sync_errors", () =>
     service
       .from("sync_errors")
       .delete({ count: "exact" })
       .not("resolved_at", "is", null)
       .lt("resolved_at", cutoff90),
   );
-  const invites = await purgeTable("invites", () =>
+  const invitesResult = await purgeTable("invites", () =>
     service
       .from("invites")
       .delete({ count: "exact" })
@@ -62,7 +72,34 @@ export async function runRetention(
       .lt("expires_at", nowIso),
   );
 
-  return { oauthStates, notificationLog, syncErrors, invites };
+  const stripeWebhookEventsResult = await purgeTable("stripe_webhook_events", () =>
+    service.from("stripe_webhook_events").delete({ count: "exact" })
+      .lt("received_at", stripeWebhookCutoff),
+  );
+  const billingCheckoutAttemptsResult = await purgeTable("billing_checkout_attempts", () =>
+    service.from("billing_checkout_attempts").delete({ count: "exact" })
+      .in("state", ["failed", "completed"])
+      .lt("updated_at", billingAttemptCutoff),
+  );
+  const providerReconciliationsResult = await purgeTable("provider_reconciliation_audit", () =>
+    service.from("provider_reconciliation_audit").delete({ count: "exact" })
+      .lt("reconciled_at", reconciliationCutoff),
+  );
+
+  const results = [
+    oauthStatesResult, notificationLogResult, syncErrorsResult, invitesResult,
+    stripeWebhookEventsResult, billingCheckoutAttemptsResult, providerReconciliationsResult,
+  ];
+  return {
+    oauthStates: oauthStatesResult.count,
+    notificationLog: notificationLogResult.count,
+    syncErrors: syncErrorsResult.count,
+    invites: invitesResult.count,
+    stripeWebhookEvents: stripeWebhookEventsResult.count,
+    billingCheckoutAttempts: billingCheckoutAttemptsResult.count,
+    providerReconciliations: providerReconciliationsResult.count,
+    failures: results.filter((result) => result.failed).length,
+  };
 }
 
 export async function runScheduledRetention(

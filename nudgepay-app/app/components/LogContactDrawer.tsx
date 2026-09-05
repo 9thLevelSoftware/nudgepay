@@ -260,7 +260,7 @@ export function LogContactDrawer({
             <button
               type="submit"
               disabled={saving}
-              className="rounded-md bg-copper px-4 py-2 text-sm font-sans font-semibold text-ink hover:bg-copper/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-copper focus-visible:ring-offset-2 disabled:opacity-60 disabled:cursor-not-allowed"
+              className="rounded-md bg-copper px-4 py-2 text-sm font-sans font-semibold text-on-copper hover:bg-copper/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-copper focus-visible:ring-offset-2 disabled:opacity-60 disabled:cursor-not-allowed"
             >
               {saving ? "Saving…" : "Save contact"}
             </button>

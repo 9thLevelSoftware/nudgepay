@@ -321,6 +321,7 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
     : "overview";
 
   const sms = sp.get("sms");
+  const sendSubmission = sp.get("sendSubmission");
   const log = sp.get("log") === "1";
   const logMethod = sp.get("method");
   const logError = sp.get("logError");
@@ -619,6 +620,7 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
       selectedPrefs,
       selectedPromiseId,
       sms,
+      sendSubmission,
       smsEnabled,
       smsQuietNow,
       quietHoursLabel,
@@ -702,6 +704,7 @@ export default function Dashboard() {
     selectedPrefs,
     selectedPromiseId,
     sms,
+    sendSubmission,
     smsEnabled,
     smsQuietNow,
     quietHoursLabel,
@@ -743,6 +746,7 @@ export default function Dashboard() {
     orgPaymentLink,
     maxBatch,
     timeZone,
+    currentUserId,
   } = useLoaderData<typeof loader>();
 
   useFlashCleanup();
@@ -776,11 +780,19 @@ export default function Dashboard() {
       connected={connected}
       isOwner={isOwner}
       isAdmin={isAdmin}
+      userId={currentUserId}
+      qualificationRoute="/dashboard"
+      qualificationReady={
+        !loadError
+        && !queueTruncated
+        && !lastContactTruncated
+        && !arKpis.truncated
+      }
       activeNav="collections"
       headerActions={
         <Link
           to="/focus"
-          className="flex items-center gap-1.5 px-2.5 py-1 rounded border border-copper/40 text-copper text-[11px] font-sans font-semibold hover:bg-copper/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-copper"
+          className="flex items-center gap-1.5 px-2.5 py-1 rounded border border-copper-bright/40 text-copper-bright text-[11px] font-sans font-semibold hover:bg-copper/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-copper"
         >
           Focus mode
         </Link>
@@ -884,6 +896,8 @@ export default function Dashboard() {
                 needsReconnect={needsReconnect}
                 queueTruncated={queueTruncated}
                 timeZone={timeZone}
+                orgId={orgId}
+                userId={currentUserId}
               />
             </div>
 
@@ -927,6 +941,9 @@ export default function Dashboard() {
                   today={today}
                   timeZone={timeZone}
                   loadError={detailLoadError}
+                  orgId={orgId}
+                  userId={currentUserId}
+                  sendSubmissionId={sendSubmission}
                 />
               </div>
             ) : null}

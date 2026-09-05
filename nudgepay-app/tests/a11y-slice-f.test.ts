@@ -35,7 +35,7 @@ describe("TEMP-UX-015 queue table roles", () => {
     expect(src).toContain('data-label="Peek"');
     expect(src).toContain('data-label="Payer"');
     expect(src).not.toContain('role="tablist"');
-    expect(src).toContain("aria-pressed={density === id}");
+    expect(src).toContain('aria-current={density === id ? "true" : undefined}');
   });
 
   it("owns Heat/Customer cells from the row, not via a spanning Open link", () => {

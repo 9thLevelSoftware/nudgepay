@@ -81,7 +81,7 @@ export function CommPrefsDrawer({
 
           <div className="flex justify-end gap-2">
             <Link to={closeHref} className="rounded-md px-3 py-1.5 text-xs text-muted hover:text-text">Cancel</Link>
-            <button type="submit" disabled={formBusy} className="rounded-md bg-copper px-3 py-1.5 text-xs font-sans font-semibold text-ink hover:bg-copper/90 disabled:opacity-60 disabled:cursor-not-allowed">
+            <button type="submit" disabled={formBusy} className="rounded-md bg-copper px-3 py-1.5 text-xs font-sans font-semibold text-on-copper hover:bg-copper/90 disabled:opacity-60 disabled:cursor-not-allowed">
               {formBusy ? "Saving…" : "Save preferences"}
             </button>
           </div>

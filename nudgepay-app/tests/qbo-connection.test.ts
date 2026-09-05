@@ -79,3 +79,24 @@ test("disconnectConnection revokes and clears the row", async () => {
   expect(data!.status).toBe("disconnected");
   expect(data!.access_token_enc).toBeNull();
 });
+
+test("disconnectConnection preserves encrypted tokens when provider revoke fails", async () => {
+  const org = await freshOrg();
+  await storeConnection(svc, KEY, org, "realm-retry", {
+    accessToken: "RETRY-AT",
+    refreshToken: "RETRY-RT",
+    expiresIn: 3600,
+  });
+  const fetchFn = vi.fn(async () => new Response(null, { status: 503 }));
+
+  await expect(disconnectConnection(fetchFn as any, svc, cfg, KEY, org))
+    .rejects.toThrow(/QBO revoke failed: 503/);
+
+  const { data } = await svc.from("qbo_connections")
+    .select("status, access_token_enc, refresh_token_enc")
+    .eq("org_id", org)
+    .single();
+  expect(data!.status).toBe("connected");
+  expect(await decryptSecret(data!.access_token_enc, KEY)).toBe("RETRY-AT");
+  expect(await decryptSecret(data!.refresh_token_enc, KEY)).toBe("RETRY-RT");
+});

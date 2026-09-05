@@ -72,7 +72,7 @@ export default function Unsubscribe() {
               <p className="mt-2 text-sm text-muted">Click below to stop receiving collection emails from us.</p>
               <Form method="post" className="mt-4">
                 <input type="hidden" name="token" value={token} />
-                <button type="submit" className="rounded-md bg-copper px-4 py-2 text-sm font-semibold text-ink hover:bg-copper/90">Confirm unsubscribe</button>
+                <button type="submit" className="rounded-md bg-copper px-4 py-2 text-sm font-semibold text-on-copper hover:bg-copper/90">Confirm unsubscribe</button>
               </Form>
             </>
           )}

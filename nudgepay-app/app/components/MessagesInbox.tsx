@@ -61,24 +61,24 @@ export function MessagesInbox({ rows, tab, sort, search, counts, selectedId, sel
             const active = ch.id === channel;
             return (
               <Link
-                key={ch.id} to={channelHref(ch.id)} aria-pressed={active}
+                key={ch.id} to={channelHref(ch.id)} aria-current={active ? "true" : undefined}
                 className={[
                   "inline-flex items-center gap-1 px-2.5 h-7 rounded text-xs font-medium transition-colors",
                   "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-copper",
                   active
-                    ? "bg-copper text-ink"
+                    ? "bg-copper text-on-copper"
                     : "text-muted hover:text-text",
                 ].join(" ")}
               >
                 {ch.label}
-                <span className={`font-mono text-[10px] tabular-nums ${active ? "text-ink/70" : "text-muted/70"}`}>
+                <span className={`font-mono text-[10px] tabular-nums ${active ? "text-on-copper" : "text-muted/70"}`}>
                   {channelCounts[ch.id]}
                 </span>
               </Link>
             );
           })}
         </div>
-        <Form method="get" className="ml-auto flex items-center gap-2">
+        <Form method="get" action="/messages" className="ml-auto flex items-center gap-2">
           <input type="hidden" name="tab" value={tab} />
           <input type="hidden" name="channel" value={channel} />
           {selectedId ? <input type="hidden" name="customerId" value={selectedId} /> : null}

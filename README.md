@@ -122,13 +122,15 @@ via `wrangler secret put`, never committed.
 ```bash
 # Production — set secrets first, then deploy
 npx wrangler secret put <NAME> --env production   # repeat per secret in wrangler.toml
-npm run deploy -- --env production
+npm run deploy
 ```
 
-A successful deploy requires every secret listed under
-`[env.production]` in `wrangler.toml`; the QBO and Twilio routes throw
-500 at runtime until their respective secrets are present. Email/alert
-secrets are optional — `getEmailEnvOrNull` degrades gracefully.
+`[env.production]` explicitly uses the live `nudgepay-app` Worker name, so
+secret inventory, deploy, and rollback commands resolve the same target. The
+deploy wrapper rejects conflicting secret bindings and validates the generated
+custom-domain and rate-limit configuration before upload. Provider readiness
+still depends on the corresponding provider secrets. Email/alert secrets are
+optional — `getEmailEnvOrNull` degrades gracefully.
 
 ### Render (secondary target)
 

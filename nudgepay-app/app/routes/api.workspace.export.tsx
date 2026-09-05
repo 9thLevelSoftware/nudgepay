@@ -8,7 +8,7 @@ import { workspaceExportAllowed, workspaceExportFilename } from "../lib/workspac
 export async function loader({ request, context }: LoaderFunctionArgs) {
   const env = getEnv(context as any);
   const { headers, user, supabase } = await requireUser(request, env);
-  const org = await resolveOrg(supabase, user.id, request);
+  const org = await resolveOrg(supabase, user.id, request, headers);
   if (!org) {
     return new Response("No workspace", { status: 403, headers });
   }

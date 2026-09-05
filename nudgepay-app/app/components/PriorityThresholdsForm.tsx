@@ -71,7 +71,7 @@ export function PriorityThresholdsForm({
         <div className="flex items-center gap-3">
           <button
             type="submit" disabled={busy}
-            className="rounded-md bg-copper px-3 py-1.5 text-xs font-semibold text-ink hover:bg-copper/90 disabled:opacity-60 disabled:cursor-not-allowed"
+            className="rounded-md bg-copper px-3 py-1.5 text-xs font-semibold text-on-copper hover:bg-copper/90 disabled:opacity-60 disabled:cursor-not-allowed"
           >
             {busy ? "Saving…" : "Save"}
           </button>

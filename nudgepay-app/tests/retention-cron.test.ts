@@ -1,7 +1,13 @@
-import { expect, test } from "vitest";
+import { expect, test, vi } from "vitest";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
-import { retentionCutoffIso } from "../app/lib/retention-cron.server";
+import {
+  BILLING_ATTEMPT_RETENTION_DAYS,
+  PROVIDER_RECONCILIATION_RETENTION_DAYS,
+  STRIPE_WEBHOOK_RETENTION_DAYS,
+  retentionCutoffIso,
+  runRetention,
+} from "../app/lib/retention-cron.server";
 
 test("retentionCutoffIso subtracts whole days from an instant", () => {
   const now = new Date("2026-08-20T12:00:00.000Z");
@@ -16,15 +22,52 @@ test("retentionCutoffIso does not mutate the input date", () => {
   expect(now.toISOString()).toBe("2026-01-15T00:00:00.000Z");
 });
 
+test("durable provider receipts have bounded retention while active attempts are excluded", () => {
+  expect(STRIPE_WEBHOOK_RETENTION_DAYS).toBe(90);
+  expect(BILLING_ATTEMPT_RETENTION_DAYS).toBe(90);
+  expect(PROVIDER_RECONCILIATION_RETENTION_DAYS).toBe(90);
+  const src = readFileSync(fileURLToPath(new URL("../app/lib/retention-cron.server.ts", import.meta.url)), "utf8");
+  expect(src).toContain('.in("state", ["failed", "completed"])');
+  expect(src).not.toMatch(/\.in\("state", \[[^\]]*(?:reserved|ready|unknown)/);
+});
+
+test("retention completes every purge and reports partial failures", async () => {
+  const visited: string[] = [];
+  const service = {
+    from(table: string) {
+      visited.push(table);
+      const result = table === "notification_log"
+        ? { count: null, error: { message: "down" } }
+        : { count: 1, error: null };
+      const builder: any = {
+        delete: () => builder,
+        not: () => builder,
+        is: () => builder,
+        in: () => builder,
+        lt: async () => result,
+      };
+      return builder;
+    },
+  };
+  vi.spyOn(console, "error").mockImplementation(() => {});
+  await expect(runRetention(service as never, new Date("2026-09-05T12:00:00Z"))).resolves.toMatchObject({
+    notificationLog: 0,
+    failures: 1,
+  });
+  expect(visited).toHaveLength(7);
+  vi.restoreAllMocks();
+});
+
 const workerSrc = readFileSync(fileURLToPath(new URL("../workers/app.ts", import.meta.url)), "utf8");
 
-test("hourly scheduled branch waitUntils digest and retention", () => {
+test("hourly scheduled branch runs only digest and retention", () => {
   expect(workerSrc).toContain('import { runScheduledRetention } from "../app/lib/retention-cron.server"');
   const hourly = workerSrc.slice(
     workerSrc.indexOf('cron === "0 * * * *"'),
-    workerSrc.indexOf("} else {"),
+    workerSrc.indexOf('} else if (cron === "*/5 * * * *")'),
   );
   expect(hourly).toContain("runScheduledDigest");
   expect(hourly).toContain("runScheduledRetention");
-  expect(hourly.match(/ctx\.waitUntil/g)?.length).toBe(2);
+  expect(hourly).not.toContain("runScheduledProviderMonitor");
+  expect(hourly.match(/scheduleJob\(/g)?.length).toBe(2);
 });

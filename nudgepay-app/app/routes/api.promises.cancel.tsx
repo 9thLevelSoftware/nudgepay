@@ -14,7 +14,7 @@ function withError(returnTo: string, code: string): string {
 export async function action({ request, context }: ActionFunctionArgs) {
   const env = getEnv(context as any);
   const { supabase, headers, user } = await requireUser(request, env);
-  const org = await resolveOrg(supabase, user.id, request);
+  const org = await resolveOrg(supabase, user.id, request, headers);
   if (!org) throw redirect("/onboarding", { headers });
 
   const form = await request.formData();

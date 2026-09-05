@@ -1,7 +1,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { sendEmail, type EmailConfig } from "./email-client.server";
-import { assertEmailBudget } from "./send-limits.server";
-import { sendIdempotencyKey } from "./send-limits";
+import { legacySendAttemptIdentity, sendAttemptIdentity } from "./send-limits";
+import { AmbiguousSendError, ProviderSendRejectedError } from "./provider-send-error";
 import { signUnsubscribeToken } from "./unsubscribe-token";
 import {
   activeCaseForSend,
@@ -31,7 +31,7 @@ function formatSender(fromAddress: string, fromName: string): string {
 
 export async function sendInvoiceEmail(
   deps: EmailDeps,
-  args: { orgId: string; invoiceId: string; userId: string; subject: string; body: string },
+  args: { orgId: string; invoiceId: string; userId: string; subject: string; body: string; submissionId?: string },
 ): Promise<{ id: string; providerMessageId: string }> {
   const { data: inv, error: invErr } = await deps.service.from("invoices")
     .select("customer_id").eq("org_id", args.orgId).eq("id", args.invoiceId).maybeSingle();
@@ -76,34 +76,101 @@ export async function sendInvoiceEmail(
   const footerLines = ["—", postal, `To stop receiving these emails, unsubscribe: ${unsubUrl}`];
   const bodyWithFooter = `${args.body}\n\n${footerLines.join("\n")}`;
   const from = formatSender(ec.from_address as string, (ec.from_name as string | null) ?? "");
+  const safetyParts = [
+    args.orgId,
+    args.invoiceId,
+    cust.email as string,
+    args.subject,
+    args.body,
+  ];
+  const providerParts = [
+    args.orgId,
+    args.invoiceId,
+    from,
+    cust.email as string,
+    args.subject,
+    bodyWithFooter,
+    `<${unsubUrl}>`,
+    "List-Unsubscribe=One-Click",
+  ];
+  const safetyIdentity = args.submissionId
+    ? sendAttemptIdentity("email", safetyParts, args.submissionId)
+    : legacySendAttemptIdentity("email", safetyParts, now);
+  const providerIdentity = args.submissionId
+    ? sendAttemptIdentity("email-provider", providerParts, args.submissionId)
+    : legacySendAttemptIdentity("email-provider", providerParts, now);
+  const reserveArgs = {
+    p_org_id: args.orgId,
+    p_invoice_id: args.invoiceId,
+    p_customer_id: cust.id as string,
+    p_case_id: activeCase.id,
+    p_sent_by_user_id: args.userId,
+    p_from_address: ec.from_address as string,
+    p_to_address: cust.email as string,
+    p_subject: args.subject,
+    p_body: bodyWithFooter,
+    p_send_fingerprint: safetyIdentity.fingerprint,
+    p_send_dedupe_key: safetyIdentity.dedupeKey,
+    p_provider_idempotency_key: providerIdentity.dedupeKey,
+    p_now: now.toISOString(),
+    ...(args.submissionId ? { p_submission_id: args.submissionId } : {}),
+  };
+  const { data: reserved, error: reserveError } = await deps.service.rpc("reserve_email_send", reserveArgs);
+  if (reserveError) throw reserveError;
+  const attempt = reserved as {
+    state?: "reserved" | "recorded" | "terminal" | "unknown" | "mismatch" | "org_cap" | "customer_cap";
+    id?: string;
+    provider_id?: string | null;
+    provider_key?: string | null;
+  } | null;
+  if (attempt?.state === "org_cap") throw new Error("Send rate cap reached for this workspace");
+  if (attempt?.state === "customer_cap") throw new Error("Send rate cap reached for this customer");
+  if (attempt?.state === "mismatch") throw new Error("Send submission identity belongs to a different send");
+  if (attempt?.state === "recorded" && attempt.id && attempt.provider_id) {
+    return { id: attempt.id, providerMessageId: attempt.provider_id };
+  }
+  if (attempt?.state === "terminal") {
+    throw new Error("Previous delivery failed; operator reconciliation is required before retry");
+  }
+  if (attempt?.state !== "reserved" || !attempt.id) throw new AmbiguousSendError();
 
-  await assertEmailBudget(deps.service, { orgId: args.orgId, customerId: cust.id as string, now });
-  const result = await sendEmail(deps.fetchFn, deps.email, {
-    from, to: cust.email as string, subject: args.subject, text: bodyWithFooter,
-    headers: {
-      "List-Unsubscribe": `<${unsubUrl}>`,
-      "List-Unsubscribe-Post": "List-Unsubscribe=One-Click",
-    },
-    idempotencyKey: sendIdempotencyKey("email", [args.orgId, args.invoiceId, args.subject, args.body]),
-  });
+  let result: Awaited<ReturnType<typeof sendEmail>>;
+  try {
+    result = await sendEmail(deps.fetchFn, deps.email, {
+      from, to: cust.email as string, subject: args.subject, text: bodyWithFooter,
+      headers: {
+        "List-Unsubscribe": `<${unsubUrl}>`,
+        "List-Unsubscribe-Post": "List-Unsubscribe=One-Click",
+      },
+      idempotencyKey: attempt.provider_key ?? providerIdentity.dedupeKey,
+    });
+  } catch (err) {
+    if (err instanceof ProviderSendRejectedError) {
+      const { data: deleted, error } = await deps.service.from("email_messages")
+        .delete().eq("org_id", args.orgId).eq("id", attempt.id).eq("status", "sending")
+        .select("id").maybeSingle();
+      if (error || !deleted) throw new AmbiguousSendError();
+      throw err;
+    }
+    const { data: markedUnknown, error: unknownError } = await deps.service.from("email_messages")
+      .update({ status: "unknown", error_code: "transport_ambiguous" })
+      .eq("org_id", args.orgId).eq("id", attempt.id).eq("status", "sending")
+      .select("id").maybeSingle();
+    if (unknownError || !markedUnknown) {
+      console.error({ event: "email_ambiguous_attempt_persist_failed", attemptId: attempt.id });
+    }
+    throw new AmbiguousSendError();
+  }
 
-  const { data: row, error: insErr } = await deps.service.from("email_messages").insert({
-    org_id: args.orgId,
-    invoice_id: args.invoiceId,
-    customer_id: cust.id as string,
-    case_id: activeCase.id,
-    sent_by_user_id: args.userId,
-    direction: "outbound",
+  const { data: updated, error: updateError } = await deps.service.from("email_messages").update({
     provider_message_id: result.id,
     status: "sent",
-    from_address: ec.from_address as string,
-    to_address: cust.email as string,
-    subject: args.subject,
-    body: bodyWithFooter,
-  }).select("id").single();
-  if (insErr) throw insErr;
+    error_code: null,
+  }).eq("org_id", args.orgId).eq("id", attempt.id).eq("status", "sending")
+    .select("id").maybeSingle();
+  if (updateError || !updated) throw new AmbiguousSendError();
 
-  return { id: row!.id as string, providerMessageId: result.id };
+  return { id: attempt.id, providerMessageId: result.id };
 }
 
 // Extract a bare email address from a "Name <addr>" or bare string; lowercase+trim.
@@ -118,14 +185,35 @@ export async function updateEmailStatus(
   args: { providerMessageId: string; status: string; errorCode: string | null; optOut: boolean },
 ): Promise<void> {
   if (!args.providerMessageId) return;
+  const predecessors: Record<string, readonly string[]> = {
+    sent: ["sending", "unknown", "sent"],
+    delayed: ["sending", "unknown", "sent", "delayed"],
+    delivered: ["sending", "unknown", "sent", "delayed", "delivered"],
+    failed: ["sending", "unknown", "sent", "delayed", "failed"],
+    bounced: ["sending", "unknown", "sent", "delayed", "failed", "bounced"],
+    complained: ["sending", "unknown", "sent", "delayed", "delivered", "failed", "bounced", "complained"],
+  };
+  const status = args.status.trim().toLowerCase();
+  const allowed = predecessors[status];
+  if (!allowed) return;
   const { data: rows, error } = await service
     .from("email_messages")
-    .update({ status: args.status, error_code: args.errorCode })
+    .update({ status, error_code: args.errorCode })
     .eq("provider_message_id", args.providerMessageId)
+    .or(`status.is.null,status.in.(${allowed.join(",")})`)
     .select("customer_id, org_id");
   if (error) throw error;
   if (!args.optOut) return;
-  for (const r of rows ?? []) {
+  let optOutRows = rows ?? [];
+  if (optOutRows.length === 0) {
+    const { data: existing, error: existingError } = await service
+      .from("email_messages")
+      .select("customer_id, org_id")
+      .eq("provider_message_id", args.providerMessageId);
+    if (existingError) throw existingError;
+    optOutRows = existing ?? [];
+  }
+  for (const r of optOutRows) {
     if (!r.customer_id) continue;
     const { error: upErr } = await service
       .from("customers")
@@ -260,9 +348,7 @@ async function persistEmailOrphan(
   if (!error) {
     console.error({
       event: "inbound_orphan_email",
-      from: args.from,
-      to: args.to,
-      sid: args.providerMessageId,
+      providerMessageId: args.providerMessageId,
     });
   }
 }

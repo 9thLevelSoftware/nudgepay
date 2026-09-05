@@ -1,13 +1,24 @@
 // Pure operator-alert helpers. No I/O.
 
-export type OperatorAlertPayload = {
+import { safeErrorDetails, safeUrlForLog, type SafeErrorDetails } from "./log-redaction";
+
+type WorkerErrorAlertPayload = {
   source: "nudgepay";
   event: "unhandled_worker_error";
   handler: "fetch" | "scheduled";
-  message: string;
+  error: SafeErrorDetails;
   cron?: string;
   url?: string;
 };
+
+type ProviderAttemptStaleAlertPayload = {
+  source: "nudgepay";
+  event: "provider_attempt_stale";
+  channel: "sms" | "email" | "stripe_checkout";
+  attemptId: string;
+};
+
+export type OperatorAlertPayload = WorkerErrorAlertPayload | ProviderAttemptStaleAlertPayload;
 
 export function operatorAlertWebhookOk(url: unknown): url is string {
   if (typeof url !== "string") return false;
@@ -21,14 +32,20 @@ export function operatorAlertPayload(input: {
   cron?: string;
   url?: string;
 }): OperatorAlertPayload {
-  const message = input.err instanceof Error ? input.err.message : String(input.err);
-  const payload: OperatorAlertPayload = {
+  const payload: WorkerErrorAlertPayload = {
     source: "nudgepay",
     event: "unhandled_worker_error",
     handler: input.handler,
-    message: message.slice(0, 500),
+    error: safeErrorDetails(input.err),
   };
   if (input.cron) payload.cron = input.cron;
-  if (input.url) payload.url = input.url.slice(0, 500);
+  if (input.url) payload.url = safeUrlForLog(input.url);
   return payload;
+}
+
+export function providerAttemptStaleAlertPayload(input: {
+  channel: "sms" | "email" | "stripe_checkout";
+  attemptId: string;
+}): ProviderAttemptStaleAlertPayload {
+  return { source: "nudgepay", event: "provider_attempt_stale", channel: input.channel, attemptId: input.attemptId };
 }

@@ -71,7 +71,8 @@ describe("trySendInviteEmail", () => {
   });
 
   it("returns failed and does not throw when Resend errors", async () => {
-    const fetchFn = mockFetch(422, { message: "domain not verified" });
+    const error = vi.spyOn(console, "error").mockImplementation(() => {});
+    const fetchFn = mockFetch(422, { message: "teammate@example.com token=provider-secret" });
     const result = await trySendInviteEmail(
       {
         fetchFn: fetchFn as any,
@@ -81,6 +82,14 @@ describe("trySendInviteEmail", () => {
       args,
     );
     expect(result).toBe("failed");
+    expect(error).toHaveBeenCalledWith(expect.objectContaining({
+      event: "invite_email_failed",
+      orgId: "org-1",
+      errorName: "ProviderSendRejectedError",
+      status: 422,
+    }));
+    expect(JSON.stringify(error.mock.calls[0][0])).not.toMatch(/teammate@example\.com|provider-secret|accept\/tok/);
+    error.mockRestore();
   });
 
   it("returns failed when email_config lookup throws", async () => {

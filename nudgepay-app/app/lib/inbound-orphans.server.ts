@@ -39,9 +39,9 @@ export function unmatchedStopsFromQuery(args: {
 }
 
 /**
- * Recent unmatched inbound STOP rows. `inbound_orphans` has no org_id (A-006);
- * service-role is required (RLS grants service_role only). Owner chrome only —
- * do not call from a member loader.
+ * Service-operator ledger for recent unmatched inbound STOP rows.
+ * `inbound_orphans` has no org_id, so these records cannot be attributed to or
+ * displayed inside any tenant workspace. Service role is required by RLS.
  */
 export async function listRecentUnmatchedStops(
   service: SupabaseClient,

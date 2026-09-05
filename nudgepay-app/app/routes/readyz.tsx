@@ -9,6 +9,8 @@ import { readyzBody, type ReadyzProviders } from "../lib/readyz";
 // must not take traffic can probe this route. Provider flags are config
 // presence only — never live QBO/Twilio/Resend calls.
 
+const RESPONSE_HEADERS = { "Cache-Control": "no-store" };
+
 function providersFrom(context: LoaderFunctionArgs["context"]): ReadyzProviders {
   const env = (context as { cloudflare?: { env?: Record<string, string> } }).cloudflare?.env ?? {};
   return {
@@ -24,20 +26,20 @@ export async function loader({ context }: LoaderFunctionArgs) {
   const providers = providersFrom(context);
   const url = raw.SUPABASE_URL ?? "";
   if (!url) {
-    return Response.json(readyzBody({ ok: false, reason: "url", providers }), { status: 503 });
+    return Response.json(readyzBody({ ok: false, reason: "url", providers }), { status: 503, headers: RESPONSE_HEADERS });
   }
   if (url.includes("<your-prod-project-ref>")) {
-    return Response.json(readyzBody({ ok: false, reason: "placeholder", providers }), { status: 503 });
+    return Response.json(readyzBody({ ok: false, reason: "placeholder", providers }), { status: 503, headers: RESPONSE_HEADERS });
   }
   try {
     const env = getEnv(context as any);
     const svc = createSupabaseServiceClient(env);
     const { error } = await svc.from("organizations").select("id").limit(1);
     if (error) {
-      return Response.json(readyzBody({ ok: false, reason: "db", providers }), { status: 503 });
+      return Response.json(readyzBody({ ok: false, reason: "db", providers }), { status: 503, headers: RESPONSE_HEADERS });
     }
   } catch {
-    return Response.json(readyzBody({ ok: false, reason: "config", providers }), { status: 503 });
+    return Response.json(readyzBody({ ok: false, reason: "config", providers }), { status: 503, headers: RESPONSE_HEADERS });
   }
-  return Response.json(readyzBody({ ok: true, providers }));
+  return Response.json(readyzBody({ ok: true, providers }), { headers: RESPONSE_HEADERS });
 }

@@ -9,6 +9,8 @@ export const BILLING_STATUSES = [
   "past_due",
   "canceled",
   "unpaid",
+  "paused",
+  "incomplete_expired",
 ] as const;
 export type BillingStatus = (typeof BILLING_STATUSES)[number];
 
@@ -28,6 +30,10 @@ export function billingIsCurrent(status: BillingStatus): boolean {
   return status === "active" || status === "trialing";
 }
 
+export function billingCanManage(status: BillingStatus): boolean {
+  return status !== "none" && status !== "canceled" && status !== "incomplete_expired";
+}
+
 export function billingStatusLabel(status: BillingStatus): string {
   switch (status) {
     case "active":
@@ -38,6 +44,10 @@ export function billingStatusLabel(status: BillingStatus): string {
       return "Past due";
     case "unpaid":
       return "Unpaid";
+    case "paused":
+      return "Paused";
+    case "incomplete_expired":
+      return "Incomplete (expired)";
     case "canceled":
       return "Canceled";
     case "incomplete":

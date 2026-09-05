@@ -56,8 +56,8 @@ export function TriageStrip({ items, view, sort, search, density, entity, timeZo
                   {item.customerName}
                 </span>
                 <span className="flex items-center gap-2 shrink-0">
-                  <span className="font-mono text-[10px] font-semibold text-muted">#{idx + 1}</span>
-                  <span className="font-mono text-xs text-copper font-semibold tabular-nums">
+                  <span className="font-mono text-[10px] font-semibold text-text">#{idx + 1}</span>
+                  <span className="font-mono text-xs text-text font-semibold tabular-nums">
                     {formatUSD(item.totalOverdue)}
                   </span>
                 </span>
@@ -66,7 +66,7 @@ export function TriageStrip({ items, view, sort, search, density, entity, timeZo
                 {nba.headline}
               </span>
               {nba.reason && (
-                <span className="text-[11px] text-muted leading-relaxed line-clamp-1">
+                <span className="text-[11px] text-text leading-relaxed line-clamp-1">
                   {nba.reason}
                 </span>
               )}

@@ -232,6 +232,7 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
     connected,
     needsReconnect,
     currentUserId: user.id,
+    orgId: org.org_id,
     today,
     smsTemplates: src.templates.sms,
     orgCompany: orgName,
@@ -250,6 +251,7 @@ export default function FocusMode() {
     queue, scope, heldLabels, collisions, timelines, smsEnabled, smsQuietNow, quietHoursLabel, today,
     smsTemplates, orgCompany, orgPhone, orgPaymentLink, timeZone, lastContactTruncated, historyLoadError,
     queueTruncatedMessage, connected, needsReconnect,
+    currentUserId, orgId,
   } = useLoaderData<typeof loader>();
 
   // Session state
@@ -584,6 +586,8 @@ export default function FocusMode() {
                   orgCompany={orgCompany}
                   orgPhone={orgPhone}
                   orgPaymentLink={orgPaymentLink}
+                  orgId={orgId}
+                  userId={currentUserId}
                 />
               )}
             </div>

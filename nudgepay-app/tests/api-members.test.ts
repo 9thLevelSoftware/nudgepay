@@ -7,7 +7,7 @@ function ctx() {
   return { cloudflare: { env: TEST_ENV } } as any;
 }
 
-function sessionCookie(session: object): string {
+function sessionCookie(session: object, orgId?: string): string {
   const host = new URL(TEST_ENV.SUPABASE_URL).hostname.split(".")[0];
   const json = JSON.stringify(session);
   const b64url = Buffer.from(json, "utf8")
@@ -15,7 +15,8 @@ function sessionCookie(session: object): string {
     .replace(/\+/g, "-")
     .replace(/\//g, "_")
     .replace(/=+$/, "");
-  return `sb-${host}-auth-token=base64-${b64url}`;
+  const authCookie = `sb-${host}-auth-token=base64-${b64url}`;
+  return orgId ? `${authCookie}; nudgepay-org=${orgId}` : authCookie;
 }
 
 async function signInSession(email: string): Promise<object> {
@@ -51,7 +52,7 @@ test("owner revokes a pending invite", async () => {
     .insert({ org_id: orgId, email: `pending-${Math.random()}@example.com` })
     .select("id").single();
 
-  const cookie = sessionCookie(await signInSession(email));
+  const cookie = sessionCookie(await signInSession(email), orgId);
   const res = await postMembers(cookie, {
     intent: "revoke",
     inviteId: inv!.id,
@@ -81,7 +82,7 @@ test("member cannot revoke a pending invite", async () => {
     .insert({ org_id: orgId, email: `pending-mem-${Math.random()}@example.com` })
     .select("id").single();
 
-  const cookie = sessionCookie(await signInSession(memberEmail));
+  const cookie = sessionCookie(await signInSession(memberEmail), orgId);
   const res = await postMembers(cookie, {
     intent: "revoke",
     inviteId: inv!.id,
@@ -110,7 +111,7 @@ test("accepted invite is not deleted by revoke", async () => {
     })
     .select("id").single();
 
-  const cookie = sessionCookie(await signInSession(email));
+  const cookie = sessionCookie(await signInSession(email), orgId);
   const res = await postMembers(cookie, {
     intent: "revoke",
     inviteId: inv!.id,
@@ -140,7 +141,7 @@ test("admin can revoke a pending invite", async () => {
     .insert({ org_id: orgId, email: `pending-admin-${Math.random()}@example.com` })
     .select("id").single();
 
-  const cookie = sessionCookie(await signInSession(adminEmail));
+  const cookie = sessionCookie(await signInSession(adminEmail), orgId);
   const res = await postMembers(cookie, {
     intent: "revoke",
     inviteId: inv!.id,
@@ -168,7 +169,7 @@ test("admin cannot grant owner", async () => {
     { org_id: orgId, user_id: member.userId, role: "member" },
   ]);
 
-  const cookie = sessionCookie(await signInSession(adminEmail));
+  const cookie = sessionCookie(await signInSession(adminEmail), orgId);
   const res = await postMembers(cookie, {
     intent: "role",
     userId: member.userId,
@@ -181,5 +182,48 @@ test("admin cannot grant owner", async () => {
   const { data: mem } = await svc.from("memberships")
     .select("role").eq("org_id", orgId).eq("user_id", member.userId).single();
   expect(mem?.role).toBe("member");
+});
+
+test("owner member mutations use RLS and report zero affected rows as an error", async () => {
+  const svc = serviceClient();
+  const ownerEmail = `member-write-owner-${Math.random()}@example.com`;
+  const owner = await makeUserClient(ownerEmail);
+  const member = await makeUserClient(`member-write-target-${Math.random()}@example.com`);
+  const { data: org } = await svc.from("organizations")
+    .insert({ name: `Member writes ${Math.random()}` }).select("id").single();
+  const orgId = org!.id as string;
+  await svc.from("memberships").insert([
+    { org_id: orgId, user_id: owner.userId, role: "owner" },
+    { org_id: orgId, user_id: member.userId, role: "member" },
+  ]);
+  const cookie = sessionCookie(await signInSession(ownerEmail), orgId);
+
+  const missing = await postMembers(cookie, {
+    intent: "remove",
+    userId: crypto.randomUUID(),
+    returnTo: "/settings",
+  });
+  expect(missing.headers.get("Location") ?? "").toContain("error=member");
+
+  const changed = await postMembers(cookie, {
+    intent: "role",
+    userId: member.userId,
+    role: "admin",
+    returnTo: "/settings",
+  });
+  expect(changed.headers.get("Location") ?? "").toContain("saved=member");
+  const { data: promoted } = await svc.from("memberships")
+    .select("role").eq("org_id", orgId).eq("user_id", member.userId).single();
+  expect(promoted?.role).toBe("admin");
+
+  const removed = await postMembers(cookie, {
+    intent: "remove",
+    userId: member.userId,
+    returnTo: "/settings",
+  });
+  expect(removed.headers.get("Location") ?? "").toContain("saved=member");
+  const { data: remaining } = await svc.from("memberships")
+    .select("user_id").eq("org_id", orgId).eq("user_id", member.userId);
+  expect(remaining ?? []).toHaveLength(0);
 });
 

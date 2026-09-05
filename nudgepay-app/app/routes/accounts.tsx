@@ -42,7 +42,7 @@ export const meta: Route.MetaFunction = () => pageTitle("Accounts");
 export async function loader({ request, context }: LoaderFunctionArgs) {
   const env = getEnv(context as any);
   const {
-    supabase, service, headers, isOwner, isAdmin, org,
+    supabase, service, headers, user, isOwner, isAdmin, org,
     orgName, initials, userLabel, connected, syncLabel,
     syncIssues, workspaces, orgConfig,
   } = await loadWorkspaceChrome(request, env);
@@ -259,6 +259,7 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
     {
       orgName,
       orgId: org.org_id,
+      userId: user.id,
       workspaces,
       initials,
       userLabel,
@@ -301,12 +302,15 @@ export default function Accounts() {
       connected={d.connected}
       isOwner={d.isOwner}
       isAdmin={d.isAdmin}
+      userId={d.userId}
+      qualificationRoute="/accounts"
+      qualificationReady={!d.loadError && !d.truncated}
       activeNav="accounts"
       syncIssues={<SyncIssues issues={d.syncIssues} returnTo="/accounts" />}
     >
       <div className="p-4 sm:p-6 space-y-4 sm:space-y-6">
         {d.loadError ? <LoadErrorBanner message={d.loadError} /> : d.truncated ? <TruncationBanner /> : null}
-        <AccountsMetrics metrics={d.metrics} truncated={d.truncated || !!d.loadError} />
+        <AccountsMetrics metrics={d.metrics} truncated={d.truncated || !!d.loadError} matching={d.q.trim().length > 0} />
         <div className="grid gap-4 lg:grid-cols-[1fr_360px]">
           <AccountsDirectory
             rows={d.rows}
@@ -332,6 +336,7 @@ export default function Accounts() {
               label={`Account — ${d.selected.name}`}
               closeHref={accountsHref({ filter: d.filter, sort: d.sort, q: d.q || undefined, density: d.densityFromUrl ? d.density : undefined })}
               maxWidth="max-w-[420px]"
+              mobileOnly
             >
               <AccountQuickPanel account={d.selected} />
             </DrawerShell>

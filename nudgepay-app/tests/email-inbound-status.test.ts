@@ -70,6 +70,49 @@ describe("email inbound + status", () => {
     expect(data!.error_code).toBeNull();
   });
 
+  it("Resend status callbacks progress atomically and preserve complaint opt-out", async () => {
+    await seedWithOutbound("status-order-delivered@x.com", "re_status_order_delivered");
+    await updateEmailStatus(svc, {
+      providerMessageId: "re_status_order_delivered", status: "delivered", errorCode: null, optOut: false,
+    });
+    await updateEmailStatus(svc, {
+      providerMessageId: "re_status_order_delivered", status: "sent", errorCode: "late-sent", optOut: false,
+    });
+    const { data: delivered } = await svc.from("email_messages")
+      .select("status, error_code").eq("provider_message_id", "re_status_order_delivered").single();
+    expect(delivered).toEqual({ status: "delivered", error_code: null });
+
+    await seedWithOutbound("status-order-concurrent@x.com", "re_status_order_concurrent");
+    await Promise.all([
+      updateEmailStatus(svc, {
+        providerMessageId: "re_status_order_concurrent", status: "delayed", errorCode: null, optOut: false,
+      }),
+      updateEmailStatus(svc, {
+        providerMessageId: "re_status_order_concurrent", status: "delivered", errorCode: null, optOut: false,
+      }),
+    ]);
+    const { data: concurrent } = await svc.from("email_messages")
+      .select("status").eq("provider_message_id", "re_status_order_concurrent").single();
+    expect(concurrent?.status).toBe("delivered");
+
+    const { customerId } = await seedWithOutbound(
+      "status-order-complaint@x.com", "re_status_order_complaint",
+    );
+    await updateEmailStatus(svc, {
+      providerMessageId: "re_status_order_complaint", status: "complained", errorCode: "complaint", optOut: true,
+    });
+    await updateEmailStatus(svc, {
+      providerMessageId: "re_status_order_complaint", status: "delivered", errorCode: null, optOut: false,
+    });
+    const [{ data: complained }, { data: customer }] = await Promise.all([
+      svc.from("email_messages").select("status, error_code")
+        .eq("provider_message_id", "re_status_order_complaint").single(),
+      svc.from("customers").select("do_not_email").eq("id", customerId).single(),
+    ]);
+    expect(complained).toEqual({ status: "complained", error_code: "complaint" });
+    expect(customer?.do_not_email).toBe(true);
+  });
+
   it("optOut flips customers.do_not_email", async () => {
     const { customerId } = await seedWithOutbound("cust-status-2@x.com", "re_status_es2");
     await updateEmailStatus(svc, {
@@ -183,9 +226,7 @@ describe("email inbound + status", () => {
       });
       expect(spy).toHaveBeenCalledWith({
         event: "inbound_orphan_email",
-        from: "stranger@nowhere-es.com",
-        to: orgFrom,
-        sid: pid,
+        providerMessageId: pid,
       });
     } finally {
       spy.mockRestore();

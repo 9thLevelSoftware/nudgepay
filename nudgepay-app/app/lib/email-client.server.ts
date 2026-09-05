@@ -1,6 +1,8 @@
 // Resend REST client. Workers-friendly (fetch-only, no SDK). Fetch injected for
 // testability, mirroring twilio-client.server.ts.
 
+import { ProviderResponseAmbiguousError, ProviderSendRejectedError } from "./provider-send-error";
+
 export type EmailConfig = { apiKey: string; allowedFrom?: string | null };
 
 /** Hung Resend must fail closed instead of waiting out the Worker. */
@@ -37,10 +39,15 @@ export async function sendEmail(
   });
   const text = await res.text();
   if (!res.ok) {
-    throw new Error(`Resend send failed (${res.status}): ${text}`);
+    if (res.status >= 400 && res.status < 500) {
+      throw new ProviderSendRejectedError("Resend", res.status, text);
+    }
+    throw new ProviderResponseAmbiguousError("Resend", res.status, text);
   }
   const json = text ? JSON.parse(text) : {};
-  return { id: (json.id as string) ?? "" };
+  const id = typeof json.id === "string" ? json.id.trim() : "";
+  if (!id) throw new Error("Resend response missing id");
+  return { id };
 }
 
 function str(v: unknown): string {

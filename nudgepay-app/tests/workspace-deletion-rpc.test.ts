@@ -47,6 +47,15 @@ test("delete_workspace purges the org, writes a tombstone, and is not callable b
     body: "Test body",
   });
   expect(emailErr).toBeNull();
+  const { error: auditErr } = await svc.from("provider_reconciliation_audit").insert({
+    org_id: orgId,
+    channel: "email",
+    attempt_id: crypto.randomUUID(),
+    outcome: "sent",
+    provider_reference: "provider-receipt-fixture",
+    operator_reference: "operator-ticket-fixture",
+  });
+  expect(auditErr).toBeNull();
 
   const jwt = await member.client.rpc("delete_workspace", {
     p_org_id: orgId,
@@ -97,6 +106,9 @@ test("delete_workspace purges the org, writes a tombstone, and is not callable b
   expect(leftoverProm ?? []).toHaveLength(0);
   const { data: leftoverEmail } = await svc.from("email_messages").select("id").eq("org_id", orgId);
   expect(leftoverEmail ?? []).toHaveLength(0);
+  const { data: leftoverAudit } = await svc.from("provider_reconciliation_audit")
+    .select("id").eq("org_id", orgId);
+  expect(leftoverAudit ?? []).toHaveLength(0);
   const { data: tomb } = await svc.from("workspace_deletions")
     .select("org_id, org_name, member_count, deleted_by").eq("org_id", orgId).maybeSingle();
   expect(tomb).toMatchObject({
@@ -105,4 +117,144 @@ test("delete_workspace purges the org, writes a tombstone, and is not callable b
     member_count: 2,
     deleted_by: owner.userId,
   });
+});
+
+test.each([
+  {
+    label: "an active subscription",
+    evidenceTable: "org_billing" as const,
+    expectedMessage: /billing subscription/i,
+    seed: async (orgId: string) => serviceClient().from("org_billing").insert({
+      org_id: orgId,
+      stripe_subscription_id: `sub_delete_guard_${crypto.randomUUID()}`,
+      status: "active",
+    }),
+  },
+  {
+    label: "an unresolved checkout",
+    evidenceTable: "billing_checkout_attempts" as const,
+    expectedMessage: /pending provider work/i,
+    seed: async (orgId: string) => serviceClient().from("billing_checkout_attempts").insert({
+      org_id: orgId,
+      state: "unknown",
+      error_code: "provider_result_unknown",
+    }),
+  },
+  {
+    label: "an unresolved SMS send",
+    evidenceTable: "text_messages" as const,
+    expectedMessage: /pending provider work/i,
+    seed: async (orgId: string) => serviceClient().from("text_messages").insert({
+      org_id: orgId,
+      direction: "outbound",
+      status: "sending",
+      to_number: "+15555550199",
+      body: "Deletion guard fixture",
+    }),
+  },
+  {
+    label: "an unresolved email send",
+    evidenceTable: "email_messages" as const,
+    expectedMessage: /pending provider work/i,
+    seed: async (orgId: string) => serviceClient().from("email_messages").insert({
+      org_id: orgId,
+      direction: "outbound",
+      status: "unknown",
+      to_address: "deletion-guard@example.com",
+      subject: "Deletion guard fixture",
+      body: "Deletion guard fixture",
+    }),
+  },
+])("delete_workspace rejects $label without erasing its evidence", async ({
+  label,
+  evidenceTable,
+  expectedMessage,
+  seed,
+}) => {
+  const svc = serviceClient();
+  const owner = await makeUserClient(`ws-provider-guard-${crypto.randomUUID()}@example.com`);
+  const orgName = `Provider guard ${label} ${crypto.randomUUID()}`;
+  const { data: org, error: orgError } = await svc.from("organizations")
+    .insert({ name: orgName }).select("id").single();
+  expect(orgError).toBeNull();
+  const orgId = org!.id as string;
+  const { error: membershipError } = await svc.from("memberships").insert({
+    org_id: orgId,
+    user_id: owner.userId,
+    role: "owner",
+  });
+  expect(membershipError).toBeNull();
+  const seeded = await seed(orgId);
+  expect(seeded.error).toBeNull();
+
+  const { error } = await svc.rpc("delete_workspace", {
+    p_org_id: orgId,
+    p_deleted_by: owner.userId,
+    p_org_name: orgName,
+    p_member_count: 1,
+  });
+
+  expect(error?.code).toBe("PT409");
+  expect(error?.message).toMatch(expectedMessage);
+  const { data: orgStillExists } = await svc.from("organizations")
+    .select("id").eq("id", orgId);
+  expect(orgStillExists ?? []).toHaveLength(1);
+  const { data: tombstone } = await svc.from("workspace_deletions")
+    .select("id").eq("org_id", orgId);
+  expect(tombstone ?? []).toHaveLength(0);
+  const { data: evidence } = await svc.from(evidenceTable)
+    .select("org_id").eq("org_id", orgId);
+  expect(evidence ?? []).toHaveLength(1);
+});
+
+test("delete_workspace permits fully retired provider state", async () => {
+  const svc = serviceClient();
+  const owner = await makeUserClient(`ws-retired-provider-${crypto.randomUUID()}@example.com`);
+  const orgName = `Retired provider ${crypto.randomUUID()}`;
+  const { data: org, error: orgError } = await svc.from("organizations")
+    .insert({ name: orgName }).select("id").single();
+  expect(orgError).toBeNull();
+  const orgId = org!.id as string;
+  const { error: membershipError } = await svc.from("memberships").insert({
+    org_id: orgId,
+    user_id: owner.userId,
+    role: "owner",
+  });
+  expect(membershipError).toBeNull();
+  const results = await Promise.all([
+    svc.from("org_billing").insert({
+      org_id: orgId,
+      stripe_subscription_id: `sub_expired_${crypto.randomUUID()}`,
+      status: "incomplete_expired",
+    }),
+    svc.from("billing_checkout_attempts").insert({ org_id: orgId, state: "failed" }),
+    svc.from("text_messages").insert({
+      org_id: orgId,
+      direction: "outbound",
+      status: "failed",
+      to_number: "+15555550198",
+      body: "Retired provider fixture",
+    }),
+    svc.from("email_messages").insert({
+      org_id: orgId,
+      direction: "outbound",
+      status: "sent",
+      to_address: "retired-provider@example.com",
+      subject: "Retired provider fixture",
+      body: "Retired provider fixture",
+    }),
+  ]);
+  expect(results.every((result) => result.error === null)).toBe(true);
+
+  const { error } = await svc.rpc("delete_workspace", {
+    p_org_id: orgId,
+    p_deleted_by: owner.userId,
+    p_org_name: orgName,
+    p_member_count: 1,
+  });
+
+  expect(error).toBeNull();
+  const { data: orgGone } = await svc.from("organizations")
+    .select("id").eq("id", orgId);
+  expect(orgGone ?? []).toHaveLength(0);
 });

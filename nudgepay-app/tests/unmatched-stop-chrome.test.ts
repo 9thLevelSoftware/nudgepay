@@ -21,15 +21,13 @@ test("unmatched STOP list error is not a healthy empty", () => {
   expect(ui).toContain('role="alert"');
 });
 
-test("owner unmatched STOP chrome and shared-sender warning are wired", () => {
-  const copy = "STOP received from an unknown number — not applied to a customer.";
+test("unattributable STOP records stay out of tenant routes", () => {
   const shared = "All workspaces share this sender. STOP applies to every customer with this phone.";
-  expect(read("../app/components/UnmatchedStopList.tsx")).toContain(copy);
-  expect(read("../app/routes/messages.tsx")).toContain("listRecentUnmatchedStops");
-  expect(read("../app/routes/messages.tsx")).toContain("UnmatchedStopList");
+  expect(read("../app/routes/messages.tsx")).not.toContain("listRecentUnmatchedStops");
+  expect(read("../app/routes/messages.tsx")).not.toContain("UnmatchedStopList");
   expect(read("../app/routes/messages.tsx")).toContain(shared);
-  expect(read("../app/routes/settings.tsx")).toContain("listRecentUnmatchedStops");
-  expect(read("../app/routes/settings.tsx")).toContain("UnmatchedStopList");
+  expect(read("../app/routes/settings.tsx")).not.toContain("listRecentUnmatchedStops");
+  expect(read("../app/routes/settings.tsx")).not.toContain("UnmatchedStopList");
   expect(read("../app/components/SmsSettingsSection.tsx")).toContain(shared);
 });
 
@@ -56,7 +54,8 @@ test("sendInvoiceEmail re-checks allowlist and quiet hours", () => {
   expect(src).toContain("assertFromAddressAllowed");
   expect(src).toContain("isWithinSendWindow");
   expect(src).toContain("Quiet hours:");
-  expect(src).toMatch(/assertEmailBudget\([\s\S]*now \}\)/);
+  expect(src).toContain('rpc("reserve_email_send"');
+  expect(src).toContain("p_now: now.toISOString()");
 });
 
 test("bulk SMS pages overdue invoices and fails truncated totals", () => {

@@ -4,6 +4,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { sendEmail, type EmailConfig } from "./email-client.server";
 import { fromAddressAllowed } from "./email-settings";
+import { safeErrorDetails } from "./log-redaction";
 
 export type InviteEmailDeps = {
   fetchFn: typeof fetch;
@@ -43,7 +44,11 @@ export async function trySendInviteEmail(
     });
     return "sent";
   } catch (e) {
-    console.error("invite email failed", e);
+    console.error({
+      event: "invite_email_failed",
+      orgId: args.orgId,
+      ...safeErrorDetails(e),
+    });
     return "failed";
   }
 }

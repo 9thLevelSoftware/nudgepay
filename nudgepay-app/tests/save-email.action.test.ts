@@ -33,7 +33,7 @@ function ctx(allowedFrom?: string) {
  *                `sb-${new URL(url).hostname.split('.')[0]}-auth-token`)
  * Cookie value : `base64-<base64url(JSON.stringify(session))>`   (ssr prefix)
  */
-function sessionCookie(session: object): string {
+function sessionCookie(session: object, orgId?: string): string {
   const host = new URL(TEST_ENV.SUPABASE_URL).hostname.split(".")[0];
   const json = JSON.stringify(session);
   const b64url = Buffer.from(json, "utf8")
@@ -41,7 +41,8 @@ function sessionCookie(session: object): string {
     .replace(/\+/g, "-")
     .replace(/\//g, "_")
     .replace(/=+$/, "");
-  return `sb-${host}-auth-token=base64-${b64url}`;
+  const authCookie = `sb-${host}-auth-token=base64-${b64url}`;
+  return orgId ? `${authCookie}; nudgepay-org=${orgId}` : authCookie;
 }
 
 /** Sign in with the shared test password used by makeUserClient. */
@@ -116,7 +117,7 @@ describe("save_email", () => {
     // but only exposes the access_token; we need the complete session object that
     // @supabase/ssr reads from the cookie).
     const session = await signInSession(email);
-    const cookie = sessionCookie(session);
+    const cookie = sessionCookie(session, orgId);
     const fromAddress = `billing-se-${Math.random()}@chancey.test`;
 
     const res = await postOrgSettings(cookie, {
@@ -152,7 +153,7 @@ describe("save_email", () => {
     await svc.from("memberships").insert({ org_id: orgId, user_id: owner.userId, role: "owner" });
 
     const session = await signInSession(email);
-    const cookie = sessionCookie(session);
+    const cookie = sessionCookie(session, orgId);
 
     const res = await postOrgSettings(cookie, {
       intent: "save_email",

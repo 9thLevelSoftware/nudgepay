@@ -2,14 +2,17 @@ name = "nudgepay-app"
 compatibility_date = "2025-06-01"
 compatibility_flags = ["nodejs_compat"]
 main = "./workers/app.ts"
-workers_dev = true
+# Production is available only through its custom domain. This prevents the
+# account-wide workers.dev hostname from becoming an alternate public ingress.
+workers_dev = false
 
 [vars]
-# Non-secret defaults for the live Worker (`npx wrangler deploy`). Local
+# Non-secret defaults for the live Worker (`npm run deploy`). Local
 # `wrangler dev` / `npm run dev` override these from `.dev.vars`.
 SUPABASE_URL = "https://epjumsnmpvilgasycpau.supabase.co"
 QBO_SANDBOX = "false"
 AUTH_RATE_LIMIT_REQUIRED = "true"
+CSP_MODE = "report-only"
 # Optional non-secret flags (not bindings; unset here, set in vars when enabling):
 #   RESEND_ALLOWED_FROM     comma-separated verified From addresses
 #   SMS_REQUIRE_INVENTORY   "true" requires sms_sender_inventory rows at send
@@ -28,10 +31,10 @@ pattern = "nudgepay.9thlevelsoftware.com"
 custom_domain = true
 
 [triggers]
-# CDC catch-up every 30 min + hourly digest gate / retention purge
+# Provider-attempt monitor every 5 min, CDC catch-up every 30 min, and hourly digest gate / retention purge
 # (digest fires per-org once local time reaches digest_hour_local;
 # see digest-cron.server.ts and retention-cron.server.ts).
-crons = ["*/30 * * * *", "0 * * * *"]
+crons = ["*/5 * * * *", "*/30 * * * *", "0 * * * *"]
 
 # Run the Worker near the origin (Supabase Oregon) instead of the user's
 # edge. Loaders make several PostgREST round trips; Smart Placement moves
@@ -58,19 +61,26 @@ namespace_id = "1001"
 simple = { limit = 20, period = 60 }
 
 # --- Production environment ---------------------------------------------------
-# Deploy with: npx wrangler deploy --env production
+# Deploy with: npm run deploy
 # Non-secret production vars (secrets are set separately via `wrangler secret put`).
+[env.production]
+# Explicitly reuse the live Worker name. Without this, Wrangler legacy
+# environments target a separate `nudgepay-app-production` Worker.
+name = "nudgepay-app"
+workers_dev = false
+
 [env.production.vars]
 SUPABASE_URL = "https://epjumsnmpvilgasycpau.supabase.co"
 QBO_SANDBOX = "false"   # production QBO: gates ONLY the Data API base URL
 AUTH_RATE_LIMIT_REQUIRED = "true"  # fail closed if the AUTH_RATE_LIMIT binding is missing
+CSP_MODE = "report-only"
 # Optional non-secret flags (not bindings; set when enabling the feature):
 #   RESEND_ALLOWED_FROM     comma-separated verified From addresses; empty/unset disables email
 #   SMS_REQUIRE_INVENTORY = "true"
 
 # [env.production.triggers] mirrors the top-level crons.
 [env.production.triggers]
-crons = ["*/30 * * * *", "0 * * * *"]
+crons = ["*/5 * * * *", "*/30 * * * *", "0 * * * *"]
 
 [env.production.placement]
 mode = "smart"
@@ -112,6 +122,7 @@ simple = { limit = 20, period = 60 }
 #   UNSUBSCRIBE_SECRET           HMAC key for CAN-SPAM unsubscribe tokens
 #   APP_PUBLIC_BASE_URL          ${APP_BASE_URL}  (public origin for unsubscribe links + alert deep links)
 #   OPERATOR_ALERT_WEBHOOK       optional HTTPS URL; POST JSON when a scheduled handler throws
+#   MONITOR_TOKEN                32+ character bearer token required by GET /monitorz
 #   STRIPE_SECRET_KEY            Stripe secret for agency SaaS billing (not debtor payments)
 #   STRIPE_WEBHOOK_SECRET        Stripe webhook signing secret
 #   STRIPE_PRICE_ID              Stripe Price id for the NudgePay workspace subscription
@@ -120,21 +131,23 @@ simple = { limit = 20, period = 60 }
 # secrets are set. Email/alert secrets are optional — getEmailEnvOrNull returns null.
 
 # --- Staging environment ------------------------------------------------------
-# Deploy with: npx wrangler deploy --env staging
+# Deploy with: npm run deploy:staging
 # Secrets: the same list as production, via `npx wrangler secret put <NAME> --env staging`.
-# QBO_SANDBOX stays true. Use a separate Supabase project. workers.dev hostname
-# is nudgepay-app-staging.<account>.workers.dev until a staging domain is attached.
+# QBO_SANDBOX stays true. `npm run deploy:staging` requires a concrete
+# STAGING_SUPABASE_URL environment variable and refuses the production URL.
+# Operators must still verify that the supplied project is isolated. workers.dev hostname is
+# nudgepay-app-staging.<account>.workers.dev until a staging domain is attached.
 [env.staging]
 name = "nudgepay-app-staging"
 workers_dev = true
 
 [env.staging.vars]
-SUPABASE_URL = "https://epjumsnmpvilgasycpau.supabase.co"
 QBO_SANDBOX = "true"
 AUTH_RATE_LIMIT_REQUIRED = "true"
+CSP_MODE = "report-only"
 
 [env.staging.triggers]
-crons = ["*/30 * * * *", "0 * * * *"]
+crons = ["*/5 * * * *", "*/30 * * * *", "0 * * * *"]
 
 [env.staging.placement]
 mode = "smart"

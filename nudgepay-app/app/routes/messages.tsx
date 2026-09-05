@@ -37,8 +37,6 @@ import {
 } from "../lib/messages-realtime";
 import { chunkIds, honestListState, orderPage, pageAllChunkedHonest, pageAllHonest, PAGE_ALL_MAX_ROWS } from "../lib/page-all";
 import { LoadErrorBanner, TruncationBanner } from "../components/TruncationBanner";
-import { UnmatchedStopList } from "../components/UnmatchedStopList";
-import { listRecentUnmatchedStops } from "../lib/inbound-orphans.server";
 import type { Route } from "./+types/messages";
 
 export const meta: Route.MetaFunction = () => pageTitle("Messages");
@@ -347,10 +345,6 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
   if (ecfgErr) throw ecfgErr;
   const emailEnabled = resolveEmailSettings(ecfg as any).emailEnabled;
 
-  const unmatchedStops = isAdmin
-    ? await listRecentUnmatchedStops(service)
-    : { rows: [], loadError: null };
-
   return data(
     {
       orgName,
@@ -367,9 +361,9 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
       truncated,
       loadError,
       orgId: org.org_id,
+      currentUserId: user.id,
       supabaseUrl: env.SUPABASE_URL,
       supabaseAnonKey: env.SUPABASE_ANON_KEY,
-      unmatchedStops,
     },
     { headers },
   );
@@ -493,6 +487,9 @@ export default function Messages() {
       connected={d.connected}
       isOwner={d.isOwner}
       isAdmin={d.isAdmin}
+      userId={d.currentUserId}
+      qualificationRoute="/messages"
+      qualificationReady={!d.loadError && !d.truncated}
       activeNav="messages"
       syncIssues={<SyncIssues issues={d.syncIssues} returnTo="/messages" />}
     >
@@ -503,7 +500,6 @@ export default function Messages() {
             All workspaces share this sender. STOP applies to every customer with this phone.
           </p>
         ) : null}
-        {d.isAdmin ? <UnmatchedStopList stops={d.unmatchedStops.rows} loadError={d.unmatchedStops.loadError} /> : null}
         <MessagesMetrics metrics={d.metrics} truncated={d.truncated || !!d.loadError} />
         {(() => {
           const threadPanel = (
@@ -528,6 +524,8 @@ export default function Messages() {
               smsTemplates={d.smsTemplates}
               emailTemplates={d.emailTemplates}
               timeZone={d.timeZone}
+              orgId={d.orgId}
+              userId={d.currentUserId}
             />
           );
           const closeParams = new URLSearchParams({ tab: d.tab, sort: d.sort, channel: d.channel });
@@ -560,6 +558,7 @@ export default function Messages() {
                     label={`Thread — ${d.selected.customerName}`}
                     closeHref={`?${closeParams.toString()}`}
                     maxWidth="max-w-[420px]"
+                    mobileOnly
                   >
                     {threadPanel}
                   </DrawerShell>

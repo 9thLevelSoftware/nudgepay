@@ -14,11 +14,15 @@ describe("withUnhandledLogging", () => {
     expect(error).not.toHaveBeenCalled();
   });
 
-  it("logs url context then rethrows fetch failures", async () => {
+  it("logs a redacted path and correlation id then rethrows fetch failures", async () => {
     const error = vi.spyOn(console, "error").mockImplementation(() => {});
-    const boom = new Error("boom");
+    const boom = Object.assign(new Error("customer@example.com token=secret"), { code: "ECONNRESET" });
     await expect(
-      withUnhandledLogging("fetch", { url: "https://app.example/healthz" }, async () => {
+      withUnhandledLogging("fetch", {
+        method: "GET",
+        url: "https://app.example/healthz?token=secret",
+        requestId: "req-1",
+      }, async () => {
         throw boom;
       }),
     ).rejects.toBe(boom);
@@ -26,9 +30,13 @@ describe("withUnhandledLogging", () => {
     expect(error.mock.calls[0][0]).toMatchObject({
       event: "unhandled_worker_error",
       handler: "fetch",
-      url: "https://app.example/healthz",
-      message: "boom",
+      method: "GET",
+      path: "/healthz",
+      requestId: "req-1",
+      errorName: "Error",
+      errorCode: "ECONNRESET",
     });
+    expect(JSON.stringify(error.mock.calls[0][0])).not.toMatch(/customer@example\.com|token=secret/);
   });
 
   it("logs cron context then rethrows scheduled failures", async () => {
@@ -42,7 +50,7 @@ describe("withUnhandledLogging", () => {
       event: "unhandled_worker_error",
       handler: "scheduled",
       cron: "*/30 * * * *",
-      message: "cdc down",
+      errorName: "UnknownError",
     });
   });
 

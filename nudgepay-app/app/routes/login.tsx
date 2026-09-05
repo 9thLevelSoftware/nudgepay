@@ -10,7 +10,7 @@ import {
 } from "react-router";
 import { getEnv } from "../lib/env.server";
 import { createSupabaseUserClient } from "../lib/supabase.server";
-import { orgCookieHeader, resolveOrg } from "../lib/session.server";
+import { orgCookieHeader, readPreferredOrgId, resolveOrg } from "../lib/session.server";
 import { requireSameOrigin } from "../lib/csrf.server";
 import { safeReturnTo } from "../lib/return-to";
 import { humanAuthError } from "../lib/auth-flow.server";
@@ -28,7 +28,7 @@ export async function action({ request, context }: ActionFunctionArgs) {
   if (await authRateLimited(rateEnv, authRateLimitKey(request, rateEnv))) {
     return routerData(
       { error: humanAuthError("email rate limit exceeded") },
-      { status: 429 },
+      { status: 429, headers: { "Retry-After": "60" } },
     );
   }
   let env;
@@ -53,7 +53,7 @@ export async function action({ request, context }: ActionFunctionArgs) {
   const returnTo = safeReturnTo(form.get("returnTo"), "");
   if (returnTo) return redirect(returnTo, { headers });
 
-  const org = await resolveOrg(supabase, data.user.id, request);
+  const org = await resolveOrg(supabase, data.user.id, readPreferredOrgId(request));
   if (org) headers.append("Set-Cookie", orgCookieHeader(org.org_id));
   return redirect(org ? "/dashboard" : "/onboarding", { headers });
 }
