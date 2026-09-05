@@ -20,13 +20,13 @@ type DigestScheduleRow = {
 export async function runScheduledDigest(
   cfEnv: Record<string, string>,
   now: Date = new Date(),
-): Promise<{ orgs: number; sent: number }> {
+): Promise<{ orgs: number; sent: number; failures: number; configured: boolean }> {
   const context = { cloudflare: { env: cfEnv } } as any;
   const env = getEnv(context);
   const emailEnv = getEmailEnvOrNull(context);
   if (!emailEnv) {
     console.warn("[digest] Email env not configured; skipping digest.");
-    return { orgs: 0, sent: 0 };
+    return { orgs: 0, sent: 0, failures: 0, configured: false };
   }
 
   const service = createSupabaseServiceClient(env);
@@ -44,14 +44,16 @@ export async function runScheduledDigest(
   if (conns.truncated) throw new Error("connected orgs truncated: page is incomplete");
 
   let sent = 0;
+  let failures = 0;
   for (const c of conns.rows) {
     const orgId = c.org_id as string;
     try {
-      const { data: settings } = await service
+      const { data: settings, error: settingsError } = await service
         .from("org_settings")
         .select("timezone, digest_hour_local, last_digest_date")
         .eq("org_id", orgId)
         .maybeSingle();
+      if (settingsError) throw settingsError;
       const row = settings as DigestScheduleRow | null;
       const tz = row?.timezone && row.timezone.length > 0 ? row.timezone : DEFAULT_COMPANY_PROFILE.timezone;
       const digestHourLocal = row?.digest_hour_local ?? 8;
@@ -65,6 +67,7 @@ export async function runScheduledDigest(
         );
       } catch (retryErr) {
         console.error(`[digest] broken-promise retry failed for org ${orgId}:`, retryErr);
+        failures += 1;
       }
 
       if (!shouldSendDigestNow(tz, digestHourLocal, lastDigestDate, now)) continue;
@@ -87,6 +90,7 @@ export async function runScheduledDigest(
         .or(`last_digest_date.is.null,last_digest_date.neq.${today}`)
         .select("org_id");
       if (claimErr) {
+        failures += 1;
         console.error(`[digest] failed to claim last_digest_date for org ${orgId}:`, claimErr);
         await recordSyncError(service, {
           orgId, source: "cron", scope: "digest",
@@ -102,6 +106,7 @@ export async function runScheduledDigest(
           .from("org_settings")
           .upsert({ org_id: orgId, last_digest_date: today }, { onConflict: "org_id" });
         if (insertErr) {
+          failures += 1;
           console.error(`[digest] failed to create org_settings for org ${orgId}:`, insertErr);
           await recordSyncError(service, {
             orgId, source: "cron", scope: "digest",
@@ -119,6 +124,7 @@ export async function runScheduledDigest(
         );
         sent += 1;
       } catch (sendErr) {
+        failures += 1;
         // Reset last_digest_date so the next hourly tick retries this org.
         // notification_log member-level dedupe prevents re-sending to members
         // who already received the digest during this partial run.
@@ -137,6 +143,7 @@ export async function runScheduledDigest(
         }).catch(() => {});
       }
     } catch (err) {
+      failures += 1;
       console.error(`[digest] daily digest failed for org ${orgId}:`, err);
       await recordSyncError(service, {
         orgId, source: "cron", scope: "digest",
@@ -144,5 +151,5 @@ export async function runScheduledDigest(
       }).catch(() => {});
     }
   }
-  return { orgs: conns.rows.length, sent };
+  return { orgs: conns.rows.length, sent, failures, configured: true };
 }

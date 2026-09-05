@@ -361,6 +361,7 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
       truncated,
       loadError,
       orgId: org.org_id,
+      currentUserId: user.id,
       supabaseUrl: env.SUPABASE_URL,
       supabaseAnonKey: env.SUPABASE_ANON_KEY,
     },
@@ -486,6 +487,9 @@ export default function Messages() {
       connected={d.connected}
       isOwner={d.isOwner}
       isAdmin={d.isAdmin}
+      userId={d.currentUserId}
+      qualificationRoute="/messages"
+      qualificationReady={!d.loadError && !d.truncated}
       activeNav="messages"
       syncIssues={<SyncIssues issues={d.syncIssues} returnTo="/messages" />}
     >
@@ -520,6 +524,8 @@ export default function Messages() {
               smsTemplates={d.smsTemplates}
               emailTemplates={d.emailTemplates}
               timeZone={d.timeZone}
+              orgId={d.orgId}
+              userId={d.currentUserId}
             />
           );
           const closeParams = new URLSearchParams({ tab: d.tab, sort: d.sort, channel: d.channel });

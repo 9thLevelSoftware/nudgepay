@@ -12,6 +12,7 @@ import {
   staleProviderCandidates,
 } from "./provider-monitor";
 import { createSupabaseServiceClient } from "./supabase.server";
+import { recordOperatorAlertResult } from "./system-health.server";
 
 export type ProviderMonitorCounts = {
   candidates: number;
@@ -112,5 +113,16 @@ export async function runScheduledProviderMonitor(cfEnv: Record<string, string>,
   if (!operatorAlertWebhookOk(cfEnv.OPERATOR_ALERT_WEBHOOK)) {
     console.error({ event: "provider_monitor_missing_operator_alert_webhook" });
   }
-  return monitorStaleProviderAttempts(serviceMonitorDeps(createSupabaseServiceClient(env), cfEnv.OPERATOR_ALERT_WEBHOOK, fetchFn), now);
+  const counts = await monitorStaleProviderAttempts(
+    serviceMonitorDeps(createSupabaseServiceClient(env), cfEnv.OPERATOR_ALERT_WEBHOOK, fetchFn),
+    now,
+  );
+  if (counts.sent > 0) {
+    await recordOperatorAlertResult(cfEnv, "provider_monitor", true);
+  }
+  if (counts.postFailed > 0) {
+    await recordOperatorAlertResult(cfEnv, "provider_monitor", false);
+    throw new Error("provider monitor operator alert delivery failed");
+  }
+  return counts;
 }

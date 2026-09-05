@@ -30,7 +30,11 @@ const secondaryLinkClass =
 export const meta: Route.MetaFunction = () => pageTitle();
 
 export function loader({ context }: Route.LoaderArgs) {
-	return { cspNonce: context.cloudflare.cspNonce };
+	return {
+		cspNonce: context.cloudflare.cspNonce,
+		// One opaque seed per HTML document gives every send form a stable SSR value.
+		sendSubmissionSeed: crypto.randomUUID(),
+	};
 }
 
 // A nonce belongs to the current HTML document. Keep the hydrated value stable

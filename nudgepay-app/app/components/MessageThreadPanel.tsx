@@ -1,6 +1,6 @@
 // app/components/MessageThreadPanel.tsx
 import { useEffect, useState } from "react";
-import { Form, Link, useNavigation, useSearchParams } from "react-router";
+import { Form, Link, useNavigation, useRouteLoaderData, useSearchParams } from "react-router";
 import type { ThreadRow } from "../lib/message-inbox";
 import type { MessageEntry, EmailMessageEntry } from "~/routes/dashboard";
 import { MessageBubbles } from "./MessageBubbles";
@@ -16,6 +16,9 @@ import { emailFailureLabel, isHardBounce } from "../lib/labels";
 import { smsFlash } from "../lib/flash-copy";
 import { Icon } from "./Icons";
 import { Input } from "./ui";
+import { useSendSubmission } from "../lib/use-send-submission";
+
+const FALLBACK_SUBMISSION_SEED = "00000000-0000-4000-8000-000000000000";
 
 const EMAIL_BANNER: Record<string, { text: string; tone: string }> = {
   sent: { text: "Email sent.", tone: "text-cool" },
@@ -49,19 +52,36 @@ interface Props {
   smsTemplates: MessageTemplateRow[];
   emailTemplates: MessageTemplateRow[];
   timeZone?: string | null;
+  orgId: string;
+  userId: string;
 }
 
 export function MessageThreadPanel({
   thread, messages, emailMessages, consent, smsConsentSource, isOwner, phone, vars, sms, smsEnabled,
   smsQuietNow, quietHoursLabel,
   emailEnabled, selectedEmail, tab, sort, q, smsTemplates, emailTemplates, timeZone,
+  orgId, userId,
 }: Props) {
   const [body, setBody] = useState("");
   const [subject, setSubject] = useState("");
   const [searchParams] = useSearchParams();
   const emailResult = searchParams.get("email");
+  const sendSubmissionId = searchParams.get("sendSubmission");
   const navigation = useNavigation();
   const formBusy = (action: string) => navigation.state !== "idle" && navigation.formAction === action;
+  const rootData = useRouteLoaderData<{ sendSubmissionSeed: string }>("root");
+  const isEmail = thread?.channel === "email";
+  const resultCode = isEmail ? emailResult : sms;
+  const submission = useSendSubmission({
+    serverSeed: rootData?.sendSubmissionSeed ?? FALLBACK_SUBMISSION_SEED,
+    userId,
+    orgId,
+    channel: isEmail ? "email" : "sms",
+    customerId: thread?.customerId ?? "none",
+    result: sendSubmissionId && resultCode
+      ? { id: sendSubmissionId, success: resultCode === "sent" }
+      : null,
+  });
 
   useEffect(() => {
     setBody("");
@@ -77,7 +97,6 @@ export function MessageThreadPanel({
     );
   }
 
-  const isEmail = thread.channel === "email";
   const smsSendDisabled = !smsEnabled || !thread.canReply;
   // Workspace-off and opt-outs are compliance-sensitive (red); routine soft blocks are amber.
   const smsGateMessage = !smsEnabled ? "Text messaging is turned off for this workspace." : thread.replyDisabledReason ?? "Sending is not available.";
@@ -231,7 +250,8 @@ export function MessageThreadPanel({
               <option key={t.id} value={t.id}>{t.label}</option>
             ))}
           </select>
-          <Form method="post" action="/api/email/send" className="flex flex-col gap-2">
+          <Form method="post" action="/api/email/send" className="flex flex-col gap-2" onSubmit={submission.onSubmit}>
+            <input ref={submission.inputRef} type="hidden" name="submissionId" value={submission.submissionId} readOnly />
             <input type="hidden" name="invoiceId" value={thread.anchorInvoiceId ?? ""} />
             <input type="hidden" name="returnTo" value={returnTo} />
             <input
@@ -241,7 +261,7 @@ export function MessageThreadPanel({
               onChange={(e) => setSubject(e.target.value)}
               placeholder="Subject"
               required
-              disabled={!emailEnabled || !thread.canReply}
+              disabled={!emailEnabled || !thread.canReply || !submission.ready}
               aria-label="Email subject"
               className="w-full rounded-md border border-border bg-panel px-3 py-2 text-sm text-text placeholder:text-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-copper disabled:opacity-40 disabled:cursor-not-allowed"
             />
@@ -252,10 +272,11 @@ export function MessageThreadPanel({
               onChange={(e) => setBody(e.target.value)}
               placeholder="Type an email…"
               required
-              disabled={!emailEnabled || !thread.canReply}
+              disabled={!emailEnabled || !thread.canReply || !submission.ready}
               aria-label="Email body"
               className="w-full resize-none rounded-md border border-border bg-panel px-3 py-2 text-sm text-text placeholder:text-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-copper disabled:opacity-40 disabled:cursor-not-allowed"
             />
+            {submission.error ? <p className="text-xs text-hot" role="alert">{submission.error}</p> : null}
             {lastEmailBounced ? (
               <p className="text-xs text-hot">Last email to this address bounced.</p>
             ) : null}
@@ -267,7 +288,7 @@ export function MessageThreadPanel({
               ) : <span />}
               <button
                 type="submit"
-                disabled={!emailEnabled || !thread.canReply || formBusy("/api/email/send")}
+                disabled={!emailEnabled || !thread.canReply || formBusy("/api/email/send") || !submission.ready}
                 className="inline-flex items-center gap-1.5 rounded-md bg-copper px-3 py-1.5 text-xs font-semibold text-on-copper hover:bg-copper/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-copper disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
               >
                 <Icon name="mail" size={14} aria-hidden /> {formBusy("/api/email/send") ? "Sending…" : "Send email"}
@@ -307,17 +328,19 @@ export function MessageThreadPanel({
               </button>
             ))}
           </div>
-          <Form method="post" action="/api/text/send" className="flex flex-col gap-2">
+          <Form method="post" action="/api/text/send" className="flex flex-col gap-2" onSubmit={submission.onSubmit}>
+            <input ref={submission.inputRef} type="hidden" name="submissionId" value={submission.submissionId} readOnly />
             <input type="hidden" name="invoiceId" value={thread.anchorInvoiceId ?? ""} />
             <input type="hidden" name="returnTo" value={returnTo} />
             <textarea
               name="body" rows={3} value={body} onChange={(e) => setBody(e.target.value)}
               placeholder="Type a message…" required
-              disabled={smsSendDisabled}
+              disabled={smsSendDisabled || !submission.ready}
               maxLength={SMS_MAX_CHARS}
               aria-label="Message body"
               className="w-full resize-none rounded-md border border-border bg-panel px-3 py-2 text-sm text-text placeholder:text-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-copper disabled:opacity-40 disabled:cursor-not-allowed"
             />
+            {submission.error ? <p className="text-xs text-hot" role="alert">{submission.error}</p> : null}
             <div className="flex items-center justify-between gap-2">
               <span
                 aria-live="polite"
@@ -331,7 +354,7 @@ export function MessageThreadPanel({
                 ) : null}
               </span>
               <button
-                type="submit" disabled={smsSendDisabled || formBusy("/api/text/send")}
+                type="submit" disabled={smsSendDisabled || formBusy("/api/text/send") || !submission.ready}
                 className="inline-flex items-center gap-1.5 rounded-md bg-copper px-3 py-1.5 text-xs font-semibold text-on-copper hover:bg-copper/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-copper disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
               >
                 <Icon name="message" size={14} aria-hidden /> {formBusy("/api/text/send") ? "Sending…" : "Send text"}

@@ -220,9 +220,36 @@ test("authenticated owners cannot mutate outbound SMS provider-attempt fields", 
     body: "tampered",
     customer_id: null,
     send_dedupe_key: "cleared",
+    submission_id: crypto.randomUUID(),
     created_at: "2000-01-01T00:00:00.000Z",
   }).eq("id", sent.id);
   expect(error?.code).toBe("42501");
+});
+
+test("the original SMS reservation RPC overload remains callable after the stable-ID migration", async () => {
+  const { orgId, invoiceId, customerId } = await seed(true, "+12295550936");
+  const result = await svc.rpc("reserve_sms_send", {
+    p_org_id: orgId,
+    p_invoice_id: invoiceId,
+    p_customer_id: customerId,
+    p_case_id: null,
+    p_sent_by_user_id: userId,
+    p_to_number: "+12295550936",
+    p_body: "Old worker reservation",
+    p_from_number: "+15005550006",
+    p_messaging_service_sid: null,
+    p_send_fingerprint: `sms:${orgId}:${invoiceId}:old-worker`,
+    p_send_dedupe_key: `sms:${orgId}:${invoiceId}:old-worker:2026-06-15`,
+    p_provider_idempotency_key: `sms-provider:${orgId}:old-worker`,
+    p_now: DAYTIME_NOW.toISOString(),
+  });
+  expect(result.error).toBeNull();
+  expect((result.data as { state?: string } | null)?.state).toBe("reserved");
+  const id = (result.data as { id?: string } | null)?.id;
+  const { data: row, error } = await svc.from("text_messages")
+    .select("submission_id").eq("id", id as string).single();
+  expect(error).toBeNull();
+  expect(row?.submission_id).toBeNull();
 });
 
 test("a Twilio 503 is durable and blocks a blind retry", async () => {
@@ -268,7 +295,7 @@ test("concurrent duplicate SMS actions reserve one provider send", async () => {
     await new Promise((resolve) => setTimeout(resolve, 25));
     return jsonResponse({ sid: "SM-CONCURRENT", status: "queued" });
   });
-  const args = { orgId, invoiceId, userId, body: "Concurrent reminder" };
+  const args = { orgId, invoiceId, userId, body: "Concurrent reminder", submissionId: crypto.randomUUID() };
   const outcomes = await Promise.allSettled([
     sendInvoiceText(deps(fetchFn), args),
     sendInvoiceText(deps(fetchFn), args),
@@ -280,6 +307,103 @@ test("concurrent duplicate SMS actions reserve one provider send", async () => {
   const { data: rows } = await svc.from("text_messages")
     .select("status, twilio_message_sid").eq("customer_id", customerId);
   expect(rows).toEqual([{ status: "queued", twilio_message_sid: "SM-CONCURRENT" }]);
+});
+
+test("the same SMS submission replayed after UTC midnight returns the recorded send", async () => {
+  const { orgId, invoiceId } = await seed(true, "+12295550931");
+  const submissionId = crypto.randomUUID();
+  const fetchFn = vi.fn(async () => jsonResponse({ sid: "SM-MIDNIGHT", status: "queued" }));
+  const args = { orgId, invoiceId, userId, body: "Midnight retry", submissionId };
+
+  const first = await sendInvoiceText(
+    { ...deps(fetchFn), now: new Date("2026-06-15T23:59:59.000Z") },
+    args,
+  );
+  const replay = await sendInvoiceText(
+    { ...deps(fetchFn), now: new Date("2026-06-16T00:00:01.000Z") },
+    args,
+  );
+
+  expect(replay).toEqual(first);
+  expect(fetchFn).toHaveBeenCalledOnce();
+});
+
+test("an unknown SMS attempt blocks the same payload under a fresh submission identity", async () => {
+  const { orgId, invoiceId } = await seed(true, "+12295550932");
+  const firstFetch = vi.fn(async () => { throw new TypeError("response lost"); });
+  const base = { orgId, invoiceId, userId, body: "Unknown retry guard" };
+  await expect(sendInvoiceText(deps(firstFetch), { ...base, submissionId: crypto.randomUUID() }))
+    .rejects.toThrow(/status is unknown/i);
+
+  const blindRetry = vi.fn();
+  await expect(sendInvoiceText(deps(blindRetry), { ...base, submissionId: crypto.randomUUID() }))
+    .rejects.toThrow(/status is unknown/i);
+  expect(blindRetry).not.toHaveBeenCalled();
+});
+
+test("an SMS submission identity cannot be reused to retarget another customer", async () => {
+  const { orgId, invoiceId } = await seed(true, "+12295550933");
+  const { data: otherCustomer } = await svc.from("customers").insert({
+    org_id: orgId, qbo_id: `retarget-${crypto.randomUUID()}`, name: "Other", phone: "+12295550934", sms_consent: true,
+  }).select("id").single();
+  const { data: otherInvoice } = await svc.from("invoices").insert({
+    org_id: orgId, qbo_id: `retarget-invoice-${crypto.randomUUID()}`,
+    customer_id: otherCustomer!.id, balance: 50,
+  }).select("id").single();
+  const submissionId = crypto.randomUUID();
+  const fetchFn = vi.fn(async () => jsonResponse({ sid: "SM-ORIGINAL-TARGET", status: "queued" }));
+
+  await sendInvoiceText(deps(fetchFn), {
+    orgId, invoiceId, userId, body: "Original target", submissionId,
+  });
+  await expect(sendInvoiceText(deps(fetchFn), {
+    orgId, invoiceId: otherInvoice!.id as string, userId, body: "Original target", submissionId,
+  })).rejects.toThrow(/submission.*different send/i);
+  await expect(sendInvoiceText(deps(fetchFn), {
+    orgId, invoiceId, userId, body: "Changed payload", submissionId,
+  })).rejects.toThrow(/submission.*different send/i);
+  const otherUser = await makeUserClient(`sms-reuse-${crypto.randomUUID()}@example.com`);
+  await svc.from("memberships").insert({ org_id: orgId, user_id: otherUser.userId, role: "member" });
+  await expect(sendInvoiceText(deps(fetchFn), {
+    orgId, invoiceId, userId: otherUser.userId, body: "Original target", submissionId,
+  })).rejects.toThrow(/submission.*different send/i);
+  expect(fetchFn).toHaveBeenCalledOnce();
+});
+
+test("a deliberate new SMS operation can repeat completed content on the same day", async () => {
+  const { orgId, invoiceId } = await seed(true, "+12295550935");
+  const fetchFn = vi.fn()
+    .mockResolvedValueOnce(jsonResponse({ sid: "SM-FIRST-OP", status: "queued" }))
+    .mockResolvedValueOnce(jsonResponse({ sid: "SM-SECOND-OP", status: "queued" }));
+  const base = { orgId, invoiceId, userId, body: "Intentional repeat" };
+
+  await sendInvoiceText(deps(fetchFn), { ...base, submissionId: crypto.randomUUID() });
+  await sendInvoiceText(deps(fetchFn), { ...base, submissionId: crypto.randomUUID() });
+
+  expect(fetchFn).toHaveBeenCalledTimes(2);
+});
+
+test("a blocked terminal SMS retry keeps its submission identity bound", async () => {
+  const { orgId, invoiceId } = await seed(true, "+12295550937");
+  const terminalSubmissionId = crypto.randomUUID();
+  const fetchFn = vi.fn(async () => jsonResponse({ sid: "SM-TERMINAL-A", status: "queued" }));
+  const args = { orgId, invoiceId, userId, body: "Bound terminal retry" };
+  const terminal = await sendInvoiceText(deps(fetchFn), { ...args, submissionId: terminalSubmissionId });
+  await svc.from("text_messages").update({ status: "failed", error_code: "known_failure" }).eq("id", terminal.id);
+
+  const ambiguousFetch = vi.fn(async () => { throw new TypeError("response lost"); });
+  await expect(sendInvoiceText(deps(ambiguousFetch), { ...args, submissionId: crypto.randomUUID() }))
+    .rejects.toThrow(/status is unknown/i);
+  await expect(sendInvoiceText(deps(vi.fn()), { ...args, submissionId: terminalSubmissionId }))
+    .rejects.toThrow(/status is unknown/i);
+
+  const { data: preserved, error } = await svc.from("text_messages")
+    .select("submission_id").eq("id", terminal.id).single();
+  expect(error).toBeNull();
+  expect(preserved?.submission_id).toBe(terminalSubmissionId);
+  await expect(sendInvoiceText(deps(vi.fn()), {
+    ...args, body: "Changed after blocked retry", submissionId: terminalSubmissionId,
+  })).rejects.toThrow(/submission.*different send/i);
 });
 
 test("a successful SMS can be intentionally sent again on the next UTC day", async () => {

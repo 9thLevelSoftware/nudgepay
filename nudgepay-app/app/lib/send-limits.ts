@@ -48,13 +48,27 @@ export function sendIdempotencyKey(kind: string, parts: string[]): string {
 export function sendAttemptIdentity(
   kind: string,
   parts: string[],
-  now = new Date(),
+  submissionId: string,
 ): { fingerprint: string; dedupeKey: string } {
   const fingerprint = sendIdempotencyKey(kind, parts);
-  const utcDay = now.toISOString().slice(0, 10);
   return {
     fingerprint,
-    dedupeKey: `${fingerprint.slice(0, 117)}:${utcDay}`,
+    // Provider idempotency headers are deliberately short even when the
+    // route accepts the maximum 128-character submission identity.
+    dedupeKey: `${kind}:${fnv1a64Hex(`${parts[0] ?? ""}\n${submissionId}`)}`,
+  };
+}
+
+/** Rollback compatibility for internal callers that predate submission IDs. */
+export function legacySendAttemptIdentity(
+  kind: string,
+  parts: string[],
+  now: Date,
+): { fingerprint: string; dedupeKey: string } {
+  const fingerprint = sendIdempotencyKey(kind, parts);
+  return {
+    fingerprint,
+    dedupeKey: `${fingerprint.slice(0, 117)}:${now.toISOString().slice(0, 10)}`,
   };
 }
 

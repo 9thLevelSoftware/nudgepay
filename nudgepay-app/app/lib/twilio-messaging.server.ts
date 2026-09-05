@@ -1,6 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { sendSms, type TwilioConfig, type TwilioSender } from "./twilio-client.server";
-import { sendAttemptIdentity } from "./send-limits";
+import { legacySendAttemptIdentity, sendAttemptIdentity } from "./send-limits";
 import { AmbiguousSendError, ProviderSendRejectedError } from "./provider-send-error";
 import { isContactBlocked, type ExceptionState } from "./exceptions";
 import { isWithinSendWindow, resolveQuietHours, quietHoursWindowLabel } from "./quiet-hours";
@@ -99,7 +99,7 @@ export async function activeCaseForSend(
 
 export async function sendInvoiceText(
   deps: MessagingDeps,
-  args: { orgId: string; invoiceId: string; userId: string; body: string },
+  args: { orgId: string; invoiceId: string; userId: string; body: string; submissionId?: string },
 ): Promise<{ id: string; sid: string; status: string }> {
   const { data: inv, error: invErr } = await deps.service.from("invoices")
     .select("customer_id").eq("org_id", args.orgId).eq("id", args.invoiceId).maybeSingle();
@@ -154,21 +154,29 @@ export async function sendInvoiceText(
   const senderIdentity = "from" in sender
     ? `from:${sender.from}`
     : `messaging-service:${sender.messagingServiceSid}`;
-  const safetyIdentity = sendAttemptIdentity("sms", [
+  const safetyParts = [
     args.orgId,
     args.invoiceId,
     cust.phone as string,
     body,
-  ], now);
-  const providerIdentity = sendAttemptIdentity("sms-provider", [
+  ];
+  const providerParts = [
     args.orgId,
     args.invoiceId,
     cust.phone as string,
     senderIdentity,
     body,
     deps.statusCallback ?? "",
-  ], now);
-  const { data: reserved, error: reserveError } = await deps.service.rpc("reserve_sms_send", {
+  ];
+  // Old internal callers keep the 0060 UTC-day contract and invoke the old RPC
+  // overload. Browser routes always provide the stable submission identity.
+  const safetyIdentity = args.submissionId
+    ? sendAttemptIdentity("sms", safetyParts, args.submissionId)
+    : legacySendAttemptIdentity("sms", safetyParts, now);
+  const providerIdentity = args.submissionId
+    ? sendAttemptIdentity("sms-provider", providerParts, args.submissionId)
+    : legacySendAttemptIdentity("sms-provider", providerParts, now);
+  const reserveArgs = {
     p_org_id: args.orgId,
     p_invoice_id: args.invoiceId,
     p_customer_id: cust.id as string,
@@ -182,10 +190,12 @@ export async function sendInvoiceText(
     p_send_dedupe_key: safetyIdentity.dedupeKey,
     p_provider_idempotency_key: providerIdentity.dedupeKey,
     p_now: now.toISOString(),
-  });
+    ...(args.submissionId ? { p_submission_id: args.submissionId } : {}),
+  };
+  const { data: reserved, error: reserveError } = await deps.service.rpc("reserve_sms_send", reserveArgs);
   if (reserveError) throw reserveError;
   const attempt = reserved as {
-    state?: "reserved" | "recorded" | "terminal" | "unknown" | "org_cap" | "customer_cap";
+    state?: "reserved" | "recorded" | "terminal" | "unknown" | "mismatch" | "org_cap" | "customer_cap";
     id?: string;
     provider_id?: string | null;
     provider_status?: string | null;
@@ -193,6 +203,7 @@ export async function sendInvoiceText(
   } | null;
   if (attempt?.state === "org_cap") throw new Error("Send rate cap reached for this workspace");
   if (attempt?.state === "customer_cap") throw new Error("Send rate cap reached for this customer");
+  if (attempt?.state === "mismatch") throw new Error("Send submission identity belongs to a different send");
   if (attempt?.state === "recorded" && attempt.id && attempt.provider_id) {
     return { id: attempt.id, sid: attempt.provider_id, status: attempt.provider_status ?? "sent" };
   }

@@ -27,7 +27,7 @@ export async function action({ request, context }: ActionFunctionArgs) {
   if (await authRateLimited(rateEnv, authRateLimitKey(request, rateEnv))) {
     return routerData(
       { error: humanAuthError("email rate limit exceeded") },
-      { status: 429 },
+      { status: 429, headers: { "Retry-After": "60" } },
     );
   }
   const env = getEnv(context as any);

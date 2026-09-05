@@ -291,6 +291,7 @@ test("authenticated owners cannot mutate outbound email provider-attempt fields"
     body: "tampered",
     customer_id: null,
     send_dedupe_key: "cleared",
+    submission_id: crypto.randomUUID(),
     created_at: "2000-01-01T00:00:00.000Z",
   }).eq("id", sent.id).select("id");
   expect(error?.code === "42501" || (changed ?? []).length === 0).toBe(true);
@@ -351,7 +352,7 @@ test("concurrent duplicate email actions reserve one provider send", async () =>
     await new Promise((resolve) => setTimeout(resolve, 25));
     return jsonResponse({ id: "re_concurrent" });
   });
-  const args = { orgId, invoiceId, userId, subject: "Hi", body: "Concurrent reminder" };
+  const args = { orgId, invoiceId, userId, subject: "Hi", body: "Concurrent reminder", submissionId: crypto.randomUUID() };
   const outcomes = await Promise.allSettled([
     sendInvoiceEmail(deps(fetchFn, from), args),
     sendInvoiceEmail(deps(fetchFn, from), args),
@@ -363,6 +364,110 @@ test("concurrent duplicate email actions reserve one provider send", async () =>
   const { data: rows } = await svc.from("email_messages")
     .select("status, provider_message_id").eq("customer_id", customerId);
   expect(rows).toEqual([{ status: "sent", provider_message_id: "re_concurrent" }]);
+});
+
+test("the same email submission replayed after UTC midnight returns the recorded send", async () => {
+  const { orgId, invoiceId } = await seed("midnight@chancey.test");
+  const from = await enableEmail(orgId);
+  const submissionId = crypto.randomUUID();
+  const fetchFn = vi.fn(async () => jsonResponse({ id: "re_midnight" }));
+  const args = { orgId, invoiceId, userId, subject: "Hi", body: "Midnight retry", submissionId };
+
+  const first = await sendInvoiceEmail(
+    deps(fetchFn, from, { now: new Date("2026-06-15T23:59:59.000Z") }),
+    args,
+  );
+  const replay = await sendInvoiceEmail(
+    deps(fetchFn, from, { now: new Date("2026-06-16T00:00:01.000Z") }),
+    args,
+  );
+
+  expect(replay).toEqual(first);
+  expect(fetchFn).toHaveBeenCalledOnce();
+});
+
+test("an unknown email attempt blocks the same payload under a fresh submission identity", async () => {
+  const { orgId, invoiceId } = await seed("unknown-new-id@chancey.test");
+  const from = await enableEmail(orgId);
+  const firstFetch = vi.fn(async () => { throw new TypeError("response lost"); });
+  const base = { orgId, invoiceId, userId, subject: "Hi", body: "Unknown retry guard" };
+  await expect(sendInvoiceEmail(deps(firstFetch, from), { ...base, submissionId: crypto.randomUUID() }))
+    .rejects.toThrow(/status is unknown/i);
+
+  const blindRetry = vi.fn();
+  await expect(sendInvoiceEmail(deps(blindRetry, from), { ...base, submissionId: crypto.randomUUID() }))
+    .rejects.toThrow(/status is unknown/i);
+  expect(blindRetry).not.toHaveBeenCalled();
+});
+
+test("an email submission identity cannot be reused to retarget another customer", async () => {
+  const { orgId, invoiceId } = await seed("original-target@chancey.test");
+  const from = await enableEmail(orgId);
+  const { data: otherCustomer } = await svc.from("customers").insert({
+    org_id: orgId, name: "Other", email: "other-target@chancey.test",
+  }).select("id").single();
+  const { data: otherInvoice } = await svc.from("invoices").insert({
+    org_id: orgId, qbo_id: `retarget-email-${crypto.randomUUID()}`,
+    customer_id: otherCustomer!.id, balance: 50,
+  }).select("id").single();
+  const submissionId = crypto.randomUUID();
+  const fetchFn = vi.fn(async () => jsonResponse({ id: "re_original_target" }));
+
+  await sendInvoiceEmail(deps(fetchFn, from), {
+    orgId, invoiceId, userId, subject: "Hi", body: "Original target", submissionId,
+  });
+  await expect(sendInvoiceEmail(deps(fetchFn, from), {
+    orgId, invoiceId: otherInvoice!.id as string, userId,
+    subject: "Hi", body: "Original target", submissionId,
+  })).rejects.toThrow(/submission.*different send/i);
+  await expect(sendInvoiceEmail(deps(fetchFn, from), {
+    orgId, invoiceId, userId, subject: "Hi", body: "Changed payload", submissionId,
+  })).rejects.toThrow(/submission.*different send/i);
+  const otherUser = await makeUserClient(`email-reuse-${crypto.randomUUID()}@example.com`);
+  await svc.from("memberships").insert({ org_id: orgId, user_id: otherUser.userId, role: "member" });
+  await expect(sendInvoiceEmail(deps(fetchFn, from), {
+    orgId, invoiceId, userId: otherUser.userId,
+    subject: "Hi", body: "Original target", submissionId,
+  })).rejects.toThrow(/submission.*different send/i);
+  expect(fetchFn).toHaveBeenCalledOnce();
+});
+
+test("a deliberate new email operation can repeat completed content on the same day", async () => {
+  const { orgId, invoiceId } = await seed("deliberate-repeat@chancey.test");
+  const from = await enableEmail(orgId);
+  const fetchFn = vi.fn()
+    .mockResolvedValueOnce(jsonResponse({ id: "re_first_op" }))
+    .mockResolvedValueOnce(jsonResponse({ id: "re_second_op" }));
+  const base = { orgId, invoiceId, userId, subject: "Hi", body: "Intentional repeat" };
+
+  await sendInvoiceEmail(deps(fetchFn, from), { ...base, submissionId: crypto.randomUUID() });
+  await sendInvoiceEmail(deps(fetchFn, from), { ...base, submissionId: crypto.randomUUID() });
+
+  expect(fetchFn).toHaveBeenCalledTimes(2);
+});
+
+test("a blocked terminal email retry keeps its submission identity bound", async () => {
+  const { orgId, invoiceId } = await seed("bound-terminal@chancey.test");
+  const from = await enableEmail(orgId);
+  const terminalSubmissionId = crypto.randomUUID();
+  const fetchFn = vi.fn(async () => jsonResponse({ id: "re_terminal_a" }));
+  const args = { orgId, invoiceId, userId, subject: "Hi", body: "Bound terminal retry" };
+  const terminal = await sendInvoiceEmail(deps(fetchFn, from), { ...args, submissionId: terminalSubmissionId });
+  await svc.from("email_messages").update({ status: "failed", error_code: "known_failure" }).eq("id", terminal.id);
+
+  const ambiguousFetch = vi.fn(async () => { throw new TypeError("response lost"); });
+  await expect(sendInvoiceEmail(deps(ambiguousFetch, from), { ...args, submissionId: crypto.randomUUID() }))
+    .rejects.toThrow(/status is unknown/i);
+  await expect(sendInvoiceEmail(deps(vi.fn(), from), { ...args, submissionId: terminalSubmissionId }))
+    .rejects.toThrow(/status is unknown/i);
+
+  const { data: preserved, error } = await svc.from("email_messages")
+    .select("submission_id").eq("id", terminal.id).single();
+  expect(error).toBeNull();
+  expect(preserved?.submission_id).toBe(terminalSubmissionId);
+  await expect(sendInvoiceEmail(deps(vi.fn(), from), {
+    ...args, body: "Changed after blocked retry", submissionId: terminalSubmissionId,
+  })).rejects.toThrow(/submission.*different send/i);
 });
 
 test("a corrected email destination is a distinct same-day provider request", async () => {

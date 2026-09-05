@@ -77,6 +77,58 @@ test("runBulkSms sends to eligible cases, skips no-consent/no-phone, records one
   expect(skippedRows).toHaveLength(0);
 });
 
+test("a bulk submission reuses stable per-case identities across UTC midnight", async () => {
+  const orgId = await seedOrg("Bulk Stable Identity Org");
+  const a = await seedCase(orgId, { name: "Stable A", phone: "+12295550331", consent: true, doc: "s001", due: "2026-05-01", balance: 100 });
+  const b = await seedCase(orgId, { name: "Stable B", phone: "+12295550332", consent: true, doc: "s002", due: "2026-05-01", balance: 200 });
+  const submissionId = crypto.randomUUID();
+  const fetchFn = vi.fn()
+    .mockResolvedValueOnce(jsonResponse({ sid: "SM-STABLE-A", status: "queued" }))
+    .mockResolvedValueOnce(jsonResponse({ sid: "SM-STABLE-B", status: "queued" }));
+  const args = {
+    orgId, userId, caseIds: [a.caseId, b.caseId], today,
+    templateBody: "Hi {customer}, you owe {balance}.", orgConfig: DEFAULT_ORG_CONFIG, submissionId,
+  };
+
+  const first = await runBulkSms(
+    { ...deps(fetchFn), now: new Date("2026-06-15T23:59:59.000Z") },
+    args,
+  );
+  const replay = await runBulkSms(
+    { ...deps(fetchFn), now: new Date("2026-06-16T00:00:01.000Z") },
+    args,
+  );
+
+  expect(first).toEqual({ sent: 2, failed: 0, skipped: 0, failures: [] });
+  expect(replay).toEqual(first);
+  expect(fetchFn).toHaveBeenCalledTimes(2);
+  const { data: rows, error } = await svc.from("text_messages")
+    .select("submission_id").eq("org_id", orgId).order("submission_id");
+  expect(error).toBeNull();
+  expect(rows).toHaveLength(2);
+  expect(new Set(rows!.map((row) => row.submission_id)).size).toBe(2);
+});
+
+test("a bulk retry replays completed children and blocks unknown children", async () => {
+  const orgId = await seedOrg("Bulk Partial Retry Org");
+  const completed = await seedCase(orgId, { name: "Completed", phone: "+12295550341", consent: true, doc: "p001", due: "2026-05-01", balance: 100 });
+  const unknown = await seedCase(orgId, { name: "Unknown", phone: "+12295550342", consent: true, doc: "p002", due: "2026-05-01", balance: 200 });
+  const fetchFn = vi.fn(async (_url, init) => {
+    if (String(init?.body ?? "").includes("12295550342")) throw new TypeError("response lost");
+    return jsonResponse({ sid: "SM-BULK-COMPLETED", status: "queued" });
+  });
+  const args = {
+    orgId, userId, caseIds: [completed.caseId, unknown.caseId], today,
+    templateBody: "Hi {customer}", orgConfig: DEFAULT_ORG_CONFIG, submissionId: crypto.randomUUID(),
+  };
+
+  const first = await runBulkSms(deps(fetchFn), args);
+  const retry = await runBulkSms(deps(fetchFn), args);
+  expect(first).toMatchObject({ sent: 1, failed: 1, skipped: 0 });
+  expect(retry).toMatchObject({ sent: 1, failed: 1, skipped: 0 });
+  expect(fetchFn).toHaveBeenCalledTimes(2);
+});
+
 test("runBulkSms tallies a failed send without aborting siblings", async () => {
   const orgId = await seedOrg("Bulk SMS Fail Org");
   const a = await seedCase(orgId, { name: "A Co", phone: "+12295550110", consent: true, doc: "2001", due: "2026-05-01", balance: 100 });

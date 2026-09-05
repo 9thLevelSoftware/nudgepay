@@ -219,8 +219,11 @@ test("wrangler staging env and operator alert webhook are declared", () => {
   expect(wrangler).toContain("STRIPE_SECRET_KEY");
   expect(wrangler).toContain("STRIPE_PRICE_ID");
   const deploy = read("../scripts/deploy-worker.mjs");
-  expect(deploy).toContain("strip-build-dev-vars");
-  expect(deploy).toContain("stagingConfigFromToml");
+  expect(deploy).toContain("readAndVerifyReleaseArtifact");
+  expect(deploy).toContain("artifactDir");
+  const prepare = read("../scripts/prepare-release-artifact.mjs");
+  expect(prepare).toContain("strip-build-dev-vars");
+  expect(prepare).toContain("stagingConfigFromToml");
   const strip = read("../scripts/strip-build-dev-vars.mjs");
   expect(strip).toContain(".dev.vars");
   expect(strip).toContain("unlinkSync");

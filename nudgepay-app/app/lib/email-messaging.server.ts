@@ -1,6 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { sendEmail, type EmailConfig } from "./email-client.server";
-import { sendAttemptIdentity } from "./send-limits";
+import { legacySendAttemptIdentity, sendAttemptIdentity } from "./send-limits";
 import { AmbiguousSendError, ProviderSendRejectedError } from "./provider-send-error";
 import { signUnsubscribeToken } from "./unsubscribe-token";
 import {
@@ -31,7 +31,7 @@ function formatSender(fromAddress: string, fromName: string): string {
 
 export async function sendInvoiceEmail(
   deps: EmailDeps,
-  args: { orgId: string; invoiceId: string; userId: string; subject: string; body: string },
+  args: { orgId: string; invoiceId: string; userId: string; subject: string; body: string; submissionId?: string },
 ): Promise<{ id: string; providerMessageId: string }> {
   const { data: inv, error: invErr } = await deps.service.from("invoices")
     .select("customer_id").eq("org_id", args.orgId).eq("id", args.invoiceId).maybeSingle();
@@ -76,19 +76,14 @@ export async function sendInvoiceEmail(
   const footerLines = ["—", postal, `To stop receiving these emails, unsubscribe: ${unsubUrl}`];
   const bodyWithFooter = `${args.body}\n\n${footerLines.join("\n")}`;
   const from = formatSender(ec.from_address as string, (ec.from_name as string | null) ?? "");
-
-  const safetyIdentity = sendAttemptIdentity(
-    "email",
-    [
-      args.orgId,
-      args.invoiceId,
-      cust.email as string,
-      args.subject,
-      args.body,
-    ],
-    now,
-  );
-  const providerIdentity = sendAttemptIdentity("email-provider", [
+  const safetyParts = [
+    args.orgId,
+    args.invoiceId,
+    cust.email as string,
+    args.subject,
+    args.body,
+  ];
+  const providerParts = [
     args.orgId,
     args.invoiceId,
     from,
@@ -97,8 +92,14 @@ export async function sendInvoiceEmail(
     bodyWithFooter,
     `<${unsubUrl}>`,
     "List-Unsubscribe=One-Click",
-  ], now);
-  const { data: reserved, error: reserveError } = await deps.service.rpc("reserve_email_send", {
+  ];
+  const safetyIdentity = args.submissionId
+    ? sendAttemptIdentity("email", safetyParts, args.submissionId)
+    : legacySendAttemptIdentity("email", safetyParts, now);
+  const providerIdentity = args.submissionId
+    ? sendAttemptIdentity("email-provider", providerParts, args.submissionId)
+    : legacySendAttemptIdentity("email-provider", providerParts, now);
+  const reserveArgs = {
     p_org_id: args.orgId,
     p_invoice_id: args.invoiceId,
     p_customer_id: cust.id as string,
@@ -112,16 +113,19 @@ export async function sendInvoiceEmail(
     p_send_dedupe_key: safetyIdentity.dedupeKey,
     p_provider_idempotency_key: providerIdentity.dedupeKey,
     p_now: now.toISOString(),
-  });
+    ...(args.submissionId ? { p_submission_id: args.submissionId } : {}),
+  };
+  const { data: reserved, error: reserveError } = await deps.service.rpc("reserve_email_send", reserveArgs);
   if (reserveError) throw reserveError;
   const attempt = reserved as {
-    state?: "reserved" | "recorded" | "terminal" | "unknown" | "org_cap" | "customer_cap";
+    state?: "reserved" | "recorded" | "terminal" | "unknown" | "mismatch" | "org_cap" | "customer_cap";
     id?: string;
     provider_id?: string | null;
     provider_key?: string | null;
   } | null;
   if (attempt?.state === "org_cap") throw new Error("Send rate cap reached for this workspace");
   if (attempt?.state === "customer_cap") throw new Error("Send rate cap reached for this customer");
+  if (attempt?.state === "mismatch") throw new Error("Send submission identity belongs to a different send");
   if (attempt?.state === "recorded" && attempt.id && attempt.provider_id) {
     return { id: attempt.id, providerMessageId: attempt.provider_id };
   }

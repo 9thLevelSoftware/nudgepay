@@ -3,7 +3,7 @@ import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, resolve } from "node:path";
 import { performance } from "node:perf_hooks";
-import { DIAGNOSTIC_PROFILE, PILOT_PROFILE, MetricsAccumulator, READ_ONLY_ROUTES, assertPilotFixtureContract, assertStagingOrigin, isSuccessfulAuthenticatedHtml, parsePositiveInteger, parseSessionFixture, profileMinimums, qualificationOutcome } from "./pilot-load-lib.mjs";
+import { DIAGNOSTIC_PROFILE, PILOT_PROFILE, MetricsAccumulator, READ_ONLY_ROUTES, assertPilotFixtureContract, assertStagingOrigin, isSuccessfulAuthenticatedHtml, parsePositiveInteger, parseSessionFixture, profileMinimums, qualificationOutcome, readResponseBody } from "./pilot-load-lib.mjs";
 
 const VALUE_FLAGS = new Set(["origin", "cookie-file", "duration-seconds", "concurrency", "timeout-ms", "output", "profile"]);
 function usage() { return "Usage: PILOT_LOAD_ALLOWED_ORIGINS=https://staging.example.com node scripts/pilot-load.mjs --origin https://staging.example.com --cookie-file C:\\secure\\fixture.json [--profile diagnostic|pilot] [--duration-seconds 30] [--concurrency 1] [--timeout-ms 10000] [--output C:\\qualification\\pilot.json] [--dry-run]"; }
@@ -24,9 +24,9 @@ async function request(origin, route, session, timeoutMs) {
   const started = performance.now();
   try {
     const response = await fetch(`${origin}${route}`, { headers: { cookie: session.cookie, accept: "text/html,application/xhtml+xml" }, redirect: "manual", signal: AbortSignal.timeout(timeoutMs) });
-    const body = await response.text();
-    const ok = isSuccessfulAuthenticatedHtml(response.status, response.headers.get("content-type") ?? "", body);
-    return { route, sessionLabel: session.label, workspace: session.workspace, durationMs: Math.round(performance.now() - started), ok, status: response.status, error: ok ? undefined : "unexpected_status_or_content" };
+    const body = await readResponseBody(response);
+    const ok = body.ok && isSuccessfulAuthenticatedHtml(response.status, response.headers.get("content-type") ?? "", body.body, { route, orgId: session.orgId, userId: session.userId });
+    return { route, sessionLabel: session.label, workspace: session.workspace, durationMs: Math.round(performance.now() - started), ok, status: response.status, error: ok ? undefined : body.ok ? "unexpected_status_or_content" : body.error };
   } catch (error) { return { route, sessionLabel: session.label, workspace: session.workspace, durationMs: Math.round(performance.now() - started), ok: false, error: error instanceof Error ? error.name : "request_failed" }; }
 }
 async function main() {
@@ -45,7 +45,8 @@ async function main() {
   const fixture = parseSessionFixture(readFileSync(resolve(args["cookie-file"]), "utf8"));
   const fixtureContract = profile === PILOT_PROFILE ? assertPilotFixtureContract(fixture, origin) : null;
   const workloadMode = fixture.sessions.length === 1 ? "single-session" : "multi-session";
-  const plan = { origin, routes: READ_ONLY_ROUTES, durationSeconds, concurrency, timeoutMs, output, profile, workloadMode, fixtureContract, dryRun: !!args["--dry-run"] };
+  const externalEvidenceRequired = profile === PILOT_PROFILE ? ["scheduled cron execution evidence", "email provider delivery evidence", "SMS provider delivery evidence"] : [];
+  const plan = { origin, routes: READ_ONLY_ROUTES, durationSeconds, concurrency, timeoutMs, output, profile, workloadMode, fixtureContract, externalEvidenceRequired, dryRun: !!args["--dry-run"] };
   if (plan.dryRun) { console.log(JSON.stringify({ ...plan, mode: "dry-run" }, null, 2)); return; }
   const startedAt = new Date().toISOString();
   const deadline = Date.now() + durationSeconds * 1000;

@@ -277,6 +277,8 @@ interface WorkQueueProps {
   needsReconnect?: boolean;
   queueTruncated?: boolean;
   timeZone?: string | null;
+  orgId: string;
+  userId: string;
 }
 
 // ---------------------------------------------------------------------------
@@ -872,6 +874,8 @@ export function WorkQueue({
   needsReconnect = false,
   queueTruncated = false,
   timeZone,
+  orgId,
+  userId,
 }: WorkQueueProps) {
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [smsOpen, setSmsOpen] = useState(false);
@@ -1487,6 +1491,8 @@ export function WorkQueue({
         orgPhone={orgPhone}
         orgPaymentLink={orgPaymentLink}
         maxBatch={maxBatch}
+        orgId={orgId}
+        userId={userId}
       />
     </section>
   );

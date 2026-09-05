@@ -32,6 +32,11 @@ Local verification does not replace the outstanding hosted and operational gates
   are `boundary-final-typecheck.log` and `boundary-final-check.log` in the same
   external evidence directory. A real-login Chromium recheck at 4,999 rows
   passed with no presence URI-length warning.
+- The continuation baseline is `0dcea80ffffdbbd7e32b0bdcb7d48991f0293fae`,
+  including migration `0064`. The resulting committed candidate and evidence
+  hashes are recorded in external `candidate-remaining-gates.json`. Its local
+  verification is listed separately below; earlier totals do not qualify later
+  changes.
 
 ## Implemented scope
 
@@ -48,10 +53,51 @@ Local verification does not replace the outstanding hosted and operational gates
   database test ownership, and reproducible pilot-boundary/load tooling.
 
 The numbered migrations after the inspected production schema are `0059`
-through `0063`. They require isolated upgrade and qualification evidence before
+through `0066`. They require isolated upgrade and qualification evidence before
 hosted application. Existing routes and the human-operated sending model remain.
 
 ## Verification
+
+### Remaining-gate implementation verification
+
+The continuation after `0dcea80` adds stable send-operation identities and
+backward-compatible RPC overloads (`0065`), durable scheduled-job health and
+the protected `/monitorz` probe (`0066`), strict load-response qualification,
+reproducible deletion evidence, and sealed artifact/deployment verification.
+Sends require JavaScript and working session storage: forms remain disabled
+before hydration, and failed persistence prevents submission. This is needed
+to retain an uncertain operation across reloads without blindly resending.
+Correlated success stores a new generation across composer remounts.
+
+Independent reviews cleared the final send lifecycle, database bindings,
+monitoring, load markers, artifact workflow, and deletion fixture. Rendered
+qualification caught and corrected a React Router `.client.ts` SSR export
+failure; the hook now uses a server-renderable module with browser work confined
+to effects and submission handlers.
+
+Coordinator evidence for this continuation is retained in the external evidence
+directory:
+
+| Check | Result / artifact |
+|---|---|
+| Final unit suite | 149 files / 1,434 tests passed; `remaining-gates-final-unit.log`. |
+| Typecheck | Passed; `remaining-gates-final-typecheck.log`. |
+| Production build and Worker dry-run | Passed after the SSR correction; `remaining-gates-final-check.log`. |
+| Public and send-lifecycle browser checks | Ten passed, including storage denial, lost-response reload, success redirect/remount, and deliberate new sends; `remaining-gates-final-public-browser.log`. |
+| Authenticated rendered matrix | 37 passed / 28 intentional skips across five projects; `remaining-gates-final-authenticated-browser.log`. The five additional skips are the separately opt-in 4,999/5,000/5,001 fixture checks, whose prior evidence remains historical. |
+| Populated local `0064` → `0066` upgrade | Passed; 5,000 rows in each of nine tables for both tenants preserved. `populated-0064-0066-upgrade.{json,log}`. |
+| Focused upgraded-schema integration | Four files / 73 tests passed; `upgrade-0066-focused-integration.log`. |
+| Fresh local migration reset | Passed through `0066`; `fresh-0066-reset.log`. |
+| Final full suite on fresh `0066` schema | 220 files / 1,835 tests passed; `fresh-0066-final-full-integration.log`. This includes the unit suite; counts are not additive. |
+| Production dependency audit | Zero advisories; `remaining-gates-production-audit.json`. |
+| Pinned gitleaks working-tree export | 737 source/documentation/test/config files, zero findings; `remaining-gates-secret-scan.log`. Synthetic monitor test tokens were rewritten without broadening scanner exceptions. |
+
+Screenshots in the existing external `e2e-evidence` directory were refreshed by
+the authenticated run. The coordinator inspected the desktop dashboard and dark
+mobile selected-account drawer. These are synthetic local observations; provider
+delivery, staging CSP enforcement, and a real screen-reader review remain open.
+
+### Earlier implementation verification
 
 The following commands passed against the implementation worktree:
 
@@ -137,11 +183,23 @@ upload and verify both the flag and preservation of existing observability
 settings. The Windows credential-resolution smoke, 74 focused tests, TypeScript
 checks, production build/dry-run, and independent Sol review passed. This remains
 a post-upload check; failure leaves the deployment incomplete and requires repair.
-Workers Builds must use the canonical wrapper and disable non-production branch
-builds; those hosted settings have not been verified.
-Workers Builds trigger
-inspection returned HTTP 403 with the current CLI credential, so automatic
-deployment branch behavior remains unverified. The branch has not been pushed.
+The CLI credential initially returned HTTP 403 for Workers Builds. The newly
+connected Cloudflare integration resolved that access blocker with HTTP 200.
+The production preview-upload trigger was removed at `2026-09-05T18:08:27.319Z`
+and the automatic main-branch deployment trigger at `2026-09-05T18:10:10.462Z`,
+after retaining their configuration. Both bypassed the required sealed-artifact
+promotion contract. Readback confirms no production build triggers. Promotion
+will use the explicit artifact workflow after qualification; automatic Builds
+require a reviewed artifact transport contract before restoration. Evidence:
+`cloudflare-build-triggers-before-2026-09-05.json` and
+`cloudflare-build-triggers-disabled-2026-09-05.json` in the external evidence
+directory. The branch has not been pushed and no Worker code was redeployed.
+
+Production `workers.dev` and preview ingress were disabled at
+`2026-09-05T17:59:10.506Z`. Readback confirms both disabled; canonical health
+and login remained HTTP 200, while the alternate production health URL returned
+404. See `production-ingress-hardening-2026-09-05.json`. Staging's Worker URL
+remains its entry point, with schedules disabled pending database isolation.
 The required-check verifier confirmed three checks missing from `main` protection:
 secret scan, CodeQL, and authenticated browser flows.
 
@@ -156,6 +214,32 @@ remaining critical/high/medium code issue. The expanded timing is retained as an
 agent execution record; its original SQL/raw output were not retained. See
 [performance evidence](performance.md) for that limitation and required
 reproducible staging follow-up. Individual local timings do not prove pilot p95.
+
+A reproducible scoped rerun at `2026-09-05T18:24:48.482Z` now retains raw
+sanitized JSON: `pilot-deletion-seed-2026-09-05.json`,
+`pilot-deletion-measure-2026-09-05.json`, and
+`pilot-deletion-migration-ledger-2026-09-05.json` in the external evidence
+directory. It held one local database lock across seeding and measurement.
+The actual RPC returned 204 in 829.63 ms; all nine target tables and the target
+workspace were empty afterward, all nine control tables retained 5,000 rows,
+and a fresh matching deletion tombstone was recorded. The actual local ledger
+reported migration `0064`. Measurement JSON SHA-256:
+`53b5fe91f7d11c816fbf64658c1f0403e9961d93c003f5c41b2fb263a8c65766`.
+An earlier unretained run took 1,101.96 ms. Neither individual timing establishes
+the required staging latency distribution; this closes raw local integrity
+evidence retention only. Final independent source review is still pending.
+
+After independent fixture review and fixes, the coordinator regenerated evidence
+from the frozen implementation on local migration `0066` at
+`2026-09-05T18:38:30.409Z`: `pilot-deletion-final-0066-seed.json` and
+`pilot-deletion-final-0066-measure.json`. The measurement records actual RPC 204,
+830.41 ms, complete target removal, unchanged 5,000-row control tables, a fresh
+matching tombstone, the full actual `0001`–`0066` migration ledger, and fixture
+code digest `447227ccfe70e872bcae75bf9f0e2b5b21e06a33a8d461361923fe31f0e770db`.
+Measurement artifact SHA-256:
+`ba81d3d9f72d19cfd157af981c44eea890713b7a317e35af3b53c238b9c7251a`.
+This supersedes the earlier fixture run for final-code integrity evidence;
+it still does not establish staging p95 or pilot capacity.
 
 Real-login Chromium runs also verified Accounts and Messages at 4,999, 5,000,
 and 5,001 rows: visible synthetic content in every case and an incomplete-data

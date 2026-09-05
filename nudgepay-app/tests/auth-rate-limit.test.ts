@@ -13,6 +13,7 @@ import { action as forgotPasswordAction } from "../app/routes/forgot-password";
 const TOO_MANY = "Too many attempts. Wait a few minutes and try again.";
 
 afterEach(() => {
+  vi.useRealTimers();
   vi.restoreAllMocks();
   resetMemoryAuthRateLimit();
 });
@@ -38,6 +39,23 @@ function rejectLimiter() {
 }
 
 describe("authRateLimited", () => {
+  it("uses one 20-attempt bucket across auth route types and recovers after its fake-time window", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-09-05T12:00:00.000Z"));
+    const env = { AUTH_RATE_LIMIT_MEMORY: "true" };
+    const sharedNatKey = "203.0.113.200";
+    const routes = ["/login", "/signup", "/forgot-password"];
+
+    for (let index = 0; index < 20; index++) {
+      const key = authRateLimitKey(post(routes[index % routes.length]!, { "CF-Connecting-IP": sharedNatKey }), env);
+      await expect(authRateLimited(env, key)).resolves.toBe(false);
+    }
+    await expect(authRateLimited(env, sharedNatKey)).resolves.toBe(true);
+
+    vi.setSystemTime(new Date("2026-09-05T12:01:00.001Z"));
+    await expect(authRateLimited(env, sharedNatKey)).resolves.toBe(false);
+  });
+
   it("rejects when the limiter returns success: false", async () => {
     const limiter = rejectLimiter();
     await expect(authRateLimited({ AUTH_RATE_LIMIT: limiter }, "203.0.113.1")).resolves.toBe(true);
@@ -154,6 +172,7 @@ function expectRateLimitedAction(result: unknown) {
   expect(payload.data?.error).toBe(TOO_MANY);
   expect(payload.data?.error).toBe(humanAuthError("email rate limit exceeded"));
   expect(payload.init?.status).toBe(429);
+  expect(new Headers(payload.init?.headers).get("Retry-After")).toBe("60");
 }
 
 describe("auth route actions", () => {

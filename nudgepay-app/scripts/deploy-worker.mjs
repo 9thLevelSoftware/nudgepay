@@ -1,90 +1,207 @@
-// Production/staging Worker deploy. The Vite Cloudflare plugin copies
-// `.dev.vars` into build/server/; wrangler then overrides toml vars with
-// local Supabase. Strip that file before upload.
 import { spawnSync } from "node:child_process";
-import { readFileSync, writeFileSync } from "node:fs";
+import { randomUUID } from "node:crypto";
+import { mkdirSync, readFileSync, readdirSync } from "node:fs";
+import { join, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 import {
   assertCloudflareWorkerNameOverride,
   assertDeployConfig,
   assertNoInvariantSecrets,
   assertProductionReleaseGuard,
   assertProductionConfigParity,
-  parseDeploymentArgs,
   productionDeployShaForEnvironment,
   productionConfigFromToml,
-  stagingConfigFromToml,
 } from "./deploy-preflight.mjs";
+import { readAndVerifyReleaseArtifact } from "./release-artifact.mjs";
+import {
+  createDeploymentReceipt,
+  latestMigrationFilename,
+  parseReleaseDeploymentArgs,
+  resolveReceiptDirectory,
+  validatedMigrationFilenames,
+  writeDeploymentReceipt,
+} from "./release-deployment.mjs";
+import {
+  assertConfiguredProviders,
+  parseDeploymentStatus,
+  parsePreviousDeploymentStatus,
+  parseSecretInventory,
+  parseVersionList,
+} from "./release-qualifier.mjs";
 
-const environment = parseDeploymentArgs(process.argv.slice(2));
-const staging = environment === "staging";
-const cwd = new URL("..", import.meta.url);
+const cwd = fileURLToPath(new URL("..", import.meta.url));
 const wranglerToml = readFileSync(new URL("../wrangler.toml", import.meta.url), "utf8");
 const productionConfig = productionConfigFromToml(wranglerToml);
-const stagingConfig = stagingConfigFromToml(wranglerToml);
-const stagingSupabaseUrl = process.env.STAGING_SUPABASE_URL;
+const wranglerBin = fileURLToPath(new URL("../node_modules/wrangler/bin/wrangler.js", import.meta.url));
 
 function run(cmd, args) {
-  const r = spawnSync(cmd, args, { cwd, stdio: "inherit", shell: process.platform === "win32" });
-  if (r.status !== 0) process.exit(r.status ?? 1);
+  const r = spawnSync(cmd, args, { cwd, stdio: "inherit", windowsHide: true });
+  if (r.status !== 0) throw new Error(`${cmd} ${args[0] ?? ""} failed`);
 }
 
-function targetSecretNames() {
-  const result = spawnSync("npx", ["wrangler", "secret", "list", "--env", environment], {
+function runCapture(cmd, args) {
+  const result = spawnSync(cmd, args, {
     cwd,
     encoding: "utf8",
-    shell: process.platform === "win32",
+    windowsHide: true,
+    maxBuffer: 1024 * 1024,
   });
   if (result.status !== 0) {
-    throw new Error(`Deployment preflight failed: could not read the ${environment} secret inventory`);
+    throw new Error(`${cmd} ${args[0] ?? ""} failed`);
   }
-  try {
-    return JSON.parse(result.stdout).map((secret) => secret.name).filter((name) => typeof name === "string");
-  } catch {
-    throw new Error(`Deployment preflight failed: could not read the ${environment} secret inventory`);
-  }
+  return result.stdout;
 }
 
-// Validate before building or calling Wrangler. Staging values come from an
-// explicit environment variable so the production project cannot be inherited.
-const targetConfig = staging
-  ? {
-      ...stagingConfig,
-      vars: { ...stagingConfig.vars, SUPABASE_URL: stagingSupabaseUrl },
-    }
-  : productionConfig;
-const expectedProductionSha = productionDeployShaForEnvironment(process.env);
-if (!staging) assertProductionReleaseGuard({ expectedSha: expectedProductionSha, cwd });
-assertCloudflareWorkerNameOverride({
-  environment,
-  expectedName: targetConfig.name,
-});
-assertDeployConfig({
-  environment,
-  config: targetConfig,
-  productionSupabaseUrl: productionConfig.vars.SUPABASE_URL,
-});
-assertNoInvariantSecrets(targetSecretNames(), environment);
-
-run("npm", ["run", "build"]);
-run("node", ["scripts/strip-build-dev-vars.mjs"]);
-
-const src = new URL("../build/server/wrangler.json", import.meta.url);
-const dest = new URL(`../build/server/wrangler.${environment}.json`, import.meta.url);
-const cfg = JSON.parse(readFileSync(src, "utf8"));
-if (staging) {
-  cfg.name = targetConfig.name;
-  cfg.workers_dev = targetConfig.workers_dev;
-  cfg.vars = { ...cfg.vars, ...targetConfig.vars };
-  cfg.routes = targetConfig.routes;
-  cfg.ratelimits = targetConfig.ratelimits;
-} else {
-  assertProductionConfigParity(cfg, productionConfig, "built Worker config");
+function runCaptureResult(cmd, args) {
+  return spawnSync(cmd, args, {
+    cwd,
+    encoding: "utf8",
+    windowsHide: true,
+    maxBuffer: 1024 * 1024,
+  });
 }
-assertDeployConfig({ environment, config: cfg, productionSupabaseUrl: productionConfig.vars.SUPABASE_URL });
-writeFileSync(dest, JSON.stringify(cfg));
-if (!staging) assertProductionReleaseGuard({ expectedSha: expectedProductionSha, cwd });
-run("npx", ["wrangler", "deploy", "-c", `build/server/wrangler.${environment}.json`]);
-// redact_query_string is a script-level API setting that Wrangler 4.88 does
-// not expose in its configuration schema. Apply it after each canonical
-// production/staging upload and read it back before reporting success.
-run("node", ["scripts/enforce-observability-redaction.mjs", "--worker", targetConfig.name]);
+
+function runWrangler(args, capture = false) {
+  return capture
+    ? runCapture(process.execPath, [wranglerBin, ...args])
+    : run(process.execPath, [wranglerBin, ...args]);
+}
+
+try {
+  const {
+    environment,
+    artifactDir,
+    receiptDir,
+    expectedManifestSha,
+    expectedConfigSha,
+  } = parseReleaseDeploymentArgs(process.argv.slice(2));
+  const staging = environment === "staging";
+  const expectedProductionSha = productionDeployShaForEnvironment(process.env);
+  if (!/^[a-f0-9]{40}$/i.test(expectedProductionSha ?? "")) {
+    throw new Error("Release deployment requires EXPECTED_DEPLOY_SHA as a 40-character commit SHA");
+  }
+  const migrationFiles = validatedMigrationFilenames(
+    readdirSync(new URL("../supabase/migrations", import.meta.url)),
+  );
+  const latestMigration = latestMigrationFilename(migrationFiles);
+  const manifest = readAndVerifyReleaseArtifact({
+    artifactDir,
+    expectedSourceCommit: expectedProductionSha,
+    expectedLatestMigration: latestMigration,
+    expectedMigrationFiles: migrationFiles,
+  });
+  const target = manifest.targets[environment];
+  if (manifest.manifestSha256 !== expectedManifestSha || target.configSha256 !== expectedConfigSha) {
+    throw new Error("Sealed release does not match the independently recorded manifest/config digests");
+  }
+  const targetConfigPath = resolve(artifactDir, ...target.configPath.split("/"));
+  const targetConfig = JSON.parse(readFileSync(targetConfigPath, "utf8"));
+  assertCloudflareWorkerNameOverride({ environment, expectedName: target.workerName });
+  assertDeployConfig({
+    environment,
+    config: targetConfig,
+    productionSupabaseUrl: productionConfig.vars.SUPABASE_URL,
+  });
+  if (!staging) {
+    assertProductionConfigParity(targetConfig, productionConfig, "sealed production Worker config");
+    assertProductionReleaseGuard({ expectedSha: expectedProductionSha, cwd });
+  }
+
+  const secretNames = parseSecretInventory(runWrangler(
+    ["secret", "list", "-c", targetConfigPath, "--name", target.workerName],
+    true,
+  ));
+  assertNoInvariantSecrets(secretNames, environment);
+  const providerConfiguration = assertConfiguredProviders(secretNames);
+  const statusArgs = [
+    "deployments", "status",
+    "-c", targetConfigPath,
+    "--name", target.workerName,
+    "--json",
+  ];
+  const before = parsePreviousDeploymentStatus(runCaptureResult(
+    process.execPath,
+    [wranglerBin, ...statusArgs],
+  ));
+  const releaseAnnotation = `nudgepay-release:${manifest.manifestSha256}:${environment}:${randomUUID()}`;
+  const immediatelyVerified = readAndVerifyReleaseArtifact({
+    artifactDir,
+    expectedSourceCommit: expectedProductionSha,
+    expectedLatestMigration: latestMigration,
+    expectedMigrationFiles: migrationFiles,
+  });
+  if (
+    immediatelyVerified.manifestSha256 !== expectedManifestSha
+    || immediatelyVerified.targets[environment].configSha256 !== expectedConfigSha
+  ) {
+    throw new Error("Sealed release changed before Worker upload");
+  }
+  if (!staging) assertProductionReleaseGuard({ expectedSha: expectedProductionSha, cwd });
+  runWrangler([
+    "deploy",
+    "-c", targetConfigPath,
+    "--no-bundle",
+    "--message", releaseAnnotation,
+  ]);
+  const after = parseDeploymentStatus(runWrangler(statusArgs, true));
+  const annotatedVersion = parseVersionList(runWrangler([
+    "versions", "list",
+    "-c", targetConfigPath,
+    "--name", target.workerName,
+    "--json",
+  ], true), releaseAnnotation);
+  if (annotatedVersion.versionId !== after.versionId) {
+    throw new Error("The annotated release version is not the active 100% Worker version");
+  }
+  run(process.execPath, ["scripts/enforce-observability-redaction.mjs", "--worker", target.workerName]);
+  const verifiedAfterRedaction = parseDeploymentStatus(runWrangler(statusArgs, true));
+  if (
+    verifiedAfterRedaction.deploymentId !== after.deploymentId
+    || verifiedAfterRedaction.versionId !== annotatedVersion.versionId
+    || verifiedAfterRedaction.createdOn !== after.createdOn
+  ) {
+    throw new Error("The active Worker deployment changed before redaction evidence was recorded");
+  }
+
+  const receipt = createDeploymentReceipt({
+    environment,
+    sourceCommit: manifest.sourceCommit,
+    artifactSha256: manifest.artifactSha256,
+    manifestSha256: manifest.manifestSha256,
+    configSha256: target.configSha256,
+    workerName: target.workerName,
+    previousVersionId: before?.versionId,
+    deployment: verifiedAfterRedaction,
+    queryStringRedactionVerified: true,
+    providerConfiguration,
+    releaseAnnotation,
+  });
+  const outputDirectory = resolveReceiptDirectory({ artifactDir, receiptDir });
+  mkdirSync(outputDirectory, { recursive: true });
+  const receiptPath = join(outputDirectory, `${environment}-${verifiedAfterRedaction.versionId}.json`);
+  const finallyVerified = readAndVerifyReleaseArtifact({
+    artifactDir,
+    expectedSourceCommit: expectedProductionSha,
+    expectedLatestMigration: latestMigration,
+    expectedMigrationFiles: migrationFiles,
+  });
+  if (
+    finallyVerified.manifestSha256 !== expectedManifestSha
+    || finallyVerified.targets[environment].configSha256 !== expectedConfigSha
+  ) {
+    throw new Error("Sealed release changed during Worker upload or verification");
+  }
+  writeDeploymentReceipt({ receiptPath, receipt });
+  console.log(JSON.stringify({
+    status: "deployment_recorded",
+    receiptPath,
+    workerName: receipt.workerName,
+    versionId: receipt.versionId,
+    artifactSha256: receipt.artifactSha256,
+    manifestSha256: receipt.manifestSha256,
+  }, null, 2));
+} catch (error) {
+  const message = error instanceof Error ? error.message : "unknown release deployment failure";
+  console.error(message);
+  process.exitCode = 1;
+}

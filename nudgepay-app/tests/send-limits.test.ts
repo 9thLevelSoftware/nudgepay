@@ -1,6 +1,6 @@
 import { expect, test } from "vitest";
 import {
-  evaluateSendBudget, evaluateTestBudget, sendAttemptIdentity, sendIdempotencyKey,
+  evaluateSendBudget, evaluateTestBudget, legacySendAttemptIdentity, sendAttemptIdentity, sendIdempotencyKey,
   SMS_ORG_HOUR_CAP, SMS_CUSTOMER_DAY_CAP, TEST_HOUR_CAP,
   EMAIL_ORG_HOUR_CAP, EMAIL_CUSTOMER_DAY_CAP,
 } from "../app/lib/send-limits";
@@ -63,24 +63,34 @@ test("sendIdempotencyKey is stable across minutes and hashes the body", () => {
   expect(a.length).toBeLessThanOrEqual(128);
 });
 
-test("sendAttemptIdentity deduplicates one action day without blocking a next-day reminder", () => {
+test("sendAttemptIdentity follows the submission across UTC midnight and separates deliberate sends", () => {
   const first = sendAttemptIdentity(
     "sms",
     ["org", "inv", "hello"],
-    new Date("2027-01-15T08:00:00.000Z"),
+    "018f0f4d-77c2-7a0a-9a73-4c44fb6c5912",
   );
-  const duplicate = sendAttemptIdentity(
+  const afterMidnightRetry = sendAttemptIdentity(
     "sms",
     ["org", "inv", "hello"],
-    new Date("2027-01-15T23:59:59.000Z"),
+    "018f0f4d-77c2-7a0a-9a73-4c44fb6c5912",
   );
-  const nextDay = sendAttemptIdentity(
+  const deliberateNewSend = sendAttemptIdentity(
     "sms",
     ["org", "inv", "hello"],
-    new Date("2027-01-16T00:00:00.000Z"),
+    "018f0f4d-77c2-7a0a-9a73-4c44fb6c5913",
   );
 
-  expect(duplicate).toEqual(first);
-  expect(nextDay.fingerprint).toBe(first.fingerprint);
-  expect(nextDay.dedupeKey).not.toBe(first.dedupeKey);
+  expect(afterMidnightRetry).toEqual(first);
+  expect(deliberateNewSend.fingerprint).toBe(first.fingerprint);
+  expect(deliberateNewSend.dedupeKey).not.toBe(first.dedupeKey);
+  expect(first.dedupeKey).toMatch(/^sms:[a-f0-9]{16}$/);
+  expect(sendAttemptIdentity("sms", ["org", "inv", "hello"], "x".repeat(128)).dedupeKey.length)
+    .toBeLessThanOrEqual(128);
+});
+
+test("legacy send identity preserves the UTC-day key for old callers", () => {
+  const first = legacySendAttemptIdentity("sms", ["org", "inv", "hello"], new Date("2026-06-15T23:59:59Z"));
+  const nextDay = legacySendAttemptIdentity("sms", ["org", "inv", "hello"], new Date("2026-06-16T00:00:01Z"));
+  expect(first.fingerprint).toBe(nextDay.fingerprint);
+  expect(first.dedupeKey).not.toBe(nextDay.dedupeKey);
 });

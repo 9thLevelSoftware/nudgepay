@@ -7,7 +7,8 @@ import { CSP_REPORT_PATH, withSecurityHeaders } from "../app/lib/security-header
 import { applyRequestBoundary } from "../app/lib/request-boundary";
 import { logCspReport, shouldLogCspReport } from "../app/lib/log-redaction";
 import { withUnhandledLogging } from "../app/lib/worker-observability";
-import { alertFromWorkerError } from "../app/lib/operator-alert.server";
+import { runMonitoredSystemJob } from "../app/lib/system-health.server";
+import type { SystemJob } from "../app/lib/system-health";
 
 declare module "react-router" {
 	export interface AppLoadContext {
@@ -83,26 +84,34 @@ export default {
 	scheduled(controller, env, ctx) {
 		const envRecord = env as unknown as Record<string, string>;
 		const cron = controller.cron;
-		const onError = async (err: unknown): Promise<void> => {
-			await alertFromWorkerError(fetch, envRecord, { handler: "scheduled", err, cron });
+		const scheduleJob = (job: SystemJob, run: () => Promise<unknown>): void => {
+			ctx.waitUntil(
+				withUnhandledLogging("scheduled", { cron }, () => runMonitoredSystemJob({
+					cfEnv: envRecord,
+					job,
+					cron,
+					run,
+					fetchFn: fetch,
+				})),
+			);
 		};
 		if (cron === "0 * * * *") {
 			// Hourly: digest gate (per-org local hour) + retention purge.
-			ctx.waitUntil(
-				withUnhandledLogging("scheduled", { cron }, () => runScheduledDigest(envRecord), { onError }),
-			);
-			ctx.waitUntil(
-				withUnhandledLogging("scheduled", { cron }, () => runScheduledRetention(envRecord), { onError }),
-			);
+			scheduleJob("digest", async () => {
+				const result = await runScheduledDigest(envRecord);
+				if (result.failures > 0) throw new Error("digest scheduled work failed");
+				return result;
+			});
+			scheduleJob("retention", async () => {
+				const result = await runScheduledRetention(envRecord);
+				if (result.failures > 0) throw new Error("retention scheduled work failed");
+				return result;
+			});
 		} else if (cron === "*/5 * * * *") {
-			ctx.waitUntil(
-				withUnhandledLogging("scheduled", { cron }, () => runScheduledProviderMonitor(envRecord), { onError }),
-			);
+			scheduleJob("provider_monitor", () => runScheduledProviderMonitor(envRecord));
 		} else {
 			// Default: bounded CDC catch-up for all connected orgs.
-			ctx.waitUntil(
-				withUnhandledLogging("scheduled", { cron }, () => runScheduledCdc(envRecord), { onError }),
-			);
+			scheduleJob("cdc", () => runScheduledCdc(envRecord));
 		}
 	},
 } satisfies ExportedHandler<Env>;

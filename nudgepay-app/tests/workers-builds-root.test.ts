@@ -9,8 +9,8 @@ describe("Cloudflare Workers Builds at repo root", () => {
     expect(toml).toContain('name = "nudgepay-app"');
     expect(toml).toContain('cwd = "nudgepay-app"');
     expect(toml).toContain("reject-direct-worker-deploy");
-    expect(toml).toContain("Deploy command:  npm run deploy");
-    expect(toml).toContain("npm ci --include=dev");
+    expect(toml).toContain("Cloudflare Workers Builds triggers are disabled");
+    expect(toml).toContain("sealed-artifact flow");
     expect(toml).not.toContain("no_bundle");
     expect(toml).not.toMatch(/directory\s*=\s*"netlify"/);
     expect(toml).toContain("nudgepay-app/build/server/index.js");
@@ -19,10 +19,12 @@ describe("Cloudflare Workers Builds at repo root", () => {
     expect(rootPkg.packageManager).toBeUndefined();
     expect(rootPkg.devDependencies).toBeUndefined();
     const rejected = read("../scripts/reject-direct-worker-deploy.mjs");
-    expect(rejected).toContain("npm run deploy");
+    expect(rejected).toContain("Direct `npx wrangler deploy`");
+    expect(rejected).toContain("process.exitCode = 1");
     const deploy = read("../scripts/deploy-worker.mjs");
     expect(deploy).toContain("enforce-observability-redaction");
     expect(deploy).toContain("productionDeployShaForEnvironment(process.env)");
+    expect(deploy).toContain("readAndVerifyReleaseArtifact");
     const appPkg = JSON.parse(read("../package.json"));
     const plugin = String(appPkg.devDependencies["@cloudflare/vite-plugin"]);
     const [, minor] = plugin.replace(/^[^\d]*/, "").split(".").map(Number);

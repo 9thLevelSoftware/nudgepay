@@ -57,18 +57,44 @@ Cloudflare Workers is production and owns both cron schedules (`wrangler.toml`).
 ```bash
 npx wrangler secret put <NAME> --env=""
 npx wrangler secret put <NAME> --env production
-npm run deploy
-npm run deploy:staging
+
+export EXPECTED_DEPLOY_SHA="<approved-clean-commit-sha>"
+export STAGING_SUPABASE_URL="https://<isolated-staging-project>.supabase.co"
+export RELEASE_ARTIFACT="<external-retained-directory>"
+export RELEASE_RECEIPTS="<external-receipt-directory>"
+npm run release:prepare -- --artifact-dir "$RELEASE_ARTIFACT"
+npm run deploy:staging -- \
+  --artifact-dir "$RELEASE_ARTIFACT" \
+  --receipt-dir "$RELEASE_RECEIPTS" \
+  --expected-manifest-sha "<recorded-manifest-sha256>" \
+  --expected-config-sha "<recorded-staging-config-sha256>"
+# Run release:qualify with the staging receipt and the manifest/config digests
+# printed by release:prepare, then promote the same sealed directory:
+npm run deploy -- \
+  --artifact-dir "$RELEASE_ARTIFACT" \
+  --receipt-dir "$RELEASE_RECEIPTS" \
+  --expected-manifest-sha "<recorded-manifest-sha256>" \
+  --expected-config-sha "<recorded-production-config-sha256>"
 ```
 
-`npm run deploy` strips `build/server/.dev.vars` so local Supabase keys are not
-uploaded, then enables Cloudflare's platform query-string redaction and reads
-the setting back. The live Worker is `nudgepay-app` on
-`nudgepay.9thlevelsoftware.com`. Staging is `nudgepay-app-staging` on
-workers.dev. Cloudflare Workers Builds must use `npm run deploy` as its deploy
-command; direct `npx wrangler deploy` does not perform the post-upload check.
-Keep non-production branch builds disabled until their upload command has an
-equivalent post-upload verifier.
+`release:prepare` builds once, strips `build/server/.dev.vars`, and seals the
+server/client files plus production and staging configs into a hashed manifest.
+Both deploy commands require that explicit artifact. They refuse plaintext
+provider bindings, verify the exact target and configured secret names, upload
+without rebuilding, map the artifact/config digests to the active Worker
+version, and write an external receipt only after Cloudflare query-string
+redaction passes readback. `release:qualify` separately verifies the receipt,
+active version, expected migration, `/readyz`, and provider configuration,
+including Stripe. It also requires a locally supplied `MONITOR_TOKEN` to read
+the protected `/monitorz` status without printing or persisting the token; it
+does not claim live provider integration.
+
+The live Worker is `nudgepay-app` on `nudgepay.9thlevelsoftware.com`. Staging is
+`nudgepay-app-staging` on workers.dev. Cloudflare Workers Builds triggers are
+disabled because a Git-triggered raw Wrangler upload cannot consume the retained
+sealed artifact. Direct `npx wrangler deploy` remains blocked by the root build
+hook. Re-enable a trigger only after CI has reviewed artifact storage/download
+and receipt/qualification steps equivalent to the manual flow.
 
 Design-partner limits, `/readyz` provider flags, and operator paging: [`docs/pilot-ops.md`](../docs/pilot-ops.md).
 

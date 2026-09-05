@@ -122,6 +122,7 @@ simple = { limit = 20, period = 60 }
 #   UNSUBSCRIBE_SECRET           HMAC key for CAN-SPAM unsubscribe tokens
 #   APP_PUBLIC_BASE_URL          ${APP_BASE_URL}  (public origin for unsubscribe links + alert deep links)
 #   OPERATOR_ALERT_WEBHOOK       optional HTTPS URL; POST JSON when a scheduled handler throws
+#   MONITOR_TOKEN                32+ character bearer token required by GET /monitorz
 #   STRIPE_SECRET_KEY            Stripe secret for agency SaaS billing (not debtor payments)
 #   STRIPE_WEBHOOK_SECRET        Stripe webhook signing secret
 #   STRIPE_PRICE_ID              Stripe Price id for the NudgePay workspace subscription

@@ -1,5 +1,5 @@
 import { expect, test } from "vitest";
-import { withSms } from "../app/lib/return-to";
+import { withSendResult, withSms } from "../app/lib/return-to";
 import { smsSendReason } from "../app/lib/sms-send-reason";
 
 test("withSms appends sms code onto a path that already has a query", () => {
@@ -9,6 +9,17 @@ test("withSms appends sms code onto a path that already has a query", () => {
 
 test("withSms uses ? when the path has no query", () => {
   expect(withSms("/dashboard", "error")).toBe("/dashboard?sms=error");
+});
+
+test("withSendResult correlates the action result without dropping existing query state", () => {
+  expect(withSendResult(
+    "/dashboard?case=c1",
+    "sms",
+    "sent",
+    "018f0f4d-77c2-7a0a-9a73-4c44fb6c5912",
+  )).toBe(
+    "/dashboard?case=c1&sms=sent&sendSubmission=018f0f4d-77c2-7a0a-9a73-4c44fb6c5912",
+  );
 });
 
 test("smsSendReason maps sendInvoiceText's thrown messages to result codes", () => {

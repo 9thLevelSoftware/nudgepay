@@ -35,7 +35,7 @@ export const meta: Route.MetaFunction = () => pageTitle("Promises");
 export async function loader({ request, context }: LoaderFunctionArgs) {
   const env = getEnv(context as any);
   const {
-    supabase, service, headers, isOwner, isAdmin, org,
+    supabase, service, headers, user, isOwner, isAdmin, org,
     orgName, initials, userLabel, connected, syncLabel,
     syncIssues, workspaces, orgConfig,
   } = await loadWorkspaceChrome(request, env);
@@ -274,6 +274,7 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
     {
       orgName,
       orgId: org.org_id,
+      userId: user.id,
       workspaces,
       initials, userLabel, syncLabel, connected, isOwner, isAdmin, syncIssues,
       rows: loadError ? [] : rows,
@@ -324,6 +325,9 @@ export default function Promises() {
       connected={d.connected}
       isOwner={d.isOwner}
       isAdmin={d.isAdmin}
+      userId={d.userId}
+      qualificationRoute="/promises"
+      qualificationReady={!d.loadError && !d.truncated && !d.selectedTruncated}
       activeNav="promises"
       syncIssues={<SyncIssues issues={d.syncIssues} returnTo="/promises" />}
     >

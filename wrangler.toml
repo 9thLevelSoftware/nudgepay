@@ -1,16 +1,13 @@
-# Cloudflare Workers Builds runs `npx wrangler deploy` from this repository
-# root (Git is connected to Worker `nudgepay-app` at the repo, not the
-# `nudgepay-app/` package). Without this file Wrangler auto-inits a static
-# site from `netlify/` and tries to overwrite the live SSR Worker.
+# Cloudflare Workers Builds triggers are disabled. Releases use the manual,
+# explicit sealed-artifact flow documented in nudgepay-app/README.md and
+# docs/pilot-ops.md. Without this file, an accidental root `npx wrangler deploy`
+# can auto-init a static site from `netlify/` and overwrite the live SSR Worker.
 #
-# Required dashboard settings (Settings → Builds):
-#   Root directory:  nudgepay-app
-#   Build command:   npm ci --include=dev
-#   Deploy command:  npm run deploy
-#   Builds for non-production branches: disabled
-# The deploy wrapper performs post-upload query-string redaction and verifies
-# it through the script-settings API. A Wrangler build hook runs before upload
-# and cannot provide that guarantee, so direct root deploys fail below.
+# Keep all production and preview triggers disabled until a reviewed CI design
+# can retrieve the exact retained artifact and preserve its manifest/config/
+# Worker-version receipts. This build hook intentionally keeps direct root
+# Wrangler uploads fail-closed; it cannot perform post-upload redaction and
+# active-version verification.
 
 name = "nudgepay-app"
 compatibility_date = "2025-06-01"

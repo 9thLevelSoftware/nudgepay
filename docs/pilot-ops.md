@@ -207,7 +207,6 @@ uses a merge commit after required checks are green.
 
 ```bash
 npx wrangler secret put <NAME> --env staging
-npm run deploy:staging
 ```
 
 Staging Worker: `https://nudgepay-app-staging.dasblueeyeddevil.workers.dev`.
@@ -224,42 +223,101 @@ does not expose this field in its configuration schema, so adding it to
 `wrangler.toml` is not a substitute. A failed post-upload check means the new
 Worker is already uploaded and must be treated as an incomplete deployment
 until the setting is repaired and verified. There is a brief interval between
-upload and this readback.
+upload and this readback. No deployment receipt is written when the upload,
+active-version readback, provider-configuration check, or redaction readback
+fails.
 
-Cloudflare Workers Builds must use these exact dashboard settings:
+Cloudflare Workers Builds triggers are disabled for production and
+non-production branches. A connected Git build cannot currently retrieve the
+retained sealed artifact, and the former raw Wrangler upload bypassed artifact
+identity, receipt, and qualification checks. The repository-root build hook
+continues to reject direct Wrangler deployment. Retain the prior trigger
+configuration only as rollback/audit evidence; it is not an approved deploy
+path.
 
-```text
-Root directory: nudgepay-app
-Build command: npm ci --include=dev
-Deploy command: npm run deploy
-Builds for non-production branches: disabled
-```
-
-The repository-root direct Wrangler path exits before upload because its build
-hook cannot run a post-upload verification. Current API credentials cannot read
-the hosted Workers Builds trigger configuration, so record dashboard evidence
-of the deploy command and disabled non-production branch builds before treating
-the Git-connected deployment path as qualified. If preview builds are enabled
-later, their custom upload command must apply and verify query-string redaction
-for the exact preview Worker after `wrangler versions upload`.
+Re-enable a production trigger only after a reviewed CI design stores the
+immutable manifest and bundle, downloads that exact artifact for both targets,
+and retains the version/config/manifest receipts and release-qualification
+output. Preview builds need the same exact-worker redaction readback before they
+can become an approved upload path.
 
 Promote by deploying production only after the same candidate has been
 exercised on staging. There is no automatic promotion pipeline.
 
-Production deploy commands require `EXPECTED_DEPLOY_SHA` to equal the checked
-out `HEAD` and reject any tracked or untracked worktree change before reading
-the Worker secret inventory or building. Record the tested candidate or tag
-commit SHA independently, check out that exact commit, then set
-`EXPECTED_DEPLOY_SHA` to the recorded value; do not derive it from the current
-checkout. Cloudflare Workers Builds uses its supplied commit SHA when
-`WORKERS_CI=1`. The production Supabase origin is pinned in deploy preflight; a
-caller-supplied value cannot replace it. Staging deploys remain iterative but
-still reject the pinned production Supabase origin.
+Prepare from a clean checkout once. `release:prepare` requires
+`EXPECTED_DEPLOY_SHA` to equal `HEAD`, requires an isolated
+`STAGING_SUPABASE_URL`, strips local development variables, derives both target
+configs, rejects credential-like files and links, and writes an immutable
+self-digested manifest. Keep the artifact outside the checkout or under the
+ignored `.release-artifacts/` directory. Record the printed manifest digest,
+artifact digest, latest migration, and both target config digests independently.
 
 ```bash
 export EXPECTED_DEPLOY_SHA="<recorded-tested-candidate-or-tag-commit-sha>"
 git checkout "$EXPECTED_DEPLOY_SHA"
-npm run deploy
+export STAGING_SUPABASE_URL="https://<isolated-staging-project>.supabase.co"
+export RELEASE_ARTIFACT="<external-retained-directory>"
+export RELEASE_RECEIPTS="<external-receipt-directory>"
+npm run release:prepare -- --artifact-dir "$RELEASE_ARTIFACT"
+```
+
+Apply the expected database migrations through the separately approved database
+procedure. Then deploy staging from the sealed artifact. The deploy refuses to
+rebuild and requires the configured application, QBO, Twilio, Resend,
+operator-alert, and Stripe secret names. Capture `receiptPath` from its JSON
+output.
+
+```bash
+npm run deploy:staging -- \
+  --artifact-dir "$RELEASE_ARTIFACT" \
+  --receipt-dir "$RELEASE_RECEIPTS" \
+  --expected-manifest-sha "<recorded-manifest-sha256>" \
+  --expected-config-sha "<recorded-staging-config-sha256>"
+
+npm run release:qualify -- \
+  --environment staging \
+  --artifact-dir "$RELEASE_ARTIFACT" \
+  --receipt "<staging-receiptPath>" \
+  --base-url "https://nudgepay-app-staging.dasblueeyeddevil.workers.dev" \
+  --expected-sha "$EXPECTED_DEPLOY_SHA" \
+  --expected-migration "<latest-numbered-migration.sql>" \
+  --expected-manifest-sha "<recorded-manifest-sha256>" \
+  --expected-config-sha "<recorded-staging-config-sha256>"
+```
+
+The qualifier is read-only. It requires local/linked Supabase migration history
+to match exactly through the expected migration, the active Cloudflare version
+to match the receipt, `/readyz` database/config presence, and provider
+configuration names including Stripe. Supply the same 32–512 character
+`MONITOR_TOKEN` in the local process environment; the qualifier sends it only
+as the `Authorization: Bearer` credential for `/monitorz` and does not print or
+persist it. Every database, provider-monitor, CDC, digest, retention,
+checkpoint, QBO-sync, and operator-alert status must be `ok`. Its success scope is
+`configuration_verified_not_provider_integration`; retain separate sandbox
+callback/send/retry evidence.
+
+After the staged artifact passes the remaining release gates, promote the same
+directory. Production repeats the clean exact-SHA guard immediately before
+upload and pins `nudgepay-app`, its Supabase origin, custom domain, and rate-limit
+binding. Capture the production receipt and run the qualifier again with the
+production URL and config digest.
+
+```bash
+npm run deploy -- \
+  --artifact-dir "$RELEASE_ARTIFACT" \
+  --receipt-dir "$RELEASE_RECEIPTS" \
+  --expected-manifest-sha "<recorded-manifest-sha256>" \
+  --expected-config-sha "<recorded-production-config-sha256>"
+
+npm run release:qualify -- \
+  --environment production \
+  --artifact-dir "$RELEASE_ARTIFACT" \
+  --receipt "<production-receiptPath>" \
+  --base-url "https://nudgepay.9thlevelsoftware.com" \
+  --expected-sha "$EXPECTED_DEPLOY_SHA" \
+  --expected-migration "<latest-numbered-migration.sql>" \
+  --expected-manifest-sha "<recorded-manifest-sha256>" \
+  --expected-config-sha "<recorded-production-config-sha256>"
 ```
 
 Pull requests and pushes run the authenticated Chromium desktop suite. The
