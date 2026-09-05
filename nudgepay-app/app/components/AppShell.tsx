@@ -6,10 +6,17 @@ import { CommandPalette } from "./CommandPalette";
 import { ThemeToggle } from "./ThemeToggle";
 import { ICON_HIT_CLASS, MAIN_CONTENT_ID, SkipLink } from "./ui";
 import { SUPPORT_MAILTO } from "../lib/meta";
+import { hasOpenDialogs } from "../lib/dialog-manager";
 
 interface AppShellProps {
   orgName: string;
   orgId?: string;
+  /** Authenticated principal ID, used only by the load-qualification marker. */
+  userId?: string;
+  /** Literal server-selected route identity for the load-qualification marker. */
+  qualificationRoute?: "/dashboard" | "/accounts" | "/promises" | "/messages";
+  /** True only when the route's required loader data was read successfully. */
+  qualificationReady?: boolean;
   workspaces?: { orgId: string; name: string }[];
   userInitials: string;
   /** Display name already resolved by the loader; initials are used if omitted. */
@@ -74,6 +81,9 @@ export function reportsNavLabel(canViewReports: boolean): string {
 export function AppShell({
   orgName,
   orgId,
+  userId,
+  qualificationRoute,
+  qualificationReady = false,
   workspaces = [],
   userInitials,
   userLabel,
@@ -294,9 +304,13 @@ export function AppShell({
         <main
           className="flex-1 overflow-auto bg-panel"
           id={MAIN_CONTENT_ID}
+          data-org-id={orgId}
+          data-user-id={userId}
+          data-route-path={qualificationRoute}
           tabIndex={-1}
         >
           {children}
+          {qualificationReady ? <span aria-hidden="true" data-load-complete="true" hidden /> : null}
         </main>
       </div>
     </div>
@@ -334,7 +348,7 @@ function UserMenu({
       return;
     }
     function onKey(e: KeyboardEvent) {
-      if (e.key === "Escape") setOpen(false);
+      if (e.key === "Escape" && !hasOpenDialogs()) setOpen(false);
     }
     function onPointer(e: MouseEvent) {
       if (rootRef.current && !rootRef.current.contains(e.target as Node)) setOpen(false);

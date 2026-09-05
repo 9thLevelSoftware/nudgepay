@@ -2,6 +2,7 @@
 // app's default overlay pattern. Reserve this for focused, blocking prompts
 // (e.g. ConfirmDialog). Traps focus, closes on Escape / scrim.
 
+import { createPortal } from "react-dom";
 import { useDialog } from "../lib/use-dialog";
 import { cx } from "./ui";
 
@@ -12,6 +13,8 @@ export function ModalShell({
   className = "",
   maxWidth = "max-w-lg",
   initialFocusRef,
+  labelledBy,
+  describedBy,
 }: {
   label: string;
   onClose: () => void;
@@ -19,19 +22,28 @@ export function ModalShell({
   className?: string;
   maxWidth?: string;
   initialFocusRef?: React.RefObject<HTMLElement | null>;
+  /** Uses visible dialog content as its accessible name when supplied. */
+  labelledBy?: string;
+  /** References supporting dialog copy, such as a destructive-action warning. */
+  describedBy?: string;
 }) {
-  const { panelRef } = useDialog({ onClose, initialFocusRef });
+  const { panelRef, layerRef } = useDialog({ onClose, initialFocusRef });
 
-  return (
+  const modal = (
     <div
-      className="fixed inset-0 z-40 flex items-end justify-center bg-ink/40 p-4 sm:items-center"
+      ref={layerRef}
+      data-dialog-layer=""
+      className="fixed inset-0 z-[60] flex items-end justify-center bg-ink/40 p-4 sm:items-center"
       role="dialog"
       aria-modal="true"
-      aria-label={label}
+      aria-label={labelledBy ? undefined : label}
+      aria-labelledby={labelledBy}
+      aria-describedby={describedBy}
       onClick={onClose}
     >
       <div
         ref={panelRef}
+        tabIndex={-1}
         className={cx(
           "w-full rounded-lg border border-border bg-surface p-4 shadow-panel",
           maxWidth,
@@ -43,4 +55,6 @@ export function ModalShell({
       </div>
     </div>
   );
+
+  return typeof document === "undefined" ? modal : createPortal(modal, document.body);
 }

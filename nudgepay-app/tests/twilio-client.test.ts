@@ -43,11 +43,26 @@ test("sendSms throws on a non-2xx response", async () => {
   })).rejects.toThrow();
 });
 
-test("sendSms throws on a provider 503 without treating it as sent", async () => {
+test("sendSms treats a provider 503 as an ambiguous outcome", async () => {
   const fetchFn = vi.fn(async () => jsonResponse({ message: "unavailable" }, 503));
   await expect(sendSms(fetchFn as any, cfg, {
     to: "+1", body: "x", sender: { from: "+2" },
-  })).rejects.toThrow("Twilio send failed: 503");
+  })).rejects.toMatchObject({
+    name: "ProviderResponseAmbiguousError",
+    provider: "Twilio",
+    status: 503,
+  });
+});
+
+test("sendSms treats a provider 400 as a definite rejection", async () => {
+  const fetchFn = vi.fn(async () => jsonResponse({ message: "invalid" }, 400));
+  await expect(sendSms(fetchFn as any, cfg, {
+    to: "+1", body: "x", sender: { from: "+2" },
+  })).rejects.toMatchObject({
+    name: "ProviderSendRejectedError",
+    provider: "Twilio",
+    status: 400,
+  });
 });
 
 test("sendSms fails closed when fetch rejects", async () => {
@@ -57,6 +72,13 @@ test("sendSms fails closed when fetch rejects", async () => {
   await expect(sendSms(fetchFn as any, cfg, {
     to: "+1", body: "x", sender: { from: "+2" },
   })).rejects.toThrow(/fetch failed/);
+});
+
+test("sendSms rejects a 2xx response without a provider message id", async () => {
+  const fetchFn = vi.fn(async () => jsonResponse({ status: "queued" }));
+  await expect(sendSms(fetchFn as any, cfg, {
+    to: "+1", body: "x", sender: { from: "+2" },
+  })).rejects.toThrow(/missing sid/i);
 });
 
 test("sendSms aborts a hung provider", async () => {

@@ -114,7 +114,7 @@ test("AccountsDirectory is General | Risk only and preserves density", () => {
 test("AccountsMetrics labels the count as collections customers, not the QBO directory", () => {
   const src = readFileSync(new URL("../app/components/AccountsMetrics.tsx", import.meta.url), "utf8");
   expect(src).toContain('label="Customers in collections"');
-  expect(src).toContain('sub="in this workspace"');
+  expect(src).toContain('matching ? "matching accounts" : "this workspace"');
   expect(src).not.toContain("Total customers");
   expect(src).not.toMatch(/in directory/i);
 });

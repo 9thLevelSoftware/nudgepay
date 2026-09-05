@@ -64,4 +64,5 @@ export default [
   route("api/test-message", "routes/api.test-message.tsx"),
   route("healthz", "routes/healthz.tsx"),
   route("readyz", "routes/readyz.tsx"),
+  route("monitorz", "routes/monitorz.tsx"),
 ] satisfies RouteConfig;

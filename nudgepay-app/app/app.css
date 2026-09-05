@@ -9,17 +9,17 @@
 	--color-panel: #e9e4db;
 	--color-surface: #fffdf9;
 	--color-paper: #fbf8f1;
-	--color-copper: #a35a18;
+	--color-copper: #934f14;
 	--color-copper-bright: #e8a14a;
-	--color-cool: #2e7fb8;
+	--color-cool: #1d6798;
 	/* warm = amber, DISTINCT from copper. Use for cautionary/advisory states,
 	   standing "fair", medium heat, quiet-hours. Never for brand actions. */
-	--color-warm: #b45309;
-	--color-hot: #d23b2e;
+	--color-warm: #a44706;
+	--color-hot: #a64035;
 	--color-text: #16202b;
 	--color-muted: #5b6474;
 	--color-on-ink: #c9d0da;
-	--color-on-copper: #16202b;
+	--color-on-copper: #fffdf9;
 	--color-border: #ddd6c9;
 
 	/* Radii → rounded-tile, rounded-card */
@@ -44,7 +44,7 @@
 	--color-on-ink: #edf2f6;
 	--color-on-copper: #1b130b;
 	--color-border: #3a4754;
-	--color-copper: #d8893e;
+	--color-copper: #e69a4a;
 	--color-copper-bright: #f2b66a;
 	--color-cool: #65b7ed;
 	--color-warm: #e0a04d;

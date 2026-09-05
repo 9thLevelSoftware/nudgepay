@@ -202,7 +202,7 @@ export function AccountsDirectory({
               <Link
                 key={id}
                 to={accountsHref({ filter, sort, q: search || undefined, density: id, customerId: selectedId })}
-                aria-pressed={pressed}
+                aria-current={pressed ? "true" : undefined}
                 onClick={() => persistAccountsDensity(id)}
                 className={[
                   "px-2.5 h-7 inline-flex items-center rounded text-xs font-medium transition-colors",
@@ -215,7 +215,7 @@ export function AccountsDirectory({
             );
           })}
         </div>
-        <Form method="get" className="ml-auto flex items-center gap-2">
+        <Form method="get" action="/accounts" className="ml-auto flex items-center gap-2">
           <input type="hidden" name="filter" value={filter} />
           <input type="hidden" name="sort" value={sort} />
           {hrefDensity ? <input type="hidden" name="density" value={hrefDensity} /> : null}
@@ -230,7 +230,7 @@ export function AccountsDirectory({
           </label>
           <button type="submit" className="h-9 px-3 rounded bg-ink text-surface text-xs font-medium">Search</button>
         </Form>
-        <Form method="get" className="flex items-center gap-2">
+        <Form method="get" action="/accounts" className="flex items-center gap-2">
           <input type="hidden" name="filter" value={filter} />
           {search ? <input type="hidden" name="q" value={search} /> : null}
           {hrefDensity ? <input type="hidden" name="density" value={hrefDensity} /> : null}

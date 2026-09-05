@@ -1,9 +1,12 @@
 // Structured unhandled-error logs for Cloudflare Workers Logs (JSON fields are indexed).
+import { safeErrorDetails, safePathForLog } from "./log-redaction";
 
 export type WorkerHandlerKind = "fetch" | "scheduled";
 
 export type WorkerErrorContext = {
   url?: string;
+  method?: string;
+  requestId?: string;
   cron?: string;
 };
 
@@ -15,10 +18,11 @@ export function logUnhandledWorkerError(
   console.error({
     event: "unhandled_worker_error",
     handler,
-    url: context.url,
+    method: context.method,
+    path: context.url ? safePathForLog(context.url) : undefined,
+    requestId: context.requestId,
     cron: context.cron,
-    message: err instanceof Error ? err.message : String(err),
-    stack: err instanceof Error ? err.stack : undefined,
+    ...safeErrorDetails(err),
   });
 }
 

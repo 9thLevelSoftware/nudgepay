@@ -21,14 +21,6 @@ const DOT: Record<Accent, string> = {
   neutral: "bg-muted",
 };
 
-const TEXT: Record<Accent, string> = {
-  ink: "text-text",
-  copper: "text-copper",
-  hot: "text-hot",
-  cool: "text-cool",
-  neutral: "text-muted",
-};
-
 interface KpiBandProps {
   metrics: Metrics;
   view?: ViewId;
@@ -108,14 +100,14 @@ export function KpiBand({ metrics, view, sort = "recommended", search = "", dens
             >
               <span aria-hidden="true" className={`w-2 h-2 rounded-full shrink-0 ${DOT[t.accent]}`} />
               <span className="flex flex-col min-w-0">
-                <span className="font-mono text-[10px] font-semibold uppercase tracking-wide text-muted truncate">
+                <span className="truncate font-mono text-[10px] font-semibold uppercase tracking-wide text-text">
                   {t.label}
                 </span>
                 <span className="flex items-baseline gap-1.5">
                   <span className="font-display text-sm font-bold tabular-nums text-text leading-tight">
                     {amountLabel}
                   </span>
-                  <span className={`text-[10px] tabular-nums ${TEXT[t.accent]}`}>
+                  <span className="text-[10px] tabular-nums text-text">
                     {countLabel}
                   </span>
                 </span>

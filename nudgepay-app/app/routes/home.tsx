@@ -10,7 +10,7 @@ export const meta: Route.MetaFunction = () => [
 ];
 
 const primaryLinkClass =
-  "rounded-md bg-copper px-4 py-2 text-sm font-semibold text-ink transition-colors hover:bg-copper/90 " +
+  "rounded-md bg-copper px-4 py-2 text-sm font-semibold text-on-copper transition-colors hover:bg-copper/90 " +
   "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-copper";
 const secondaryLinkClass =
   "rounded-md border border-border px-4 py-2 text-sm font-medium text-text transition-colors hover:border-copper " +

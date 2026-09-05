@@ -32,6 +32,19 @@ function deps(fetchFn: any): MessagingDeps {
     quietHoursWindow: { timezone: "America/New_York", startHour: 8, endHour: 21 },
   };
 }
+async function seedOrg(name: string): Promise<string> {
+  const { data: org, error: orgError } = await svc.from("organizations")
+    .insert({ name }).select("id").single();
+  expect(orgError).toBeNull();
+  const orgId = org!.id as string;
+  const { error: membershipError } = await svc.from("memberships").insert({
+    org_id: orgId,
+    user_id: userId,
+    role: "member",
+  });
+  expect(membershipError).toBeNull();
+  return orgId;
+}
 async function seedCase(orgId: string, o: { name: string; phone: string | null; consent: boolean; doc: string; due: string; balance: number }) {
   const { data: cust } = await svc.from("customers")
     .insert({ org_id: orgId, qbo_id: `q-${o.name}`, name: o.name, phone: o.phone, sms_consent: o.consent }).select("id").single();
@@ -43,8 +56,7 @@ async function seedCase(orgId: string, o: { name: string; phone: string | null; 
 }
 
 test("runBulkSms sends to eligible cases, skips no-consent/no-phone, records one row each", async () => {
-  const { data: org } = await svc.from("organizations").insert({ name: "Bulk SMS Org" }).select("id").single();
-  const orgId = org!.id as string;
+  const orgId = await seedOrg("Bulk SMS Org");
   const yes = await seedCase(orgId, { name: "Yes Co", phone: "+12295550100", consent: true, doc: "1001", due: "2026-05-01", balance: 100 });
   const noConsent = await seedCase(orgId, { name: "NoConsent Co", phone: "+12295550101", consent: false, doc: "1002", due: "2026-05-01", balance: 100 });
   const noPhone = await seedCase(orgId, { name: "NoPhone Co", phone: null, consent: true, doc: "1003", due: "2026-05-01", balance: 100 });
@@ -65,9 +77,60 @@ test("runBulkSms sends to eligible cases, skips no-consent/no-phone, records one
   expect(skippedRows).toHaveLength(0);
 });
 
+test("a bulk submission reuses stable per-case identities across UTC midnight", async () => {
+  const orgId = await seedOrg("Bulk Stable Identity Org");
+  const a = await seedCase(orgId, { name: "Stable A", phone: "+12295550331", consent: true, doc: "s001", due: "2026-05-01", balance: 100 });
+  const b = await seedCase(orgId, { name: "Stable B", phone: "+12295550332", consent: true, doc: "s002", due: "2026-05-01", balance: 200 });
+  const submissionId = crypto.randomUUID();
+  const fetchFn = vi.fn()
+    .mockResolvedValueOnce(jsonResponse({ sid: "SM-STABLE-A", status: "queued" }))
+    .mockResolvedValueOnce(jsonResponse({ sid: "SM-STABLE-B", status: "queued" }));
+  const args = {
+    orgId, userId, caseIds: [a.caseId, b.caseId], today,
+    templateBody: "Hi {customer}, you owe {balance}.", orgConfig: DEFAULT_ORG_CONFIG, submissionId,
+  };
+
+  const first = await runBulkSms(
+    { ...deps(fetchFn), now: new Date("2026-06-15T23:59:59.000Z") },
+    args,
+  );
+  const replay = await runBulkSms(
+    { ...deps(fetchFn), now: new Date("2026-06-16T00:00:01.000Z") },
+    args,
+  );
+
+  expect(first).toEqual({ sent: 2, failed: 0, skipped: 0, failures: [] });
+  expect(replay).toEqual(first);
+  expect(fetchFn).toHaveBeenCalledTimes(2);
+  const { data: rows, error } = await svc.from("text_messages")
+    .select("submission_id").eq("org_id", orgId).order("submission_id");
+  expect(error).toBeNull();
+  expect(rows).toHaveLength(2);
+  expect(new Set(rows!.map((row) => row.submission_id)).size).toBe(2);
+});
+
+test("a bulk retry replays completed children and blocks unknown children", async () => {
+  const orgId = await seedOrg("Bulk Partial Retry Org");
+  const completed = await seedCase(orgId, { name: "Completed", phone: "+12295550341", consent: true, doc: "p001", due: "2026-05-01", balance: 100 });
+  const unknown = await seedCase(orgId, { name: "Unknown", phone: "+12295550342", consent: true, doc: "p002", due: "2026-05-01", balance: 200 });
+  const fetchFn = vi.fn(async (_url, init) => {
+    if (String(init?.body ?? "").includes("12295550342")) throw new TypeError("response lost");
+    return jsonResponse({ sid: "SM-BULK-COMPLETED", status: "queued" });
+  });
+  const args = {
+    orgId, userId, caseIds: [completed.caseId, unknown.caseId], today,
+    templateBody: "Hi {customer}", orgConfig: DEFAULT_ORG_CONFIG, submissionId: crypto.randomUUID(),
+  };
+
+  const first = await runBulkSms(deps(fetchFn), args);
+  const retry = await runBulkSms(deps(fetchFn), args);
+  expect(first).toMatchObject({ sent: 1, failed: 1, skipped: 0 });
+  expect(retry).toMatchObject({ sent: 1, failed: 1, skipped: 0 });
+  expect(fetchFn).toHaveBeenCalledTimes(2);
+});
+
 test("runBulkSms tallies a failed send without aborting siblings", async () => {
-  const { data: org } = await svc.from("organizations").insert({ name: "Bulk SMS Fail Org" }).select("id").single();
-  const orgId = org!.id as string;
+  const orgId = await seedOrg("Bulk SMS Fail Org");
   const a = await seedCase(orgId, { name: "A Co", phone: "+12295550110", consent: true, doc: "2001", due: "2026-05-01", balance: 100 });
   const b = await seedCase(orgId, { name: "B Co", phone: "+12295550111", consent: true, doc: "2002", due: "2026-05-01", balance: 100 });
   const fetchFn = vi.fn(async (_url, init) => {
@@ -86,8 +149,7 @@ test("runBulkSms tallies a failed send without aborting siblings", async () => {
 });
 
 test("runBulkSms records a missing-invoice eligible case as a failure, not skipped", async () => {
-  const { data: org } = await svc.from("organizations").insert({ name: "Bulk No Inv Org" }).select("id").single();
-  const orgId = org!.id as string;
+  const orgId = await seedOrg("Bulk No Inv Org");
   const { data: cust } = await svc.from("customers")
     .insert({ org_id: orgId, qbo_id: "q-noinv", name: "NoInv Co", phone: "+12295550300", sms_consent: true }).select("id").single();
   const { data: cse } = await svc.from("collection_cases")
@@ -107,19 +169,18 @@ test("runBulkSms records a missing-invoice eligible case as a failure, not skipp
 });
 
 test("runBulkSms ignores a foreign-org case id (org-scoped reads drop it)", async () => {
-  const { data: orgA } = await svc.from("organizations").insert({ name: "Bulk Scope A" }).select("id").single();
-  const { data: orgB } = await svc.from("organizations").insert({ name: "Bulk Scope B" }).select("id").single();
-  const inB = await seedCase(orgB!.id as string, { name: "B Only", phone: "+12295550120", consent: true, doc: "3001", due: "2026-05-01", balance: 100 });
+  const orgAId = await seedOrg("Bulk Scope A");
+  const orgBId = await seedOrg("Bulk Scope B");
+  const inB = await seedCase(orgBId, { name: "B Only", phone: "+12295550120", consent: true, doc: "3001", due: "2026-05-01", balance: 100 });
   const fetchFn = vi.fn(async () => jsonResponse({ sid: "SM-X", status: "queued" }));
   // Caller resolved to org A but passes org B's case id.
-  const res = await runBulkSms(deps(fetchFn), { orgId: orgA!.id as string, userId, caseIds: [inB.caseId], today, templateBody: "Hi {customer}", orgConfig: DEFAULT_ORG_CONFIG });
+  const res = await runBulkSms(deps(fetchFn), { orgId: orgAId, userId, caseIds: [inB.caseId], today, templateBody: "Hi {customer}", orgConfig: DEFAULT_ORG_CONFIG });
   expect(res).toEqual({ sent: 0, failed: 0, skipped: 0, failures: [] });
   expect(fetchFn).not.toHaveBeenCalled();
 });
 
 test("runBulkSms clamps to MAX_BATCH (50) when given 51 eligible cases", async () => {
-  const { data: org } = await svc.from("organizations").insert({ name: "Bulk Cap Org" }).select("id").single();
-  const orgId = org!.id as string;
+  const orgId = await seedOrg("Bulk Cap Org");
   const caseIds: string[] = [];
   for (let i = 0; i < 51; i++) {
     const idx = String(i).padStart(3, "0");
@@ -151,8 +212,7 @@ test("runBulkSms clamps to MAX_BATCH (50) when given 51 eligible cases", async (
 // gate (which runBulkSms sends every case through) still blocks — no case
 // silently sends outside the window.
 test("runBulkSms tallies every case as failed when outside quiet hours, even though eligible", async () => {
-  const { data: org } = await svc.from("organizations").insert({ name: "Bulk Quiet Hours Org" }).select("id").single();
-  const orgId = org!.id as string;
+  const orgId = await seedOrg("Bulk Quiet Hours Org");
   const a = await seedCase(orgId, { name: "Quiet A", phone: "+12295550210", consent: true, doc: "q001", due: "2026-05-01", balance: 100 });
   const b = await seedCase(orgId, { name: "Quiet B", phone: "+12295550211", consent: true, doc: "q002", due: "2026-05-01", balance: 100 });
 
@@ -181,8 +241,7 @@ test("runBulkSms tallies every case as failed when outside quiet hours, even tho
 // .smsBatchLimit rather than a hardcoded MAX_BATCH — a non-default limit (5,
 // well below MAX_BATCH's 50) sends to only the first 5 eligible cases.
 test("runBulkSms clamps to the org-configured smsBatchLimit, not the hardcoded MAX_BATCH default", async () => {
-  const { data: org } = await svc.from("organizations").insert({ name: "Bulk Custom Limit Org" }).select("id").single();
-  const orgId = org!.id as string;
+  const orgId = await seedOrg("Bulk Custom Limit Org");
   const caseIds: string[] = [];
   for (let i = 0; i < 10; i++) {
     const idx = String(i).padStart(3, "0");

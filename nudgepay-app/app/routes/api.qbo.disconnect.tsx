@@ -17,7 +17,7 @@ function qboCfg(qbo: QboEnv) {
 export async function action({ request, context }: ActionFunctionArgs) {
   const env = getEnv(context as any);
   const { supabase, headers, user } = await requireUser(request, env);
-  const org = await resolveOrg(supabase, user.id, request);
+  const org = await resolveOrg(supabase, user.id, request, headers);
   if (!org || !hasPermission(org.role, "manageSettings")) return redirect("/dashboard?qbo=forbidden", { headers });
   const form = await request.formData();
   const returnTo = safeReturnTo(form.get("returnTo"));
@@ -37,7 +37,11 @@ export async function action({ request, context }: ActionFunctionArgs) {
   const qbo = getQboEnvOrNull(context as any);
   if (!qbo) return redirect(`${returnTo}${sep}qbo=unconfigured`, { headers });
   const service = createSupabaseServiceClient(env);
-  await disconnectConnection(fetch, service, qboCfg(qbo), qbo.QBO_ENCRYPTION_KEY, org.org_id);
+  try {
+    await disconnectConnection(fetch, service, qboCfg(qbo), qbo.QBO_ENCRYPTION_KEY, org.org_id);
+  } catch {
+    return redirect(`${returnTo}${sep}qbo=error`, { headers });
+  }
   return redirect(`${returnTo}${sep}qbo=disconnected`, { headers });
 }
 
@@ -51,7 +55,7 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
   // redirect to /login here (that would defeat the endpoint). Use the optional
   // primitive only to preserve normal auth-cookie headers.
   const { supabase, headers, user } = await getOptionalUser(request, env);
-  const org = user ? await resolveOrg(supabase, user.id, request) : null;
+  const org = user ? await resolveOrg(supabase, user.id, request, headers) : null;
   const plan = intuitDisconnectPlan(org);
   void plan;
   const html =

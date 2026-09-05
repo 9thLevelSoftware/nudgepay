@@ -1,6 +1,8 @@
 import { expect, test, vi } from "vitest";
 import {
-  buildAuthorizeUrl, exchangeCodeForTokens, refreshTokens, revokeToken,
+  buildAuthorizeUrl, exchangeCodeForTokens, isDefinitiveQboRefreshFailure,
+  QBO_REVOKE_TIMEOUT_MS, QBO_TOKEN_REQUEST_TIMEOUT_MS, QboRevokeTimeoutError,
+  QboTokenRequestError, QboTokenTimeoutError, refreshTokens, revokeToken,
 } from "../app/lib/qbo-client.server";
 import { QBO_429_WAIT_CAP_MS } from "../app/lib/qbo-api.server";
 
@@ -68,6 +70,38 @@ test("exchangeCodeForTokens does not retry invalid_grant", async () => {
   expect(sleep).not.toHaveBeenCalled();
 });
 
+test("token failures expose only a bounded error code for refresh classification", async () => {
+  const fetchFn = vi.fn(async () => jsonResponse({
+    error: "invalid_grant",
+    error_description: "customer@example.com token=provider-secret",
+  }, 400));
+  const error = await exchangeCodeForTokens(fetchFn as any, cfg, "bad").catch((cause) => cause);
+  expect(error).toBeInstanceOf(QboTokenRequestError);
+  expect(error).toMatchObject({ status: 400, errorCode: "invalid_grant" });
+  expect(isDefinitiveQboRefreshFailure(error)).toBe(true);
+  expect(JSON.stringify(error)).not.toMatch(/customer@example\.com|provider-secret/);
+  expect(isDefinitiveQboRefreshFailure(new QboTokenRequestError(503))).toBe(false);
+});
+
+test("token requests abort below the refresh lease and remain transient", async () => {
+  vi.useFakeTimers();
+  try {
+    const fetchFn = vi.fn((_url: string, init?: RequestInit) => new Promise<Response>((_resolve, reject) => {
+      init?.signal?.addEventListener("abort", () => reject(init.signal?.reason), { once: true });
+    }));
+    const pending = refreshTokens(fetchFn as any, cfg, "old-rt").catch((cause) => cause);
+    await vi.advanceTimersByTimeAsync(QBO_TOKEN_REQUEST_TIMEOUT_MS);
+    const error = await pending;
+
+    expect(QBO_TOKEN_REQUEST_TIMEOUT_MS).toBeLessThan(30_000);
+    expect(error).toBeInstanceOf(QboTokenTimeoutError);
+    expect(isDefinitiveQboRefreshFailure(error)).toBe(false);
+    expect(fetchFn).toHaveBeenCalledTimes(1);
+  } finally {
+    vi.useRealTimers();
+  }
+});
+
 test("revokeToken posts JSON {token} with application/json and Basic auth", async () => {
   const fetchFn = vi.fn(async () => new Response(null, { status: 200 }));
   await revokeToken(fetchFn as any, cfg, "rt");
@@ -80,4 +114,21 @@ test("revokeToken posts JSON {token} with application/json and Basic auth", asyn
 test("revokeToken throws on non-200", async () => {
   const fetchFn = vi.fn(async () => new Response(null, { status: 400 }));
   await expect(revokeToken(fetchFn as any, cfg, "rt")).rejects.toThrow();
+});
+
+test("revokeToken aborts a hung provider call so callers can preserve credentials", async () => {
+  vi.useFakeTimers();
+  try {
+    const fetchFn = vi.fn((_url: string, init?: RequestInit) => new Promise<Response>((_resolve, reject) => {
+      init?.signal?.addEventListener("abort", () => reject(init.signal?.reason), { once: true });
+    }));
+    const pending = revokeToken(fetchFn as any, cfg, "rt").catch((cause) => cause);
+    await vi.advanceTimersByTimeAsync(QBO_REVOKE_TIMEOUT_MS);
+    const error = await pending;
+
+    expect(error).toBeInstanceOf(QboRevokeTimeoutError);
+    expect(fetchFn).toHaveBeenCalledTimes(1);
+  } finally {
+    vi.useRealTimers();
+  }
 });

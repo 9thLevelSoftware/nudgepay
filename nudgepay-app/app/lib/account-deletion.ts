@@ -1,5 +1,5 @@
-// Pure leave-workspace gates. No I/O — the route disconnects QBO, wipes
-// memberships, and signs out only after this helper accepts the confirm token
+// Pure leave-workspace gates. No I/O — the route disconnects QBO, removes the
+// selected membership, and signs out only after this helper accepts the confirm token
 // and the user is not the last owner. This is not account or workspace erasure.
 
 export const LEAVE_CONFIRM_TOKEN = "LEAVE";

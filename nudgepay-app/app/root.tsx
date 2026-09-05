@@ -6,6 +6,7 @@ import {
 	Outlet,
 	Scripts,
 	ScrollRestoration,
+	useRouteLoaderData,
 } from "react-router";
 
 import type { Route } from "./+types/root";
@@ -20,7 +21,7 @@ import { pageTitle } from "./lib/meta";
 import { THEME_BOOTSTRAP_SCRIPT } from "./components/ThemeToggle";
 
 const primaryLinkClass =
-	"rounded-md bg-copper px-4 py-2 text-sm font-semibold text-ink transition-colors hover:bg-copper/90 " +
+	"rounded-md bg-copper px-4 py-2 text-sm font-semibold text-on-copper transition-colors hover:bg-copper/90 " +
 	"focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-copper";
 const secondaryLinkClass =
 	"rounded-md border border-border px-4 py-2 text-sm font-medium text-text transition-colors hover:border-copper " +
@@ -28,21 +29,45 @@ const secondaryLinkClass =
 
 export const meta: Route.MetaFunction = () => pageTitle();
 
+export function loader({ context }: Route.LoaderArgs) {
+	return {
+		cspNonce: context.cloudflare.cspNonce,
+		// One opaque seed per HTML document gives every send form a stable SSR value.
+		sendSubmissionSeed: crypto.randomUUID(),
+	};
+}
+
+// A nonce belongs to the current HTML document. Keep the hydrated value stable
+// across client-side action revalidation; a full navigation receives a new one.
+export function shouldRevalidate() {
+	return false;
+}
+
 export function Layout({ children }: { children: React.ReactNode }) {
+	const data = useRouteLoaderData<typeof loader>("root");
+	const nonce = data?.cspNonce;
+	// Browsers intentionally hide nonce attribute values from getAttribute(),
+	// which is what React reads during hydration. Match that empty DOM value on
+	// the client while still emitting the real nonce in the server response.
+	const hydrationNonce = typeof document === "undefined" ? nonce : "";
 	return (
-		<html lang="en">
+		<html lang="en" suppressHydrationWarning>
 			<head>
 				<meta charSet="utf-8" />
 				<meta name="viewport" content="width=device-width, initial-scale=1" />
 				<meta name="color-scheme" content="light dark" />
 				<Meta />
-				<Links />
-				<script dangerouslySetInnerHTML={{ __html: THEME_BOOTSTRAP_SCRIPT }} />
+				<Links nonce={hydrationNonce} />
+				<script
+					nonce={hydrationNonce}
+					suppressHydrationWarning
+					dangerouslySetInnerHTML={{ __html: THEME_BOOTSTRAP_SCRIPT }}
+				/>
 			</head>
 			<body>
 				{children}
-				<ScrollRestoration />
-				<Scripts />
+				<ScrollRestoration nonce={hydrationNonce} />
+				<Scripts nonce={hydrationNonce} />
 			</body>
 		</html>
 	);

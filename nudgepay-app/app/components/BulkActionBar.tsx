@@ -68,7 +68,7 @@ export function BulkActionBar({
         onClick={onOpenSms}
         disabled={eligibleCount === 0}
         title={eligibleCount === 0 ? "No selected case can be texted" : undefined}
-        className="rounded-md bg-copper px-3 h-9 text-xs font-sans font-semibold text-ink hover:bg-copper/90 disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-copper"
+        className="rounded-md bg-copper px-3 h-9 text-xs font-sans font-semibold text-on-copper hover:bg-copper/90 disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-copper"
       >
         Send SMS
       </button>

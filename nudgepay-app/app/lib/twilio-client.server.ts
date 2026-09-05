@@ -1,6 +1,8 @@
 // Thin, injectable Twilio Messages API client. Raw REST (no Twilio SDK).
 // Tests pass a mock fetchFn; routes pass the global fetch. No node:* imports.
 
+import { ProviderResponseAmbiguousError, ProviderSendRejectedError } from "./provider-send-error";
+
 export type TwilioConfig = { accountSid: string; authToken: string };
 export type TwilioSender = { messagingServiceSid: string } | { from: string };
 export type TwilioSendResult = { sid: string; status: string };
@@ -37,7 +39,18 @@ export async function sendSms(
     body: form.toString(),
     signal: AbortSignal.timeout(SMS_SEND_TIMEOUT_MS),
   });
-  if (!res.ok) throw new Error(`Twilio send failed: ${res.status}`);
-  const data = (await res.json()) as { sid: string; status: string };
+  if (!res.ok) {
+    if (res.status >= 400 && res.status < 500) {
+      throw new ProviderSendRejectedError("Twilio", res.status);
+    }
+    throw new ProviderResponseAmbiguousError("Twilio", res.status);
+  }
+  const data = (await res.json()) as { sid?: unknown; status?: unknown };
+  if (typeof data.sid !== "string" || !data.sid.trim()) {
+    throw new Error("Twilio response missing SID");
+  }
+  if (typeof data.status !== "string" || !data.status.trim()) {
+    throw new Error("Twilio response missing status");
+  }
   return { sid: data.sid, status: data.status };
 }

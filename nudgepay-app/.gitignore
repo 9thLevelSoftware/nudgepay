@@ -203,6 +203,7 @@ worker-configuration.d.ts
 ### React Router ###
 .react-router/
 /build/
+/.release-artifacts/
 
 ### Supabase ###
 supabase/.temp/

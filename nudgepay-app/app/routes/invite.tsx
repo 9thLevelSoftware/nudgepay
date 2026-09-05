@@ -21,7 +21,7 @@ export const meta: Route.MetaFunction = () => pageTitle("Invite a teammate");
 export async function loader({ request, context }: LoaderFunctionArgs) {
   const env = getEnv(context as any);
   const { supabase, headers, user } = await requireUser(request, env);
-  const org = await resolveOrg(supabase, user.id, request);
+  const org = await resolveOrg(supabase, user.id, request, headers);
   if (!org) throw redirect("/onboarding", { headers });
   if (!hasPermission(org.role, "manageMembers")) throw redirect("/dashboard", { headers });
   return new Response(null, { headers });
@@ -29,8 +29,8 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
 
 export async function action({ request, context }: ActionFunctionArgs) {
   const env = getEnv(context as any);
-  const { supabase, user } = await requireUser(request, env);
-  const org = await resolveOrg(supabase, user.id, request);
+  const { supabase, headers, user } = await requireUser(request, env);
+  const org = await resolveOrg(supabase, user.id, request, headers);
   if (!org || !hasPermission(org.role, "manageMembers")) return { error: "Only owners and admins can invite" };
   const form = await request.formData();
   const raw = form.get("email");

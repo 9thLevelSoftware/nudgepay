@@ -16,7 +16,7 @@ function ctx() {
   return { cloudflare: { env: TEST_ENV } } as any;
 }
 
-function sessionCookie(session: object): string {
+function sessionCookie(session: object, orgId?: string): string {
   const host = new URL(TEST_ENV.SUPABASE_URL).hostname.split(".")[0];
   const json = JSON.stringify(session);
   const b64url = Buffer.from(json, "utf8")
@@ -24,7 +24,8 @@ function sessionCookie(session: object): string {
     .replace(/\+/g, "-")
     .replace(/\//g, "_")
     .replace(/=+$/, "");
-  return `sb-${host}-auth-token=base64-${b64url}`;
+  const authCookie = `sb-${host}-auth-token=base64-${b64url}`;
+  return orgId ? `${authCookie}; nudgepay-org=${orgId}` : authCookie;
 }
 
 async function signInSession(email: string): Promise<object> {
@@ -336,7 +337,7 @@ test("action: invalid form data returns 400 with { ok:false, error } and writes 
     .select("id").single();
 
   const session = await signInSession(email);
-  const cookie = sessionCookie(session);
+  const cookie = sessionCookie(session, orgId);
 
   const res = await postContactLog(cookie, {
     returnTo: "/dashboard",
@@ -369,7 +370,7 @@ test("action: foreign-org caseId returns 400 missing-case (cross-org guard via t
     .select("id").single();
 
   const session = await signInSession(emailA);
-  const cookie = sessionCookie(session);
+  const cookie = sessionCookie(session, orgA!.id as string);
 
   const res = await postContactLog(cookie, {
     returnTo: "/dashboard",
@@ -404,7 +405,7 @@ test("action: case from another org returns 400 missing-case", async () => {
     .select("id").single();
 
   const session = await signInSession(email);
-  const cookie = sessionCookie(session);
+  const cookie = sessionCookie(session, orgA!.id as string);
 
   const res = await postContactLog(cookie, {
     returnTo: "/dashboard",
@@ -436,7 +437,7 @@ test("action: valid contact log inserts a row and redirects to returnTo?saved=1"
     .select("id").single();
 
   const session = await signInSession(email);
-  const cookie = sessionCookie(session);
+  const cookie = sessionCookie(session, orgId);
 
   const res = await postContactLog(cookie, {
     returnTo: "/dashboard",

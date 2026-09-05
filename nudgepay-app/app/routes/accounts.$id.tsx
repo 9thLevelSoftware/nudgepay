@@ -88,7 +88,7 @@ export async function loader({ request, params, context }: LoaderFunctionArgs) {
   // --- Prelude: mirrors accounts.tsx / dashboard.tsx verbatim ---
   const env = getEnv(context as any);
   const { supabase, headers, user } = await requireUser(request, env);
-  const org = await resolveOrg(supabase, user.id, request);
+  const org = await resolveOrg(supabase, user.id, request, headers);
   if (!org) throw redirect("/onboarding", { headers });
 
   // Org name

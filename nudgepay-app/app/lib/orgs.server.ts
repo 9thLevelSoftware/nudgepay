@@ -2,22 +2,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { displayLabel } from "./names";
 import { DEFAULT_SMS_TEMPLATES } from "./sms-templates";
 import { DEFAULT_EMAIL_TEMPLATES } from "./email-templates";
-import { WORKSPACES_PER_USER_CAP } from "./pilot-limits";
-import {
-  AlreadyInWorkspaceError,
-  canJoinOrg,
-} from "./org-membership";
-
-function isUniqueViolation(err: { code?: string } | null | undefined): boolean {
-  return err?.code === "23505";
-}
-
-async function existingOrgIds(service: SupabaseClient, userId: string): Promise<string[]> {
-  const { data, error } = await service
-    .from("memberships").select("org_id").eq("user_id", userId);
-  if (error) throw error;
-  return (data ?? []).map((r) => r.org_id as string);
-}
+import { AlreadyInWorkspaceError } from "./org-membership";
 
 export type UserWorkspace = { orgId: string; name: string; role: string };
 
@@ -75,35 +60,27 @@ export async function createOrgForUser(
   userId: string,
   name: string
 ): Promise<string> {
-  const ids = await existingOrgIds(service, userId);
-  if (ids.length >= WORKSPACES_PER_USER_CAP) {
-    throw new Error("Workspace limit reached");
+  const { data: orgId, error: rpcErr } = await service.rpc("create_pilot_workspace", {
+    p_user_id: userId,
+    p_name: name,
+  });
+  if (rpcErr) {
+    if ((rpcErr.message ?? "").includes("Pilot workspace capacity reached")) {
+      throw new Error("Pilot workspace capacity reached");
+    }
+    throw rpcErr;
   }
-  if (canJoinOrg(ids) !== "join") {
-    throw new AlreadyInWorkspaceError();
-  }
-
-  const { data: org, error: orgErr } = await service
-    .from("organizations").insert({ name }).select("id").single();
-  if (orgErr || !org) throw orgErr ?? new Error("org insert failed");
-
-  const { error: memErr } = await service
-    .from("memberships").insert({ org_id: org.id, user_id: userId, role: "owner" });
-  if (memErr) {
-    await service.from("organizations").delete().eq("id", org.id); // compensate
-    if (isUniqueViolation(memErr)) throw new AlreadyInWorkspaceError();
-    throw memErr;
-  }
+  if (!orgId) throw new Error("org insert failed");
 
   // Seed default message templates. Best-effort — if this fails, resolveTemplates
   // falls back to the hardcoded defaults, so a failure here is never fatal.
   const templateRows = [
     ...DEFAULT_SMS_TEMPLATES.map((t, i) => ({
-      org_id: org.id, channel: "sms", slug: t.id, label: t.label,
+      org_id: orgId, channel: "sms", slug: t.id, label: t.label,
       subject: null, body: t.body, sort: i,
     })),
     ...DEFAULT_EMAIL_TEMPLATES.map((t, i) => ({
-      org_id: org.id, channel: "email", slug: t.id, label: t.label,
+      org_id: orgId, channel: "email", slug: t.id, label: t.label,
       subject: t.subject, body: t.body, sort: i,
     })),
   ];
@@ -113,7 +90,7 @@ export async function createOrgForUser(
     // best-effort — resolveTemplates() falls back to defaults if this row set is missing
   }
 
-  return org.id as string;
+  return orgId as string;
 }
 
 export type OrgMember = { userId: string; email: string; label: string; role: string };

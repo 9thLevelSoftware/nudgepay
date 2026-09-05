@@ -11,6 +11,7 @@ import { encodeBulkErrorNames } from "../lib/flash-copy";
 import { loadOrgConfig } from "../lib/org-config.server";
 import { todayInTz } from "../lib/tz";
 import { isWithinSendWindow } from "../lib/quiet-hours";
+import { isSendSubmissionId } from "../lib/send-submission";
 
 function envSender(t: { TWILIO_MESSAGING_SERVICE_SID: string | null; TWILIO_FROM_NUMBER: string | null }): TwilioSender {
   if (t.TWILIO_MESSAGING_SERVICE_SID) return { messagingServiceSid: t.TWILIO_MESSAGING_SERVICE_SID };
@@ -33,11 +34,13 @@ export async function action({ request, context }: ActionFunctionArgs) {
   const env = getEnv(context as any);
   const twilio = getTwilioEnv(context as any);
   const { supabase, headers, user } = await requireUser(request, env);
-  const org = await resolveOrg(supabase, user.id, request);
+  const org = await resolveOrg(supabase, user.id, request, headers);
   if (!org) return redirect("/onboarding", { headers });
 
   const form = await request.formData();
   const returnTo = safeReturnTo(form.get("returnTo"));
+  const submissionRaw = form.get("submissionId");
+  const submissionId = isSendSubmissionId(submissionRaw) ? submissionRaw : null;
 
   const service = createSupabaseServiceClient(env);
   // One org_settings read: sources both the batch-size clamp below and the
@@ -47,15 +50,17 @@ export async function action({ request, context }: ActionFunctionArgs) {
   const caseIds = clampBatch(parseIds(form), orgConfig.workflow.smsBatchLimit);
   const bodyRaw = form.get("body");
   const templateBody = typeof bodyRaw === "string" ? bodyRaw.trim() : "";
-  if (caseIds.length === 0 || templateBody === "") return redirect(returnTo, { headers });
+  if (caseIds.length === 0 || templateBody === "" || !submissionId) {
+    return redirect(withParams(returnTo, { bulkSms: "error" }), { headers });
+  }
 
   const { data: mc, error: mcErr } = await service.from("messaging_config")
     .select("sms_enabled").eq("org_id", org.org_id).maybeSingle();
   if (mcErr) {
-    return redirect(withParams(returnTo, { bulkSms: "error" }), { headers });
+    return redirect(withParams(returnTo, { bulkSms: "error", sendSubmission: submissionId }), { headers });
   }
   if (mc && mc.sms_enabled === false) {
-    return redirect(withParams(returnTo, { bulkSms: "disabled" }), { headers });
+    return redirect(withParams(returnTo, { bulkSms: "disabled", sendSubmission: submissionId }), { headers });
   }
 
   // Quiet-hours fast-fail: pre-check once (mirroring the sms_enabled pre-check
@@ -68,7 +73,7 @@ export async function action({ request, context }: ActionFunctionArgs) {
     endHour: orgConfig.quietHours.endHour,
   };
   if (!isWithinSendWindow(new Date(), quietHoursWindow.timezone, quietHoursWindow.startHour, quietHoursWindow.endHour)) {
-    return redirect(withParams(returnTo, { bulkSms: "quiet" }), { headers });
+    return redirect(withParams(returnTo, { bulkSms: "quiet", sendSubmission: submissionId }), { headers });
   }
 
   const statusCallback = twilio.TWILIO_PUBLIC_BASE_URL
@@ -84,7 +89,7 @@ export async function action({ request, context }: ActionFunctionArgs) {
   };
   const today = todayInTz(orgConfig.companyProfile.timezone);
   const { sent, failed, skipped, failures } = await runBulkSms(deps, {
-    orgId: org.org_id, userId: user.id, caseIds, today, templateBody, orgConfig,
+    orgId: org.org_id, userId: user.id, caseIds, today, templateBody, orgConfig, submissionId,
   });
 
   const params: Record<string, string> = {
@@ -92,6 +97,7 @@ export async function action({ request, context }: ActionFunctionArgs) {
     sent: String(sent),
     failed: String(failed),
     skipped: String(skipped),
+    sendSubmission: submissionId,
   };
   const bulkErrors = encodeBulkErrorNames(failures.map((f) => f.name));
   if (bulkErrors) params.bulkErrors = bulkErrors;

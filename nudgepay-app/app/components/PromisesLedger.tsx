@@ -100,7 +100,7 @@ export function PromisesLedger({ rows, tab, sort, search, counts, selectedId, lo
         <h2 className="font-display text-sm font-semibold text-text">Promises</h2>
         <span className="text-xs text-muted">{rows.length} matching</span>
         <div className="ml-auto flex items-center gap-2">
-          <Form method="get" className="flex items-center gap-2">
+          <Form method="get" action="/promises" className="flex items-center gap-2">
             <input type="hidden" name="tab" value={tab} />
             <input type="hidden" name="sort" value={sort} />
             {selectedId ? <input type="hidden" name="promiseId" value={selectedId} /> : null}
@@ -115,7 +115,7 @@ export function PromisesLedger({ rows, tab, sort, search, counts, selectedId, lo
             </label>
             <button type="submit" className="h-9 px-3 rounded bg-ink text-surface text-xs font-medium">Search</button>
           </Form>
-          <Form method="get" className="flex items-center gap-2">
+          <Form method="get" action="/promises" className="flex items-center gap-2">
             <input type="hidden" name="tab" value={tab} />
             {search ? <input type="hidden" name="q" value={search} /> : null}
             {selectedId ? <input type="hidden" name="promiseId" value={selectedId} /> : null}

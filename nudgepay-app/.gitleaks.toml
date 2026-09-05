@@ -1,0 +1,20 @@
+title = "NudgePay secret scanning"
+
+[extend]
+useDefault = true
+
+[[allowlists]]
+description = "Published local Supabase demo keys and generated local runtime files"
+paths = [
+  '''^(?:nudgepay-app/)?\.env\.test\.example$''',
+  '''^(?:nudgepay-app/)?supabase/\.temp/''',
+  '''^docs/audits/2026-08-20-production-readiness/evidence/logs/release-candidate-manifest\.json$''',
+]
+
+[[allowlists]]
+description = "Non-secret test fixtures"
+regexTarget = "line"
+regexes = [
+  '''confirmPassword: "other-pass-123"''',
+  '''RESEND_WEBHOOK_SECRET: "whsec_dGVzdA=="''',
+]

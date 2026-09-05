@@ -28,3 +28,15 @@ export function withEmail(returnTo: string, code: string): string {
   const sep = returnTo.includes("?") ? "&" : "?";
   return `${returnTo}${sep}email=${code}`;
 }
+
+export function withSendResult(
+  returnTo: string,
+  channel: "sms" | "email" | "bulkSms",
+  code: string,
+  submissionId: string,
+): string {
+  const url = new URL(returnTo, "http://nudgepay.local");
+  url.searchParams.set(channel, code);
+  url.searchParams.set("sendSubmission", submissionId);
+  return `${url.pathname}${url.search}`;
+}

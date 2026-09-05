@@ -3,6 +3,7 @@ import { getEnv, getTwilioEnv } from "../lib/env.server";
 import { createSupabaseServiceClient } from "../lib/supabase.server";
 import { verifyTwilioSignature, parseTwilioForm } from "../lib/twilio-webhook.server";
 import { updateMessageStatus } from "../lib/twilio-messaging.server";
+import { requestIdFromContext, safeErrorDetails } from "../lib/log-redaction";
 
 function publicUrl(twilioPublicBaseUrl: string | null, request: Request, path: string): string {
   return twilioPublicBaseUrl ? `${twilioPublicBaseUrl}${path}` : request.url;
@@ -26,7 +27,11 @@ export async function action({ request, context }: ActionFunctionArgs) {
       messageSid: params.MessageSid ?? "", status: params.MessageStatus ?? "", errorCode: params.ErrorCode ?? null,
     });
   } catch (err) {
-    console.error("Twilio status processing failed", err);
+    console.error({
+      event: "twilio_status_processing_failed",
+      requestId: requestIdFromContext(context),
+      ...safeErrorDetails(err),
+    });
     return new Response("processing error", { status: 500 });
   }
   return new Response(null, { status: 204 });

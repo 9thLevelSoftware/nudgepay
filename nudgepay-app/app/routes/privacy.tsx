@@ -76,11 +76,11 @@ export default function Privacy() {
         Owners can erase a customer&apos;s stored name, phone, email, notes, and
         message bodies from the account page by typing the customer name.
         Invoices remain; QuickBooks is not deleted; later sync will not restore
-        the erased fields. You can download a JSON copy of your NudgePay login, membership, and
+        the erased fields. You can download a JSON copy of your NudgePay login, workspace memberships, and
         contact-log activity in Settings (or onboarding if you have no workspace).
         You can delete your NudgePay login in Settings, or on onboarding if you
         have no workspace, by typing your email or DELETE. That removes the Auth
-        user and your membership. Contact-log and message actor fields are
+        user and your memberships. Contact-log and message actor fields are
         cleared; remaining workspace invoices, customers, and messages stay
         unless an owner deleted the workspace. For other erasure requests,
         contact {contact}.</p>

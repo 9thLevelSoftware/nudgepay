@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { Link, useLocation, useNavigate, useNavigation, useSearchParams } from "react-router";
+import { Link, useLocation, useNavigate, useNavigation, useRouteLoaderData, useSearchParams } from "react-router";
 import { HEARTBEAT_INTERVAL_MS, type Collision } from "~/lib/collision";
 import { previewWorkspaceInvoices, type CaseInvoice, type CaseItem } from "~/lib/cases";
 import { chaseRecipientsFrom } from "~/lib/chase-recipients";
@@ -24,6 +24,9 @@ import { resolveCallAction } from "~/lib/channel-actions";
 import { statusChipTone, type ChipTone } from "~/lib/status-style";
 import { smsFlash } from "~/lib/flash-copy";
 import { Input } from "~/components/ui";
+import { useSendSubmission } from "~/lib/use-send-submission";
+
+const FALLBACK_SUBMISSION_SEED = "00000000-0000-4000-8000-000000000000";
 
 // Static tone-to-text-color map — heat.band → Tailwind class.
 // Must be literal strings so Tailwind can tree-shake them; no dynamic construction.
@@ -142,6 +145,7 @@ function MessagesTab({
   selected, invoices, repInvoiceId, messages, consent, smsConsentSource, isOwner, prefs, phone, sms, smsEnabled, smsQuietNow, quietHoursLabel,
   view, sort, q, density, entity, invoice, collision,
   smsTemplates, orgCompany, orgPhone, orgPaymentLink, timeZone, composerRef, loadError,
+  orgId, userId, sendSubmissionId,
 }: {
   selected: CaseItem;
   invoices: CaseInvoice[];
@@ -170,6 +174,9 @@ function MessagesTab({
   timeZone?: string | null;
   composerRef: React.RefObject<HTMLDivElement | null>;
   loadError?: string | null;
+  orgId: string;
+  userId: string;
+  sendSubmissionId: string | null;
 }) {
   const returnTo = `/dashboard${panelHref(view, sort, q, density, { case: selected.caseId, tab: "messages", entity, invoice })}`;
   const prefsHref = panelHref(view, sort, q, density, { case: selected.caseId, tab: "messages", prefs: "1", entity, invoice });
@@ -197,6 +204,17 @@ function MessagesTab({
   const navigation = useNavigation();
   const consentBusy = navigation.state !== "idle" && navigation.formAction === "/api/sms-consent";
   const sendBusy = navigation.state !== "idle" && navigation.formAction === "/api/text/send";
+  const rootData = useRouteLoaderData<{ sendSubmissionSeed: string }>("root");
+  const submission = useSendSubmission({
+    serverSeed: rootData?.sendSubmissionSeed ?? FALLBACK_SUBMISSION_SEED,
+    userId,
+    orgId,
+    channel: "sms",
+    customerId: selected.customerId,
+    result: sendSubmissionId && sms
+      ? { id: sendSubmissionId, success: sms === "sent" }
+      : null,
+  });
 
   // Reset draft state when the case changes
   useEffect(() => {
@@ -341,9 +359,12 @@ function MessagesTab({
             if (needsConfirm && !confirmSend) {
               e.preventDefault();
               setConfirmSend(true);
+              return;
             }
+            submission.onSubmit(e);
           }}
         >
+          <input ref={submission.inputRef} type="hidden" name="submissionId" value={submission.submissionId} readOnly />
           <input type="hidden" name="invoiceId" value={repInvoiceId ?? ""} />
           <input type="hidden" name="returnTo" value={returnTo} />
           <textarea
@@ -353,10 +374,11 @@ function MessagesTab({
             onChange={(e) => setBody(e.target.value)}
             placeholder="Type a message…"
             required
-            disabled={smsSendDisabled}
+            disabled={smsSendDisabled || !submission.ready}
             aria-label="Message body"
             className="w-full resize-none rounded-md border border-border bg-panel px-3 py-2 text-sm font-sans text-text placeholder:text-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-copper disabled:opacity-40 disabled:cursor-not-allowed"
           />
+          {submission.error ? <p className="text-xs font-sans text-hot" role="alert">{submission.error}</p> : null}
           {confirmSend ? (
             <p className="text-xs font-sans text-warm" role="alert">
               {collision?.level === "live"
@@ -368,8 +390,8 @@ function MessagesTab({
             <span />
             <button
               type="submit"
-              disabled={smsSendDisabled || sendBusy}
-              className="inline-flex items-center gap-1.5 rounded-md bg-copper px-3 py-1.5 text-xs font-sans font-semibold text-ink hover:bg-copper/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-copper disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+              disabled={smsSendDisabled || sendBusy || !submission.ready}
+              className="inline-flex items-center gap-1.5 rounded-md bg-copper px-3 py-1.5 text-xs font-sans font-semibold text-on-copper hover:bg-copper/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-copper disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
             >
               <Icon name="message" size={14} aria-hidden />
               {sendBusy ? "Sending…" : "Send text"}
@@ -384,6 +406,7 @@ function MessagesTab({
 function EmailTab({
   selected, invoices, repInvoiceId, emailMessages, prefs, customerEmail, emailEnabled,
   view, sort, q, density, entity, invoice, emailTemplates, orgCompany, orgPhone, orgPaymentLink, timeZone, composerRef, loadError,
+  orgId, userId, sendSubmissionId,
 }: {
   selected: CaseItem;
   invoices: CaseInvoice[];
@@ -405,6 +428,9 @@ function EmailTab({
   timeZone?: string | null;
   composerRef: React.RefObject<HTMLDivElement | null>;
   loadError?: string | null;
+  orgId: string;
+  userId: string;
+  sendSubmissionId: string | null;
 }) {
   const [searchParams] = useSearchParams();
   const emailResult = searchParams.get("email");
@@ -432,6 +458,17 @@ function EmailTab({
   const contactBlocked = isContactBlocked(selected.exceptionReason);
   const navigation = useNavigation();
   const busy = navigation.state !== "idle" && navigation.formAction === "/api/email/send";
+  const rootData = useRouteLoaderData<{ sendSubmissionSeed: string }>("root");
+  const submission = useSendSubmission({
+    serverSeed: rootData?.sendSubmissionSeed ?? FALLBACK_SUBMISSION_SEED,
+    userId,
+    orgId,
+    channel: "email",
+    customerId: selected.customerId,
+    result: sendSubmissionId && emailResult
+      ? { id: sendSubmissionId, success: emailResult === "sent" }
+      : null,
+  });
 
   // F-022: warn before composing into an address that just hard-bounced.
   const lastEmail = emailMessages.length > 0 ? emailMessages[emailMessages.length - 1] : null;
@@ -534,7 +571,8 @@ function EmailTab({
           ))}
         </select>
 
-        <form method="post" action="/api/email/send" className="flex flex-col gap-2">
+        <form method="post" action="/api/email/send" className="flex flex-col gap-2" onSubmit={submission.onSubmit}>
+          <input ref={submission.inputRef} type="hidden" name="submissionId" value={submission.submissionId} readOnly />
           <input type="hidden" name="invoiceId" value={repInvoiceId ?? ""} />
           <input type="hidden" name="returnTo" value={returnTo} />
           <input
@@ -544,7 +582,7 @@ function EmailTab({
             onChange={(e) => setSubject(e.target.value)}
             placeholder="Subject"
             required
-            disabled={sendDisabled}
+            disabled={sendDisabled || !submission.ready}
             aria-label="Email subject"
             className="w-full rounded-md border border-border bg-panel px-3 py-2 text-sm font-sans text-text placeholder:text-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-copper disabled:opacity-40 disabled:cursor-not-allowed"
           />
@@ -555,10 +593,11 @@ function EmailTab({
             onChange={(e) => setBody(e.target.value)}
             placeholder="Type an email…"
             required
-            disabled={sendDisabled}
+            disabled={sendDisabled || !submission.ready}
             aria-label="Email body"
             className="w-full resize-none rounded-md border border-border bg-panel px-3 py-2 text-sm font-sans text-text placeholder:text-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-copper disabled:opacity-40 disabled:cursor-not-allowed"
           />
+          {submission.error ? <p className="text-xs font-sans text-hot" role="alert">{submission.error}</p> : null}
           {lastEmailBounced ? (
             <p className="text-xs font-sans text-hot">Last email to this address bounced.</p>
           ) : null}
@@ -570,8 +609,8 @@ function EmailTab({
             ) : <span />}
             <button
               type="submit"
-              disabled={sendDisabled || busy}
-              className="inline-flex items-center gap-1.5 rounded-md bg-copper px-3 py-1.5 text-xs font-sans font-semibold text-ink hover:bg-copper/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-copper disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+              disabled={sendDisabled || busy || !submission.ready}
+              className="inline-flex items-center gap-1.5 rounded-md bg-copper px-3 py-1.5 text-xs font-sans font-semibold text-on-copper hover:bg-copper/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-copper disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
             >
               <Icon name="mail" size={14} aria-hidden />
               {busy ? "Sending…" : "Send email"}
@@ -644,6 +683,9 @@ export function DetailPanel({
   today,
   timeZone,
   loadError = null,
+  orgId,
+  userId,
+  sendSubmissionId,
 }: {
   selected: CaseItem | null;
   repInvoiceId: string | null;
@@ -682,6 +724,9 @@ export function DetailPanel({
   today: string;
   timeZone?: string | null;
   loadError?: string | null;
+  orgId: string;
+  userId: string;
+  sendSubmissionId: string | null;
 }) {
   // ── Hooks (must be unconditional, before any early return) ─────────────────
   // Presence: beat immediately on customer change, then every HEARTBEAT_INTERVAL_MS.
@@ -1298,6 +1343,9 @@ export function DetailPanel({
           timeZone={timeZone}
           composerRef={composerRef}
           loadError={loadError}
+          orgId={orgId}
+          userId={userId}
+          sendSubmissionId={sendSubmissionId}
         />
       ) : null}
 
@@ -1324,6 +1372,9 @@ export function DetailPanel({
           timeZone={timeZone}
           composerRef={composerRef}
           loadError={loadError}
+          orgId={orgId}
+          userId={userId}
+          sendSubmissionId={sendSubmissionId}
         />
       ) : null}
     </aside>

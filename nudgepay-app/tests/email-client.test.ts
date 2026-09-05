@@ -22,10 +22,23 @@ describe("sendEmail", () => {
     await expect(sendEmail(f as any, { apiKey: "k" },
       { from: "a@x.com", to: "b@y.com", subject: "s", text: "t" })).rejects.toThrow(/domain not verified/);
   });
-  it("throws on a provider 503 without treating it as sent", async () => {
+  it("treats a provider 503 as an ambiguous outcome", async () => {
     const f = mockFetch(503, { message: "unavailable" });
     await expect(sendEmail(f as any, { apiKey: "k" },
-      { from: "a@x.com", to: "b@y.com", subject: "s", text: "t" })).rejects.toThrow(/Resend send failed \(503\)/);
+      { from: "a@x.com", to: "b@y.com", subject: "s", text: "t" })).rejects.toMatchObject({
+        name: "ProviderResponseAmbiguousError",
+        provider: "Resend",
+        status: 503,
+      });
+  });
+  it("treats a provider 400 as a definite rejection", async () => {
+    const f = mockFetch(400, { message: "invalid" });
+    await expect(sendEmail(f as any, { apiKey: "k" },
+      { from: "a@x.com", to: "b@y.com", subject: "s", text: "t" })).rejects.toMatchObject({
+        name: "ProviderSendRejectedError",
+        provider: "Resend",
+        status: 400,
+      });
   });
   it("fails closed when fetch rejects", async () => {
     const f = vi.fn(async () => {
@@ -33,6 +46,11 @@ describe("sendEmail", () => {
     });
     await expect(sendEmail(f as any, { apiKey: "k" },
       { from: "a@x.com", to: "b@y.com", subject: "s", text: "t" })).rejects.toThrow(/fetch failed/);
+  });
+  it("rejects a 2xx response without a provider message id", async () => {
+    const f = mockFetch(200, {});
+    await expect(sendEmail(f as any, { apiKey: "k" },
+      { from: "a@x.com", to: "b@y.com", subject: "s", text: "t" })).rejects.toThrow(/missing id/i);
   });
   it("aborts a hung provider", async () => {
     const timeout = vi.spyOn(AbortSignal, "timeout");

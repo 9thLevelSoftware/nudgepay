@@ -6,6 +6,7 @@ import { mapResendEvent } from "../lib/email-events";
 import { fetchReceivingEmail } from "../lib/email-client.server";
 import { alreadyRecordedInboundEmail, updateEmailStatus, recordInboundEmail } from "../lib/email-messaging.server";
 import { inboundEmailBody } from "../lib/html-plain-text";
+import { requestIdFromContext, safeErrorDetails } from "../lib/log-redaction";
 
 export async function action({ request, context }: ActionFunctionArgs) {
   const emailEnv = getEmailEnv(context as any);
@@ -46,7 +47,11 @@ export async function action({ request, context }: ActionFunctionArgs) {
       }
     }
   } catch (err) {
-    console.error("Resend webhook processing failed", err);
+    console.error({
+      event: "resend_webhook_processing_failed",
+      requestId: requestIdFromContext(context),
+      ...safeErrorDetails(err),
+    });
     return new Response("processing error", { status: 500 });
   }
   return new Response(null, { status: 204 });

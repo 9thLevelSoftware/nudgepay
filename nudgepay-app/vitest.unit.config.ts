@@ -2,8 +2,9 @@ import { defineConfig } from "vitest/config";
 import path from "node:path";
 import fs from "node:fs";
 
-// Integration files import tests/helpers.ts (local Supabase). Keep this list
-// derived from source so a new *-rls / API test is excluded automatically.
+// Integration files either use the explicit suffix or import tests/helpers.ts
+// (local Supabase). Keep the legacy import-derived list so existing *-rls / API
+// tests remain excluded while new catalog-only tests can classify themselves.
 function integrationFiles(): string[] {
   const dir = path.resolve(__dirname, "tests");
   return fs
@@ -24,6 +25,6 @@ export default defineConfig({
     setupFiles: [],
     globalSetup: [],
     include: ["tests/**/*.test.ts"],
-    exclude: integrationFiles(),
+    exclude: ["tests/**/*.integration.test.ts", ...integrationFiles()],
   },
 });

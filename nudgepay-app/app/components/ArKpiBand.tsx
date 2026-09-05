@@ -76,7 +76,7 @@ export function ArKpiBand({
           {isOwner ? (
             <Link
               to="/reports"
-              className="text-copper hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-copper rounded"
+              className="text-text hover:text-copper hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-copper rounded"
             >
               {heading}
             </Link>

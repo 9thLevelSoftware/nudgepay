@@ -93,8 +93,6 @@ test("recordInboundMessage logs inbound_orphan_stop via console.error by default
     });
     expect(spy).toHaveBeenCalledWith({
       event: "inbound_orphan_stop",
-      from: "+13105559995",
-      to: "+15005550010",
       sid: "SMin-orphan-console",
     });
   } finally {
@@ -124,6 +122,46 @@ test("updateMessageStatus updates status and error_code by sid", async () => {
   const { data } = await svc.from("text_messages").select("status, error_code").eq("twilio_message_sid", "SMout-205").single();
   expect(data!.status).toBe("delivered");
   expect(data!.error_code).toBeNull();
+});
+
+test("Twilio status callbacks progress atomically and ignore out-of-order regressions", async () => {
+  await seedCustomerWithOutbound("+13105551241", "SM-status-order-delivered");
+  await updateMessageStatus(svc, {
+    messageSid: "SM-status-order-delivered", status: "delivered", errorCode: null,
+  });
+  await updateMessageStatus(svc, {
+    messageSid: "SM-status-order-delivered", status: "sent", errorCode: "late-sent",
+  });
+  const { data: delivered } = await svc.from("text_messages")
+    .select("status, error_code").eq("twilio_message_sid", "SM-status-order-delivered").single();
+  expect(delivered).toEqual({ status: "delivered", error_code: null });
+
+  await seedCustomerWithOutbound("+13105551242", "SM-status-order-concurrent");
+  await updateMessageStatus(svc, {
+    messageSid: "SM-status-order-concurrent", status: "accepted", errorCode: null,
+  });
+  await Promise.all([
+    updateMessageStatus(svc, {
+      messageSid: "SM-status-order-concurrent", status: "sent", errorCode: null,
+    }),
+    updateMessageStatus(svc, {
+      messageSid: "SM-status-order-concurrent", status: "delivered", errorCode: null,
+    }),
+  ]);
+  const { data: concurrent } = await svc.from("text_messages")
+    .select("status").eq("twilio_message_sid", "SM-status-order-concurrent").single();
+  expect(concurrent?.status).toBe("delivered");
+
+  await seedCustomerWithOutbound("+13105551243", "SM-status-order-failed");
+  await updateMessageStatus(svc, {
+    messageSid: "SM-status-order-failed", status: "failed", errorCode: "30001",
+  });
+  await updateMessageStatus(svc, {
+    messageSid: "SM-status-order-failed", status: "queued", errorCode: null,
+  });
+  const { data: failed } = await svc.from("text_messages")
+    .select("status, error_code").eq("twilio_message_sid", "SM-status-order-failed").single();
+  expect(failed).toEqual({ status: "failed", error_code: "30001" });
 });
 
 test("recordInboundMessage stamps case_id from the customer's active case", async () => {

@@ -37,7 +37,7 @@ export function PromiseQuickPanel({ promise, invoices, note, returnTo, promiseEr
   if (!promise) {
     return (
       <aside className="hidden lg:flex flex-col items-center justify-center bg-surface border border-border rounded-card p-8 text-center text-muted">
-        <Icon name="check" size={28} className="mb-2 text-muted/60" />
+        <Icon name="check" size={28} className="mb-2 text-muted" aria-hidden />
         <p className="text-sm">Select a promise to preview it here.</p>
       </aside>
     );
@@ -104,7 +104,7 @@ export function PromiseQuickPanel({ promise, invoices, note, returnTo, promiseEr
         {promise.caseOpen ? (
           <Link
             to={`/dashboard?case=${promise.caseId}`}
-            className="inline-flex items-center gap-1.5 h-9 px-3 rounded bg-copper text-ink text-sm font-medium hover:bg-copper/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-copper"
+            className="inline-flex items-center gap-1.5 h-9 px-3 rounded bg-copper text-on-copper text-sm font-medium hover:bg-copper/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-copper"
           >
             Open in Collections <Icon name="chevronRight" size={16} />
           </Link>

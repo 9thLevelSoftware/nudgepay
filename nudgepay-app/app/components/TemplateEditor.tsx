@@ -125,7 +125,7 @@ function TemplateEditorInner({
           aria-pressed={channel === "sms"}
           onClick={() => { setChannel("sms"); setEditingId(null); setAddingOpen(false); }}
           className={`rounded px-3 py-1 text-xs font-semibold transition-colors ${
-            channel === "sms" ? "bg-copper text-ink" : "text-muted hover:text-text"
+            channel === "sms" ? "bg-copper text-on-copper" : "text-muted hover:text-text"
           }`}
         >
           SMS
@@ -135,7 +135,7 @@ function TemplateEditorInner({
           aria-pressed={channel === "email"}
           onClick={() => { setChannel("email"); setEditingId(null); setAddingOpen(false); }}
           className={`rounded px-3 py-1 text-xs font-semibold transition-colors ${
-            channel === "email" ? "bg-copper text-ink" : "text-muted hover:text-text"
+            channel === "email" ? "bg-copper text-on-copper" : "text-muted hover:text-text"
           }`}
         >
           Email
@@ -369,7 +369,7 @@ function TemplateForm({
         <button
           type="submit"
           disabled={busy}
-          className="rounded-md bg-copper px-3 py-1.5 text-xs font-semibold text-ink hover:bg-copper/90 disabled:opacity-60 disabled:cursor-not-allowed"
+          className="rounded-md bg-copper px-3 py-1.5 text-xs font-semibold text-on-copper hover:bg-copper/90 disabled:opacity-60 disabled:cursor-not-allowed"
         >
           {busy ? "Saving…" : initial ? "Save" : "Add"}
         </button>

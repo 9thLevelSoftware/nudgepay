@@ -23,14 +23,14 @@ export function FirstRunBanner({
       <div className="mt-3 flex flex-wrap gap-2">
         {isOwner && qboConfigured ? (
           <Form method="post" action="/api/qbo/connect">
-            <button type="submit" className="rounded-md bg-copper px-3 py-1.5 text-xs font-semibold text-ink hover:bg-copper/90">
+            <button type="submit" className="rounded-md bg-copper px-3 py-1.5 text-xs font-semibold text-on-copper hover:bg-copper/90">
               {reconnect ? "Reconnect QuickBooks" : "Connect QuickBooks"}
             </button>
           </Form>
         ) : (
           <Link
             to="/settings?tab=integrations"
-            className="rounded-md bg-copper px-3 py-1.5 text-xs font-semibold text-ink hover:bg-copper/90"
+            className="rounded-md bg-copper px-3 py-1.5 text-xs font-semibold text-on-copper hover:bg-copper/90"
           >
             Open Integrations
           </Link>

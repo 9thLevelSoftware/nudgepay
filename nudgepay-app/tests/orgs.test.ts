@@ -1,6 +1,10 @@
-import { expect, test } from "vitest";
-import { serviceClient, makeUserClient } from "./helpers";
+import { beforeAll, expect, test } from "vitest";
+import { serviceClient, makeUserClient, runLocalTestSql } from "./helpers";
 import { acceptInvite, createOrgForUser, listOrgMembers } from "../app/lib/orgs.server";
+
+beforeAll(() => {
+  runLocalTestSql("truncate table public.pilot_workspace_admissions;\n");
+});
 
 test("listOrgMembers returns the org roster with email-local-part labels", async () => {
   const svc = serviceClient();

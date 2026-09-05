@@ -1,10 +1,13 @@
 import { useEffect, useState } from "react";
-import { Form, useNavigation } from "react-router";
+import { Form, useNavigation, useRouteLoaderData, useSearchParams } from "react-router";
 import type { MessageTemplateRow } from "../lib/message-templates";
 import { partitionEligibility, renderCaseBody, clampBatch, skippedSummary, type TextableCase, type RenderableCase } from "../lib/bulk";
 import { plural } from "../lib/labels";
 import { DrawerShell } from "./DrawerShell";
 import { Button, Select, Textarea } from "./ui";
+import { useSendSubmission } from "../lib/use-send-submission";
+
+const FALLBACK_SUBMISSION_SEED = "00000000-0000-4000-8000-000000000000";
 
 export type DrawerCase = TextableCase & RenderableCase;
 
@@ -21,6 +24,8 @@ export function BulkSmsDrawer({
   orgPhone,
   orgPaymentLink,
   maxBatch,
+  orgId,
+  userId,
 }: {
   open: boolean;
   onClose: () => void;
@@ -35,12 +40,29 @@ export function BulkSmsDrawer({
   orgPaymentLink: string;
   /** Org-configured max cases per bulk action — must match the server clamp. */
   maxBatch: number;
+  orgId: string;
+  userId: string;
 }) {
   const nav = useNavigation();
+  const [searchParams] = useSearchParams();
   const busy = nav.state !== "idle";
   const [templateId, setTemplateId] = useState(smsTemplates[0]?.id ?? "");
   const [body, setBody] = useState(smsTemplates[0]?.body ?? "");
   const [confirming, setConfirming] = useState(false);
+  const rootData = useRouteLoaderData<{ sendSubmissionSeed: string }>("root");
+  const bulkResult = searchParams.get("bulkSms");
+  const bulkFailed = Number(searchParams.get("failed") ?? "0");
+  const resultId = searchParams.get("sendSubmission");
+  const submission = useSendSubmission({
+    serverSeed: rootData?.sendSubmissionSeed ?? FALLBACK_SUBMISSION_SEED,
+    userId,
+    orgId,
+    channel: "sms-bulk",
+    customerId: "batch",
+    result: resultId && bulkResult
+      ? { id: resultId, success: bulkResult === "done" && bulkFailed === 0 }
+      : null,
+  });
 
   useEffect(() => {
     if (!open) {
@@ -126,10 +148,12 @@ export function BulkSmsDrawer({
             </div>
           </>
         ) : (
-          <Form method="post" action="/api/bulk-sms" aria-describedby="bulk-sms-confirm-desc" className="flex flex-col gap-4">
+          <Form method="post" action="/api/bulk-sms" aria-describedby="bulk-sms-confirm-desc" className="flex flex-col gap-4" onSubmit={submission.onSubmit}>
+            <input ref={submission.inputRef} type="hidden" name="submissionId" value={submission.submissionId} readOnly />
             <input type="hidden" name="caseIds" value={cappedCases.map((c) => c.caseId).join(",")} />
             <input type="hidden" name="body" value={body} />
             <input type="hidden" name="returnTo" value={returnTo} />
+            {submission.error ? <p className="text-xs font-sans text-hot" role="alert">{submission.error}</p> : null}
             <p id="bulk-sms-confirm-desc" className="text-sm font-sans text-text">
               Send this message to {plural(eligible.length, "customer")}? This cannot be undone. Eligibility is re-checked when you send, so the final count may be lower.
             </p>
@@ -137,7 +161,7 @@ export function BulkSmsDrawer({
               <Button type="button" variant="secondary" size="sm" className="bg-panel" onClick={() => setConfirming(false)}>
                 Back
               </Button>
-              <Button type="submit" size="sm" disabled={busy || !smsEnabled}>
+              <Button type="submit" size="sm" disabled={busy || !smsEnabled || !submission.ready}>
                 {busy ? "Sending…" : `Send ${eligible.length}`}
               </Button>
             </div>

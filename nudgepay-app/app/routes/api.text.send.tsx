@@ -4,8 +4,9 @@ import { createSupabaseServiceClient } from "../lib/supabase.server";
 import { requireUser, resolveOrg } from "../lib/session.server";
 import { sendInvoiceText, type MessagingDeps } from "../lib/twilio-messaging.server";
 import type { TwilioSender } from "../lib/twilio-client.server";
-import { safeReturnTo, withSms } from "../lib/return-to";
+import { safeReturnTo, withSendResult, withSms } from "../lib/return-to";
 import { smsSendReason } from "../lib/sms-send-reason";
+import { isSendSubmissionId } from "../lib/send-submission";
 
 function envSender(t: { TWILIO_MESSAGING_SERVICE_SID: string | null; TWILIO_FROM_NUMBER: string | null }): TwilioSender {
   if (t.TWILIO_MESSAGING_SERVICE_SID) return { messagingServiceSid: t.TWILIO_MESSAGING_SERVICE_SID };
@@ -16,7 +17,7 @@ export async function action({ request, context }: ActionFunctionArgs) {
   const env = getEnv(context as any);
   const twilio = getTwilioEnv(context as any);
   const { supabase, headers, user } = await requireUser(request, env);
-  const org = await resolveOrg(supabase, user.id, request);
+  const org = await resolveOrg(supabase, user.id, request, headers);
   if (!org) return redirect("/onboarding", { headers });
 
   const form = await request.formData();
@@ -26,14 +27,19 @@ export async function action({ request, context }: ActionFunctionArgs) {
   const invoiceId = typeof raw === "string" ? raw : "";
   const bodyRaw = form.get("body");
   const body = typeof bodyRaw === "string" ? bodyRaw.trim() : "";
+  const submissionRaw = form.get("submissionId");
+  const submissionId = isSendSubmissionId(submissionRaw) ? submissionRaw : null;
 
   // Helper: respond with the SMS result code, either as JSON (Focus Mode) or
   // as a redirect with the code in a query parameter (existing dashboard flow).
   const respond = (code: string) => respondJson
-    ? data({ ok: code === "sent", sms: code }, { headers })
-    : redirect(withSms(returnTo, code), { headers });
+    ? data({ ok: code === "sent", sms: code, sendSubmission: submissionId }, { headers })
+    : redirect(
+      submissionId ? withSendResult(returnTo, "sms", code, submissionId) : withSms(returnTo, code),
+      { headers },
+    );
 
-  if (!invoiceId || !body) return respond("error");
+  if (!invoiceId || !body || !submissionId) return respond("error");
 
   const service = createSupabaseServiceClient(env);
   const statusCallback = twilio.TWILIO_PUBLIC_BASE_URL
@@ -47,7 +53,7 @@ export async function action({ request, context }: ActionFunctionArgs) {
     requireInventory: smsRequireInventory((context as any).cloudflare.env),
   };
   try {
-    await sendInvoiceText(deps, { orgId: org.org_id, invoiceId, userId: user.id, body });
+    await sendInvoiceText(deps, { orgId: org.org_id, invoiceId, userId: user.id, body, submissionId });
     return respond("sent");
   } catch (err) {
     const msg = err instanceof Error ? err.message : "";

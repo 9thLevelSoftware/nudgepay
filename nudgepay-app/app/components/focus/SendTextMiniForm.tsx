@@ -3,7 +3,7 @@
 // textarea, POST /api/text/send with respond=json.
 
 import { useEffect, useRef, useState } from "react";
-import { useFetcher } from "react-router";
+import { useFetcher, useRouteLoaderData } from "react-router";
 import type { CaseItem } from "../../lib/cases";
 import type { Collision } from "../../lib/collision";
 import { useCollisionRecheck } from "../../lib/use-collision-recheck.client";
@@ -12,6 +12,9 @@ import { applyTemplate, type TemplateVars } from "../../lib/sms-templates";
 import type { MessageTemplateRow } from "../../lib/message-templates";
 import { formatUSD } from "../../lib/format";
 import { formatDate } from "../../lib/dates";
+import { useSendSubmission } from "../../lib/use-send-submission";
+
+const FALLBACK_SUBMISSION_SEED = "00000000-0000-4000-8000-000000000000";
 
 interface SendTextMiniFormProps {
   item: CaseItem;
@@ -27,11 +30,14 @@ interface SendTextMiniFormProps {
   orgCompany: string;
   orgPhone: string;
   orgPaymentLink: string;
+  orgId: string;
+  userId: string;
 }
 
 export function SendTextMiniForm({
   item, collision, smsEnabled, smsQuietNow, quietHoursLabel, onDone, onCancel, onError,
   smsTemplates, orgCompany, orgPhone, orgPaymentLink,
+  orgId, userId,
 }: SendTextMiniFormProps) {
   const firstInvoice = item.invoices[0] ?? null;
 
@@ -60,7 +66,18 @@ export function SendTextMiniForm({
     item.caseId, collision,
   );
   const textareaRef = useRef<HTMLTextAreaElement>(null);
-  const fetcher = useFetcher();
+  const fetcher = useFetcher<{ ok: boolean; sms?: string; sendSubmission?: string | null }>();
+  const rootData = useRouteLoaderData<{ sendSubmissionSeed: string }>("root");
+  const submission = useSendSubmission({
+    serverSeed: rootData?.sendSubmissionSeed ?? FALLBACK_SUBMISSION_SEED,
+    userId,
+    orgId,
+    channel: "sms",
+    customerId: item.customerId,
+    result: fetcher.data?.sendSubmission
+      ? { id: fetcher.data.sendSubmission, success: fetcher.data.ok }
+      : null,
+  });
 
   // Autofocus the textarea on mount
   useEffect(() => {
@@ -186,20 +203,25 @@ export function SendTextMiniForm({
             <fetcher.Form
               method="post"
               action="/api/text/send"
-              onSubmit={guardSubmit}
+              onSubmit={(e) => {
+                guardSubmit(e);
+                submission.onSubmit(e);
+              }}
             >
+              <input ref={submission.inputRef} type="hidden" name="submissionId" value={submission.submissionId} readOnly />
               <input type="hidden" name="invoiceId" value={firstInvoice?.invoiceId ?? ""} />
               <input type="hidden" name="body" value={body} />
               <input type="hidden" name="respond" value="json" />
               <button
                 type="submit"
-                disabled={sending || checking || !body.trim()}
+                disabled={sending || checking || !body.trim() || !submission.ready}
                 className="rounded-lg bg-copper px-4 py-1.5 text-sm font-semibold text-surface hover:bg-copper/90 disabled:opacity-40 disabled:cursor-not-allowed"
               >
                 {sending ? "Sending…" : "Send text"}
               </button>
             </fetcher.Form>
           </div>
+          {submission.error ? <p className="mt-2 text-xs text-hot" role="alert">{submission.error}</p> : null}
         </>
       )}
     </div>

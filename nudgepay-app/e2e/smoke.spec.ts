@@ -42,3 +42,10 @@ test("login skip link moves focus to main", async ({ page }) => {
   await skip.click();
   await expect(page.locator("#main-content")).toBeFocused();
 });
+
+test("unknown public route renders the styled not-found boundary", async ({ page }) => {
+  const response = await page.goto("/this-route-does-not-exist");
+  expect(response?.status()).toBe(404);
+  await expect(page.getByRole("heading", { name: "Page not found" })).toBeVisible();
+  await expect(page.getByRole("link", { name: "Back to home" })).toBeVisible();
+});

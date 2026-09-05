@@ -7,7 +7,7 @@ export async function action({ request, context }: ActionFunctionArgs) {
   requireSameOrigin(request);
   const env = getEnv(context as any);
   const { supabase, headers, user } = await requireUser(request, env);
-  const org = await resolveOrg(supabase, user.id, request);
+  const org = await resolveOrg(supabase, user.id, request, headers);
   if (!org) return data({ ok: false }, { status: 401, headers });
 
   const form = await request.formData();

@@ -5,6 +5,7 @@ import type { OrgConfig } from "./org-config";
 import { smsSendReason } from "./sms-send-reason";
 import { smsFlashCopy } from "./flash-copy";
 import { orderPage, pageAll } from "./page-all";
+import { deriveBulkSubmissionId } from "./send-submission";
 
 export type BulkSmsFailure = { caseId: string; name: string; error: string };
 
@@ -40,7 +41,7 @@ type InvoiceRow = { id: string; qbo_doc_number: string | null; due_date: string 
 // the message template vars (company/phone/paymentLink).
 export async function runBulkSms(
   deps: MessagingDeps,
-  args: { orgId: string; userId: string; caseIds: string[]; today: string; templateBody: string; orgConfig: OrgConfig },
+  args: { orgId: string; userId: string; caseIds: string[]; today: string; templateBody: string; orgConfig: OrgConfig; submissionId?: string },
 ): Promise<BulkSmsResult> {
   const ids = clampBatch(args.caseIds, args.orgConfig.workflow.smsBatchLimit);
   if (ids.length === 0) return emptyResult();
@@ -131,6 +132,9 @@ export async function runBulkSms(
         invoiceId: c.representativeInvoiceId,
         userId: args.userId,
         body: renderCaseBody(args.templateBody, c, orgVars),
+        submissionId: args.submissionId
+          ? deriveBulkSubmissionId(args.submissionId, c.caseId)
+          : undefined,
       });
       sent++;
     } catch (err) {

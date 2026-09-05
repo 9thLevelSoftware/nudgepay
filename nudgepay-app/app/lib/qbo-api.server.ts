@@ -11,10 +11,21 @@ const MINOR_VERSION = "65";
 // (3 attempts total). Tests inject sleep/now so they never wait wall time.
 export const QBO_429_MAX_RETRIES = 2;
 export const QBO_429_WAIT_CAP_MS = 2_000;
+export const QBO_API_REQUEST_TIMEOUT_MS = 20_000;
+
+export class QboApiTimeoutError extends Error {
+  readonly name = "QboApiTimeoutError";
+
+  constructor() {
+    super("QBO API request timed out");
+  }
+}
 
 export type QboRetryClock = {
-  sleep?: (ms: number) => Promise<void>;
+  sleep?: (ms: number, signal?: AbortSignal) => Promise<void>;
   now?: () => number;
+  /** null means the caller owns the deadline through RequestInit.signal. */
+  timeoutMs?: number | null;
 };
 
 export function qboApiBaseUrl(sandbox: boolean): string {
@@ -23,9 +34,113 @@ export function qboApiBaseUrl(sandbox: boolean): string {
     : "https://quickbooks.api.intuit.com";
 }
 
-function defaultSleep(ms: number): Promise<void> {
+function abortReason(signal: AbortSignal): unknown {
+  return signal.reason ?? new DOMException("The operation was aborted", "AbortError");
+}
+
+function defaultSleep(ms: number, signal?: AbortSignal): Promise<void> {
   if (ms <= 0) return Promise.resolve();
-  return new Promise((resolve) => setTimeout(resolve, ms));
+  return new Promise((resolve, reject) => {
+    if (signal?.aborted) {
+      reject(abortReason(signal));
+      return;
+    }
+    const timer = setTimeout(done, ms);
+    const onAbort = () => {
+      clearTimeout(timer);
+      cleanup();
+      reject(abortReason(signal!));
+    };
+    function cleanup() {
+      signal?.removeEventListener("abort", onAbort);
+    }
+    function done() {
+      cleanup();
+      resolve();
+    }
+    signal?.addEventListener("abort", onAbort, { once: true });
+  });
+}
+
+function sleepWithAbort(
+  sleep: (ms: number, signal?: AbortSignal) => Promise<void>,
+  ms: number,
+  signal: AbortSignal,
+): Promise<void> {
+  if (signal.aborted) return Promise.reject(abortReason(signal));
+  return new Promise((resolve, reject) => {
+    let settled = false;
+    const finish = (fn: () => void) => {
+      if (settled) return;
+      settled = true;
+      signal.removeEventListener("abort", onAbort);
+      fn();
+    };
+    const onAbort = () => finish(() => reject(abortReason(signal)));
+    signal.addEventListener("abort", onAbort, { once: true });
+    let pendingSleep: Promise<void>;
+    try {
+      pendingSleep = sleep(ms, signal);
+    } catch (error) {
+      finish(() => reject(error));
+      return;
+    }
+    Promise.resolve(pendingSleep).then(
+      () => finish(resolve),
+      (error) => finish(() => reject(error)),
+    );
+  });
+}
+
+function raceWithAbort<T>(operation: Promise<T>, signal: AbortSignal): Promise<T> {
+  if (signal.aborted) return Promise.reject(abortReason(signal));
+  return new Promise((resolve, reject) => {
+    let settled = false;
+    const finish = (fn: () => void) => {
+      if (settled) return;
+      settled = true;
+      signal.removeEventListener("abort", onAbort);
+      fn();
+    };
+    const onAbort = () => finish(() => reject(abortReason(signal)));
+    signal.addEventListener("abort", onAbort, { once: true });
+    operation.then(
+      (value) => finish(() => resolve(value)),
+      (error) => finish(() => reject(error)),
+    );
+  });
+}
+
+async function withQboRequestDeadline<T>(
+  clock: QboRetryClock,
+  callerSignal: AbortSignal | null | undefined,
+  operation: (signal: AbortSignal) => Promise<T>,
+): Promise<T> {
+  const controller = new AbortController();
+  let timedOut = false;
+  const onCallerAbort = () => controller.abort(abortReason(callerSignal!));
+  if (callerSignal?.aborted) onCallerAbort();
+  else callerSignal?.addEventListener("abort", onCallerAbort, { once: true });
+
+  const timeoutMs = clock.timeoutMs === undefined ? QBO_API_REQUEST_TIMEOUT_MS : clock.timeoutMs;
+  const timeout = timeoutMs === null
+    ? undefined
+    : setTimeout(() => {
+      if (controller.signal.aborted) return;
+      timedOut = true;
+      controller.abort();
+    }, Math.max(1, timeoutMs));
+
+  try {
+    if (controller.signal.aborted) throw abortReason(controller.signal);
+    return await raceWithAbort(operation(controller.signal), controller.signal);
+  } catch (error) {
+    if (timedOut) throw new QboApiTimeoutError();
+    throw error;
+  } finally {
+    if (timeout !== undefined) clearTimeout(timeout);
+    callerSignal?.removeEventListener("abort", onCallerAbort);
+  }
 }
 
 /** Parse Retry-After as delta-seconds and cap the wait. Invalid/missing → 0. */
@@ -42,31 +157,36 @@ export async function fetchWithIntuitRetry(
   init: RequestInit,
   clock: QboRetryClock = {},
 ): Promise<Response> {
-  const sleep = clock.sleep ?? defaultSleep;
-  const now = clock.now ?? Date.now;
-  let res: Response | undefined;
-  for (let attempt = 0; attempt <= QBO_429_MAX_RETRIES; attempt++) {
-    res = await fetchFn(input, init);
-    if (res.status !== 429 || attempt === QBO_429_MAX_RETRIES) return res;
-    const waitMs = retryAfterWaitMs(res.headers?.get("Retry-After"));
-    // Wait is a delta from Retry-After, not an HTTP-date. `now` is the test clock.
-    if (waitMs > 0) {
-      now();
-      await sleep(waitMs);
+  return withQboRequestDeadline(clock, init.signal, async (signal) => {
+    const sleep = clock.sleep ?? defaultSleep;
+    const now = clock.now ?? Date.now;
+    let res: Response | undefined;
+    for (let attempt = 0; attempt <= QBO_429_MAX_RETRIES; attempt++) {
+      res = await fetchFn(input, { ...init, signal });
+      if (res.status !== 429 || attempt === QBO_429_MAX_RETRIES) return res;
+      const waitMs = retryAfterWaitMs(res.headers?.get("Retry-After"));
+      // Wait is a delta from Retry-After, not an HTTP-date. `now` is the test clock.
+      if (waitMs > 0) {
+        now();
+        await sleepWithAbort(sleep, waitMs, signal);
+      }
     }
-  }
-  return res!;
+    return res!;
+  });
 }
 
 async function getJson(
   fetchFn: typeof fetch, url: string, accessToken: string, clock: QboRetryClock = {},
 ): Promise<any> {
-  const res = await fetchWithIntuitRetry(fetchFn, url, {
-    method: "GET",
-    headers: qboGetHeaders(accessToken),
-  }, clock);
-  if (!res.ok) throw new Error(`QBO API request failed: ${res.status}`);
-  return res.json();
+  return withQboRequestDeadline(clock, undefined, async (signal) => {
+    const res = await fetchWithIntuitRetry(fetchFn, url, {
+      method: "GET",
+      headers: qboGetHeaders(accessToken),
+      signal,
+    }, { ...clock, timeoutMs: null });
+    if (!res.ok) throw new Error(`QBO API request failed: ${res.status}`);
+    return res.json();
+  });
 }
 
 function qboFaultCodes(body: unknown): string[] {
@@ -134,17 +254,20 @@ export async function qboReadEntity(
 ): Promise<any | null> {
   const url = `${api.baseUrl}/v3/company/${realmId}/${entityName.toLowerCase()}/${id}`
     + `?minorversion=${MINOR_VERSION}`;
-  const res = await fetchWithIntuitRetry(fetchFn, url, {
-    method: "GET",
-    headers: qboGetHeaders(accessToken),
-  }, clock);
-  if (res.ok) {
-    const data = (await res.json()) as Record<string, unknown>;
-    return data[entityName] ?? null;
-  }
-  const body = await res.json().catch(() => null);
-  if (isQboObjectNotFound(res.status, body)) return null;
-  throw new Error(`QBO API request failed: ${res.status}`);
+  return withQboRequestDeadline(clock, undefined, async (signal) => {
+    const res = await fetchWithIntuitRetry(fetchFn, url, {
+      method: "GET",
+      headers: qboGetHeaders(accessToken),
+      signal,
+    }, { ...clock, timeoutMs: null });
+    if (res.ok) {
+      const data = (await res.json()) as Record<string, unknown>;
+      return data[entityName] ?? null;
+    }
+    const body = await res.json().catch(() => null);
+    if (isQboObjectNotFound(res.status, body)) return null;
+    throw new Error(`QBO API request failed: ${res.status}`);
+  });
 }
 
 /** CompanyInfo is a singleton; Intuit uses id `"1"`. */

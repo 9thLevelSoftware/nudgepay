@@ -1,6 +1,7 @@
 import { expect, test } from "vitest";
 import {
   BILLING_COPY,
+  billingCanManage,
   billingIsCurrent,
   billingStatusLabel,
   parseBillingStatus,
@@ -9,6 +10,8 @@ import { billingPatchFromStripeEvent as patchFromEvent, verifyStripeSignature } 
 
 test("parseBillingStatus defaults unknown to none", () => {
   expect(parseBillingStatus("active")).toBe("active");
+  expect(parseBillingStatus("paused")).toBe("paused");
+  expect(parseBillingStatus("incomplete_expired")).toBe("incomplete_expired");
   expect(parseBillingStatus("nope")).toBe("none");
   expect(parseBillingStatus(null)).toBe("none");
 });
@@ -17,6 +20,7 @@ test("billingIsCurrent is trial or active", () => {
   expect(billingIsCurrent("active")).toBe(true);
   expect(billingIsCurrent("trialing")).toBe(true);
   expect(billingIsCurrent("past_due")).toBe(false);
+  expect(billingIsCurrent("paused")).toBe(false);
   expect(billingIsCurrent("none")).toBe(false);
 });
 
@@ -27,26 +31,37 @@ test("billing copy does not charge customers", () => {
 
 test("checkout.session.completed maps org and customer", () => {
   expect(patchFromEvent({
+    id: "evt_checkout_1",
+    created: 1_700_000_000,
     type: "checkout.session.completed",
     data: {
       object: {
+        id: "cs_1",
         mode: "subscription",
         client_reference_id: "org-1",
         customer: "cus_1",
         subscription: "sub_1",
+        metadata: { attempt_id: "attempt-1" },
       },
     },
   })).toEqual({
+    eventId: "evt_checkout_1",
+    eventCreatedAt: "2023-11-14T22:13:20.000Z",
+    eventType: "checkout.session.completed",
     orgId: "org-1",
     stripeCustomerId: "cus_1",
     stripeSubscriptionId: "sub_1",
     status: "active",
     currentPeriodEnd: null,
+    checkoutAttemptId: "attempt-1",
+    checkoutSessionId: "cs_1",
   });
 });
 
 test("subscription.updated maps status and period end", () => {
   const patch = patchFromEvent({
+    id: "evt_subscription_2",
+    created: 1_700_000_001,
     type: "customer.subscription.updated",
     data: {
       object: {
@@ -68,6 +83,42 @@ test("unknown events are ignored", () => {
   expect(patchFromEvent({ type: "ping", data: { object: {} } })).toBeNull();
 });
 
+test("existing recoverable subscriptions stay manageable in the billing portal", () => {
+  for (const status of ["incomplete", "trialing", "active", "past_due", "unpaid", "paused"] as const) {
+    expect(billingCanManage(status)).toBe(true);
+  }
+  for (const status of ["none", "canceled", "incomplete_expired"] as const) {
+    expect(billingCanManage(status)).toBe(false);
+  }
+});
+
+test("billing labels represent terminal and paused Stripe states", () => {
+  expect(billingStatusLabel("paused")).toBe("Paused");
+  expect(billingStatusLabel("incomplete_expired")).toBe("Incomplete (expired)");
+});
+
+test("billing patches carry Stripe event identity and creation time", () => {
+  const patch = patchFromEvent({
+    id: "evt_ordered_1",
+    created: 1_800_000_123,
+    type: "customer.subscription.updated",
+    data: {
+      object: {
+        id: "sub_ordered_1",
+        customer: "cus_ordered_1",
+        status: "active",
+        metadata: { org_id: "org-ordered-1" },
+      },
+    },
+  });
+
+  expect(patch).toMatchObject({
+    eventId: "evt_ordered_1",
+    eventCreatedAt: "2027-01-15T08:02:03.000Z",
+    eventType: "customer.subscription.updated",
+  });
+});
+
 test("verifyStripeSignature accepts a matching v1 hex HMAC", async () => {
   const secret = "whsec_test";
   const body = "{\"id\":\"evt_1\"}";
@@ -82,6 +133,12 @@ test("verifyStripeSignature accepts a matching v1 hex HMAC", async () => {
   const sig = await crypto.subtle.sign("HMAC", key, new TextEncoder().encode(`${t}.${body}`));
   const hex = [...new Uint8Array(sig)].map((b) => b.toString(16).padStart(2, "0")).join("");
   expect(await verifyStripeSignature(secret, `t=${t},v1=${hex}`, body, 1_700_000_000_000)).toBe(true);
+  expect(await verifyStripeSignature(
+    secret,
+    `t=${t},v1=deadbeef,v1=${hex}`,
+    body,
+    1_700_000_000_000,
+  )).toBe(true);
   expect(await verifyStripeSignature(secret, `t=${t},v1=deadbeef`, body, 1_700_000_000_000)).toBe(false);
 });
 

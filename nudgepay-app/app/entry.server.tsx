@@ -2,27 +2,33 @@ import type { AppLoadContext, EntryContext } from "react-router";
 import { ServerRouter } from "react-router";
 import { isbot } from "isbot";
 import { renderToReadableStream } from "react-dom/server";
+import { safeErrorDetails } from "./lib/log-redaction";
 
 export default async function handleRequest(
 	request: Request,
 	responseStatusCode: number,
 	responseHeaders: Headers,
 	routerContext: EntryContext,
-	_loadContext: AppLoadContext,
+	loadContext: AppLoadContext,
 ) {
 	let shellRendered = false;
 	const userAgent = request.headers.get("user-agent");
+	const nonce = loadContext.cloudflare.cspNonce;
 
 	const body = await renderToReadableStream(
-		<ServerRouter context={routerContext} url={request.url} />,
+		<ServerRouter context={routerContext} url={request.url} nonce={nonce} />,
 		{
+			nonce,
 			onError(error: unknown) {
 				responseStatusCode = 500;
 				// Log streaming rendering errors from inside the shell.  Don't log
 				// errors encountered during initial shell rendering since they'll
 				// reject and get logged in handleDocumentRequest.
 				if (shellRendered) {
-					console.error(error);
+					console.error({
+						event: "ssr_stream_error",
+						...safeErrorDetails(error),
+					});
 				}
 			},
 		},
