@@ -222,6 +222,31 @@ jobs:
             echo "Production promotion attempts are immutable. Dispatch a new workflow after reviewing the retained attempt evidence." >&2
             exit 1
           fi
+      - name: Retain promotion authorization
+        working-directory: ${{ runner.temp }}
+        env:
+          SOURCE_SHA: ${{ needs.authorize.outputs.source_sha }}
+          MANIFEST_SHA: ${{ needs.authorize.outputs.manifest_sha256 }}
+          STAGING_CONFIG_SHA: ${{ needs.authorize.outputs.staging_config_sha256 }}
+          PRODUCTION_CONFIG_SHA: ${{ needs.authorize.outputs.production_config_sha256 }}
+          STAGING_RECEIPT_SHA: ${{ needs.authorize.outputs.staging_receipt_sha256 }}
+        run: |
+          node --input-type=module <<'NODE'
+          import { createHash } from "node:crypto";
+          import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+          import { join } from "node:path";
+          const event = JSON.parse(readFileSync(process.env.GITHUB_EVENT_PATH, "utf8"));
+          const reference = event.inputs?.operator_evidence_reference?.trim();
+          const attested = event.inputs?.operator_attests_remaining_gates === true || event.inputs?.operator_attests_remaining_gates === "true";
+          const workflowRunId = Number(process.env.GITHUB_RUN_ID);
+          const runAttempt = Number(process.env.GITHUB_RUN_ATTEMPT);
+          if (!attested || !reference || reference.length > 200 || !Number.isSafeInteger(workflowRunId) || !Number.isSafeInteger(runAttempt)) throw new Error("Invalid promotion authorization evidence");
+          const authorization = { schemaVersion: 1, recordedAt: new Date().toISOString(), actor: process.env.GITHUB_ACTOR, repository: process.env.GITHUB_REPOSITORY, workflowRunId, runAttempt, sourceSha: process.env.SOURCE_SHA, manifestSha256: process.env.MANIFEST_SHA, stagingConfigSha256: process.env.STAGING_CONFIG_SHA, productionConfigSha256: process.env.PRODUCTION_CONFIG_SHA, stagingReceiptSha256: process.env.STAGING_RECEIPT_SHA, operatorAttestsRemainingGates: true, operatorEvidenceReference: reference };
+          authorization.authorizationSha256 = createHash("sha256").update(JSON.stringify(authorization)).digest("hex");
+          const directory = join(process.env.RUNNER_TEMP, "production-evidence");
+          mkdirSync(directory, { recursive: true });
+          writeFileSync(join(directory, "promotion-authorization.json"), `${JSON.stringify(authorization, null, 2)}\n`, { flag: "wx" });
+          NODE
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
           ref: ${{ needs.authorize.outputs.source_sha }}
