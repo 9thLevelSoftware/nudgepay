@@ -160,6 +160,15 @@ export function productionDeployShaForEnvironment(env) {
   return env?.WORKERS_CI === "1" ? env.WORKERS_CI_COMMIT_SHA : env?.EXPECTED_DEPLOY_SHA;
 }
 
+export function assertCloudflareWorkerNameOverride({ environment, expectedName, env = process.env }) {
+  const override = env?.WRANGLER_CI_OVERRIDE_NAME;
+  if (override !== undefined && override !== expectedName) {
+    throw configError(
+      `${environment} WRANGLER_CI_OVERRIDE_NAME must equal the canonical Worker ${expectedName}`,
+    );
+  }
+}
+
 export function assertNoInvariantSecrets(secretNames, environment) {
   const collisions = INVARIANT_VAR_NAMES.filter((name) => secretNames.includes(name));
   if (collisions.length > 0) {

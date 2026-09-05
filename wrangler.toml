@@ -3,12 +3,14 @@
 # `nudgepay-app/` package). Without this file Wrangler auto-inits a static
 # site from `netlify/` and tries to overwrite the live SSR Worker.
 #
-# Preferred dashboard settings (Settings → Builds):
+# Required dashboard settings (Settings → Builds):
 #   Root directory:  nudgepay-app
 #   Build command:   npm ci --include=dev
 #   Deploy command:  npm run deploy
-# Until those are set, this file makes the default `npx wrangler deploy`
-# build and preflight the real app instead of uploading Netlify redirects.
+#   Builds for non-production branches: disabled
+# The deploy wrapper performs post-upload query-string redaction and verifies
+# it through the script-settings API. A Wrangler build hook runs before upload
+# and cannot provide that guarantee, so direct root deploys fail below.
 
 name = "nudgepay-app"
 compatibility_date = "2025-06-01"
@@ -51,5 +53,5 @@ simple = { limit = 20, period = 60 }
 directory = "nudgepay-app/build/client"
 
 [build]
-command = "node scripts/cf-builds-prepare.mjs"
+command = "node scripts/reject-direct-worker-deploy.mjs"
 cwd = "nudgepay-app"

@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import {
+  assertCloudflareWorkerNameOverride,
   assertDeployConfig,
   assertProductionReleaseGuard,
   assertNoInvariantSecrets,
@@ -184,5 +185,23 @@ describe("deployment preflight", () => {
     expect(productionDeployShaForEnvironment({ WORKERS_CI: "1", WORKERS_CI_COMMIT_SHA: "a".repeat(40), EXPECTED_DEPLOY_SHA: "b".repeat(40) })).toBe("a".repeat(40));
     expect(productionDeployShaForEnvironment({ WORKERS_CI: "0", WORKERS_CI_COMMIT_SHA: "a".repeat(40), EXPECTED_DEPLOY_SHA: "b".repeat(40) })).toBe("b".repeat(40));
     expect(productionDeployShaForEnvironment({ WORKERS_CI: "1" })).toBeUndefined();
+  });
+
+  it("rejects a Workers Builds name override that changes the canonical target", () => {
+    expect(() => assertCloudflareWorkerNameOverride({
+      environment: "production",
+      expectedName: "nudgepay-app",
+      env: {},
+    })).not.toThrow();
+    expect(() => assertCloudflareWorkerNameOverride({
+      environment: "production",
+      expectedName: "nudgepay-app",
+      env: { WRANGLER_CI_OVERRIDE_NAME: "nudgepay-app" },
+    })).not.toThrow();
+    expect(() => assertCloudflareWorkerNameOverride({
+      environment: "production",
+      expectedName: "nudgepay-app",
+      env: { WRANGLER_CI_OVERRIDE_NAME: "another-worker" },
+    })).toThrow(/canonical Worker nudgepay-app/);
   });
 });

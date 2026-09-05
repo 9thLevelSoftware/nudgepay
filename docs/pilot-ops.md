@@ -216,6 +216,33 @@ project; the deployed shared-database state is not independently certified.
 Staging isolation is required before real customer-like data. Twilio/Resend
 credentials should point at owned destinations only.
 
+Both deployment wrappers patch Cloudflare's script-level
+`observability.redact_query_string` setting after upload, preserving the
+existing log, trace, persistence, destination, and sampling settings. They then
+read the setting back and exit nonzero unless it is `true`. Wrangler 4.88.0
+does not expose this field in its configuration schema, so adding it to
+`wrangler.toml` is not a substitute. A failed post-upload check means the new
+Worker is already uploaded and must be treated as an incomplete deployment
+until the setting is repaired and verified. There is a brief interval between
+upload and this readback.
+
+Cloudflare Workers Builds must use these exact dashboard settings:
+
+```text
+Root directory: nudgepay-app
+Build command: npm ci --include=dev
+Deploy command: npm run deploy
+Builds for non-production branches: disabled
+```
+
+The repository-root direct Wrangler path exits before upload because its build
+hook cannot run a post-upload verification. Current API credentials cannot read
+the hosted Workers Builds trigger configuration, so record dashboard evidence
+of the deploy command and disabled non-production branch builds before treating
+the Git-connected deployment path as qualified. If preview builds are enabled
+later, their custom upload command must apply and verify query-string redaction
+for the exact preview Worker after `wrangler versions upload`.
+
 Promote by deploying production only after the same candidate has been
 exercised on staging. There is no automatic promotion pipeline.
 

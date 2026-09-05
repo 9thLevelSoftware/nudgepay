@@ -4,11 +4,13 @@
 import { spawnSync } from "node:child_process";
 import { readFileSync, writeFileSync } from "node:fs";
 import {
+  assertCloudflareWorkerNameOverride,
   assertDeployConfig,
   assertNoInvariantSecrets,
   assertProductionReleaseGuard,
   assertProductionConfigParity,
   parseDeploymentArgs,
+  productionDeployShaForEnvironment,
   productionConfigFromToml,
   stagingConfigFromToml,
 } from "./deploy-preflight.mjs";
@@ -50,7 +52,12 @@ const targetConfig = staging
       vars: { ...stagingConfig.vars, SUPABASE_URL: stagingSupabaseUrl },
     }
   : productionConfig;
-if (!staging) assertProductionReleaseGuard({ expectedSha: process.env.EXPECTED_DEPLOY_SHA, cwd });
+const expectedProductionSha = productionDeployShaForEnvironment(process.env);
+if (!staging) assertProductionReleaseGuard({ expectedSha: expectedProductionSha, cwd });
+assertCloudflareWorkerNameOverride({
+  environment,
+  expectedName: targetConfig.name,
+});
 assertDeployConfig({
   environment,
   config: targetConfig,
@@ -75,5 +82,9 @@ if (staging) {
 }
 assertDeployConfig({ environment, config: cfg, productionSupabaseUrl: productionConfig.vars.SUPABASE_URL });
 writeFileSync(dest, JSON.stringify(cfg));
-if (!staging) assertProductionReleaseGuard({ expectedSha: process.env.EXPECTED_DEPLOY_SHA, cwd });
+if (!staging) assertProductionReleaseGuard({ expectedSha: expectedProductionSha, cwd });
 run("npx", ["wrangler", "deploy", "-c", `build/server/wrangler.${environment}.json`]);
+// redact_query_string is a script-level API setting that Wrangler 4.88 does
+// not expose in its configuration schema. Apply it after each canonical
+// production/staging upload and read it back before reporting success.
+run("node", ["scripts/enforce-observability-redaction.mjs", "--worker", targetConfig.name]);
