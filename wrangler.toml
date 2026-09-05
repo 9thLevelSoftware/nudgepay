@@ -1,11 +1,11 @@
-# Cloudflare Workers Builds triggers are disabled. Releases use the manual,
-# explicit sealed-artifact flow documented in nudgepay-app/README.md and
+# Cloudflare Workers Builds triggers are disabled. A successful main CI run
+# drives the sealed-artifact staging workflow, while protected manual production
+# promotion reuses that exact artifact. See nudgepay-app/README.md and
 # docs/pilot-ops.md. Without this file, an accidental root `npx wrangler deploy`
 # can auto-init a static site from `netlify/` and overwrite the live SSR Worker.
 #
-# Keep all production and preview triggers disabled until a reviewed CI design
-# can retrieve the exact retained artifact and preserve its manifest/config/
-# Worker-version receipts. This build hook intentionally keeps direct root
+# Keep Workers Builds production and preview triggers disabled to avoid a
+# duplicate raw-upload path. This build hook intentionally keeps direct root
 # Wrangler uploads fail-closed; it cannot perform post-upload redaction and
 # active-version verification.
 

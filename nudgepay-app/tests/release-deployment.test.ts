@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 import {
   createDeploymentReceipt,
+  createDeploymentAttempt,
   deriveReleaseTargetConfigs,
   latestMigrationFilename,
   validatedMigrationFilenames,
@@ -176,7 +177,11 @@ describe("release deployment orchestration contracts", () => {
       manifestSha256: "c".repeat(64),
       configSha256: "d".repeat(64),
       workerName: "nudgepay-app",
-      previousVersionId: oldVersionId,
+      previousDeployment: {
+        deploymentId: "55555555-5555-4555-8555-555555555555",
+        versionId: oldVersionId,
+        createdOn: "2026-09-05T19:59:00.000Z",
+      },
       deployment: {
         deploymentId,
         versionId: newVersionId,
@@ -196,10 +201,15 @@ describe("release deployment orchestration contracts", () => {
       recordedAt: "2026-09-05T20:01:00.000Z",
     });
     expect(receipt.versionId).toBe(newVersionId);
+    expect(receipt.previousVersionId).toBe(oldVersionId);
     expect(receipt.receiptSha256).toBe(receiptDigest(receipt));
     expect(() => createDeploymentReceipt({
       ...receipt,
-      previousVersionId: oldVersionId,
+      previousDeployment: {
+        deploymentId: "55555555-5555-4555-8555-555555555555",
+        versionId: oldVersionId,
+        createdOn: "2026-09-05T19:59:00.000Z",
+      },
       deployment: { deploymentId, versionId: oldVersionId, createdOn: receipt.deployedAt },
     })).toThrow(/new Worker version/);
     expect(() => createDeploymentReceipt({
@@ -223,5 +233,29 @@ describe("release deployment orchestration contracts", () => {
     } finally {
       rmSync(directory, { recursive: true, force: true });
     }
+  });
+
+  it("records the prior version before an upload attempt without claiming automatic rollback", () => {
+    const attempt = createDeploymentAttempt({
+      environment: "production",
+      sourceCommit: "a".repeat(40),
+      manifestSha256: "b".repeat(64),
+      configSha256: "c".repeat(64),
+      workerName: "nudgepay-app",
+      previousDeployment: {
+        deploymentId,
+        versionId: oldVersionId,
+        createdOn: "2026-09-05T20:00:00.000Z",
+      },
+      attemptId: "123-1",
+      recordedAt: "2026-09-05T20:01:00.000Z",
+    });
+    expect(attempt.previousDeployment?.versionId).toBe(oldVersionId);
+    expect(attempt.automaticRollback).toBe(false);
+    expect(attempt.attemptSha256).toMatch(/^[a-f0-9]{64}$/);
+    expect(() => createDeploymentAttempt({
+      ...attempt,
+      previousDeployment: { ...attempt.previousDeployment, versionId: "not-a-version" },
+    })).toThrow(/previous Worker deployment/);
   });
 });

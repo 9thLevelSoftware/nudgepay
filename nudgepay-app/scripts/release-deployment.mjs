@@ -175,6 +175,58 @@ export function writeDeploymentReceipt({ receiptPath, receipt }) {
   writeFileSync(receiptPath, `${JSON.stringify(receipt, null, 2)}\n`, { flag: "wx" });
 }
 
+export function createDeploymentAttempt({
+  environment,
+  sourceCommit,
+  manifestSha256,
+  configSha256,
+  workerName,
+  previousDeployment,
+  attemptId,
+  recordedAt = new Date().toISOString(),
+}) {
+  const attemptIdPattern = /^(?:[0-9]+-[0-9]+|[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12})$/i;
+  if ((environment !== "production" && environment !== "staging") || !attemptIdPattern.test(attemptId ?? "")) {
+    throw deploymentError("deployment attempt identity is invalid");
+  }
+  for (const [label, value, pattern] of [
+    ["source commit", sourceCommit, /^[a-f0-9]{40}$/],
+    ["manifest digest", manifestSha256, /^[a-f0-9]{64}$/],
+    ["config digest", configSha256, /^[a-f0-9]{64}$/],
+  ]) if (!pattern.test(value ?? "")) throw deploymentError(`${label} is invalid`);
+  if (typeof workerName !== "string" || !/^[a-z0-9][a-z0-9_-]*$/i.test(workerName)) {
+    throw deploymentError("Worker name is invalid");
+  }
+  if (
+    typeof recordedAt !== "string"
+    || !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{3})?Z$/.test(recordedAt)
+    || Number.isNaN(Date.parse(recordedAt))
+  ) throw deploymentError("deployment attempt timestamp is invalid");
+  if (previousDeployment !== undefined && previousDeployment !== null) {
+    const cloudflareId = /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i;
+    if (
+      !cloudflareId.test(previousDeployment.deploymentId ?? "")
+      || !cloudflareId.test(previousDeployment.versionId ?? "")
+      || !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{3})?Z$/.test(previousDeployment.createdOn ?? "")
+      || Number.isNaN(Date.parse(previousDeployment.createdOn))
+    ) throw deploymentError("previous Worker deployment is incomplete");
+  }
+  const attempt = {
+    schemaVersion: 1,
+    recordedAt,
+    attemptId,
+    environment,
+    sourceCommit,
+    manifestSha256,
+    configSha256,
+    workerName,
+    previousDeployment: previousDeployment ?? null,
+    automaticRollback: false,
+  };
+  attempt.attemptSha256 = sha256(canonicalJson(attempt));
+  return attempt;
+}
+
 export function createDeploymentReceipt({
   environment,
   sourceCommit,
@@ -183,6 +235,7 @@ export function createDeploymentReceipt({
   configSha256,
   workerName,
   previousVersionId,
+  previousDeployment,
   deployment,
   queryStringRedactionVerified,
   providerConfiguration,
@@ -192,7 +245,8 @@ export function createDeploymentReceipt({
   if (environment !== "production" && environment !== "staging") {
     throw deploymentError("receipt environment is invalid");
   }
-  if (!deployment?.versionId || deployment.versionId === previousVersionId) {
+  const predecessorVersionId = previousDeployment?.versionId ?? previousVersionId;
+  if (!deployment?.versionId || deployment.versionId === predecessorVersionId) {
     throw deploymentError("upload did not produce a new Worker version");
   }
   const cloudflareId = /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i;
@@ -240,6 +294,7 @@ export function createDeploymentReceipt({
     manifestSha256,
     configSha256,
     workerName,
+    previousVersionId: predecessorVersionId ?? null,
     deploymentId: deployment.deploymentId,
     versionId: deployment.versionId,
     deployedAt: deployment.createdOn,

@@ -227,22 +227,42 @@ upload and this readback. No deployment receipt is written when the upload,
 active-version readback, provider-configuration check, or redaction readback
 fails.
 
-Cloudflare Workers Builds triggers are disabled for production and
-non-production branches. A connected Git build cannot currently retrieve the
-retained sealed artifact, and the former raw Wrangler upload bypassed artifact
-identity, receipt, and qualification checks. The repository-root build hook
-continues to reject direct Wrangler deployment. Retain the prior trigger
-configuration only as rollback/audit evidence; it is not an approved deploy
-path.
+Cloudflare Workers Builds triggers remain disabled for production and
+non-production branches. The repository-root build hook continues to reject
+direct Wrangler deployment, preventing a duplicate raw-upload path.
 
-Re-enable a production trigger only after a reviewed CI design stores the
-immutable manifest and bundle, downloads that exact artifact for both targets,
-and retains the version/config/manifest receipts and release-qualification
-output. Preview builds need the same exact-worker redaction readback before they
-can become an approved upload path.
+`Deploy staging` (`.github/workflows/deploy-staging.yml`) runs only after a
+successful same-repository `CI` push run on `main`. It verifies all eight CI
+jobs for the exact source SHA, builds and seals once, verifies staging
+environment credentials plus the exact Supabase link and migration parity before
+upload, then deploys and qualifies staging. It retains the candidate artifact
+and staging evidence for 90 days. A rerun is deliberately rejected so artifacts
+remain create-only; recover by rerunning upstream CI, which produces a new
+`Deploy staging` run. Immediate qualification can fail legitimately until the
+monitor heartbeat/cron and confirmed operator-alert status are green. Its
+success remains configuration verification, not provider integration proof or
+completion of the seven operational release gates.
 
-Promote by deploying production only after the same candidate has been
-exercised on staging. There is no automatic promotion pipeline.
+`Promote production` (`.github/workflows/promote-production.yml`) is an
+explicit `workflow_dispatch` on `refs/heads/main`. It requires the staging run,
+source SHA, manifest and both config hashes, staging receipt hash, an operator
+attestation of remaining gates, and an operator evidence reference. It is
+disabled unless `PRODUCTION_PROMOTION_ENABLED=true`; `RELEASE_OWNER` must be a
+protected production-environment reviewer. The workflow revalidates the exact
+successful staging run, retained artifact and receipt hashes, staging runtime,
+production protections, and migration ledger, then records the prior deployment
+identity. It never runs a database migration or automatic rollback. A rejected
+production rerun remains rejected; review retained attempt evidence and create a
+new dispatch.
+
+`CLOUDFLARE_ACCOUNT_ID` is an environment-scoped variable in both staging and
+production. `STAGING_SUPABASE_URL`, `RELEASE_OWNER`, and
+`PRODUCTION_PROMOTION_ENABLED` are repository variables; production remains
+disabled until the last variable is deliberately set to `true`. The four
+credentials `CLOUDFLARE_API_TOKEN`, `SUPABASE_ACCESS_TOKEN`,
+`SUPABASE_DB_PASSWORD`, and `MONITOR_TOKEN` are environment-scoped secrets.
+The manual artifact commands below are controlled recovery or diagnosis fallback,
+not the canonical promotion path.
 
 Prepare from a clean checkout once. `release:prepare` requires
 `EXPECTED_DEPLOY_SHA` to equal `HEAD`, requires an isolated

@@ -11,6 +11,7 @@
     "deploy": "node scripts/deploy-worker.mjs",
     "deploy:staging": "node scripts/deploy-worker.mjs --staging",
     "release:prepare": "node scripts/prepare-release-artifact.mjs",
+    "release:predeploy": "node scripts/release-predeploy.mjs",
     "release:qualify": "node scripts/release-qualifier.mjs",
     "dev": "react-router dev",
     "preview": "npm run build && vite preview",

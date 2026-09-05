@@ -10,7 +10,7 @@ describe("Cloudflare Workers Builds at repo root", () => {
     expect(toml).toContain('cwd = "nudgepay-app"');
     expect(toml).toContain("reject-direct-worker-deploy");
     expect(toml).toContain("Cloudflare Workers Builds triggers are disabled");
-    expect(toml).toContain("sealed-artifact flow");
+    expect(toml).toContain("sealed-artifact staging workflow");
     expect(toml).not.toContain("no_bundle");
     expect(toml).not.toMatch(/directory\s*=\s*"netlify"/);
     expect(toml).toContain("nudgepay-app/build/server/index.js");

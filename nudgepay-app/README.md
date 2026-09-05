@@ -54,6 +54,18 @@ npm run check           # tsc + build + wrangler deploy --dry-run
 
 Cloudflare Workers is production and owns both cron schedules (`wrangler.toml`).
 
+The normal release path is automated: a successful `CI` push run on `main`
+triggers `Deploy staging`, which verifies all eight required CI jobs, seals one
+artifact, deploys and qualifies staging, and retains artifact and staging
+evidence. `Promote production` is an explicit protected dispatch that accepts
+the retained staging identity, requalifies the same sealed artifact, requires
+operator attestation of remaining gates, and deploys production only when the
+promotion guard is enabled. See [`docs/pilot-ops.md`](../docs/pilot-ops.md) for
+the operator procedure and dispatch inputs.
+
+The commands below remain an operator fallback for controlled recovery or
+diagnosis; they are not the ordinary promotion path:
+
 ```bash
 npx wrangler secret put <NAME> --env=""
 npx wrangler secret put <NAME> --env production
@@ -90,11 +102,10 @@ the protected `/monitorz` status without printing or persisting the token; it
 does not claim live provider integration.
 
 The live Worker is `nudgepay-app` on `nudgepay.9thlevelsoftware.com`. Staging is
-`nudgepay-app-staging` on workers.dev. Cloudflare Workers Builds triggers are
-disabled because a Git-triggered raw Wrangler upload cannot consume the retained
-sealed artifact. Direct `npx wrangler deploy` remains blocked by the root build
-hook. Re-enable a trigger only after CI has reviewed artifact storage/download
-and receipt/qualification steps equivalent to the manual flow.
+`nudgepay-app-staging` on workers.dev. Cloudflare Workers Builds triggers remain
+disabled so they cannot create a duplicate raw-Wrangler deployment path alongside
+the sealed-artifact workflows. Direct `npx wrangler deploy` remains blocked by
+the root build hook.
 
 Design-partner limits, `/readyz` provider flags, and operator paging: [`docs/pilot-ops.md`](../docs/pilot-ops.md).
 
