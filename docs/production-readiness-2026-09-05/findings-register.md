@@ -97,3 +97,50 @@ keys, 9 auth RLS init-plan notices, 18 unused indexes, and 54 multiple
 permissive-policy notices. These are inventory signals, not evidence of slow
 queries or a mandate to remove indexes. Query measurements and workload context
 are required before changing indexes or policies.
+
+## Follow-on capacity finding
+
+**PERF-DELETE-01 — High, fixed in the local candidate.** On the isolated
+ten-workspace fixture, deleting one workspace with 5,000 customers, invoices,
+cases, and messages exceeded the API statement timeout; a direct RPC took
+29.919 seconds. This blocks reliable workspace deletion at the agreed pilot
+boundary. Owner: `deletion_performance` (Sol), with independent Sol review.
+
+Rollback-only measurements traced the dominant cost to foreign-key checks.
+Five targeted composite indexes reduced the explicit deletion sequence from
+about 23.28 seconds to 0.95 seconds. Migration `0064` is the candidate fix;
+acceptance requires applying it to the populated local database, successful
+actual deletion through the API at 5,000 and 5,001 rows, preserved unrelated
+tenant data, and passing deletion/authorization regressions. See
+[performance evidence](performance.md). This experiment alone does not close
+the finding or qualify staging capacity.
+
+Expanded verification reproduced an 8,005.768 ms PostgREST timeout with 5,001
+base rows plus 5,000 contact logs, email messages, promises, promise-invoice
+links, and payments. The failed transaction preserved the target and control
+tenants. The initial five-index fix is therefore insufficient to close this
+finding; the migration must cover the measured full-ledger paths and repeat
+successful deletion and control-tenant checks.
+
+Final disposition: `0064` contains 17 measured indexes. The expanded PostgREST
+deletion passed in 892.297 ms, with the target deleted, its tombstone verified,
+and all nine control-table counts unchanged. Fresh migration application and
+five focused integration files / 24 tests passed. Independent Sol re-review
+found no remaining critical/high/medium code finding. The one-off performance
+fixture and individual timings do not prove staging capacity; see the explicit
+limitations in [performance evidence](performance.md). Hosted rollout and
+catalog verification remain release requirements, including checking that
+`IF NOT EXISTS` did not preserve a mismatched pre-existing index definition.
+
+**PERF-PRESENCE-01 — Medium, fixed in the local candidate.** The authenticated
+boundary run logged `presence read failed ... URI too long`: the queue supplied
+approximately 5,000 customer IDs in one PostgREST URL and degraded to no presence.
+Owner: `presence_boundary` (Terra), with independent Sol review. The candidate
+uses deduplicated 100-ID batches with four concurrent reads, explicit tenant
+scope, and failure propagation. Acceptance requires unit proof of concurrency,
+no further dispatch after failure, and a large-fixture rendered rerun without
+the URI failure. Independent Sol review and five focused tests passed, including
+deferred concurrency and failure checks. The final real-login Chromium run on
+4,999 rows passed Accounts/Messages rendering without the presence warning.
+Full unit verification passed 139 files / 1,362 tests. Hosted rollout remains
+part of the release gates, not evidence supplied by this local check.

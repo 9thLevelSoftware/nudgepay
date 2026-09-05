@@ -1,6 +1,8 @@
 #!/usr/bin/env node
-import { mkdirSync, writeFileSync, chmodSync } from "node:fs";
-import { dirname, resolve } from "node:path";
+import { mkdirSync, writeFileSync, chmodSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { dirname, join, resolve } from "node:path";
+import { execFileSync } from "node:child_process";
 import { createServerClient } from "@supabase/ssr";
 import { createClient } from "@supabase/supabase-js";
 import {
@@ -66,13 +68,46 @@ async function findUserByEmail(admin, email) {
   }
   throw new Error("Pilot user lookup exceeded its bounded page limit.");
 }
-async function removeOwnedFixtures(admin, plan) {
-  for (const org of plan.orgs) {
-    for (const table of ["email_messages", "text_messages", "promise_invoices", "promises", "contact_logs", "collection_cases", "invoices", "customers", "memberships"]) {
-      await expect(await admin.from(table).delete().eq("org_id", org.id), `delete owned ${table}`);
-    }
-    await expect(await admin.from("organizations").delete().eq("id", org.id), "delete owned organization");
+function deleteFixtureOrganizationsLocally(plan) {
+  // This fixture recycler is local-only. It invokes the existing workspace
+  // deletion RPC through the local CLI connection so a rerun respects the
+  // current last-owner guard. It does not change application timeout behavior
+  // or qualify the production deletion path. The SQL has only deterministic
+  // fixture UUIDs, and --local never contacts hosting.
+  const ids = plan.orgs.map((org) => `'${org.id}'`).join(", ");
+  const sqlPath = join(tmpdir(), `nudgepay-pilot-fixture-delete-${process.pid}-${Date.now()}.sql`);
+  const sql = [
+    "with request_claim as (select set_config('request.jwt.claim.role', 'service_role', true)),",
+    "deleted as (",
+    "  select public.delete_workspace(organization.id, owner.user_id, organization.name, 5)",
+    "    from request_claim",
+    "    cross join public.organizations as organization",
+    "    join public.memberships as owner on owner.org_id = organization.id and owner.role = 'owner'",
+    `   where organization.id in (${ids})`,
+    ")",
+    "select count(*)::int as deleted_workspaces from deleted;",
+    "",
+  ].join("\n");
+  try {
+    writeFileSync(sqlPath, sql, { mode: 0o600 });
+    execFileSync(process.execPath, [
+      resolve("node_modules/supabase/dist/supabase.js"), "db", "query", "--local", "--file", sqlPath, "--output", "json",
+    ], {
+      stdio: ["ignore", "pipe", "pipe"],
+      timeout: 10 * 60_000,
+      windowsHide: true,
+    });
+  } catch {
+    throw new Error("Local pilot fixture cleanup failed. Confirm local Supabase is running and no other database harness owns it.");
+  } finally {
+    rmSync(sqlPath, { force: true });
   }
+}
+async function removeOwnedFixtures(admin, plan) {
+  // Production hardening prevents direct removal of the final owner. The
+  // helper uses that same scoped workspace deletion RPC rather than weakening
+  // the guard for fixture reruns.
+  deleteFixtureOrganizationsLocally(plan);
   for (const user of plan.orgs.flatMap((org) => org.users)) {
     const existing = await findUserByEmail(admin, user.email);
     if (existing) await expect(await admin.auth.admin.deleteUser(existing.id), "delete owned pilot auth user");

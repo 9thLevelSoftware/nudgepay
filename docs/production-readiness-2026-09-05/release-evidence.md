@@ -8,15 +8,30 @@ Local verification does not replace the outstanding hosted and operational gates
 
 - Baseline commit: `f7ebf21820deeecae95f4b41ba3b5275715e18c6`.
 - Implementation branch: `codex/production-readiness`.
-- Candidate changes are currently uncommitted; the baseline SHA must not be
-  presented as the tested implementation SHA. A 624-file source/test/config
+- The verified implementation was committed as
+  `2d99e8c218515ca843ff2a30af376aef44b208ce` on the implementation branch.
+  Follow-on qualification changes are recorded separately; the baseline SHA must
+  not be presented as the tested implementation SHA. A 624-file source/test/config
   manifest (excluding Markdown and `docs/`) is retained outside the repository
   at `C:\Users\dasbl\AppData\Local\NudgePay\evidence\candidate-source-manifest.json`.
   Its SHA-256 is `0fd59e894daadc0a2f8d6ded99b473026a5415c607cbda33c3e289e5355aaf6f`.
-  This records the local candidate; it does not replace the required clean
-  tested commit and deployment artifact before promotion.
+  This records the original local candidate; a recorded deployment artifact is
+  still required before promotion.
 - No production deployment, hosted migration, real customer message, or billing
   transaction was performed during implementation.
+- Follow-on deployment safeguards: `ba7ca75` verifies query redaction after
+  canonical Worker uploads. Focused review and 74 tests passed; the follow-on
+  full unit run passed 138 files / 1,357 tests, with typecheck and production
+  build/dry-run passing. Logs are `followon-unit.log`, `followon-typecheck.log`,
+  and `followon-check.log` under the external evidence directory above. These
+  checks do not repeat or extend the original authenticated browser evidence.
+- Presence boundary fix: `9acfbd2` bounds each lookup to 100 customer IDs and
+  four concurrent requests, preserving tenant scope and stopping new dispatch
+  after failure. Independent review and five focused tests passed; the complete
+  unit suite passed 139 files / 1,362 tests. Final typecheck/build/dry-run logs
+  are `boundary-final-typecheck.log` and `boundary-final-check.log` in the same
+  external evidence directory. A real-login Chromium recheck at 4,999 rows
+  passed with no presence URI-length warning.
 
 ## Implemented scope
 
@@ -53,6 +68,7 @@ The following commands passed against the implementation worktree:
 | Fresh local reset through `0063`, then `npx vitest run` | 1,736 tests passed across 206 files. This full suite includes the unit tests; counts are not additive. |
 | Local database lint | Passed; one nonblocking unused `p_member_count` parameter warning in `delete_workspace`. |
 | `node e2e/authenticated/run.mjs` | 37 passed, 23 intentional skips, zero failures in one uninterrupted run across five projects. |
+| Pinned gitleaks `v8.30.0` at digest ending `574d9` | Full committed tree and baseline-to-candidate commit range passed, zero findings. |
 
 Earlier findings and intermediate results are retained in
 [the implementation ledger](implementation-ledger.md); they are not substituted
@@ -101,6 +117,52 @@ and deployment scope after the fixes and database regressions. This is a scoped
 review conclusion, not a certification of the entire product or hosted setup.
 
 ## Open release gates
+
+Continuation after the implementation commit: the Cloudflare API confirmed the
+deployed staging Worker still shared production's database and had hourly plus
+half-hourly schedules. At `2026-09-05T16:52:45Z`, its schedules were removed and
+the empty schedule list was verified. Production's two schedules were verified
+unchanged. This is a staging configuration safety change, not a code deployment
+or proof of full staging isolation. The evidence is retained at
+`C:\Users\dasbl\AppData\Local\NudgePay\evidence\staging-cron-isolation-2026-09-05.json`.
+Do not restore staging schedules until its database is isolated.
+
+The same hosted recheck found production `workers.dev` and preview ingress
+enabled, and platform `redact_query_string` disabled. Query redaction was then
+enabled and read-back verified for production and staging at `2026-09-05T16:58Z`,
+preserving existing log/sampling/trace settings. Evidence is retained at
+`C:\Users\dasbl\AppData\Local\NudgePay\evidence\hosted-query-redaction-2026-09-05.json`.
+Canonical production/staging deployment wrappers now apply redaction after
+upload and verify both the flag and preservation of existing observability
+settings. The Windows credential-resolution smoke, 74 focused tests, TypeScript
+checks, production build/dry-run, and independent Sol review passed. This remains
+a post-upload check; failure leaves the deployment incomplete and requires repair.
+Workers Builds must use the canonical wrapper and disable non-production branch
+builds; those hosted settings have not been verified.
+Workers Builds trigger
+inspection returned HTTP 403 with the current CLI credential, so automatic
+deployment branch behavior remains unverified. The branch has not been pushed.
+The required-check verifier confirmed three checks missing from `main` protection:
+secret scan, CodeQL, and authenticated browser flows.
+
+The follow-on local boundary exercise exposed a workspace-deletion performance
+issue near the list cap: API cleanup timed out and a direct local deletion took
+about 29 seconds for one fixture workspace. Migration `0064` now adds 17 measured
+foreign-key indexes. After extending the workload to email, contacts, promises,
+promise-invoice links, and payments, an actual local endpoint deletion passed in
+892.297 ms, preserving the control tenant. Fresh migration application and five
+focused integration files / 24 tests passed, with independent review finding no
+remaining critical/high/medium code issue. The expanded timing is retained as an
+agent execution record; its original SQL/raw output were not retained. See
+[performance evidence](performance.md) for that limitation and required
+reproducible staging follow-up. Individual local timings do not prove pilot p95.
+
+Real-login Chromium runs also verified Accounts and Messages at 4,999, 5,000,
+and 5,001 rows: visible synthetic content in every case and an incomplete-data
+warning only above the cap. Screenshots are retained outside tracked source.
+The initial presence URI failure was fixed and the final large-fixture rerun
+passed without it. These supplement the original browser evidence with local
+boundary behavior only.
 
 | Gate | Current evidence / blocker |
 |---|---|
