@@ -56,8 +56,8 @@ Cloudflare Workers is production and owns both cron schedules (`wrangler.toml`).
 
 The normal release path is automated: a successful `CI` push run on `main`
 triggers `Deploy staging`, which verifies all eight required CI jobs, seals one
-artifact, deploys and qualifies staging, and retains artifact and staging
-evidence. `Promote production` is an explicit protected dispatch that accepts
+artifact, deploys it, records bootstrap evidence and the remaining qualification
+work, and retains artifact and staging evidence. `Promote production` is an explicit protected dispatch that accepts
 the retained staging identity, requalifies the same sealed artifact, requires
 operator attestation of remaining gates, and deploys production only when the
 promotion guard is enabled. See [`docs/pilot-ops.md`](../docs/pilot-ops.md) for
@@ -76,6 +76,7 @@ export RELEASE_ARTIFACT="<external-retained-directory>"
 export RELEASE_RECEIPTS="<external-receipt-directory>"
 npm run release:prepare -- --artifact-dir "$RELEASE_ARTIFACT"
 npm run deploy:staging -- \
+  --qualification bootstrap \
   --artifact-dir "$RELEASE_ARTIFACT" \
   --receipt-dir "$RELEASE_RECEIPTS" \
   --expected-manifest-sha "<recorded-manifest-sha256>" \
@@ -83,6 +84,7 @@ npm run deploy:staging -- \
 # Run release:qualify with the staging receipt and the manifest/config digests
 # printed by release:prepare, then promote the same sealed directory:
 npm run deploy -- \
+  --qualification strict \
   --artifact-dir "$RELEASE_ARTIFACT" \
   --receipt-dir "$RELEASE_RECEIPTS" \
   --expected-manifest-sha "<recorded-manifest-sha256>" \
@@ -92,12 +94,15 @@ npm run deploy -- \
 `release:prepare` builds once, strips `build/server/.dev.vars`, and seals the
 server/client files plus production and staging configs into a hashed manifest.
 Both deploy commands require that explicit artifact. They refuse plaintext
-provider bindings, verify the exact target and configured secret names, upload
+provider bindings, verify the exact target, inventory configured secret names, upload
 without rebuilding, map the artifact/config digests to the active Worker
 version, and write an external receipt only after Cloudflare query-string
-redaction passes readback. `release:qualify` separately verifies the receipt,
-active version, expected migration, `/readyz`, and provider configuration,
-including Stripe. It also requires a locally supplied `MONITOR_TOKEN` to read
+redaction passes readback. Staging bootstrap requires a provisioned Worker with
+both Supabase application keys, permits missing provider secrets, and marks them
+pending in its receipt; production deployment remains strict and requires
+all provider secret groups. `release:qualify --qualification strict` separately
+verifies the receipt, active version, expected migration, `/readyz`, and provider
+configuration, including Stripe. It also requires a locally supplied `MONITOR_TOKEN` to read
 the protected `/monitorz` status without printing or persisting the token; it
 does not claim live provider integration.
 

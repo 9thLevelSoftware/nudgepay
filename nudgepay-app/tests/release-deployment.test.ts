@@ -45,12 +45,14 @@ describe("release deployment orchestration contracts", () => {
   it("requires an explicit sealed artifact for production and staging deployment", () => {
     expect(() => parseReleaseDeploymentArgs([])).toThrow(/sealed artifact/);
     expect(parseReleaseDeploymentArgs([
+      "--qualification", "strict",
       "--artifact-dir", "C:/evidence/release-a",
       "--receipt-dir", "C:/evidence/receipts",
       "--expected-manifest-sha", "a".repeat(64),
       "--expected-config-sha", "b".repeat(64),
     ])).toEqual({
       environment: "production",
+      qualification: "strict",
       artifactDir: "C:/evidence/release-a",
       receiptDir: "C:/evidence/receipts",
       expectedManifestSha: "a".repeat(64),
@@ -58,21 +60,30 @@ describe("release deployment orchestration contracts", () => {
     });
     expect(parseReleaseDeploymentArgs([
       "--staging",
+      "--qualification", "bootstrap",
       "--artifact-dir", "C:/evidence/release-a",
       "--expected-manifest-sha", "a".repeat(64),
       "--expected-config-sha", "b".repeat(64),
     ])).toEqual({
       environment: "staging",
+      qualification: "bootstrap",
       artifactDir: "C:/evidence/release-a",
       receiptDir: undefined,
       expectedManifestSha: "a".repeat(64),
       expectedConfigSha: "b".repeat(64),
     });
     expect(() => parseReleaseDeploymentArgs([
+      "--qualification", "strict",
       "--artifact-dir", "one", "--artifact-dir", "two",
       "--expected-manifest-sha", "a".repeat(64),
       "--expected-config-sha", "b".repeat(64),
     ])).toThrow(/duplicate/);
+    expect(() => parseReleaseDeploymentArgs([
+      "--qualification", "bootstrap",
+      "--artifact-dir", "C:/evidence/release-a",
+      "--expected-manifest-sha", "a".repeat(64),
+      "--expected-config-sha", "b".repeat(64),
+    ])).toThrow(/bootstrap.*staging/i);
   });
 
   it("parses preparation separately so preparation can never upload", () => {
@@ -172,6 +183,7 @@ describe("release deployment orchestration contracts", () => {
   it("creates a self-digested receipt only for a new fully active version after redaction", () => {
     const receipt = createDeploymentReceipt({
       environment: "production",
+      qualification: "strict",
       sourceCommit: "a".repeat(40),
       artifactSha256: "b".repeat(64),
       manifestSha256: "c".repeat(64),
@@ -217,6 +229,56 @@ describe("release deployment orchestration contracts", () => {
       deployment: { deploymentId, versionId: newVersionId, createdOn: receipt.deployedAt },
       queryStringRedactionVerified: false,
     })).toThrow(/redaction/);
+    expect(() => createDeploymentReceipt({
+      ...receipt,
+      deployment: { deploymentId, versionId: newVersionId, createdOn: receipt.deployedAt },
+      providerConfiguration: { ...receipt.providerConfiguration, qbo: false },
+    })).toThrow(/provider configuration evidence is incomplete/);
+  });
+
+  it("records a staging bootstrap receipt with incomplete providers without claiming qualification", () => {
+    const receipt = createDeploymentReceipt({
+      environment: "staging",
+      qualification: "bootstrap",
+      sourceCommit: "a".repeat(40),
+      artifactSha256: "b".repeat(64),
+      manifestSha256: "c".repeat(64),
+      configSha256: "d".repeat(64),
+      workerName: "nudgepay-app-staging",
+      deployment: {
+        deploymentId,
+        versionId: newVersionId,
+        createdOn: "2026-09-05T20:00:00.000Z",
+      },
+      queryStringRedactionVerified: true,
+      providerConfiguration: {
+        application: false,
+        qbo: false,
+        twilio: false,
+        email: false,
+        operatorAlert: false,
+        stripe: false,
+        monitoring: false,
+      },
+      releaseAnnotation: `nudgepay-release:${"c".repeat(64)}:staging:44444444-4444-4444-8444-444444444444`,
+      recordedAt: "2026-09-05T20:01:00.000Z",
+    });
+    expect(receipt.qualification).toBe("bootstrap");
+    expect(receipt.evidenceScope).toBe("deployment_verified_pending_qualification");
+    expect(receipt.providerConfiguration).toEqual({
+      application: false,
+      qbo: false,
+      twilio: false,
+      email: false,
+      operatorAlert: false,
+      stripe: false,
+      monitoring: false,
+    });
+    expect(() => createDeploymentReceipt({
+      ...receipt,
+      environment: "production",
+      releaseAnnotation: `nudgepay-release:${"c".repeat(64)}:production:44444444-4444-4444-8444-444444444444`,
+    })).toThrow(/bootstrap.*staging/i);
   });
 
   it("creates deployment receipts without replacing prior evidence", () => {

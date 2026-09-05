@@ -162,7 +162,7 @@ export function assertQualifiedStagingJobs(payload) {
     || !Array.isArray(payload.jobs)
     || payload.jobs.length !== payload.total_count
   ) throw workflowError("staging job response must contain one complete, unpaginated job list");
-  for (const name of ["seal successful main candidate", "deploy and qualify staging"]) {
+  for (const name of ["seal successful main candidate", "deploy and verify staging bootstrap"]) {
     const matches = payload.jobs.filter((job) => job?.name === name);
     if (matches.length !== 1 || matches[0].status !== "completed" || matches[0].conclusion !== "success") {
       throw workflowError(`staging release job did not complete successfully: ${name}`);
@@ -220,10 +220,18 @@ export function locateReceipt({
   const path = resolve(directory, candidates[0]);
   const receipt = readJson(path, `${environment} deployment receipt`);
   const cloudflareId = /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i;
+  const evidencePairIsValid = (
+    receipt.qualification === "strict"
+    && receipt.evidenceScope === "configuration_verified_not_provider_integration"
+  ) || (
+    environment === "staging"
+    && receipt.qualification === "bootstrap"
+    && receipt.evidenceScope === "deployment_verified_pending_qualification"
+  );
   if (
     receipt.schemaVersion !== 1
     || receipt.environment !== environment
-    || receipt.evidenceScope !== "configuration_verified_not_provider_integration"
+    || !evidencePairIsValid
     || receipt.queryStringRedactionVerified !== true
     || !/^[a-f0-9]{40}$/.test(receipt.sourceCommit ?? "")
     || !/^[a-f0-9]{64}$/.test(receipt.artifactSha256 ?? "")

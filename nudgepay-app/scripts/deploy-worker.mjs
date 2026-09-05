@@ -24,9 +24,10 @@ import {
 } from "./release-deployment.mjs";
 import {
   assertConfiguredProviders,
+  bootstrapProviderConfiguration,
   parseDeploymentStatus,
   parsePreviousDeploymentStatus,
-  parseSecretInventory,
+  parsePredeploySecretInventory,
   parseVersionList,
 } from "./release-qualifier.mjs";
 
@@ -59,6 +60,7 @@ function runCaptureResult(cmd, args) {
     encoding: "utf8",
     windowsHide: true,
     maxBuffer: 1024 * 1024,
+    timeout: 30_000,
   });
 }
 
@@ -68,9 +70,26 @@ function runWrangler(args, capture = false) {
     : run(process.execPath, [wranglerBin, ...args]);
 }
 
+function readProviderConfiguration({ targetConfigPath, workerName, environment, qualification }) {
+  const secretNames = parsePredeploySecretInventory({
+    result: runCaptureResult(process.execPath, [
+      wranglerBin,
+      "secret", "list", "-c", targetConfigPath, "--name", workerName,
+    ]),
+    environment,
+    qualification,
+    workerName,
+  });
+  assertNoInvariantSecrets(secretNames, environment);
+  return qualification === "strict"
+    ? assertConfiguredProviders(secretNames)
+    : bootstrapProviderConfiguration(secretNames);
+}
+
 try {
   const {
     environment,
+    qualification,
     artifactDir,
     receiptDir,
     expectedManifestSha,
@@ -108,12 +127,12 @@ try {
     assertProductionReleaseGuard({ expectedSha: expectedProductionSha, cwd });
   }
 
-  const secretNames = parseSecretInventory(runWrangler(
-    ["secret", "list", "-c", targetConfigPath, "--name", target.workerName],
-    true,
-  ));
-  assertNoInvariantSecrets(secretNames, environment);
-  const providerConfiguration = assertConfiguredProviders(secretNames);
+  const providerConfiguration = readProviderConfiguration({
+    targetConfigPath,
+    workerName: target.workerName,
+    environment,
+    qualification,
+  });
   const statusArgs = [
     "deployments", "status",
     "-c", targetConfigPath,
@@ -179,9 +198,9 @@ try {
   ) {
     throw new Error("The active Worker deployment changed before redaction evidence was recorded");
   }
-
   const receipt = createDeploymentReceipt({
     environment,
+    qualification,
     sourceCommit: manifest.sourceCommit,
     artifactSha256: manifest.artifactSha256,
     manifestSha256: manifest.manifestSha256,

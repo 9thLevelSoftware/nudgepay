@@ -234,14 +234,17 @@ direct Wrangler deployment, preventing a duplicate raw-upload path.
 `Deploy staging` (`.github/workflows/deploy-staging.yml`) runs only after a
 successful same-repository `CI` push run on `main`. It verifies all eight CI
 jobs for the exact source SHA, builds and seals once, verifies staging
-environment credentials plus the exact Supabase link and migration parity before
-upload, then deploys and qualifies staging. It retains the candidate artifact
+environment credentials plus the exact sealed Supabase project and migration parity before
+upload, then deploys and records bootstrap evidence. It retains the candidate artifact
 and staging evidence for 90 days. A rerun is deliberately rejected so artifacts
 remain create-only; recover by rerunning upstream CI, which produces a new
-`Deploy staging` run. Immediate qualification can fail legitimately until the
-monitor heartbeat/cron and confirmed operator-alert status are green. Its
-success remains configuration verification, not provider integration proof or
-completion of the seven operational release gates.
+`Deploy staging` run. Bootstrap success proves the sealed artifact identity,
+active Worker deployment, sealed Supabase target, migration parity, query-string
+redaction, and `/readyz` database access. It records missing provider secrets and
+leaves the provider flags from `/readyz`, `/monitorz` steady-state health,
+provider integration, and the seven operational release gates pending.
+Production promotion repeats strict staging qualification after those
+prerequisites exist.
 
 `Promote production` (`.github/workflows/promote-production.yml`) is an
 explicit `workflow_dispatch` on `refs/heads/main`. It requires the staging run,
@@ -258,9 +261,13 @@ new dispatch.
 `CLOUDFLARE_ACCOUNT_ID` is an environment-scoped variable in both staging and
 production. `STAGING_SUPABASE_URL`, `RELEASE_OWNER`, and
 `PRODUCTION_PROMOTION_ENABLED` are repository variables; production remains
-disabled until the last variable is deliberately set to `true`. The four
-credentials `CLOUDFLARE_API_TOKEN`, `SUPABASE_ACCESS_TOKEN`,
-`SUPABASE_DB_PASSWORD`, and `MONITOR_TOKEN` are environment-scoped secrets.
+disabled until the last variable is deliberately set to `true`. The three
+credentials `CLOUDFLARE_API_TOKEN`, `SUPABASE_ACCESS_TOKEN`, and `MONITOR_TOKEN`
+are environment-scoped secrets. The release checks derive the project ref from
+the sealed Supabase URL and read migration history through the Management API;
+the scoped token needs `database_migrations_read`. These read-only workflow steps
+do not require a database password. Separately approved migration application may
+require different credentials and permissions.
 The manual artifact commands below are controlled recovery or diagnosis fallback,
 not the canonical promotion path.
 
@@ -283,12 +290,14 @@ npm run release:prepare -- --artifact-dir "$RELEASE_ARTIFACT"
 
 Apply the expected database migrations through the separately approved database
 procedure. Then deploy staging from the sealed artifact. The deploy refuses to
-rebuild and requires the configured application, QBO, Twilio, Resend,
-operator-alert, and Stripe secret names. Capture `receiptPath` from its JSON
-output.
+rebuild and requires an already provisioned Worker with `SUPABASE_ANON_KEY` and
+`SUPABASE_SERVICE_KEY`. Bootstrap mode inventories the remaining provider secret
+names without treating missing groups as qualified. Capture `receiptPath` from
+its JSON output.
 
 ```bash
 npm run deploy:staging -- \
+  --qualification bootstrap \
   --artifact-dir "$RELEASE_ARTIFACT" \
   --receipt-dir "$RELEASE_RECEIPTS" \
   --expected-manifest-sha "<recorded-manifest-sha256>" \
@@ -296,6 +305,7 @@ npm run deploy:staging -- \
 
 npm run release:qualify -- \
   --environment staging \
+  --qualification strict \
   --artifact-dir "$RELEASE_ARTIFACT" \
   --receipt "<staging-receiptPath>" \
   --base-url "https://nudgepay-app-staging.dasblueeyeddevil.workers.dev" \
@@ -305,7 +315,7 @@ npm run release:qualify -- \
   --expected-config-sha "<recorded-staging-config-sha256>"
 ```
 
-The qualifier is read-only. It requires local/linked Supabase migration history
+Strict qualification is read-only. It requires Supabase Management API migration history
 to match exactly through the expected migration, the active Cloudflare version
 to match the receipt, `/readyz` database/config presence, and provider
 configuration names including Stripe. Supply the same 32–512 character
@@ -324,6 +334,7 @@ production URL and config digest.
 
 ```bash
 npm run deploy -- \
+  --qualification strict \
   --artifact-dir "$RELEASE_ARTIFACT" \
   --receipt-dir "$RELEASE_RECEIPTS" \
   --expected-manifest-sha "<recorded-manifest-sha256>" \
@@ -331,6 +342,7 @@ npm run deploy -- \
 
 npm run release:qualify -- \
   --environment production \
+  --qualification strict \
   --artifact-dir "$RELEASE_ARTIFACT" \
   --receipt "<production-receiptPath>" \
   --base-url "https://nudgepay.9thlevelsoftware.com" \

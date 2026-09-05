@@ -78,13 +78,13 @@ describe("release workflow trust boundary", () => {
     expect(() => assertQualifiedStagingRun({ ...run, conclusion: "failure" }, { repository })).toThrow(/successful trusted/);
     const jobs = [
       { name: "seal successful main candidate", status: "completed", conclusion: "success" },
-      { name: "deploy and qualify staging", status: "completed", conclusion: "success" },
+      { name: "deploy and verify staging bootstrap", status: "completed", conclusion: "success" },
     ];
     expect(() => assertQualifiedStagingJobs({ total_count: 2, jobs })).not.toThrow();
     expect(() => assertQualifiedStagingJobs({
       total_count: 2,
       jobs: jobs.map((job) => job.name.startsWith("deploy") ? { ...job, conclusion: "skipped" } : job),
-    })).toThrow(/deploy and qualify staging/);
+    })).toThrow(/deploy and verify staging bootstrap/);
   });
 
   it("requires fail-closed main-only environments and the named production reviewer", () => {
@@ -123,6 +123,7 @@ describe("release workflow trust boundary", () => {
       schemaVersion: 1,
       recordedAt: "2026-09-05T20:00:00.000Z",
       environment: "staging",
+      qualification: "bootstrap",
       sourceCommit: sourceSha,
       artifactSha256: "d".repeat(64),
       manifestSha256,
@@ -134,7 +135,7 @@ describe("release workflow trust boundary", () => {
       queryStringRedactionVerified: true,
       providerConfiguration: {},
       releaseAnnotation: `nudgepay-release:${manifestSha256}:staging:22222222-2222-4222-8222-222222222222`,
-      evidenceScope: "configuration_verified_not_provider_integration",
+      evidenceScope: "deployment_verified_pending_qualification",
     };
     const receipt = { ...unsigned, receiptSha256: receiptDigest(unsigned) };
     try {
@@ -198,6 +199,9 @@ describe("release workflow wiring", () => {
     expect(staging).toContain('--evidence-dir "$RUNNER_TEMP/staging-evidence/attempts"');
     expect(staging).toContain("release:predeploy");
     expect(staging.indexOf("release:predeploy")).toBeLessThan(staging.indexOf("npm run deploy:staging"));
+    expect(staging).toContain("--qualification bootstrap");
+    expect(staging).not.toContain("SUPABASE_DB_PASSWORD");
+    expect(staging).not.toContain("supabase link");
     expect(staging).toContain("cancel-in-progress: false");
   });
 
@@ -206,6 +210,11 @@ describe("release workflow wiring", () => {
     expect(production).toContain("operator_attests_remaining_gates:");
     expect(production).toContain("PRODUCTION_PROMOTION_ENABLED");
     expect(production).toContain("requalify retained staging artifact");
+    expect(production.match(/--qualification strict/g)).toHaveLength(3);
+    expect(production).toContain("stagingQualificationSha256");
+    expect(production).toContain("Retain strict staging requalification evidence");
+    expect(production).not.toContain("SUPABASE_DB_PASSWORD");
+    expect(production).not.toContain("supabase link");
     expect(production).toContain("run-id: ${{ needs.authorize.outputs.staging_run_id }}");
     expect(production).toContain('GITHUB_RUN_ATTEMPT" != "1"');
     expect(production).toContain('--evidence-dir "$RUNNER_TEMP/production-evidence/attempts"');
@@ -220,5 +229,9 @@ describe("release workflow wiring", () => {
     expect(deployWorker.indexOf("const uploadAttempt = createDeploymentAttempt")).toBeLessThan(
       deployWorker.indexOf('"deploy",'),
     );
+  });
+
+  it("passes the explicit qualification mode into receipt creation", () => {
+    expect(deployWorker).toMatch(/createDeploymentReceipt\(\{\s*environment,\s*qualification,/);
   });
 });

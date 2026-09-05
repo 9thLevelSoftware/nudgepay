@@ -8,9 +8,11 @@ results do not close a hosted gate.
 Human owner: **unknown**. Assign a named operator before hosted qualification
 and partner admission. All complete release gates remain **pending**.
 
-Hosted recheck on 2026-09-05: Supabase still lists the NudgePay organization on
-the free plan with its two active projects; separate staging capacity has not
-been demonstrated. Cloudflare's newly connected API integration successfully
+Hosted recheck on 2026-09-05: Supabase now has a separate active staging project
+(`ajffjukmvltqxxtkkplq`, east1) alongside production
+(`epjumsnmpvilgasycpau`). All migrations `0001`–`0066` are applied to staging,
+all public tables have RLS enabled, and the staging database currently has zero
+organizations. Cloudflare's newly connected API integration successfully
 read Workers Builds settings (HTTP 200), resolving the CLI-only 403 blocker.
 Both production build triggers were inspected and their configuration retained
 before removal: non-production preview uploads and automatic main-branch
@@ -41,7 +43,7 @@ External evidence: `hosted-gates-recheck-2026-09-05.json`,
 
 | ID | Owner role | Prerequisites | Pass criteria | Evidence to retain | Status |
 |---|---|---|---|---|---|
-| GATE-01 Staging isolation | Supabase/platform operator | A separate staging Supabase project, exact staging origin, isolated secrets, and staging Worker with schedules deliberately configured | Staging database, auth, storage, secrets, Worker, and schedules are isolated from production; migrations `0001`–`0066` apply cleanly and RLS checks pass | Project/config identifiers, migration output, RLS results, `/readyz`, and schedule read-back | **Pending** — creation was rejected at the active-free-project quota; subsequent inventory still shows two active projects on the free organization, with no new capacity demonstrated |
+| GATE-01 Staging isolation | Supabase/platform operator | A separate staging Supabase project, exact staging origin, isolated secrets, and staging Worker with schedules deliberately configured | Staging database, auth, storage, secrets, Worker, and schedules are isolated from production; all 66 migrations are applied and RLS is enabled on all public tables | Project/config identifiers, migration output, RLS results, `/readyz`, and schedule read-back | **Partial** — separate staging project `ajffjukmvltqxxtkkplq` is active and all 66 migrations are applied with RLS enabled on all public tables; staging Worker secrets point to it. Schedules remain removed pending a new artifact deployment, and schedule read-back plus authenticated isolation verification remain open |
 | GATE-02 Provider readiness | Provider/integration operator | Isolated staging; configured QBO, Twilio, Resend, Stripe, and operator-alert sandbox credentials; approved synthetic fixtures | Each provider completes send/callback/status/retry or checkout flow with signature and idempotency checks; no real customer message or charge | Redacted request/result logs, provider IDs, retry/replay results, and `/readyz` configuration evidence | **Pending** — hosted readiness and controlled provider exercises remain unperformed |
 | GATE-03 Hosted release protections | Release/platform operator | Candidate commit, clean checkout, canonical deployment wrapper, protected branch, immutable artifact store, and hosted Workers/GitHub access | Required checks include secret scan, CodeQL, and authenticated browser flows; non-production branch builds are disabled; ingress/query-redaction/CSP settings and exact candidate SHA are verified after deployment | Branch-protection read-back, build settings, deployment output, post-upload config read-back, and immutable artifact manifest | **Partial** — all eight required GitHub Actions checks are now strict and admin-enforced on `main`; automatic build triggers and alternate production ingress are disabled. [CI run 33986502649](https://github.com/9thLevelSoftware/nudgepay/actions/runs/33986502649) passed all eight planned checks on `3c2aff3458c327b0a0fbb051f83e77db0208f053`; final candidate, artifact promotion, deployed configuration, and enforced CSP evidence remain outstanding |
 | GATE-04 Performance and soak | QA/performance operator | Isolated staging, reproducible ten-workspace/full-ledger fixture, 50 distinct staging sessions, exact origin allowlist, and approved traffic window | Per-route/session identity remains tenant-correct; 60-minute pilot load meets p95 < 2,000 ms and error rate < 1%; 24-hour soak completes without retry/ledger drift; deletion and read boundaries remain healthy | Fixture manifest and seed output, raw endpoint results, per-route/session matrix, latency/error report, and soak logs | **Pending** — only local one-off measurements and local browser evidence exist |
@@ -78,4 +80,9 @@ External evidence: `hosted-gates-recheck-2026-09-05.json`,
 - Cloudflare integration access now resolves the earlier CLI Workers Builds
   403 blocker. A subsequent read-only recheck returned HTTP 200 for Workers,
   build triggers (empty), and production subdomain settings (both disabled).
-  Supabase staging capacity remains a separate unresolved prerequisite.
+  The former staging-quota blocker is superseded: staging project
+  `ajffjukmvltqxxtkkplq` is active in east1. Remaining GATE-01 work is schedule
+  restoration through the new artifact pipeline, plus schedule read-back and
+  authenticated isolation verification.
+  The removed/recreated raw Cloudflare trigger configuration is retained
+  externally as `cloudflare-trigger-before-canonical-pipeline.json`.

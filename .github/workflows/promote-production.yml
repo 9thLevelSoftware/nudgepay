@@ -123,6 +123,8 @@ jobs:
   requalify-staging:
     name: requalify retained staging artifact
     needs: authorize
+    outputs:
+      staging_qualification_sha256: ${{ steps.qualify.outputs.qualification_sha256 }}
     runs-on: ubuntu-latest
     timeout-minutes: 20
     environment:
@@ -174,34 +176,41 @@ jobs:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
           SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
-          SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
           MONITOR_TOKEN: ${{ secrets.MONITOR_TOKEN }}
         run: |
-          for name in CLOUDFLARE_API_TOKEN CLOUDFLARE_ACCOUNT_ID SUPABASE_ACCESS_TOKEN SUPABASE_DB_PASSWORD MONITOR_TOKEN; do
+          for name in CLOUDFLARE_API_TOKEN CLOUDFLARE_ACCOUNT_ID SUPABASE_ACCESS_TOKEN MONITOR_TOKEN; do
             if [ -z "${!name}" ]; then echo "Missing staging environment credential $name; production was not uploaded." >&2; exit 1; fi
           done
-      - name: Link exact sealed staging database
-        env:
-          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
-          SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
-        run: npx --no-install supabase link --project-ref "${{ steps.receipt.outputs.staging_project_ref }}"
       - name: Requalify staging immediately before production approval
+        id: qualify
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
           SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
-          SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
           MONITOR_TOKEN: ${{ secrets.MONITOR_TOKEN }}
-        run: >-
-          node scripts/release-qualifier.mjs
-          --environment staging
-          --artifact-dir "$RUNNER_TEMP/release-candidate"
-          --receipt "${{ steps.receipt.outputs.receipt_path }}"
-          --base-url "https://nudgepay-app-staging.dasblueeyeddevil.workers.dev"
-          --expected-sha "${{ needs.authorize.outputs.source_sha }}"
-          --expected-migration "${{ steps.receipt.outputs.latest_migration }}"
-          --expected-manifest-sha "${{ needs.authorize.outputs.manifest_sha256 }}"
-          --expected-config-sha "${{ needs.authorize.outputs.staging_config_sha256 }}"
+        run: |
+          mkdir -p "$RUNNER_TEMP/staging-requalification"
+          node scripts/release-qualifier.mjs \
+          --environment staging \
+          --qualification strict \
+          --artifact-dir "$RUNNER_TEMP/release-candidate" \
+          --receipt "${{ steps.receipt.outputs.receipt_path }}" \
+          --base-url "https://nudgepay-app-staging.dasblueeyeddevil.workers.dev" \
+          --expected-sha "${{ needs.authorize.outputs.source_sha }}" \
+          --expected-migration "${{ steps.receipt.outputs.latest_migration }}" \
+          --expected-manifest-sha "${{ needs.authorize.outputs.manifest_sha256 }}" \
+          --expected-config-sha "${{ needs.authorize.outputs.staging_config_sha256 }}" \
+          > "$RUNNER_TEMP/staging-requalification/qualification.json"
+          QUALIFICATION_SHA256="$(sha256sum "$RUNNER_TEMP/staging-requalification/qualification.json" | cut -d' ' -f1)"
+          echo "qualification_sha256=$QUALIFICATION_SHA256" >> "$GITHUB_OUTPUT"
+      - name: Retain strict staging requalification evidence
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: nudgepay-staging-requalification-${{ needs.authorize.outputs.source_sha }}-${{ github.run_id }}
+          path: ${{ runner.temp }}/staging-requalification
+          if-no-files-found: error
+          overwrite: false
+          retention-days: 90
 
   production:
     name: approve, deploy, and qualify production
@@ -230,6 +239,7 @@ jobs:
           STAGING_CONFIG_SHA: ${{ needs.authorize.outputs.staging_config_sha256 }}
           PRODUCTION_CONFIG_SHA: ${{ needs.authorize.outputs.production_config_sha256 }}
           STAGING_RECEIPT_SHA: ${{ needs.authorize.outputs.staging_receipt_sha256 }}
+          STAGING_QUALIFICATION_SHA: ${{ needs.requalify-staging.outputs.staging_qualification_sha256 }}
         run: |
           node --input-type=module <<'NODE'
           import { createHash } from "node:crypto";
@@ -240,8 +250,8 @@ jobs:
           const attested = event.inputs?.operator_attests_remaining_gates === true || event.inputs?.operator_attests_remaining_gates === "true";
           const workflowRunId = Number(process.env.GITHUB_RUN_ID);
           const runAttempt = Number(process.env.GITHUB_RUN_ATTEMPT);
-          if (!attested || !reference || reference.length > 200 || !Number.isSafeInteger(workflowRunId) || !Number.isSafeInteger(runAttempt)) throw new Error("Invalid promotion authorization evidence");
-          const authorization = { schemaVersion: 1, recordedAt: new Date().toISOString(), actor: process.env.GITHUB_ACTOR, repository: process.env.GITHUB_REPOSITORY, workflowRunId, runAttempt, sourceSha: process.env.SOURCE_SHA, manifestSha256: process.env.MANIFEST_SHA, stagingConfigSha256: process.env.STAGING_CONFIG_SHA, productionConfigSha256: process.env.PRODUCTION_CONFIG_SHA, stagingReceiptSha256: process.env.STAGING_RECEIPT_SHA, operatorAttestsRemainingGates: true, operatorEvidenceReference: reference };
+          if (!attested || !reference || reference.length > 200 || !Number.isSafeInteger(workflowRunId) || !Number.isSafeInteger(runAttempt) || !/^[a-f0-9]{64}$/.test(process.env.STAGING_QUALIFICATION_SHA ?? "")) throw new Error("Invalid promotion authorization evidence");
+          const authorization = { schemaVersion: 1, recordedAt: new Date().toISOString(), actor: process.env.GITHUB_ACTOR, repository: process.env.GITHUB_REPOSITORY, workflowRunId, runAttempt, sourceSha: process.env.SOURCE_SHA, manifestSha256: process.env.MANIFEST_SHA, stagingConfigSha256: process.env.STAGING_CONFIG_SHA, productionConfigSha256: process.env.PRODUCTION_CONFIG_SHA, stagingReceiptSha256: process.env.STAGING_RECEIPT_SHA, stagingQualificationSha256: process.env.STAGING_QUALIFICATION_SHA, operatorAttestsRemainingGates: true, operatorEvidenceReference: reference };
           authorization.authorizationSha256 = createHash("sha256").update(JSON.stringify(authorization)).digest("hex");
           const directory = join(process.env.RUNNER_TEMP, "production-evidence");
           mkdirSync(directory, { recursive: true });
@@ -283,10 +293,9 @@ jobs:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
           SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
-          SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
           MONITOR_TOKEN: ${{ secrets.MONITOR_TOKEN }}
         run: |
-          for name in CLOUDFLARE_API_TOKEN CLOUDFLARE_ACCOUNT_ID SUPABASE_ACCESS_TOKEN SUPABASE_DB_PASSWORD MONITOR_TOKEN; do
+          for name in CLOUDFLARE_API_TOKEN CLOUDFLARE_ACCOUNT_ID SUPABASE_ACCESS_TOKEN MONITOR_TOKEN; do
             if [ -z "${!name}" ]; then echo "Missing production environment secret $name; production was not uploaded." >&2; exit 1; fi
           done
       - name: Reverify production environment protection
@@ -297,15 +306,9 @@ jobs:
           gh api "repos/$GITHUB_REPOSITORY/environments/production" > "$RUNNER_TEMP/environment.json"
           gh api "repos/$GITHUB_REPOSITORY/environments/production/deployment-branch-policies?per_page=100" > "$RUNNER_TEMP/environment-policies.json"
           node scripts/release-workflow.mjs verify-environment --environment "$RUNNER_TEMP/environment.json" --policies "$RUNNER_TEMP/environment-policies.json" --expected-name production --require-reviewer true --release-owner "$RELEASE_OWNER"
-      - name: Link exact sealed production database
-        env:
-          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
-          SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
-        run: npx --no-install supabase link --project-ref "${{ steps.metadata.outputs.production_project_ref }}"
       - name: Verify production migration ledger before upload
         env:
           SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
-          SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
           SOURCE_SHA: ${{ needs.authorize.outputs.source_sha }}
           MANIFEST_SHA: ${{ needs.authorize.outputs.manifest_sha256 }}
           PRODUCTION_CONFIG_SHA: ${{ needs.authorize.outputs.production_config_sha256 }}
@@ -350,6 +353,7 @@ jobs:
           PRODUCTION_CONFIG_SHA: ${{ needs.authorize.outputs.production_config_sha256 }}
         run: >-
           npm run deploy --
+          --qualification strict
           --artifact-dir "$RUNNER_TEMP/release-candidate"
           --receipt-dir "$RUNNER_TEMP/production-evidence"
           --expected-manifest-sha "$MANIFEST_SHA"
@@ -369,7 +373,6 @@ jobs:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
           SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
-          SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
           MONITOR_TOKEN: ${{ secrets.MONITOR_TOKEN }}
           SOURCE_SHA: ${{ needs.authorize.outputs.source_sha }}
           MANIFEST_SHA: ${{ needs.authorize.outputs.manifest_sha256 }}
@@ -377,6 +380,7 @@ jobs:
         run: >-
           node scripts/release-qualifier.mjs
           --environment production
+          --qualification strict
           --artifact-dir "$RUNNER_TEMP/release-candidate"
           --receipt "${{ steps.receipt.outputs.receipt_path }}"
           --base-url "https://nudgepay.9thlevelsoftware.com"
