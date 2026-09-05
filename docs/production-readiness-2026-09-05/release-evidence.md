@@ -78,6 +78,25 @@ to effects and submission handlers.
 Coordinator evidence for this continuation is retained in the external evidence
 directory:
 
+Hosted GitHub branch-protection readback now confirms that `main` requires all
+eight `REQUIRED_PR_CHECKS`, each tied to the GitHub Actions app (`15368`), with
+strict status checks and administrator enforcement enabled. The before/after
+readbacks are `branch-protection-before.json` and `branch-protection-after.json`
+in the external evidence directory. This proves the protection configuration,
+not that a candidate has passed it.
+
+The CI run for `c6f8ae5` had seven planned checks pass but failed two database
+integration tests because Linux Supabase CLI JSON returned a direct row array
+where the tests expected a `{ rows }` wrapper. Test-only normalization was
+committed as `3c2aff3458c327b0a0fbb051f83e77db0208f053`; its local parser unit
+tests and the eight affected database tests passed. [CI run 33986502649](https://github.com/9thLevelSoftware/nudgepay/actions/runs/33986502649)
+completed successfully with all eight planned checks on that exact commit; the
+nightly authenticated cross-browser job was skipped by design. Retained external
+evidence is `ci-3c2aff3.json` and `ci-3c2aff3.log`. Draft PR [#140](https://github.com/9thLevelSoftware/nudgepay/pull/140)
+contains this follow-up. This documentation-only follow-up is a different SHA
+and has not thereby inherited the CI result. The earlier local full-suite
+evidence remains separate and does not close hosted readiness.
+
 | Check | Result / artifact |
 |---|---|
 | Final unit suite | 149 files / 1,434 tests passed; `remaining-gates-final-unit.log`. |
@@ -193,15 +212,19 @@ will use the explicit artifact workflow after qualification; automatic Builds
 require a reviewed artifact transport contract before restoration. Evidence:
 `cloudflare-build-triggers-before-2026-09-05.json` and
 `cloudflare-build-triggers-disabled-2026-09-05.json` in the external evidence
-directory. The branch has not been pushed and no Worker code was redeployed.
+directory. At the time of that trigger readback, the branch had not yet been
+pushed and no Worker code was redeployed.
 
 Production `workers.dev` and preview ingress were disabled at
 `2026-09-05T17:59:10.506Z`. Readback confirms both disabled; canonical health
 and login remained HTTP 200, while the alternate production health URL returned
 404. See `production-ingress-hardening-2026-09-05.json`. Staging's Worker URL
 remains its entry point, with schedules disabled pending database isolation.
-The required-check verifier confirmed three checks missing from `main` protection:
-secret scan, CodeQL, and authenticated browser flows.
+
+The required-check verifier then reported three checks missing from `main`
+protection: secret scan, CodeQL, and authenticated browser flows. This is
+historical evidence superseded by the later branch-protection readback that
+confirms all eight required checks, strict mode, and administrator enforcement.
 
 The follow-on local boundary exercise exposed a workspace-deletion performance
 issue near the list cap: API cleanup timed out and a direct local deletion took
@@ -227,7 +250,9 @@ reported migration `0064`. Measurement JSON SHA-256:
 `53b5fe91f7d11c816fbf64658c1f0403e9961d93c003f5c41b2fb263a8c65766`.
 An earlier unretained run took 1,101.96 ms. Neither individual timing establishes
 the required staging latency distribution; this closes raw local integrity
-evidence retention only. Final independent source review is still pending.
+evidence retention only. The then-pending independent source review was
+superseded by the reviewed `0066` fixture and final source-review conclusion
+recorded above; neither local result establishes staging performance.
 
 After independent fixture review and fixes, the coordinator regenerated evidence
 from the frozen implementation on local migration `0066` at
@@ -252,7 +277,7 @@ boundary behavior only.
 |---|---|
 | Separate staging database | Supabase rejected creation at the account's active-free-project limit. The existing deployed staging configuration shares production's project and is not isolated. |
 | Provider readiness | Hosted readiness and secret-name checks show incomplete provider/operator configuration. Controlled QBO, Twilio, Resend, and Stripe end-to-end exercises remain unperformed. |
-| Hosted release protections | Existing GitHub checks were verified read-only. Newly added checks must pass and become required; hosted ingress and canonical deployment configuration must be verified on the candidate. |
+| Hosted release protections | `main` now has all eight required GitHub Actions checks with strict and administrator enforcement, evidenced by before/after readbacks. [CI run 33986502649](https://github.com/9thLevelSoftware/nudgepay/actions/runs/33986502649) passed all eight planned checks on `3c2aff3458c327b0a0fbb051f83e77db0208f053`; candidate artifact promotion, deployed configuration, and enforced CSP evidence remain outstanding. |
 | Performance and soak | No 60-minute staging load run or 24-hour staging soak has been completed. Fixture and load tools do not establish capacity. |
 | Recovery | No isolated production backup/PITR restore or encrypted-token recovery drill has proved the four-hour RTO / one-hour RPO. |
 | Monitoring and support | Live alert delivery/acknowledgement and a named release/support operator with coverage hours remain outstanding. |
