@@ -242,6 +242,25 @@ jobs:
           --expected-manifest-sha "${{ needs.candidate.outputs.manifest_sha256 }}"
           --expected-config-sha "${{ needs.candidate.outputs.staging_config_sha256 }}"
           > "$RUNNER_TEMP/staging-evidence/qualification.json"
+      - name: Record staging job summary
+        if: always()
+        working-directory: ${{ runner.temp }}
+        env:
+          RELEASE_JOB_STATUS: ${{ job.status }}
+          WORKFLOW_RUN_ID: ${{ github.run_id }}
+          SOURCE_SHA: ${{ needs.candidate.outputs.source_sha }}
+        run: |
+          mkdir -p staging-evidence/attempts
+          node --input-type=module <<'NODE'
+          import { writeFileSync } from "node:fs";
+          const summary = {
+            schemaVersion: 1,
+            status: process.env.RELEASE_JOB_STATUS,
+            runId: process.env.WORKFLOW_RUN_ID,
+            sourceSha: process.env.SOURCE_SHA,
+          };
+          writeFileSync("staging-evidence/job-summary.json", `${JSON.stringify(summary, null, 2)}\n`);
+          NODE
       - name: Retain staging receipt, qualification, and rollback identity
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2

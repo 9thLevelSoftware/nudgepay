@@ -4,6 +4,7 @@ import { readFileSync, readdirSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { readAndVerifyReleaseArtifact } from "./release-artifact.mjs";
 import {
+  isValidReleaseTimestamp,
   receiptDigest,
   resolveReceiptDirectory,
   validatedMigrationFilenames,
@@ -251,8 +252,7 @@ export function parseDeploymentStatus(output) {
     || status.versions[0]?.percentage !== 100
     || !cloudflareId.test(status.id)
     || !cloudflareId.test(status.versions[0].version_id)
-    || !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{3})?Z$/.test(status.created_on)
-    || Number.isNaN(Date.parse(status.created_on))
+    || !isValidReleaseTimestamp(status.created_on)
   ) {
     throw qualificationError("Wrangler deployment status must contain exactly one version at 100%");
   }
@@ -290,8 +290,7 @@ export function parseVersionList(output, expectedReleaseAnnotation) {
   if (
     !version
     || !cloudflareId.test(version.id ?? "")
-    || !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{3})?Z$/.test(version.metadata?.created_on ?? "")
-    || Number.isNaN(Date.parse(version.metadata?.created_on))
+    || !isValidReleaseTimestamp(version.metadata?.created_on)
   ) {
     throw qualificationError("Wrangler versions list did not contain exactly one valid release annotation");
   }

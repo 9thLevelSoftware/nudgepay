@@ -2,7 +2,11 @@ import { readFileSync, readdirSync, writeFileSync } from "node:fs";
 import { basename, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { readAndVerifyReleaseArtifact, canonicalJson, sha256 } from "./release-artifact.mjs";
-import { receiptDigest, validatedMigrationFilenames } from "./release-deployment.mjs";
+import {
+  isValidReleaseTimestamp,
+  receiptDigest,
+  validatedMigrationFilenames,
+} from "./release-deployment.mjs";
 import { REQUIRED_PR_CHECKS } from "./verify-required-checks.mjs";
 
 function workflowError(message) {
@@ -239,8 +243,7 @@ export function locateReceipt({
     || !/^[a-f0-9]{64}$/.test(receipt.configSha256 ?? "")
     || !cloudflareId.test(receipt.deploymentId ?? "")
     || !cloudflareId.test(receipt.versionId ?? "")
-    || !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{3})?Z$/.test(receipt.deployedAt ?? "")
-    || Number.isNaN(Date.parse(receipt.deployedAt))
+    || !isValidReleaseTimestamp(receipt.deployedAt)
   ) throw workflowError("deployment receipt schema or environment is invalid");
   if (receipt.receiptSha256 !== receiptDigest(receipt)) throw workflowError("deployment receipt self-digest does not match");
   if (expectedReceiptSha256 && receipt.receiptSha256 !== expectedReceiptSha256) {
