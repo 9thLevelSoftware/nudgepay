@@ -131,7 +131,7 @@ describe("release workflow trust boundary", () => {
       workerName: "nudgepay-app-staging",
       deploymentId: "11111111-1111-4111-8111-111111111111",
       versionId: "22222222-2222-4222-8222-222222222222",
-      deployedAt: "2026-09-05T20:00:00.000Z",
+      deployedAt: "2026-09-05T20:00:00.131465Z",
       queryStringRedactionVerified: true,
       providerConfiguration: {},
       releaseAnnotation: `nudgepay-release:${manifestSha256}:staging:22222222-2222-4222-8222-222222222222`,

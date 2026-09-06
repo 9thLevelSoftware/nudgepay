@@ -6,6 +6,30 @@ function deploymentError(message) {
   return new Error(`Release deployment failed: ${message}`);
 }
 
+export function isValidReleaseTimestamp(value) {
+  if (typeof value !== "string") return false;
+  const match = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.(\d{1,9}))?Z$/.exec(value);
+  if (!match) return false;
+  const [, yearText, monthText, dayText, hourText, minuteText, secondText] = match;
+  const year = Number(yearText);
+  const month = Number(monthText);
+  const day = Number(dayText);
+  const hour = Number(hourText);
+  const minute = Number(minuteText);
+  const second = Number(secondText);
+  const leapYear = year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0);
+  const daysInMonth = [31, leapYear ? 29 : 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+  return (
+    month >= 1
+    && month <= 12
+    && day >= 1
+    && day <= daysInMonth[month - 1]
+    && hour <= 23
+    && minute <= 59
+    && second <= 59
+  );
+}
+
 function parseValueOptions(argv, { allowStaging }) {
   let environment = "production";
   const values = {};
@@ -207,16 +231,14 @@ export function createDeploymentAttempt({
   }
   if (
     typeof recordedAt !== "string"
-    || !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{3})?Z$/.test(recordedAt)
-    || Number.isNaN(Date.parse(recordedAt))
+    || !isValidReleaseTimestamp(recordedAt)
   ) throw deploymentError("deployment attempt timestamp is invalid");
   if (previousDeployment !== undefined && previousDeployment !== null) {
     const cloudflareId = /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i;
     if (
       !cloudflareId.test(previousDeployment.deploymentId ?? "")
       || !cloudflareId.test(previousDeployment.versionId ?? "")
-      || !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{3})?Z$/.test(previousDeployment.createdOn ?? "")
-      || Number.isNaN(Date.parse(previousDeployment.createdOn))
+      || !isValidReleaseTimestamp(previousDeployment.createdOn)
     ) throw deploymentError("previous Worker deployment is incomplete");
   }
   const attempt = {
@@ -268,8 +290,7 @@ export function createDeploymentReceipt({
   if (
     !cloudflareId.test(deployment.deploymentId ?? "")
     || !cloudflareId.test(deployment.versionId ?? "")
-    || !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{3})?Z$/.test(deployment.createdOn ?? "")
-    || Number.isNaN(Date.parse(deployment.createdOn))
+    || !isValidReleaseTimestamp(deployment.createdOn)
   ) {
     throw deploymentError("Wrangler deployment status is incomplete");
   }

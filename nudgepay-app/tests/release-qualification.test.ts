@@ -226,13 +226,13 @@ describe("release qualification", () => {
   it("accepts only an exact single-version 100 percent Wrangler deployment", () => {
     const status = parseDeploymentStatus(JSON.stringify({
       id: deploymentId,
-      created_on: "2026-09-05T20:01:00.000Z",
+      created_on: "2026-09-05T20:01:00.131465Z",
       versions: [{ version_id: versionId, percentage: 100 }],
     }));
     expect(status).toEqual({
       deploymentId,
       versionId,
-      createdOn: "2026-09-05T20:01:00.000Z",
+      createdOn: "2026-09-05T20:01:00.131465Z",
     });
     expect(() => parseDeploymentStatus(JSON.stringify({
       id: deploymentId,
@@ -275,9 +275,9 @@ describe("release qualification", () => {
     const message = `nudgepay-release:${"a".repeat(64)}:production:nonce`;
     expect(parseVersionList(JSON.stringify([{
       id: versionId,
-      metadata: { created_on: "2026-09-05T20:00:59.000Z" },
+      metadata: { created_on: "2026-09-05T20:00:59.20739Z" },
       annotations: { "workers/message": message },
-    }]), message)).toEqual({ versionId, createdOn: "2026-09-05T20:00:59.000Z" });
+    }]), message)).toEqual({ versionId, createdOn: "2026-09-05T20:00:59.20739Z" });
     expect(() => parseVersionList(JSON.stringify([{
       id: versionId,
       metadata: { created_on: "2026-09-05T20:00:59.000Z" },

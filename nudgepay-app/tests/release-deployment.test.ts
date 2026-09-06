@@ -7,6 +7,7 @@ import {
   createDeploymentAttempt,
   deriveReleaseTargetConfigs,
   latestMigrationFilename,
+  isValidReleaseTimestamp,
   validatedMigrationFilenames,
   parseReleaseDeploymentArgs,
   parseReleasePreparationArgs,
@@ -14,6 +15,30 @@ import {
   resolveReceiptDirectory,
   writeDeploymentReceipt,
 } from "../scripts/release-deployment.mjs";
+
+describe("release timestamps", () => {
+  it.each([
+    "2026-09-05T20:00:00Z",
+    ...Array.from(
+      { length: 9 },
+      (_, index) => `2026-09-05T20:00:00.${"123456789".slice(0, index + 1)}Z`,
+    ),
+  ])("accepts RFC 3339 UTC timestamp precision: %s", (timestamp) => {
+    expect(isValidReleaseTimestamp(timestamp)).toBe(true);
+  });
+
+  it.each([
+    "2026-02-29T20:00:00Z",
+    "2026-09-31T20:00:00Z",
+    "2026-09-05T24:00:00Z",
+    "2026-09-05T20:60:00Z",
+    "2026-09-05T20:00:60Z",
+    "2026-09-05T20:00:00.1234567890Z",
+    "2026-09-05T20:00:00+00:00",
+  ])("rejects malformed or impossible release timestamp: %s", (timestamp) => {
+    expect(isValidReleaseTimestamp(timestamp)).toBe(false);
+  });
+});
 
 function builtConfig() {
   return {
@@ -192,12 +217,12 @@ describe("release deployment orchestration contracts", () => {
       previousDeployment: {
         deploymentId: "55555555-5555-4555-8555-555555555555",
         versionId: oldVersionId,
-        createdOn: "2026-09-05T19:59:00.000Z",
+        createdOn: "2026-09-05T19:59:00.20739Z",
       },
       deployment: {
         deploymentId,
         versionId: newVersionId,
-        createdOn: "2026-09-05T20:00:00.000Z",
+        createdOn: "2026-09-05T20:00:00.131465Z",
       },
       queryStringRedactionVerified: true,
       providerConfiguration: {
@@ -248,7 +273,7 @@ describe("release deployment orchestration contracts", () => {
       deployment: {
         deploymentId,
         versionId: newVersionId,
-        createdOn: "2026-09-05T20:00:00.000Z",
+        createdOn: "2026-09-05T20:00:00.131465Z",
       },
       queryStringRedactionVerified: true,
       providerConfiguration: {
