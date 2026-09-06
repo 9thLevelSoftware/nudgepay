@@ -247,16 +247,18 @@ Production promotion repeats strict staging qualification after those
 prerequisites exist.
 
 `Promote production` (`.github/workflows/promote-production.yml`) is an
-explicit `workflow_dispatch` on `refs/heads/main`. It requires the staging run,
-source SHA, manifest and both config hashes, staging receipt hash, an operator
-attestation of remaining gates, and an operator evidence reference. It is
-disabled unless `PRODUCTION_PROMOTION_ENABLED=true`; `RELEASE_OWNER` must be a
-protected production-environment reviewer. The workflow revalidates the exact
-successful staging run, retained artifact and receipt hashes, staging runtime,
-production protections, and migration ledger, then records the prior deployment
-identity. It never runs a database migration or automatic rollback. A rejected
-production rerun remains rejected; review retained attempt evidence and create a
-new dispatch.
+explicit `workflow_dispatch` on `refs/heads/main`. It automatically selects the
+latest successful trusted staging run for the current `main` SHA, then derives
+the source SHA, artifact identity, configuration hashes, and staging receipt
+from the retained artifacts. The operator only supplies an attestation of the
+remaining gates and a concise evidence reference. It is disabled unless
+`PRODUCTION_PROMOTION_ENABLED=true`; `RELEASE_OWNER` must be a protected
+production-environment reviewer. The workflow revalidates the exact successful
+staging run, retained artifact and receipt hashes, staging runtime, production
+protections, and migration ledger, then records the prior deployment identity.
+It never runs a database migration or automatic rollback. A rejected production
+rerun remains rejected; review retained attempt evidence and create a new
+dispatch.
 
 `CLOUDFLARE_ACCOUNT_ID` is an environment-scoped variable in both staging and
 production. `STAGING_SUPABASE_URL`, `RELEASE_OWNER`, and

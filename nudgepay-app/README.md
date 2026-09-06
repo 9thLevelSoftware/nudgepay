@@ -57,11 +57,14 @@ Cloudflare Workers is production and owns both cron schedules (`wrangler.toml`).
 The normal release path is automated: a successful `CI` push run on `main`
 triggers `Deploy staging`, which verifies all eight required CI jobs, seals one
 artifact, deploys it, records bootstrap evidence and the remaining qualification
-work, and retains artifact and staging evidence. `Promote production` is an explicit protected dispatch that accepts
-the retained staging identity, requalifies the same sealed artifact, requires
-operator attestation of remaining gates, and deploys production only when the
-promotion guard is enabled. See [`docs/pilot-ops.md`](../docs/pilot-ops.md) for
-the operator procedure and dispatch inputs.
+work, and retains artifact and staging evidence. `Promote production` is an
+explicit protected dispatch that automatically selects the latest successful
+staging run for the current `main` SHA, requalifies the same sealed artifact,
+requires operator attestation of remaining gates, and deploys production only
+when the promotion guard is enabled. The dispatch form only asks for the
+operator attestation and evidence reference; release hashes and run IDs are
+derived and verified by the workflow. See [`docs/pilot-ops.md`](../docs/pilot-ops.md)
+for the operator procedure and dispatch inputs.
 
 The commands below remain an operator fallback for controlled recovery or
 diagnosis; they are not the ordinary promotion path:

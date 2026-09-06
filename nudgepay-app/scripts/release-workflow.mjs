@@ -160,6 +160,28 @@ export function assertQualifiedStagingRun(run, { repository }) {
   assertSha(run.head_sha, "staging workflow head SHA");
 }
 
+export function selectLatestQualifiedStagingRun(payload, { repository, currentSha }) {
+  assertSha(currentSha, "current main SHA");
+  if (!payload || !Array.isArray(payload.workflow_runs)) {
+    throw workflowError("staging workflow run response is missing a complete workflow_runs list");
+  }
+  const candidates = payload.workflow_runs.filter((run) => (
+    Number.isSafeInteger(run?.id)
+    && run.name === "Deploy staging"
+    && run.path === ".github/workflows/deploy-staging.yml"
+    && run.event === "workflow_run"
+    && run.conclusion === "success"
+    && run.head_branch === "main"
+    && run.head_repository?.full_name === repository
+    && run.head_sha === currentSha
+  ));
+  if (candidates.length === 0) {
+    throw workflowError("no successful trusted staging workflow run exists for the current main SHA");
+  }
+  const selected = candidates.reduce((latest, run) => run.id > latest.id ? run : latest);
+  return { stagingRunId: selected.id, sourceSha: selected.head_sha };
+}
+
 export function assertQualifiedStagingJobs(payload) {
   if (
     !payload
@@ -334,6 +356,18 @@ function main() {
     });
     assertQualifiedStagingJobs(readJson(values["--jobs"], "staging workflow jobs"));
     console.log(JSON.stringify({ status: "staging_workflow_run_verified" }));
+    return;
+  }
+  if (command === "select-staging-run") {
+    const selected = selectLatestQualifiedStagingRun(readJson(values["--runs"], "staging workflow runs"), {
+      repository: values["--repository"],
+      currentSha: values["--current-sha"],
+    });
+    writeGithubOutput(values["--github-output"], {
+      staging_run_id: selected.stagingRunId,
+      source_sha: selected.sourceSha,
+    });
+    console.log(JSON.stringify({ status: "staging_workflow_run_selected", ...selected }));
     return;
   }
   if (command === "verify-environment") {

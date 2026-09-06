@@ -13,6 +13,7 @@ import {
   assertRequiredCiJobs,
   assertTrustedCiTrigger,
   locateReceipt,
+  selectLatestQualifiedStagingRun,
 } from "../scripts/release-workflow.mjs";
 import { REQUIRED_PR_CHECKS } from "../scripts/verify-required-checks.mjs";
 
@@ -85,6 +86,28 @@ describe("release workflow trust boundary", () => {
       total_count: 2,
       jobs: jobs.map((job) => job.name.startsWith("deploy") ? { ...job, conclusion: "skipped" } : job),
     })).toThrow(/deploy and verify staging bootstrap/);
+  });
+
+  it("selects the newest successful staging run for the current main SHA", () => {
+    const older = {
+      id: 100,
+      name: "Deploy staging",
+      path: ".github/workflows/deploy-staging.yml",
+      event: "workflow_run",
+      conclusion: "success",
+      head_branch: "main",
+      head_sha: sourceSha,
+      head_repository: { full_name: repository },
+    };
+    const newer = { ...older, id: 200 };
+    expect(selectLatestQualifiedStagingRun({ workflow_runs: [older, newer] }, {
+      repository,
+      currentSha: sourceSha,
+    })).toEqual({ stagingRunId: 200, sourceSha });
+    expect(() => selectLatestQualifiedStagingRun({ workflow_runs: [{
+      ...newer,
+      head_sha: "b".repeat(40),
+    }] }, { repository, currentSha: sourceSha })).toThrow(/current main SHA/);
   });
 
   it("requires fail-closed main-only environments and the named production reviewer", () => {
@@ -207,6 +230,8 @@ describe("release workflow wiring", () => {
 
   it("keeps production explicit, attested, protected, and on the retained artifact", () => {
     expect(production).toContain("workflow_dispatch:");
+    expect(production).toContain("select-staging-run");
+    expect(production).toContain("actions/workflows/deploy-staging.yml/runs?");
     expect(production).toContain("operator_attests_remaining_gates:");
     expect(production).toContain("PRODUCTION_PROMOTION_ENABLED");
     expect(production).toContain("requalify retained staging artifact");
@@ -219,7 +244,16 @@ describe("release workflow wiring", () => {
     expect(production).toContain('GITHUB_RUN_ATTEMPT" != "1"');
     expect(production).toContain('--evidence-dir "$RUNNER_TEMP/production-evidence/attempts"');
     expect(production).not.toContain("secrets.CLOUDFLARE_ACCOUNT_ID");
-    expect(production.match(/\$\{\{ inputs\.source_sha \}\}/g)).toHaveLength(1);
+    for (const technicalInput of [
+      "staging_run_id",
+      "source_sha",
+      "manifest_sha256",
+      "staging_config_sha256",
+      "production_config_sha256",
+      "staging_receipt_sha256",
+    ]) {
+      expect(production).not.toContain(`inputs.${technicalInput}`);
+    }
     expect(production.indexOf("release:predeploy")).toBeLessThan(production.indexOf("npm run deploy --"));
     expect(production).toContain("cancel-in-progress: false");
   });
